@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.next/
+.expo/
+
+# Env files — never commit secrets
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# TypeScript build info
+*.tsbuildinfo

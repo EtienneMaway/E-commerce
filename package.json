@@ -1,0 +1,17 @@
+{
+  "name": "trading-app",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev:api": "pnpm --filter api start:dev",
+    "dev:mobile": "pnpm --filter mobile start",
+    "dev:dashboard": "pnpm --filter dashboard dev",
+    "build:api": "pnpm --filter api build",
+    "build:dashboard": "pnpm --filter dashboard build",
+    "lint": "pnpm --filter '*' lint",
+    "test": "pnpm --filter api test"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
