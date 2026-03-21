@@ -198,6 +198,12 @@ export interface RecordDebtorPaymentDto {
 
 // ─── API Response Types ───────────────────────────────────────────────────────
 
+export interface ExchangeRate {
+  /** FC per 1 USD — e.g. "2700.0000" */
+  usdToFcRate: string;
+  updatedAt: string;
+}
+
 export interface AuthResponse {
   accessToken: string;
   user: User;

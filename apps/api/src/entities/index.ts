@@ -6,3 +6,4 @@ export { Payment, PaymentDirection, PaymentStatus } from './payment.entity';
 export { SaleTransaction } from './sale-transaction.entity';
 export { ConsignmentRequest, ConsignmentStatus } from './consignment-request.entity';
 export { ConsignmentItem } from './consignment-item.entity';
+export { ExchangeRate } from './exchange-rate.entity';
