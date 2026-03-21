@@ -105,6 +105,16 @@ export const FR_TRANSLATIONS: Translation[] = [
     fr: () => 'Stock insuffisant pour la consignation',
   },
 
+  // ─── Currency ────────────────────────────────────────────────────────────
+  {
+    pattern: /^Exchange rate has not been set$/,
+    fr: () => "Le taux de change n'a pas encore été défini",
+  },
+  {
+    pattern: /^Exchange rate must be greater than zero$/,
+    fr: () => 'Le taux de change doit être supérieur à zéro',
+  },
+
   // ─── Dashboard ───────────────────────────────────────────────────────────
   {
     pattern: /^No supplier relationship found$/,

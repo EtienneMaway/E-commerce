@@ -12,6 +12,7 @@ import {
   SaleTransaction,
   ConsignmentRequest,
   ConsignmentItem,
+  ExchangeRate,
 } from './entities';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -20,6 +21,7 @@ import { SalesModule } from './sales/sales.module';
 import { PaymentsModule } from './payments/payments.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ConsignmentsModule } from './consignments/consignments.module';
+import { CurrencyModule } from './currency/currency.module';
 
 @Module({
   imports: [
@@ -41,6 +43,7 @@ import { ConsignmentsModule } from './consignments/consignments.module';
           SaleTransaction,
           ConsignmentRequest,
           ConsignmentItem,
+          ExchangeRate,
         ],
         synchronize: config.get<string>('NODE_ENV') !== 'production',
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -58,6 +61,7 @@ import { ConsignmentsModule } from './consignments/consignments.module';
     PaymentsModule,
     DashboardModule,
     ConsignmentsModule,
+    CurrencyModule,
   ],
   providers: [
     // Apply throttle guard globally
