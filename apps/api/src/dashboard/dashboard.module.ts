@@ -5,6 +5,8 @@ import { DashboardService } from './dashboard.service';
 import {
   ConsignmentRequest,
   DebtorCredit,
+  ExternalContact,
+  ExternalTransaction,
   InventoryEntry,
   Payment,
   SaleTransaction,
@@ -21,6 +23,8 @@ import { ConsignmentsModule } from '../consignments/consignments.module';
       InventoryEntry,
       Payment,
       ConsignmentRequest,
+      ExternalContact,
+      ExternalTransaction,
     ]),
     ConsignmentsModule,
   ],
