@@ -6,6 +6,10 @@ import {
   ConsignmentRequest,
   ConsignmentStatus,
   DebtorCredit,
+  ExternalContact,
+  ExternalContactRole,
+  ExternalTransaction,
+  ExternalTransactionType,
   InventoryEntry,
   InventorySource,
   Payment,
@@ -102,6 +106,10 @@ export class DashboardService {
     private readonly paymentRepo: Repository<Payment>,
     @InjectRepository(ConsignmentRequest)
     private readonly consignmentRequestRepo: Repository<ConsignmentRequest>,
+    @InjectRepository(ExternalContact)
+    private readonly externalContactRepo: Repository<ExternalContact>,
+    @InjectRepository(ExternalTransaction)
+    private readonly externalTxRepo: Repository<ExternalTransaction>,
     private readonly consignmentsService: ConsignmentsService,
   ) {}
 
@@ -185,28 +193,51 @@ export class DashboardService {
   }
 
   async getSummary(ownerId: string): Promise<DashboardSummary> {
-    const [supplierDebts, debtorCredits, sales, { total: consignmentProfit }] = await Promise.all([
+    const [supplierDebts, debtorCredits, sales, { total: consignmentProfit }, externalContacts] = await Promise.all([
       this.supplierDebtRepo.find({ where: { ownerId } }),
       this.debtorCreditRepo.find({ where: { ownerId } }),
       this.saleRepo.find({ where: { ownerId } }),
       this.computeConsignmentProfits(ownerId),
+      this.externalContactRepo.find({ where: { ownerId } }),
     ]);
 
-    const totalIOwe = supplierDebts
-      .reduce((sum, d) => sum.plus(d.outstandingBalance), new Decimal(0))
-      .toFixed(2);
+    // App-user balances
+    let totalIOwe = supplierDebts
+      .reduce((sum, d) => sum.plus(d.outstandingBalance), new Decimal(0));
 
-    const totalOwedToMe = debtorCredits
-      .reduce((sum, c) => sum.plus(c.outstandingBalance), new Decimal(0))
-      .toFixed(2);
+    let totalOwedToMe = debtorCredits
+      .reduce((sum, c) => sum.plus(c.outstandingBalance), new Decimal(0));
+
+    // Add external contact balances
+    for (const c of externalContacts) {
+      if (c.role === ExternalContactRole.SUPPLIER || c.role === ExternalContactRole.BOTH) {
+        totalIOwe = totalIOwe.plus(c.supplierBalance);
+      }
+      if (c.role === ExternalContactRole.DEBTOR || c.role === ExternalContactRole.BOTH) {
+        totalOwedToMe = totalOwedToMe.plus(c.debtorBalance);
+      }
+    }
+
+    // External contact profits (from PRODUCT_OUT transactions)
+    const externalProfit = await this.externalTxRepo
+      .createQueryBuilder('tx')
+      .select('SUM(CAST(tx.profit AS DECIMAL))', 'total')
+      .where('tx.ownerId = :ownerId', { ownerId })
+      .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
+      .andWhere('tx.profit IS NOT NULL')
+      .getRawOne<{ total: string | null }>();
 
     const directSalesProfit = sales.reduce((sum, s) => sum.plus(s.profit), new Decimal(0));
-    const totalProfitAllTime = directSalesProfit.plus(consignmentProfit).toFixed(2);
+    const extProfit = new Decimal(externalProfit?.total ?? 0);
+    const totalProfitAllTime = directSalesProfit.plus(consignmentProfit).plus(extProfit).toFixed(2);
+
+    const iOweFixed = totalIOwe.toFixed(2);
+    const owedFixed = totalOwedToMe.toFixed(2);
 
     return {
-      totalIOwe,
-      totalOwedToMe,
-      netPosition: new Decimal(totalOwedToMe).minus(totalIOwe).toFixed(2),
+      totalIOwe: iOweFixed,
+      totalOwedToMe: owedFixed,
+      netPosition: new Decimal(owedFixed).minus(iOweFixed).toFixed(2),
       totalProfitAllTime,
     };
   }
@@ -324,7 +355,7 @@ export class DashboardService {
   }
 
   async getProfitByProduct(ownerId: string): Promise<ProfitByProduct[]> {
-    const [rows, { byProduct: consignmentByProduct }] = await Promise.all([
+    const [rows, { byProduct: consignmentByProduct }, extRows] = await Promise.all([
       this.saleRepo
         .createQueryBuilder('sale')
         .select('sale.productName', 'productName')
@@ -334,9 +365,19 @@ export class DashboardService {
         .groupBy('sale.productName')
         .getRawMany<{ productName: string; totalProfit: string; totalQtySold: string }>(),
       this.computeConsignmentProfits(ownerId),
+      this.externalTxRepo
+        .createQueryBuilder('tx')
+        .select('tx.productName', 'productName')
+        .addSelect('SUM(CAST(tx.profit AS DECIMAL))', 'totalProfit')
+        .addSelect('SUM(tx.quantity)', 'totalQty')
+        .where('tx.ownerId = :ownerId', { ownerId })
+        .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
+        .andWhere('tx.profit IS NOT NULL')
+        .groupBy('tx.productName')
+        .getRawMany<{ productName: string; totalProfit: string; totalQty: string }>(),
     ]);
 
-    // Merge sale rows into a map so we can add consignment profit on top
+    // Merge sale rows into a map
     const profitMap = new Map<string, { profit: Decimal; qtySold: number }>();
     for (const r of rows) {
       profitMap.set(r.productName, {
@@ -352,6 +393,21 @@ export class DashboardService {
         existing.profit = existing.profit.plus(consignProfit);
       } else {
         profitMap.set(productName, { profit: consignProfit, qtySold: 0 });
+      }
+    }
+
+    // Add external contact product-out profits
+    for (const r of extRows) {
+      if (!r.productName) continue;
+      const existing = profitMap.get(r.productName);
+      if (existing) {
+        existing.profit = existing.profit.plus(r.totalProfit ?? 0);
+        existing.qtySold += Number(r.totalQty ?? 0);
+      } else {
+        profitMap.set(r.productName, {
+          profit: new Decimal(r.totalProfit ?? 0),
+          qtySold: Number(r.totalQty ?? 0),
+        });
       }
     }
 
@@ -401,6 +457,25 @@ export class DashboardService {
         supplierUserId: null,
         supplierUsername: null,
         totalProfit: consignmentTotal.toFixed(2),
+      });
+    }
+
+    // Append external contact profit
+    const extProfitRow = await this.externalTxRepo
+      .createQueryBuilder('tx')
+      .select('SUM(CAST(tx.profit AS DECIMAL))', 'total')
+      .where('tx.ownerId = :ownerId', { ownerId })
+      .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
+      .andWhere('tx.profit IS NOT NULL')
+      .getRawOne<{ total: string | null }>();
+
+    const extTotal = new Decimal(extProfitRow?.total ?? 0);
+    if (extTotal.gt(0)) {
+      result.push({
+        source: 'EXTERNAL_CONTACT',
+        supplierUserId: null,
+        supplierUsername: null,
+        totalProfit: extTotal.toFixed(2),
       });
     }
 

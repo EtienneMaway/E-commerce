@@ -7,3 +7,5 @@ export { SaleTransaction } from './sale-transaction.entity';
 export { ConsignmentRequest, ConsignmentStatus } from './consignment-request.entity';
 export { ConsignmentItem } from './consignment-item.entity';
 export { ExchangeRate } from './exchange-rate.entity';
+export { ExternalContact, ExternalContactRole } from './external-contact.entity';
+export { ExternalTransaction, ExternalTransactionType } from './external-transaction.entity';
