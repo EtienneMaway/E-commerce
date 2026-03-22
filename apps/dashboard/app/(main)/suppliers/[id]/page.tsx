@@ -132,7 +132,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           <table className="w-full text-sm" style={{ minWidth: '560px' }}>
             <thead>
               <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--border)' }}>
-                {[t.suppliers.colDate, t.suppliers.colAmountPaid, t.suppliers.colNote, t.suppliers.colStatus, t.suppliers.colBalanceAfter].map((h) => (
+                {[t.suppliers.colDate, t.suppliers.colAmountPaid, t.suppliers.colNote, t.suppliers.colPaymentStatus, t.suppliers.colBalanceAfter].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>{h}</th>
                 ))}
               </tr>
