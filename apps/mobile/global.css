@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Light mode defaults — runtime values are applied via vars() in _layout.tsx */
+:root {
+  --surface: #F8FAFC;
+  --card: #FFFFFF;
+  --border: #E2E8F0;
+  --muted: #94A3B8;
+  --foreground: #1E293B;
+}
+
+.dark {
+  --surface: #0F172A;
+  --card: #1E293B;
+  --border: #334155;
+  --muted: #64748B;
+  --foreground: #F1F5F9;
+}
