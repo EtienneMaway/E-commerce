@@ -8,7 +8,7 @@ const monorepoRoot = path.resolve(projectRoot, '../..');
 const config = getDefaultConfig(projectRoot);
 
 // Watch the full monorepo so Metro can resolve packages from the pnpm virtual store.
-config.watchFolders = [monorepoRoot];
+config.watchFolders = [...(config.watchFolders ?? []), monorepoRoot];
 
 // Search mobile node_modules first, then the root (pnpm virtual store).
 config.resolver.nodeModulesPaths = [
