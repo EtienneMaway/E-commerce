@@ -20,6 +20,7 @@ async function bootstrap(): Promise<void> {
     origin: [
       'http://localhost:3001', // Next.js dashboard
       'http://localhost:8081', // Expo dev server
+      'https://e-commerce-dasboard-rbsysmbzs-etienne-maways-projects.vercel.app',
       /^exp:\/\//,             // Expo Go
       /^http:\/\/192\.168\./,  // Android emulator / physical device on LAN
       /^http:\/\/10\./,        // Android emulator via 10.0.2.2
