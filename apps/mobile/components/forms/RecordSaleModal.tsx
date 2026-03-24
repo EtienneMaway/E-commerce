@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  PanResponder,
 } from 'react-native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { salesApi, inventoryApi } from '../../lib/api';
@@ -26,13 +27,12 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   prefilledProduct?: string;
-  unitCost?: string; // kept for API compatibility, unused
+  unitCost?: string;
 }
 
 interface CartItem {
   readonly productName: string;
   qty: number;
-  readonly salePrice: string;
   readonly unitCost: string;
 }
 
@@ -45,12 +45,11 @@ interface PriceGuardPending {
 interface ProductOption {
   readonly productName: string;
   readonly totalQty: number;
-  readonly salePrice: string;
   readonly unitCost: string;
 }
 
 function buildProductOptions(entries: InventoryEntry[]): ProductOption[] {
-  const map = new Map<string, { totalQty: number; salePrice: string; unitCost: string; hasSupplier: boolean }>();
+  const map = new Map<string, { totalQty: number; unitCost: string; hasSupplier: boolean }>();
 
   for (const entry of entries) {
     if (entry.source === 'CONSIGNED_OUT' || entry.quantityRemaining <= 0) continue;
@@ -58,15 +57,12 @@ function buildProductOptions(entries: InventoryEntry[]): ProductOption[] {
     if (!existing) {
       map.set(entry.productName, {
         totalQty: entry.quantityRemaining,
-        salePrice: entry.sellingPrice,
         unitCost: entry.unitCost,
         hasSupplier: entry.source === 'SUPPLIER',
       });
     } else {
       existing.totalQty += entry.quantityRemaining;
-      // Prefer SUPPLIER price (matches backend stock-deduction priority)
       if (entry.source === 'SUPPLIER' && !existing.hasSupplier) {
-        existing.salePrice = entry.sellingPrice;
         existing.unitCost = entry.unitCost;
         existing.hasSupplier = true;
       }
@@ -86,12 +82,36 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   const [cart, setCart] = useState<Map<string, CartItem>>(new Map());
   const [priceGuardPending, setPriceGuardPending] = useState<PriceGuardPending[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [markupPct, setMarkupPct] = useState(25);
+  const startPctRef = useRef(25);
+  const sliderWidthRef = useRef(300);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => {
+        const tapPct = Math.max(
+          0,
+          Math.min(100, Math.round((e.nativeEvent.locationX / sliderWidthRef.current) * 100)),
+        );
+        startPctRef.current = tapPct;
+        setMarkupPct(tapPct);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const delta = (gestureState.dx / sliderWidthRef.current) * 100;
+        setMarkupPct(Math.max(0, Math.min(100, Math.round(startPctRef.current + delta))));
+      },
+    }),
+  ).current;
 
   useEffect(() => {
     if (visible) {
       setSearch(prefilledProduct);
       setCart(new Map());
       setPriceGuardPending([]);
+      setMarkupPct(25);
+      startPctRef.current = 25;
     }
   }, [visible, prefilledProduct]);
 
@@ -113,7 +133,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
   const cartArray = Array.from(cart.values());
   const grandTotal = cartArray.reduce(
-    (sum, item) => sum + parseFloat(item.salePrice) * item.qty,
+    (sum, item) => sum + parseFloat(item.unitCost) * (1 + markupPct / 100) * item.qty,
     0,
   );
 
@@ -126,7 +146,6 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         next.set(product.productName, {
           productName: product.productName,
           qty: 1,
-          salePrice: product.salePrice,
           unitCost: product.unitCost,
         });
       }
@@ -156,11 +175,12 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   ): Promise<PriceGuardPending[]> => {
     const pending: PriceGuardPending[] = [];
     for (const item of items) {
+      const salePrice = (parseFloat(item.unitCost) * (1 + markupPct / 100)).toFixed(2);
       try {
         await salesApi.record({
           productName: item.productName,
           qtySold: item.qty,
-          salePrice: item.salePrice,
+          salePrice,
           ...(confirmedOverride ? { confirmedOverride: true } : {}),
         });
       } catch (err) {
@@ -308,6 +328,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
             filteredProducts.map((product) => {
               const cartItem = cart.get(product.productName);
               const isSelected = !!cartItem;
+              const unitCostFc = formatCurrency(product.unitCost);
 
               return (
                 <TouchableOpacity
@@ -315,7 +336,9 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                   onPress={() => toggleProduct(product)}
                   activeOpacity={0.85}
                   className={`rounded-2xl border mb-2 p-4 ${
-                    isSelected ? 'bg-primary/5 border-primary' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
+                    isSelected
+                      ? 'bg-primary/5 border-primary'
+                      : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
                   }`}
                 >
                   {/* Row: name + check circle */}
@@ -328,12 +351,14 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                         {product.productName}
                       </Text>
                       <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">
-                        {t.recordSaleModal.sellAt(formatCurrency(product.salePrice))} · {t.recordSaleModal.inStock(product.totalQty)}
+                        {t.recordSaleModal.costPerUnit(unitCostFc)} · {t.recordSaleModal.inStock(product.totalQty)}
                       </Text>
                     </View>
                     <View
                       className={`w-6 h-6 rounded-full border-2 items-center justify-center ${
-                        isSelected ? 'bg-primary border-primary' : 'border-border dark:border-slate-700 bg-card dark:bg-slate-800'
+                        isSelected
+                          ? 'bg-primary border-primary'
+                          : 'border-border dark:border-slate-700 bg-card dark:bg-slate-800'
                       }`}
                     >
                       {isSelected && (
@@ -342,10 +367,11 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                     </View>
                   </View>
 
-                  {/* Qty stepper + line total (only when selected) */}
+                  {/* Qty stepper + cost breakdown (only when selected) */}
                   {isSelected && cartItem && (
-                    <View className="mt-3 pt-3 border-t border-primary/20 flex-row items-center justify-between">
-                      <View className="flex-row items-center gap-2">
+                    <View className="mt-3 pt-3 border-t border-primary/20">
+                      {/* Qty stepper */}
+                      <View className="flex-row items-center gap-2 mb-3">
                         <Text className="text-muted dark:text-slate-500 text-xs mr-1">{t.recordSaleModal.qty}:</Text>
                         <TouchableOpacity
                           onPress={() => setQty(product.productName, cartItem.qty - 1)}
@@ -355,9 +381,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                         </TouchableOpacity>
                         <TextInput
                           value={String(cartItem.qty)}
-                          onChangeText={(v) =>
-                            setQty(product.productName, parseInt(v, 10) || 1)
-                          }
+                          onChangeText={(v) => setQty(product.productName, parseInt(v, 10) || 1)}
                           keyboardType="number-pad"
                           selectTextOnFocus
                           className="text-text dark:text-slate-100 font-bold text-base text-center w-10 border-b border-border dark:border-slate-700"
@@ -369,9 +393,25 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                           <Text className="text-text dark:text-slate-100 font-bold text-lg leading-none">+</Text>
                         </TouchableOpacity>
                       </View>
-                      <Text className="text-primary font-bold text-sm">
-                        = {formatCurrency((parseFloat(cartItem.salePrice) * cartItem.qty).toFixed(2))}
-                      </Text>
+
+                      {/* Cost breakdown */}
+                      <View className="bg-slate-50 dark:bg-slate-700/50 rounded-xl px-3 py-2">
+                        <Text className="text-text dark:text-slate-200 text-xs">
+                          {t.recordSaleModal.baseTotal(
+                            cartItem.qty,
+                            unitCostFc,
+                            formatCurrency((parseFloat(product.unitCost) * cartItem.qty).toFixed(2)),
+                          )}
+                        </Text>
+                        <Text className="text-primary font-semibold text-sm mt-1">
+                          {t.recordSaleModal.markupLine(
+                            markupPct,
+                            formatCurrency(
+                              (parseFloat(product.unitCost) * (1 + markupPct / 100) * cartItem.qty).toFixed(2),
+                            ),
+                          )}
+                        </Text>
+                      </View>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -380,6 +420,58 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
           )}
         </ScrollView>
 
+        {/* Markup slider */}
+        <View className="px-4 py-3 border-t border-border dark:border-slate-700 bg-surface dark:bg-slate-900">
+          <View className="flex-row justify-between items-center mb-2">
+            <Text className="text-sm font-semibold text-text dark:text-slate-100">
+              {t.recordSaleModal.markup}
+            </Text>
+            <View className="bg-primary/10 rounded-lg px-3 py-1">
+              <Text className="text-primary font-bold text-sm">{markupPct}%</Text>
+            </View>
+          </View>
+          <View
+            onLayout={(e) => {
+              sliderWidthRef.current = e.nativeEvent.layout.width;
+            }}
+            style={{ height: 40, justifyContent: 'center' }}
+            {...panResponder.panHandlers}
+          >
+            {/* Track */}
+            <View style={{ height: 6, backgroundColor: '#CBD5E1', borderRadius: 3 }}>
+              <View
+                style={{
+                  width: `${markupPct}%`,
+                  height: '100%',
+                  backgroundColor: '#2563EB',
+                  borderRadius: 3,
+                }}
+              />
+            </View>
+            {/* Thumb */}
+            <View
+              style={{
+                position: 'absolute',
+                left: `${markupPct}%`,
+                transform: [{ translateX: -10 }],
+                width: 20,
+                height: 20,
+                borderRadius: 10,
+                backgroundColor: '#2563EB',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.25,
+                shadowRadius: 3,
+                elevation: 3,
+              }}
+            />
+          </View>
+          <View className="flex-row justify-between mt-0.5">
+            <Text className="text-xs text-muted dark:text-slate-500">0%</Text>
+            <Text className="text-xs text-muted dark:text-slate-500">100%</Text>
+          </View>
+        </View>
+
         {/* Footer */}
         <View className="px-4 pb-8 pt-3 border-t border-border dark:border-slate-700 bg-surface dark:bg-slate-900">
           {cart.size > 0 && (
@@ -387,15 +479,13 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
               <Text className="text-muted dark:text-slate-500 text-sm">
                 {t.recordSaleModal.productsSelected(cart.size)}
               </Text>
-              <Text className="text-text dark:text-slate-100 font-bold">
+              <Text className="text-text dark:text-slate-100 font-bold text-lg">
                 {t.recordSaleModal.total(formatCurrency(grandTotal.toFixed(2)))}
               </Text>
             </View>
           )}
           <View className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mb-3">
-            <Text className="text-blue-700 text-xs">
-              {t.recordSaleModal.supplierFirst}
-            </Text>
+            <Text className="text-blue-700 text-xs">{t.recordSaleModal.supplierFirst}</Text>
           </View>
           <Button
             label={

@@ -265,6 +265,10 @@ const en = {
     confirmSellAtLoss: 'Confirm — Sell at a Loss',
     goBack: 'Go Back',
     noProductsSelectedMsg: 'Select at least one product.',
+    markup: 'Markup',
+    costPerUnit: (price: string) => `Cost: ${price}/unit`,
+    baseTotal: (qty: number, cost: string, total: string) => `${qty} pcs × ${cost} = ${total}`,
+    markupLine: (pct: number, total: string) => `+${pct}% → ${total}`,
   },
   paySupplierModal: {
     title: 'Pay Supplier',
@@ -676,6 +680,10 @@ const fr: Translations = {
     confirmSellAtLoss: 'Confirmer — Vendre à perte',
     goBack: 'Retour',
     noProductsSelectedMsg: 'Sélectionnez au moins un produit.',
+    markup: 'Marge',
+    costPerUnit: (price: string) => `Coût : ${price}/unité`,
+    baseTotal: (qty: number, cost: string, total: string) => `${qty} pcs × ${cost} = ${total}`,
+    markupLine: (pct: number, total: string) => `+${pct}% → ${total}`,
   },
   paySupplierModal: {
     title: 'Payer le fournisseur',

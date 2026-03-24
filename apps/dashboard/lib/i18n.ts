@@ -287,6 +287,11 @@ const en = {
     pricePlaceholder: 'Price',
     submit: 'Send Consignment',
     submitting: 'Sending...',
+    manual: 'Manual',
+    pctMarkup: '% Markup',
+    unitCost: 'Unit cost',
+    markup: 'Markup',
+    computedPrice: (price: string) => `Agreed price: $${price}/unit`,
   },
   receiveFromSupplier: {
     title: 'Receive from Supplier',
@@ -619,6 +624,11 @@ const fr: Translations = {
     pricePlaceholder: 'Prix',
     submit: 'Envoyer la consignation',
     submitting: 'Envoi en cours...',
+    manual: 'Manuel',
+    pctMarkup: '% Marge',
+    unitCost: 'Coût unitaire',
+    markup: 'Marge',
+    computedPrice: (price: string) => `Prix convenu : $${price}/unité`,
   },
   receiveFromSupplier: {
     title: 'Recevoir d\'un fournisseur',

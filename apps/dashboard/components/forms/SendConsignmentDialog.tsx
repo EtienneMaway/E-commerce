@@ -17,6 +17,9 @@ interface ItemRow {
   productName: string;
   quantity: string;
   agreedUnitPrice: string;
+  priceMode: 'manual' | 'pct';
+  unitCost: string;
+  markupPct: number;
 }
 
 interface Props {
@@ -24,7 +27,23 @@ interface Props {
   onClose: () => void;
 }
 
-const EMPTY_ITEM: ItemRow = { productName: '', quantity: '', agreedUnitPrice: '' };
+const EMPTY_ITEM: ItemRow = {
+  productName: '',
+  quantity: '',
+  agreedUnitPrice: '',
+  priceMode: 'manual',
+  unitCost: '',
+  markupPct: 25,
+};
+
+function computedAgreedPrice(item: ItemRow): string {
+  if (item.priceMode === 'pct') {
+    const cost = parseFloat(item.unitCost);
+    if (isNaN(cost) || cost <= 0) return '';
+    return (cost * (1 + item.markupPct / 100)).toFixed(2);
+  }
+  return item.agreedUnitPrice;
+}
 
 export function SendConsignmentDialog({ open, onClose }: Props) {
   const t = useT();
@@ -42,7 +61,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
         items: items.map((it) => ({
           productName: it.productName.trim(),
           quantity: Number(it.quantity),
-          agreedUnitPrice: it.agreedUnitPrice,
+          agreedUnitPrice: computedAgreedPrice(it),
         })),
       }),
     onSuccess: () => {
@@ -56,8 +75,16 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
     onError: (err) => setError(getErrorMessage(err)),
   });
 
-  const setItem = (i: number, k: keyof ItemRow) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, [k]: e.target.value } : row)));
+  const setStringField =
+    (i: number, k: keyof Pick<ItemRow, 'productName' | 'quantity' | 'agreedUnitPrice' | 'unitCost'>) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, [k]: e.target.value } : row)));
+
+  const setMode = (i: number, mode: 'manual' | 'pct') =>
+    setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, priceMode: mode } : row)));
+
+  const setMarkup = (i: number, pct: number) =>
+    setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, markupPct: pct } : row)));
 
   const addItem = () => setItems((prev) => [...prev, { ...EMPTY_ITEM }]);
 
@@ -67,7 +94,11 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
   const canSubmit =
     debtor &&
     items.length > 0 &&
-    items.every((it) => it.productName.trim() && it.quantity && it.agreedUnitPrice);
+    items.every((it) => {
+      if (!it.productName.trim() || !it.quantity) return false;
+      if (it.priceMode === 'pct') return !!it.unitCost && parseFloat(it.unitCost) > 0;
+      return !!it.agreedUnitPrice;
+    });
 
   if (!open) return null;
 
@@ -99,47 +130,124 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                 {t.sendConsignment.addItem}
               </button>
             </div>
-            <div className="space-y-2">
-              {items.map((item, i) => (
-                <div key={i} className="flex gap-2 items-start">
-                  <input
-                    value={item.productName}
-                    onChange={setItem(i, 'productName')}
-                    placeholder={t.sendConsignment.productNamePlaceholder}
-                    className={inputCls}
-                    style={{ ...inputStyle, flex: 2 }}
-                  />
-                  <input
-                    value={item.quantity}
-                    onChange={setItem(i, 'quantity')}
-                    placeholder={t.sendConsignment.qtyPlaceholder}
-                    type="number"
-                    min="1"
-                    className={inputCls}
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  <input
-                    value={item.agreedUnitPrice}
-                    onChange={setItem(i, 'agreedUnitPrice')}
-                    placeholder={t.sendConsignment.pricePlaceholder}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className={inputCls}
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  {items.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeItem(i)}
-                      className="px-2 py-2 rounded-xl text-sm"
-                      style={{ color: 'var(--danger)' }}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              ))}
+            <div className="space-y-3">
+              {items.map((item, i) => {
+                const computed = computedAgreedPrice(item);
+                return (
+                  <div key={i} className="rounded-xl border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+                    {/* Row 1: product, qty, mode toggle, remove */}
+                    <div className="flex gap-2 items-start mb-2">
+                      <input
+                        value={item.productName}
+                        onChange={setStringField(i, 'productName')}
+                        placeholder={t.sendConsignment.productNamePlaceholder}
+                        className="input"
+                        style={{ flex: 2 }}
+                      />
+                      <input
+                        value={item.quantity}
+                        onChange={setStringField(i, 'quantity')}
+                        placeholder={t.sendConsignment.qtyPlaceholder}
+                        type="number"
+                        min="1"
+                        className="input"
+                        style={{ flex: 1 }}
+                      />
+                      {items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeItem(i)}
+                          className="px-2 py-2 rounded-xl text-sm flex-shrink-0"
+                          style={{ color: 'var(--danger)' }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Mode toggle */}
+                    <div className="flex gap-1 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => setMode(i, 'manual')}
+                        className="text-xs px-3 py-1 rounded-full font-medium transition-colors"
+                        style={{
+                          background: item.priceMode === 'manual' ? 'var(--primary)' : 'var(--card)',
+                          color: item.priceMode === 'manual' ? '#fff' : 'var(--muted)',
+                          border: '1px solid var(--border)',
+                        }}
+                      >
+                        {t.sendConsignment.manual}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMode(i, 'pct')}
+                        className="text-xs px-3 py-1 rounded-full font-medium transition-colors"
+                        style={{
+                          background: item.priceMode === 'pct' ? 'var(--primary)' : 'var(--card)',
+                          color: item.priceMode === 'pct' ? '#fff' : 'var(--muted)',
+                          border: '1px solid var(--border)',
+                        }}
+                      >
+                        {t.sendConsignment.pctMarkup}
+                      </button>
+                    </div>
+
+                    {/* Manual mode */}
+                    {item.priceMode === 'manual' && (
+                      <input
+                        value={item.agreedUnitPrice}
+                        onChange={setStringField(i, 'agreedUnitPrice')}
+                        placeholder={t.sendConsignment.pricePlaceholder}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="input w-full"
+                      />
+                    )}
+
+                    {/* Pct markup mode */}
+                    {item.priceMode === 'pct' && (
+                      <div className="space-y-2">
+                        <input
+                          value={item.unitCost}
+                          onChange={setStringField(i, 'unitCost')}
+                          placeholder={t.sendConsignment.unitCost}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="input w-full"
+                        />
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-xs" style={{ color: 'var(--muted)' }}>{t.sendConsignment.markup}</span>
+                            <span className="text-xs font-bold" style={{ color: 'var(--primary)' }}>{item.markupPct}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={item.markupPct}
+                            onChange={(e) => setMarkup(i, parseInt(e.target.value, 10))}
+                            className="w-full"
+                            style={{ accentColor: 'var(--primary)' }}
+                          />
+                          <div className="flex justify-between text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                            <span>0%</span>
+                            <span>100%</span>
+                          </div>
+                        </div>
+                        {computed && (
+                          <p className="text-sm font-semibold" style={{ color: 'var(--primary)' }}>
+                            {t.sendConsignment.computedPrice(computed)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -160,6 +268,3 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
     </div>
   );
 }
-
-const inputCls = 'input';
-const inputStyle: React.CSSProperties = {};
