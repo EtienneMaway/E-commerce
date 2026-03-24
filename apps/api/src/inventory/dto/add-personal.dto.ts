@@ -7,6 +7,7 @@ import {
   IsString,
   MinLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class AddPersonalDto {
   @ApiProperty({ example: 'Rice 50kg' })
@@ -31,4 +32,11 @@ export class AddPersonalDto {
   @IsString()
   @IsOptional()
   category?: string;
+
+  @ApiPropertyOptional({ example: 20, description: 'How many pieces make one carton' })
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  @Type(() => Number)
+  piecesPerCarton?: number;
 }

@@ -28,6 +28,7 @@ export function ExternalProductOutModal({ visible, onClose, contactId }: Props) 
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.externalContactDetail(contactId) });
       qc.invalidateQueries({ queryKey: QK.externalContacts });
+      qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: QK.inventory() });
       setForm({ productName: '', quantity: '', unitPrice: '', notes: '' });
       onClose();

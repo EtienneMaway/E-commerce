@@ -51,6 +51,7 @@ export function ReceiveFromSupplierDialog({ open, onClose }: Props) {
   const confirmMutation = useMutation({
     mutationFn: (id: string) => consignmentsApi.confirm(id),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: ['inventory'] });
       qc.invalidateQueries({ queryKey: QK.consignmentsIncoming });
     },

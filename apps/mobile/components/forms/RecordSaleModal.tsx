@@ -176,6 +176,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   };
 
   const invalidate = (): void => {
+    qc.invalidateQueries({ queryKey: QK.inventoryProducts });
     qc.invalidateQueries({ queryKey: QK.inventory() });
     qc.invalidateQueries({ queryKey: QK.salesHistory() });
     qc.invalidateQueries({ queryKey: QK.dashboard });

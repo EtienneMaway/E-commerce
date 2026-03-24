@@ -37,6 +37,7 @@ export function EditSellingPriceDialog({ entry, onClose }: Props) {
   const mutation = useMutation({
     mutationFn: () => inventoryApi.updateSellingPrice(entry!.id, price),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: QK.inventory() });
       onClose();
     },

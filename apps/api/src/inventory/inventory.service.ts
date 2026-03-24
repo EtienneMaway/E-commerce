@@ -14,6 +14,22 @@ import {
   SupplierDebt,
   User,
 } from '../entities';
+
+export interface ProductSummary {
+  productName: string;
+  category: string | null;
+  piecesPerCarton: number | null;
+  totalAvailable: number;
+  sourceBreakdown: {
+    personal: number;
+    supplier: number;
+    consignedIn: number;
+    consignedOut: number;
+  };
+  latestSellingPrice: string;
+  latestUnitCost: string;
+}
+
 import { AddPersonalDto } from './dto/add-personal.dto';
 import { ReceiveFromSupplierDto } from './dto/receive-from-supplier.dto';
 import { ConsignToDebtorDto } from './dto/consign-to-debtor.dto';
@@ -39,6 +55,7 @@ export class InventoryService {
     if (filter.source) where.source = filter.source;
     if (filter.supplierUserId) where.supplierUserId = filter.supplierUserId;
     if (filter.category) where.category = ILike(`%${filter.category}%`);
+    if (filter.productName) where.productName = ILike(filter.productName.trim().toLowerCase());
 
     return this.entryRepo.find({
       where,
@@ -47,16 +64,83 @@ export class InventoryService {
     });
   }
 
+  async getProductList(ownerId: string): Promise<ProductSummary[]> {
+    const entries = await this.entryRepo.find({
+      where: { ownerId },
+      order: { createdAt: 'DESC' },
+    });
+
+    const productMap = new Map<string, InventoryEntry[]>();
+    for (const entry of entries) {
+      const existing = productMap.get(entry.productName) ?? [];
+      existing.push(entry);
+      productMap.set(entry.productName, existing);
+    }
+
+    const summaries: ProductSummary[] = [];
+    for (const [productName, productEntries] of productMap) {
+      const personal = productEntries.filter((e) => e.source === InventorySource.PERSONAL);
+      const supplier = productEntries.filter((e) => e.source === InventorySource.SUPPLIER);
+      const consignedIn = productEntries.filter((e) => e.source === InventorySource.CONSIGNED_IN);
+      const consignedOut = productEntries.filter((e) => e.source === InventorySource.CONSIGNED_OUT);
+
+      const personalQty = personal.reduce((s, e) => s + e.quantityRemaining, 0);
+      const supplierQty = supplier.reduce((s, e) => s + e.quantityRemaining, 0);
+      const consignedInQty = consignedIn.reduce((s, e) => s + e.quantityRemaining, 0);
+      const consignedOutQty = consignedOut.reduce((s, e) => s + e.quantityRemaining, 0);
+
+      const piecesPerCarton = productEntries.find((e) => e.piecesPerCarton !== null)?.piecesPerCarton ?? null;
+      const category = productEntries.find((e) => e.category !== null)?.category ?? null;
+
+      const sellable = [...personal, ...supplier, ...consignedIn];
+      const latestSellingPrice = sellable[0]?.sellingPrice ?? '0.00';
+      const latestUnitCost = sellable[0]?.unitCost ?? '0.00';
+
+      summaries.push({
+        productName,
+        category,
+        piecesPerCarton,
+        totalAvailable: personalQty + supplierQty + consignedInQty,
+        sourceBreakdown: {
+          personal: personalQty,
+          supplier: supplierQty,
+          consignedIn: consignedInQty,
+          consignedOut: consignedOutQty,
+        },
+        latestSellingPrice,
+        latestUnitCost,
+      });
+    }
+
+    return summaries;
+  }
+
   async addPersonal(ownerId: string, dto: AddPersonalDto): Promise<InventoryEntry> {
+    const normalizedName = dto.productName.trim().toLowerCase();
+
+    const existing = await this.entryRepo.findOne({
+      where: { ownerId, source: InventorySource.PERSONAL, productName: ILike(normalizedName) },
+    });
+
+    if (existing) {
+      existing.quantityOriginal += dto.quantity;
+      existing.quantityRemaining += dto.quantity;
+      existing.unitCost = dto.unitCost;
+      existing.sellingPrice = dto.sellingPrice;
+      if (dto.piecesPerCarton !== undefined) existing.piecesPerCarton = dto.piecesPerCarton;
+      return this.entryRepo.save(existing);
+    }
+
     const entry = this.entryRepo.create({
       ownerId,
       source: InventorySource.PERSONAL,
-      productName: dto.productName.trim().toLowerCase(),
+      productName: normalizedName,
       unitCost: dto.unitCost,
       sellingPrice: dto.sellingPrice,
       category: dto.category ?? null,
       quantityOriginal: dto.quantity,
       quantityRemaining: dto.quantity,
+      piecesPerCarton: dto.piecesPerCarton ?? null,
     });
     return this.entryRepo.save(entry);
   }
@@ -74,19 +158,43 @@ export class InventoryService {
     }
 
     return this.dataSource.transaction(async (manager) => {
-      // Create inventory entry
-      const entry = manager.create(InventoryEntry, {
-        ownerId,
-        source: InventorySource.SUPPLIER,
-        productName: dto.productName.trim().toLowerCase(),
-        unitCost: dto.unitCost,
-        sellingPrice: dto.sellingPrice,
-        category: dto.category ?? null,
-        quantityOriginal: dto.quantity,
-        quantityRemaining: dto.quantity,
-        supplierUserId: dto.supplierUserId,
+      const normalizedName = dto.productName.trim().toLowerCase();
+
+      // Upsert: top up existing SUPPLIER entry for same product + supplier
+      const existing = await manager.findOne(InventoryEntry, {
+        where: {
+          ownerId,
+          source: InventorySource.SUPPLIER,
+          supplierUserId: dto.supplierUserId,
+          productName: ILike(normalizedName),
+        },
       });
-      const savedEntry = await manager.save(InventoryEntry, entry);
+
+      let savedEntry: InventoryEntry;
+
+      if (existing) {
+        existing.quantityOriginal += dto.quantity;
+        existing.quantityRemaining += dto.quantity;
+        existing.unitCost = dto.unitCost;
+        existing.sellingPrice = dto.sellingPrice;
+        if (dto.piecesPerCarton !== undefined) existing.piecesPerCarton = dto.piecesPerCarton;
+        savedEntry = await manager.save(InventoryEntry, existing);
+      } else {
+        // Create inventory entry
+        const entry = manager.create(InventoryEntry, {
+          ownerId,
+          source: InventorySource.SUPPLIER,
+          productName: normalizedName,
+          unitCost: dto.unitCost,
+          sellingPrice: dto.sellingPrice,
+          category: dto.category ?? null,
+          quantityOriginal: dto.quantity,
+          quantityRemaining: dto.quantity,
+          supplierUserId: dto.supplierUserId,
+          piecesPerCarton: dto.piecesPerCarton ?? null,
+        });
+        savedEntry = await manager.save(InventoryEntry, entry);
+      }
 
       // Upsert SupplierDebt
       const creditValue = new Decimal(dto.unitCost).mul(dto.quantity).toFixed(2);
@@ -176,7 +284,7 @@ export class InventoryService {
       // Determine unitCost from the stock that was deducted (use first matching entry's cost)
       const sourceCost = sorted[0]?.unitCost ?? dto.agreedUnitPrice;
 
-      // Create consigned-out entry
+      // Create consigned-out entry (inherit piecesPerCarton from source stock)
       const consignedEntry = manager.create(InventoryEntry, {
         ownerId,
         source: InventorySource.CONSIGNED_OUT,
@@ -187,6 +295,7 @@ export class InventoryService {
         quantityOriginal: dto.quantity,
         quantityRemaining: dto.quantity,
         debtorUserId: dto.debtorUserId,
+        piecesPerCarton: sorted[0]?.piecesPerCarton ?? null,
       });
       const savedEntry = await manager.save(InventoryEntry, consignedEntry);
 

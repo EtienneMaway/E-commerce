@@ -17,4 +17,9 @@ export class InventoryFilterDto {
   @IsString()
   @IsOptional()
   category?: string;
+
+  @ApiPropertyOptional({ example: 'rice 50kg' })
+  @IsString()
+  @IsOptional()
+  productName?: string;
 }

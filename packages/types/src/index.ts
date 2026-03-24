@@ -41,12 +41,28 @@ export interface InventoryEntry {
   category: string | null;
   quantityOriginal: number;
   quantityRemaining: number;
+  piecesPerCarton: number | null;
   createdAt: string;
   ownerId: string;
   supplierUserId: string | null;
   supplierUser?: Pick<User, 'id' | 'username'>;
   debtorUserId: string | null;
   debtorUser?: Pick<User, 'id' | 'username'>;
+}
+
+export interface ProductSummary {
+  productName: string;
+  category: string | null;
+  piecesPerCarton: number | null;
+  totalAvailable: number;
+  sourceBreakdown: {
+    personal: number;
+    supplier: number;
+    consignedIn: number;
+    consignedOut: number;
+  };
+  latestSellingPrice: string;
+  latestUnitCost: string;
 }
 
 export interface SupplierDebt {
@@ -147,6 +163,7 @@ export interface AddPersonalProductDto {
   sellingPrice: string;
   quantity: number;
   category?: string;
+  piecesPerCarton?: number;
 }
 
 export interface ReceiveFromSupplierDto {
@@ -156,6 +173,7 @@ export interface ReceiveFromSupplierDto {
   sellingPrice: string;
   quantity: number;
   category?: string;
+  piecesPerCarton?: number;
 }
 
 export interface ConsignToDebtorDto {

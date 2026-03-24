@@ -12,7 +12,7 @@ interface Props {
   onClose: () => void;
 }
 
-const EMPTY = { productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '' };
+const EMPTY = { productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '', piecesPerCarton: '' };
 
 export function AddPersonalProductDialog({ open, onClose }: Props) {
   const t = useT();
@@ -28,8 +28,10 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
         sellingPrice: form.sellingPrice,
         quantity: Number(form.quantity),
         ...(form.category.trim() ? { category: form.category.trim() } : {}),
+        ...(form.piecesPerCarton ? { piecesPerCarton: Number(form.piecesPerCarton) } : {}),
       }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: ['inventory'] });
       setForm(EMPTY);
       setError('');
@@ -71,6 +73,9 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
               <input value={form.category} onChange={set('category')} placeholder={t.addProduct.categoryPlaceholder} className={inputCls} style={inputStyle} />
             </Field>
           </div>
+          <Field label={t.addProduct.piecesPerCarton}>
+            <input value={form.piecesPerCarton} onChange={set('piecesPerCarton')} placeholder={t.addProduct.piecesPerCartonPlaceholder} type="number" min="1" className={inputCls} style={inputStyle} />
+          </Field>
         </div>
 
         {error && <p className="mt-3 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}

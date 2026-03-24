@@ -13,7 +13,7 @@ interface Props { visible: boolean; onClose: () => void; }
 export function AddPersonalModal({ visible, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
-  const [form, setForm] = useState({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '' });
+  const [form, setForm] = useState({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '', piecesPerCarton: '' });
 
   const set = (key: keyof typeof form) => (val: string) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -24,10 +24,12 @@ export function AddPersonalModal({ visible, onClose }: Props) {
       sellingPrice: form.sellingPrice,
       quantity: parseInt(form.quantity, 10),
       ...(form.category ? { category: form.category } : {}),
+      ...(form.piecesPerCarton ? { piecesPerCarton: parseInt(form.piecesPerCarton, 10) } : {}),
     }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: QK.inventory() });
-      setForm({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '' });
+      setForm({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '', piecesPerCarton: '' });
       onClose();
     },
     onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
@@ -53,6 +55,7 @@ export function AddPersonalModal({ visible, onClose }: Props) {
         <Input label={t.addPersonalModal.sellingPrice} value={form.sellingPrice} onChangeText={set('sellingPrice')} placeholder="30.00" keyboardType="decimal-pad" />
         <Input label={t.addPersonalModal.quantity} value={form.quantity} onChangeText={set('quantity')} placeholder="100" keyboardType="number-pad" />
         <Input label={t.addPersonalModal.category} value={form.category} onChangeText={set('category')} placeholder={t.addPersonalModal.categoryPlaceholder} />
+        <Input label={t.addPersonalModal.piecesPerCarton} value={form.piecesPerCarton} onChangeText={set('piecesPerCarton')} placeholder="e.g. 20" keyboardType="number-pad" />
         <Button label={t.addPersonalModal.submit} onPress={handleSubmit} loading={isPending} className="mt-2" />
       </ScrollView>
     </Modal>

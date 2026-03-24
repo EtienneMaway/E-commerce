@@ -9,6 +9,7 @@ import {
   ActionSheetIOS,
   Platform,
   Alert,
+  TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -16,98 +17,127 @@ import { inventoryApi, consignmentsApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
-import { Badge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { AddPersonalModal } from '../../components/forms/AddPersonalModal';
 import { ReceiveFromSupplierModal } from '../../components/forms/ReceiveFromSupplierModal';
 import { ConsignToDebtorModal } from '../../components/forms/ConsignToDebtorModal';
 import { RecordSaleModal } from '../../components/forms/RecordSaleModal';
-import type { InventoryEntry, ConsignmentRequest } from '@trading-app/types';
+import { breakdownQuantity, formatBreakdown } from '../../lib/utils';
+import type { ProductSummary, ConsignmentRequest } from '@trading-app/types';
 
-type SourceFilter = 'ALL' | 'PERSONAL' | 'SUPPLIER' | 'CONSIGNED_OUT' | 'CONSIGNED_IN';
 type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'consignDebtor' | 'recordSale';
 
-function InventoryCard({ item, onSell }: { item: InventoryEntry; onSell: (item: InventoryEntry) => void }) {
+interface SaleTarget { productName: string; unitCost: string; }
+
+function ProductCard({
+  item,
+  onSell,
+}: {
+  item: ProductSummary;
+  onSell: (item: ProductSummary) => void;
+}) {
   const t = useT();
   const formatCurrency = useFormatCurrency();
-  const isLowStock = item.quantityRemaining <= 5;
+  const isLowStock = item.totalAvailable > 0 && item.totalAvailable <= 5;
+  const isOutOfStock = item.totalAvailable === 0;
+  const bd = breakdownQuantity(item.totalAvailable, item.piecesPerCarton);
+
   return (
     <TouchableOpacity
-      onLongPress={() => {
-        if (item.source !== 'CONSIGNED_OUT') onSell(item);
-      }}
-      // CONSIGNED_OUT = sent to someone else, not available to sell
-      // CONSIGNED_IN = received from supplier, debtor can sell it
+      onPress={() => router.push(`/product/${encodeURIComponent(item.productName)}`)}
+      onLongPress={() => onSell(item)}
       className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3"
       activeOpacity={0.85}
     >
-      <View className="flex-row justify-between items-start mb-2">
-        <Text className="text-text dark:text-slate-100 font-semibold text-base flex-1 mr-2" numberOfLines={2}>
+      {/* Name row */}
+      <View className="flex-row justify-between items-start mb-1">
+        <Text
+          className="text-text dark:text-slate-100 font-semibold text-base flex-1 mr-2"
+          numberOfLines={2}
+        >
           {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
         </Text>
-        <Badge
-          label={
-            item.source === 'PERSONAL' ? t.inventory.badgePersonal
-            : item.source === 'SUPPLIER' ? t.inventory.badgeSupplier
-            : item.source === 'CONSIGNED_IN' ? t.inventory.badgeReceived
-            : t.inventory.badgeSentOut
-          }
-          variant={
-            item.source === 'PERSONAL' ? 'personal'
-            : item.source === 'SUPPLIER' ? 'supplier'
-            : 'consigned'
-          }
-        />
+        {isOutOfStock ? (
+          <Text className="text-muted dark:text-slate-500 text-xs font-medium">Out of stock</Text>
+        ) : isLowStock ? (
+          <Text className="text-danger text-xs font-semibold">⚠️ {t.inventory.low}</Text>
+        ) : null}
       </View>
 
       {item.category && (
         <Text className="text-muted dark:text-slate-500 text-xs mb-2">{item.category}</Text>
       )}
 
-      <View className="flex-row justify-between items-end">
+      {/* Stock + prices row */}
+      <View className="flex-row justify-between items-end mt-2">
+        {/* Available breakdown */}
         <View>
+          <Text className="text-muted dark:text-slate-500 text-xs mb-0.5">{t.inventory.available}</Text>
+          <Text
+            className={`text-base font-bold ${
+              isOutOfStock
+                ? 'text-muted dark:text-slate-500'
+                : isLowStock
+                ? 'text-danger'
+                : 'text-text dark:text-slate-100'
+            }`}
+          >
+            {formatBreakdown(bd)}
+          </Text>
+          {item.piecesPerCarton ? (
+            <Text className="text-muted dark:text-slate-500 text-xs">
+              1 ctn = {item.piecesPerCarton} pcs
+            </Text>
+          ) : null}
+        </View>
+
+        {/* Cost · sell + source chips */}
+        <View className="items-end">
           <Text className="text-muted dark:text-slate-500 text-xs">{t.inventory.costSell}</Text>
           <Text className="text-text dark:text-slate-100 text-sm font-medium">
-            {formatCurrency(item.unitCost)} · {formatCurrency(item.sellingPrice)}
+            {formatCurrency(item.latestUnitCost)} · {formatCurrency(item.latestSellingPrice)}
           </Text>
-        </View>
-        <View className="items-end">
-          <Text className="text-muted dark:text-slate-500 text-xs">{t.inventory.remaining}</Text>
-          <Text className={`text-lg font-bold ${isLowStock ? 'text-danger' : 'text-text dark:text-slate-100'}`}>
-            {item.quantityRemaining}
-            {isLowStock && <Text className="text-xs"> {t.inventory.low}</Text>}
-          </Text>
+          <View className="flex-row gap-1.5 mt-1.5 flex-wrap justify-end">
+            {item.sourceBreakdown.personal > 0 && (
+              <Text className="text-xs bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5">
+                P: {item.sourceBreakdown.personal}
+              </Text>
+            )}
+            {item.sourceBreakdown.supplier > 0 && (
+              <Text className="text-xs bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 rounded px-1.5 py-0.5">
+                S: {item.sourceBreakdown.supplier}
+              </Text>
+            )}
+            {item.sourceBreakdown.consignedIn > 0 && (
+              <Text className="text-xs bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 rounded px-1.5 py-0.5">
+                IN: {item.sourceBreakdown.consignedIn}
+              </Text>
+            )}
+            {item.sourceBreakdown.consignedOut > 0 && (
+              <Text className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded px-1.5 py-0.5">
+                OUT: {item.sourceBreakdown.consignedOut}
+              </Text>
+            )}
+          </View>
         </View>
       </View>
 
-      {item.source !== 'CONSIGNED_OUT' && (
-        <Text className="text-muted dark:text-slate-500 text-xs mt-2 italic">
-          {item.source === 'CONSIGNED_IN' ? t.inventory.longPressToSellReceived : t.inventory.longPressToSell}
-        </Text>
-      )}
+      <Text className="text-muted dark:text-slate-500 text-xs mt-2 italic">
+        {t.inventory.longPressToSell}
+      </Text>
     </TouchableOpacity>
   );
 }
 
 export default function InventoryScreen() {
   const t = useT();
-  const [filter, setFilter] = useState<SourceFilter>('ALL');
+  const [search, setSearch] = useState('');
   const [modal, setModal] = useState<Modal>('none');
-  const [selectedItem, setSelectedItem] = useState<InventoryEntry | null>(null);
-
-  const filterOptions: { label: string; value: SourceFilter }[] = [
-    { label: t.inventory.filterAll, value: 'ALL' },
-    { label: t.inventory.filterPersonal, value: 'PERSONAL' },
-    { label: t.inventory.filterSupplier, value: 'SUPPLIER' },
-    { label: t.inventory.filterSentOut, value: 'CONSIGNED_OUT' },
-    { label: t.inventory.filterReceived, value: 'CONSIGNED_IN' },
-  ];
-
-  const filterParams = filter === 'ALL' ? undefined : { source: filter };
+  const [saleTarget, setSaleTarget] = useState<SaleTarget | null>(null);
 
   const { data, isFetching, refetch } = useQuery({
-    queryKey: QK.inventory(filterParams),
-    queryFn: () => inventoryApi.list(filterParams),
+    queryKey: QK.inventoryProducts,
+    queryFn: () => inventoryApi.listProducts(),
     staleTime: 30_000,
   });
 
@@ -117,16 +147,28 @@ export default function InventoryScreen() {
     staleTime: 30_000,
   });
 
-  const pendingCount = ((incomingData as ConsignmentRequest[] | undefined) ?? [])
-    .filter((r) => r.status === 'PENDING').length;
+  const pendingCount = ((incomingData as ConsignmentRequest[] | undefined) ?? []).filter(
+    (r) => r.status === 'PENDING',
+  ).length;
 
-  const entries = (data as InventoryEntry[] | undefined) ?? [];
+  const products = (data as ProductSummary[] | undefined) ?? [];
+
+  const filtered = search.trim()
+    ? products.filter((p) =>
+        p.productName.toLowerCase().includes(search.trim().toLowerCase()),
+      )
+    : products;
 
   const openFAB = () => {
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options: [t.common.cancel, t.inventory.addPersonal, t.inventory.receiveFromSupplier, t.inventory.consignToDebtor],
+          options: [
+            t.common.cancel,
+            t.inventory.addPersonal,
+            t.inventory.receiveFromSupplier,
+            t.inventory.consignToDebtor,
+          ],
           cancelButtonIndex: 0,
         },
         (idx) => {
@@ -145,8 +187,8 @@ export default function InventoryScreen() {
     }
   };
 
-  const handleSell = (item: InventoryEntry) => {
-    setSelectedItem(item);
+  const handleSell = (item: ProductSummary) => {
+    setSaleTarget({ productName: item.productName, unitCost: item.latestUnitCost });
     setModal('recordSale');
   };
 
@@ -171,34 +213,28 @@ export default function InventoryScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Filter bar */}
-      <View className="flex-row px-4 pt-4 pb-2 gap-2">
-        {filterOptions.map((opt) => (
-          <TouchableOpacity
-            key={opt.value}
-            onPress={() => setFilter(opt.value)}
-            className={`px-3 py-1.5 rounded-full border ${
-              filter === opt.value
-                ? 'bg-primary border-primary'
-                : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
-            }`}
-          >
-            <Text className={`text-xs font-medium ${filter === opt.value ? 'text-white' : 'text-text dark:text-slate-100'}`}>
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      {/* Search bar */}
+      <View className="mx-4 mt-4 mb-1">
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder={t.inventory.searchProducts}
+          placeholderTextColor="#94a3b8"
+          className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 text-text dark:text-slate-100 text-sm"
+        />
       </View>
 
       {/* List */}
       <FlatList
-        data={entries}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <InventoryCard item={item} onSell={handleSell} />}
-        contentContainerClassName="px-4 pb-32"
-        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor="#2563EB" />}
+        data={filtered}
+        keyExtractor={(item) => item.productName}
+        renderItem={({ item }) => <ProductCard item={item} onSell={handleSell} />}
+        contentContainerClassName="px-4 pt-3 pb-32"
+        refreshControl={
+          <RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor="#2563EB" />
+        }
         ListHeaderComponent={
-          isFetching && entries.length === 0 ? (
+          isFetching && filtered.length === 0 ? (
             <ActivityIndicator className="mt-12" color="#2563EB" />
           ) : null
         }
@@ -224,14 +260,23 @@ export default function InventoryScreen() {
 
       {/* Modals */}
       <AddPersonalModal visible={modal === 'addPersonal'} onClose={() => setModal('none')} />
-      <ReceiveFromSupplierModal visible={modal === 'receiveSupplier'} onClose={() => setModal('none')} />
-      <ConsignToDebtorModal visible={modal === 'consignDebtor'} onClose={() => setModal('none')} />
-      {selectedItem && (
+      <ReceiveFromSupplierModal
+        visible={modal === 'receiveSupplier'}
+        onClose={() => setModal('none')}
+      />
+      <ConsignToDebtorModal
+        visible={modal === 'consignDebtor'}
+        onClose={() => setModal('none')}
+      />
+      {saleTarget && (
         <RecordSaleModal
           visible={modal === 'recordSale'}
-          onClose={() => { setModal('none'); setSelectedItem(null); }}
-          prefilledProduct={selectedItem.productName}
-          unitCost={selectedItem.unitCost}
+          onClose={() => {
+            setModal('none');
+            setSaleTarget(null);
+          }}
+          prefilledProduct={saleTarget.productName}
+          unitCost={saleTarget.unitCost}
         />
       )}
     </View>

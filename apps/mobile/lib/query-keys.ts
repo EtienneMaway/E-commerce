@@ -1,5 +1,6 @@
 export const QK = {
   me: ['auth', 'me'] as const,
+  inventoryProducts: ['inventory', 'products'] as const,
   inventory: (filters?: object) => ['inventory', filters] as const,
   salesHistory: (filters?: object) => ['sales', 'history', filters] as const,
   topProducts: (filters?: object) => ['sales', 'top-products', filters] as const,

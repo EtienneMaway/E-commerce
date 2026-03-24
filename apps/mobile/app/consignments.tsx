@@ -132,6 +132,7 @@ export default function ConsignmentsInboxScreen() {
     mutationFn: (id: string) => consignmentsApi.confirm(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: QK.consignmentsIncoming });
+      void queryClient.invalidateQueries({ queryKey: QK.inventoryProducts });
       void queryClient.invalidateQueries({ queryKey: ['inventory'] });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },

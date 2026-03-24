@@ -54,6 +54,10 @@ export class InventoryEntry {
   @Column({ name: 'quantity_remaining' })
   quantityRemaining: number;
 
+  @ApiPropertyOptional({ example: 20, description: 'How many pieces make one carton (null if not set)' })
+  @Column({ name: 'pieces_per_carton', type: 'int', nullable: true, default: null })
+  piecesPerCarton: number | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

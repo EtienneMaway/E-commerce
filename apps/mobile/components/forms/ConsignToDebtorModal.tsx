@@ -29,6 +29,7 @@ export function ConsignToDebtorModal({ visible, onClose }: Props) {
       agreedUnitPrice: form.agreedUnitPrice,
     }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: QK.inventory() });
       qc.invalidateQueries({ queryKey: QK.debtors });
       qc.invalidateQueries({ queryKey: QK.dashboard });

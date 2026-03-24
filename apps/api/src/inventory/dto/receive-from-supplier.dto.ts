@@ -8,6 +8,7 @@ import {
   IsUUID,
   MinLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ReceiveFromSupplierDto {
   @ApiProperty({ example: 'uuid-supplier-user', description: 'ID of the supplier user' })
@@ -36,4 +37,11 @@ export class ReceiveFromSupplierDto {
   @IsString()
   @IsOptional()
   category?: string;
+
+  @ApiPropertyOptional({ example: 20, description: 'How many pieces make one carton' })
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  @Type(() => Number)
+  piecesPerCarton?: number;
 }

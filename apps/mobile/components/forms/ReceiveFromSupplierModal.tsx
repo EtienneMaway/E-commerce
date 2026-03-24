@@ -18,7 +18,7 @@ export function ReceiveFromSupplierModal({ visible, onClose }: Props) {
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
   const [supplier, setSupplier] = useState<User | null>(null);
-  const [form, setForm] = useState({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '' });
+  const [form, setForm] = useState({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '', piecesPerCarton: '' });
   const set = (key: keyof typeof form) => (val: string) => setForm((f) => ({ ...f, [key]: val }));
 
   const { mutate, isPending } = useMutation({
@@ -29,13 +29,15 @@ export function ReceiveFromSupplierModal({ visible, onClose }: Props) {
       sellingPrice: form.sellingPrice,
       quantity: parseInt(form.quantity, 10),
       ...(form.category ? { category: form.category } : {}),
+      ...(form.piecesPerCarton ? { piecesPerCarton: parseInt(form.piecesPerCarton, 10) } : {}),
     }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: QK.inventory() });
       qc.invalidateQueries({ queryKey: QK.suppliers });
       qc.invalidateQueries({ queryKey: QK.dashboard });
       setSupplier(null);
-      setForm({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '' });
+      setForm({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '', piecesPerCarton: '' });
       onClose();
     },
     onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
@@ -63,6 +65,7 @@ export function ReceiveFromSupplierModal({ visible, onClose }: Props) {
         <Input label={t.receiveSupplierModal.sellingPrice} value={form.sellingPrice} onChangeText={set('sellingPrice')} placeholder={t.receiveSupplierModal.sellingPricePlaceholder} keyboardType="decimal-pad" />
         <Input label={t.receiveSupplierModal.quantity} value={form.quantity} onChangeText={set('quantity')} placeholder={t.receiveSupplierModal.quantityPlaceholder} keyboardType="number-pad" />
         <Input label={t.receiveSupplierModal.category} value={form.category} onChangeText={set('category')} placeholder={t.receiveSupplierModal.categoryPlaceholder} />
+        <Input label={t.receiveSupplierModal.piecesPerCarton} value={form.piecesPerCarton} onChangeText={set('piecesPerCarton')} placeholder="e.g. 20" keyboardType="number-pad" />
         <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
           <Text className="text-blue-700 text-xs">{t.receiveSupplierModal.debtHint(form.unitCost && form.quantity ? formatCurrency((parseFloat(form.unitCost || '0') * parseInt(form.quantity || '0', 10)).toFixed(2)) : '...')}</Text>
         </View>

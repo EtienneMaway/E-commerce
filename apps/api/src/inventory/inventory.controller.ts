@@ -22,6 +22,13 @@ import { User } from '../entities';
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
+  @Get('products')
+  @ApiOperation({ summary: 'Get aggregated product list — one entry per unique product name' })
+  @ApiResponse({ status: 200, description: 'Array of ProductSummary objects' })
+  getProducts(@CurrentUser() user: User) {
+    return this.inventoryService.getProductList(user.id);
+  }
+
   @Get()
   @ApiOperation({ summary: 'List all inventory entries for the authenticated user' })
   @ApiResponse({ status: 200, description: 'Array of inventory entries' })

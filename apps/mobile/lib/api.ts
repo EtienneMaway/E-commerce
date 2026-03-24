@@ -40,17 +40,19 @@ export const usersApi = {
 // ─── Inventory ─────────────────────────────────────────────────────────────
 
 export const inventoryApi = {
-  list: (params?: { source?: string; supplierUserId?: string; category?: string }) =>
+  listProducts: () => api.get('/inventory/products').then((r) => r.data),
+
+  list: (params?: { source?: string; supplierUserId?: string; category?: string; productName?: string }) =>
     api.get('/inventory', { params }).then((r) => r.data),
 
   addPersonal: (body: {
     productName: string; unitCost: string; sellingPrice: string;
-    quantity: number; category?: string;
+    quantity: number; category?: string; piecesPerCarton?: number;
   }) => api.post('/inventory/personal', body).then((r) => r.data),
 
   receiveFromSupplier: (body: {
     supplierUserId: string; productName: string; unitCost: string;
-    sellingPrice: string; quantity: number; category?: string;
+    sellingPrice: string; quantity: number; category?: string; piecesPerCarton?: number;
   }) => api.post('/inventory/receive', body).then((r) => r.data),
 
   consignToDebtor: (body: {
