@@ -22,6 +22,7 @@ import {
 import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../store/auth.store';
+import { useOfflineStore } from '../../store/offline.store';
 import { printReceipt, shareReceiptAsPdf } from '../../lib/receipt';
 import type { InventoryEntry } from '@trading-app/types';
 
@@ -82,6 +83,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   const formatCurrency = useFormatCurrency();
   const exchangeRate = useExchangeRate();
   const user = useAuthStore((s) => s.user);
+  const { isOffline, cachedProducts, recordOfflineSale } = useOfflineStore();
   const [search, setSearch] = useState(prefilledProduct);
   const [cart, setCart] = useState<Map<string, CartItem>>(new Map());
   const [priceGuardPending, setPriceGuardPending] = useState<PriceGuardPending[]>([]);
@@ -123,11 +125,18 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     queryKey: QK.inventory(),
     queryFn: () => inventoryApi.list(),
     staleTime: 30_000,
-    enabled: visible,
+    enabled: visible && !isOffline,
   });
 
   const entries = (rawEntries as InventoryEntry[] | undefined) ?? [];
-  const products = useMemo(() => buildProductOptions(entries), [entries]);
+  const onlineProducts = useMemo(() => buildProductOptions(entries), [entries]);
+
+  // In offline mode use the snapshotted product cache
+  const products: ProductOption[] = isOffline
+    ? cachedProducts
+        .filter((p) => p.availableQty > 0)
+        .map((p) => ({ productName: p.productName, totalQty: p.availableQty, unitCost: p.unitCost }))
+    : onlineProducts;
 
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -241,6 +250,20 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       Alert.alert(t.common.noProductsSelected, t.recordSaleModal.noProductsSelectedMsg);
       return;
     }
+
+    // ── Offline path ─────────────────────────────────────────────────────────
+    if (isOffline) {
+      const soldItems = cartArray;
+      for (const item of soldItems) {
+        const salePrice = (parseFloat(item.unitCost) * (1 + markupPct / 100)).toFixed(2);
+        recordOfflineSale(item.productName, item.qty, salePrice);
+      }
+      handleClose();
+      offerReceipt(soldItems);
+      return;
+    }
+
+    // ── Online path ───────────────────────────────────────────────────────────
     setIsSubmitting(true);
     const pending = await submitItems(cartArray, false);
     setIsSubmitting(false);
@@ -315,7 +338,14 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       <View className="flex-1 bg-surface dark:bg-slate-900">
         {/* Header */}
         <View className="flex-row justify-between items-center px-6 pt-8 pb-4">
-          <Text className="text-xl font-bold text-text dark:text-slate-100">{t.recordSaleModal.title}</Text>
+          <View className="flex-row items-center gap-2">
+            <Text className="text-xl font-bold text-text dark:text-slate-100">{t.recordSaleModal.title}</Text>
+            {isOffline && (
+              <View className="bg-amber-100 dark:bg-amber-900 rounded-full px-2 py-0.5">
+                <Text className="text-amber-700 dark:text-amber-300 text-xs font-bold">📴 OFFLINE</Text>
+              </View>
+            )}
+          </View>
           <TouchableOpacity onPress={handleClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
