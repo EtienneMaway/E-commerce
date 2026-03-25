@@ -12,17 +12,18 @@ export class CurrencyService {
     private readonly rateRepo: Repository<ExchangeRate>,
   ) {}
 
-  async getRate(ownerId: string): Promise<ExchangeRate | null> {
-    return this.rateRepo.findOne({ where: { ownerId } });
+  async getRate(): Promise<ExchangeRate | null> {
+    const [rate] = await this.rateRepo.find({ take: 1 });
+    return rate ?? null;
   }
 
-  async setRate(ownerId: string, dto: SetRateDto): Promise<ExchangeRate> {
+  async setRate(dto: SetRateDto): Promise<ExchangeRate> {
     const rate = new Decimal(dto.usdToFcRate);
     if (rate.lte(0)) {
       throw new BadRequestException('Exchange rate must be greater than zero');
     }
 
-    const existing = await this.rateRepo.findOne({ where: { ownerId } });
+    const [existing] = await this.rateRepo.find({ take: 1 });
 
     if (existing) {
       existing.usdToFcRate = rate.toFixed(4);
@@ -30,7 +31,6 @@ export class CurrencyService {
     }
 
     const record = this.rateRepo.create({
-      ownerId,
       usdToFcRate: rate.toFixed(4),
     });
     return this.rateRepo.save(record);

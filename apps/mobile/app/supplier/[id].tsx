@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Linking } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi } from '../../lib/api';
@@ -26,12 +26,15 @@ interface PaymentRow {
   amount: string;
   note: string | null;
   date: string;
-  remainingBalance: string;
+  remainingBalance: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 
 interface SupplierDetail {
   supplierUserId: string;
   supplierUsername: string;
+  supplierEmail: string | null;
+  supplierPhone: string | null;
   debt: {
     outstandingBalance: string;
     totalCreditReceived: string;
@@ -76,6 +79,7 @@ export default function SupplierDetailScreen() {
   }
 
   const balance = parseFloat(detail.debt.outstandingBalance);
+  const hasPendingPayment = detail.payments.some((p) => p.status === 'PENDING');
 
   return (
     <View className="flex-1 bg-surface dark:bg-slate-900">
@@ -85,16 +89,28 @@ export default function SupplierDetailScreen() {
           <Text className="text-primary font-medium">{t.common.back}</Text>
         </TouchableOpacity>
         <View className="flex-row justify-between items-start">
-          <View>
+          <View className="flex-1 mr-3">
             <Text className="text-2xl font-bold text-text dark:text-slate-100">@{detail.supplierUsername}</Text>
             <Text className="text-muted dark:text-slate-500 text-sm mt-0.5">Supplier</Text>
+            {(detail.supplierEmail || detail.supplierPhone) && (
+              <View className="mt-2 gap-1">
+                {detail.supplierEmail && (
+                  <Text className="text-muted dark:text-slate-400 text-sm">✉️ {detail.supplierEmail}</Text>
+                )}
+                {detail.supplierPhone && (
+                  <TouchableOpacity onPress={() => void Linking.openURL(`tel:${detail.supplierPhone}`)}>
+                    <Text className="text-primary text-sm font-medium">📞 {detail.supplierPhone}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
           <TouchableOpacity
             onPress={() => setPayModal(true)}
-            disabled={balance <= 0}
-            className={`px-4 py-2 rounded-xl ${balance > 0 ? 'bg-primary' : 'bg-slate-200 dark:bg-slate-700'}`}
+            disabled={balance <= 0 || hasPendingPayment}
+            className={`px-4 py-2 rounded-xl ${balance > 0 && !hasPendingPayment ? 'bg-primary' : 'bg-slate-200 dark:bg-slate-700'}`}
           >
-            <Text className={`font-semibold text-sm ${balance > 0 ? 'text-white' : 'text-muted dark:text-slate-500'}`}>{t.supplierDetail.pay}</Text>
+            <Text className={`font-semibold text-sm ${balance > 0 && !hasPendingPayment ? 'text-white' : 'text-muted dark:text-slate-500'}`}>{t.supplierDetail.pay}</Text>
           </TouchableOpacity>
         </View>
 
@@ -113,6 +129,14 @@ export default function SupplierDetailScreen() {
             <Text className="text-text dark:text-slate-100 font-bold text-lg">{formatCurrency(detail.debt.totalPaid)}</Text>
           </View>
         </View>
+
+        {/* Pending payment warning */}
+        {hasPendingPayment && (
+          <View className="mt-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 flex-row items-start gap-2">
+            <Text style={{ fontSize: 14 }}>⏳</Text>
+            <Text className="text-amber-700 dark:text-amber-300 text-sm flex-1">{t.supplierDetail.pendingPaymentWarning}</Text>
+          </View>
+        )}
 
         {/* Section toggle */}
         <View className="flex-row mt-4 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
@@ -182,15 +206,21 @@ export default function SupplierDetailScreen() {
             <View className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3">
               <View className="flex-row justify-between items-center mb-1">
                 <Text className="text-text dark:text-slate-100 font-semibold text-base">{formatCurrency(item.amount)}</Text>
-                <Text className="text-muted dark:text-slate-500 text-xs">{formatDate(item.date)}</Text>
+                <Badge
+                  variant={item.status === 'PENDING' ? 'pending' : item.status === 'REJECTED' ? 'rejected' : 'approved'}
+                  label={item.status === 'PENDING' ? t.supplierDetail.statusPending : item.status === 'REJECTED' ? t.supplierDetail.statusRejected : t.supplierDetail.statusApproved}
+                />
               </View>
+              <Text className="text-muted dark:text-slate-500 text-xs mb-1">{formatDate(item.date)}</Text>
               {item.note && <Text className="text-muted dark:text-slate-500 text-sm mb-1">{item.note}</Text>}
-              <View className="flex-row justify-between">
-                <Text className="text-muted dark:text-slate-500 text-xs">{t.supplierDetail.balanceAfter}</Text>
-                <Text className={`text-xs font-bold ${parseFloat(item.remainingBalance) > 0 ? 'text-danger' : 'text-success'}`}>
-                  {formatCurrency(item.remainingBalance)}
-                </Text>
-              </View>
+              {item.remainingBalance !== null && (
+                <View className="flex-row justify-between">
+                  <Text className="text-muted dark:text-slate-500 text-xs">{t.supplierDetail.balanceAfter}</Text>
+                  <Text className={`text-xs font-bold ${parseFloat(item.remainingBalance) > 0 ? 'text-danger' : 'text-success'}`}>
+                    {formatCurrency(item.remainingBalance)}
+                  </Text>
+                </View>
+              )}
             </View>
           )}
           ListEmptyComponent={

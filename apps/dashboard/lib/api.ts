@@ -81,6 +81,8 @@ export const paymentsApi = {
     api.get('/payments/pending-from-debtors').then((r) => r.data),
   approvePayment: (id: string) =>
     api.patch(`/payments/${id}/approve`).then((r) => r.data),
+  rejectPayment: (id: string) =>
+    api.patch(`/payments/${id}/reject`).then((r) => r.data),
 };
 
 // ─── Sales ────────────────────────────────────────────────────────────────────

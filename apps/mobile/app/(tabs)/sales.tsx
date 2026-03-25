@@ -4,6 +4,7 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
@@ -52,7 +53,7 @@ function SaleCard({ item }: { item: SaleRow }) {
           <Text className="text-text dark:text-slate-100 font-semibold text-base" numberOfLines={1}>
             {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
           </Text>
-          <Text className="text-muted dark:text-slate-500 text-xs">{formatDate(item.date)}</Text>
+          <Text className="text-muted dark:text-slate-500 text-sm">{formatDate(item.date)}</Text>
         </View>
         <Badge
           label={item.isLoss ? t.sales.loss(formatCurrency(Math.abs(profitNum).toFixed(2))) : `+${formatCurrency(item.profit)}`}
@@ -60,12 +61,12 @@ function SaleCard({ item }: { item: SaleRow }) {
         />
       </View>
       <View className="flex-row justify-between">
-        <Text className="text-muted dark:text-slate-500 text-xs">{t.sales.qty}: {item.qtySold}</Text>
-        <Text className="text-muted dark:text-slate-500 text-xs">{t.sales.unitCost}: {formatCurrency(item.unitCost)}</Text>
-        <Text className="text-muted dark:text-slate-500 text-xs">{t.sales.salePrice}: {formatCurrency(item.salePrice)}</Text>
+        <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.qty}: {item.qtySold}</Text>
+        <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.unitCost}: {formatCurrency(item.unitCost)}</Text>
+        <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.salePrice}: {formatCurrency(item.salePrice)}</Text>
       </View>
       {item.source === 'SUPPLIER' && item.supplierUsername && (
-        <Text className="text-muted dark:text-slate-500 text-xs mt-1">{t.sales.via(item.supplierUsername)}</Text>
+        <Text className="text-muted dark:text-slate-500 text-sm mt-1">{t.sales.via(item.supplierUsername)}</Text>
       )}
     </View>
   );
@@ -86,16 +87,16 @@ function TopProductCard({ item, rank, rankBy }: { item: TopProductRow; rank: num
       </View>
       <View className="flex-row justify-between">
         <View className="items-center">
-          <Text className="text-muted dark:text-slate-500 text-xs">{t.sales.qtySold}</Text>
-          <Text className={`text-sm font-bold ${rankBy === 'qty' ? 'text-primary' : 'text-text dark:text-slate-100'}`}>{item.totalQtySold}</Text>
+          <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.qtySold}</Text>
+          <Text className={`text-base font-bold ${rankBy === 'qty' ? 'text-primary' : 'text-text dark:text-slate-100'}`}>{item.totalQtySold}</Text>
         </View>
         <View className="items-center">
-          <Text className="text-muted dark:text-slate-500 text-xs">{t.sales.revenueLabel}</Text>
-          <Text className={`text-sm font-bold ${rankBy === 'revenue' ? 'text-primary' : 'text-text dark:text-slate-100'}`}>{formatCurrency(item.totalRevenue)}</Text>
+          <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.revenueLabel}</Text>
+          <Text className={`text-base font-bold ${rankBy === 'revenue' ? 'text-primary' : 'text-text dark:text-slate-100'}`}>{formatCurrency(item.totalRevenue)}</Text>
         </View>
         <View className="items-center">
-          <Text className="text-muted dark:text-slate-500 text-xs">{t.sales.profitLabel}</Text>
-          <Text className={`text-sm font-bold ${rankBy === 'profit' ? 'text-primary' : 'text-text dark:text-slate-100'}`}>{formatCurrency(item.totalProfit)}</Text>
+          <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.profitLabel}</Text>
+          <Text className={`text-base font-bold ${rankBy === 'profit' ? 'text-primary' : 'text-text dark:text-slate-100'}`}>{formatCurrency(item.totalProfit)}</Text>
         </View>
       </View>
     </View>
@@ -174,22 +175,24 @@ export default function SalesScreen() {
       <View className="flex-row px-4 mb-3 gap-2">
         {view === 'history'
           ? historyPeriodOptions.map((opt) => (
-              <TouchableOpacity
+              <Pressable
                 key={opt.value}
                 onPress={() => setHistoryPeriod(opt.value)}
-                className={`px-3 py-1.5 rounded-full border ${historyPeriod === opt.value ? 'bg-primary border-primary' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'}`}
+                className={`px-3.5 py-2 rounded-full border ${historyPeriod === opt.value ? 'bg-primary border-primary' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'}`}
+                style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] })}
               >
-                <Text className={`text-xs font-medium ${historyPeriod === opt.value ? 'text-white' : 'text-text dark:text-slate-100'}`}>{opt.label}</Text>
-              </TouchableOpacity>
+                <Text className={`text-sm font-medium ${historyPeriod === opt.value ? 'text-white' : 'text-text dark:text-slate-100'}`}>{opt.label}</Text>
+              </Pressable>
             ))
           : topPeriodOptions.map((opt) => (
-              <TouchableOpacity
+              <Pressable
                 key={opt.value}
                 onPress={() => setTopPeriod(opt.value)}
-                className={`px-3 py-1.5 rounded-full border ${topPeriod === opt.value ? 'bg-primary border-primary' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'}`}
+                className={`px-3.5 py-2 rounded-full border ${topPeriod === opt.value ? 'bg-primary border-primary' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'}`}
+                style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] })}
               >
-                <Text className={`text-xs font-medium ${topPeriod === opt.value ? 'text-white' : 'text-text dark:text-slate-100'}`}>{opt.label}</Text>
-              </TouchableOpacity>
+                <Text className={`text-sm font-medium ${topPeriod === opt.value ? 'text-white' : 'text-text dark:text-slate-100'}`}>{opt.label}</Text>
+              </Pressable>
             ))}
       </View>
 
@@ -197,13 +200,14 @@ export default function SalesScreen() {
       {view === 'top' && (
         <View className="flex-row px-4 mb-3 gap-2">
           {(['qty', 'revenue', 'profit'] as RankBy[]).map((r) => (
-            <TouchableOpacity
+            <Pressable
               key={r}
               onPress={() => setRankBy(r)}
-              className={`px-3 py-1.5 rounded-full border ${rankBy === r ? 'bg-slate-700 dark:bg-slate-500 border-slate-700 dark:border-slate-500' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'}`}
+              className={`px-3.5 py-2 rounded-full border ${rankBy === r ? 'bg-slate-700 dark:bg-slate-500 border-slate-700 dark:border-slate-500' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'}`}
+              style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] })}
             >
-              <Text className={`text-xs font-medium capitalize ${rankBy === r ? 'text-white' : 'text-text dark:text-slate-100'}`}>{rankLabels[r]}</Text>
-            </TouchableOpacity>
+              <Text className={`text-sm font-medium capitalize ${rankBy === r ? 'text-white' : 'text-text dark:text-slate-100'}`}>{rankLabels[r]}</Text>
+            </Pressable>
           ))}
         </View>
       )}
@@ -211,13 +215,13 @@ export default function SalesScreen() {
       {/* History summary */}
       {view === 'history' && sales.length > 0 && (
         <View className="mx-4 mb-3 flex-row gap-3">
-          <View className="flex-1 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-900 rounded-xl px-3 py-2">
-            <Text className="text-success text-xs">{t.sales.profitLabel}</Text>
-            <Text className="text-success font-bold text-sm">{formatCurrency(totalProfit.toFixed(2))}</Text>
+          <View className="flex-1 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-900 rounded-xl px-3 py-2.5">
+            <Text className="text-success text-sm">{t.sales.profitLabel}</Text>
+            <Text className="text-success font-bold text-base">{formatCurrency(totalProfit.toFixed(2))}</Text>
           </View>
-          <View className="flex-1 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 rounded-xl px-3 py-2">
-            <Text className="text-primary text-xs">{t.sales.revenueLabel}</Text>
-            <Text className="text-primary font-bold text-sm">{formatCurrency(totalRevenue.toFixed(2))}</Text>
+          <View className="flex-1 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 rounded-xl px-3 py-2.5">
+            <Text className="text-primary text-sm">{t.sales.revenueLabel}</Text>
+            <Text className="text-primary font-bold text-base">{formatCurrency(totalRevenue.toFixed(2))}</Text>
           </View>
         </View>
       )}

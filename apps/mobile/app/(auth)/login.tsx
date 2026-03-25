@@ -58,6 +58,7 @@ export default function LoginScreen() {
         onChangeText={setPassword}
         placeholder={t.auth.passwordPlaceholder}
         secureTextEntry
+        passwordToggle
       />
 
       <Button label={t.auth.signIn} onPress={handleLogin} loading={loading} className="mt-2" />

@@ -4,6 +4,7 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   RefreshControl,
   ActionSheetIOS,
@@ -43,11 +44,11 @@ function ProductCard({
   const bd = breakdownQuantity(item.totalAvailable, item.piecesPerCarton);
 
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={() => router.push(`/product/${encodeURIComponent(item.productName)}`)}
       onLongPress={() => onSell(item)}
       className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3"
-      activeOpacity={0.85}
+      style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
     >
       {/* Name row */}
       <View className="flex-row justify-between items-start mb-1">
@@ -72,7 +73,7 @@ function ProductCard({
       <View className="flex-row justify-between items-end mt-2">
         {/* Available breakdown */}
         <View>
-          <Text className="text-muted dark:text-slate-500 text-xs mb-0.5">{t.inventory.available}</Text>
+          <Text className="text-muted dark:text-slate-500 text-sm mb-0.5">{t.inventory.available}</Text>
           <Text
             className={`text-base font-bold ${
               isOutOfStock
@@ -85,7 +86,7 @@ function ProductCard({
             {formatBreakdown(bd)}
           </Text>
           {item.piecesPerCarton ? (
-            <Text className="text-muted dark:text-slate-500 text-xs">
+            <Text className="text-muted dark:text-slate-500 text-sm">
               1 ctn = {item.piecesPerCarton} pcs
             </Text>
           ) : null}
@@ -93,28 +94,28 @@ function ProductCard({
 
         {/* Cost · sell + source chips */}
         <View className="items-end">
-          <Text className="text-muted dark:text-slate-500 text-xs">{t.inventory.costSell}</Text>
+          <Text className="text-muted dark:text-slate-500 text-sm">{t.inventory.costSell}</Text>
           <Text className="text-text dark:text-slate-100 text-sm font-medium">
             {formatCurrency(item.latestUnitCost)} · {formatCurrency(item.latestSellingPrice)}
           </Text>
           <View className="flex-row gap-1.5 mt-1.5 flex-wrap justify-end">
             {item.sourceBreakdown.personal > 0 && (
-              <Text className="text-xs bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5">
+              <Text className="text-sm bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5">
                 P: {item.sourceBreakdown.personal}
               </Text>
             )}
             {item.sourceBreakdown.supplier > 0 && (
-              <Text className="text-xs bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 rounded px-1.5 py-0.5">
+              <Text className="text-sm bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 rounded px-1.5 py-0.5">
                 S: {item.sourceBreakdown.supplier}
               </Text>
             )}
             {item.sourceBreakdown.consignedIn > 0 && (
-              <Text className="text-xs bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 rounded px-1.5 py-0.5">
+              <Text className="text-sm bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 rounded px-1.5 py-0.5">
                 IN: {item.sourceBreakdown.consignedIn}
               </Text>
             )}
             {item.sourceBreakdown.consignedOut > 0 && (
-              <Text className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded px-1.5 py-0.5">
+              <Text className="text-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded px-1.5 py-0.5">
                 OUT: {item.sourceBreakdown.consignedOut}
               </Text>
             )}
@@ -122,10 +123,10 @@ function ProductCard({
         </View>
       </View>
 
-      <Text className="text-muted dark:text-slate-500 text-xs mt-2 italic">
+      <Text className="text-muted dark:text-slate-500 text-sm mt-2 italic">
         {t.inventory.longPressToSell}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -196,9 +197,10 @@ export default function InventoryScreen() {
     <View className="flex-1 bg-surface dark:bg-slate-900">
       {/* Pending consignments banner */}
       {pendingCount > 0 && (
-        <TouchableOpacity
-          onPress={() => router.push('/consignments')}
+        <Pressable
+          onPress={() => router.push('/(tabs)/consignments')}
           className="mx-4 mt-4 bg-primary/10 border border-primary rounded-xl px-4 py-3 flex-row items-center justify-between"
+          style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
         >
           <View className="flex-row items-center gap-2">
             <Text className="text-xl">📬</Text>
@@ -206,11 +208,11 @@ export default function InventoryScreen() {
               <Text className="text-primary font-semibold text-sm">
                 {t.inventory.pendingCount(pendingCount)}
               </Text>
-              <Text className="text-primary/70 text-xs">{t.inventory.tapToConfirm}</Text>
+              <Text className="text-primary/70 text-sm">{t.inventory.tapToConfirm}</Text>
             </View>
           </View>
           <Text className="text-primary font-bold text-lg">›</Text>
-        </TouchableOpacity>
+        </Pressable>
       )}
 
       {/* Search bar */}
@@ -220,7 +222,7 @@ export default function InventoryScreen() {
           onChangeText={setSearch}
           placeholder={t.inventory.searchProducts}
           placeholderTextColor="#94a3b8"
-          className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 text-text dark:text-slate-100 text-sm"
+          className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 text-text dark:text-slate-100 text-base"
         />
       </View>
 
@@ -250,13 +252,17 @@ export default function InventoryScreen() {
       />
 
       {/* FAB */}
-      <TouchableOpacity
+      <Pressable
         onPress={openFAB}
         className="absolute bottom-8 right-6 bg-primary w-14 h-14 rounded-full items-center justify-center shadow-lg"
-        style={{ elevation: 6 }}
+        style={({ pressed }) => ({
+          elevation: pressed ? 3 : 6,
+          transform: [{ scale: pressed ? 0.93 : 1 }],
+          opacity: pressed ? 0.9 : 1,
+        })}
       >
         <Text className="text-white text-3xl font-light leading-none">+</Text>
-      </TouchableOpacity>
+      </Pressable>
 
       {/* Modals */}
       <AddPersonalModal visible={modal === 'addPersonal'} onClose={() => setModal('none')} />

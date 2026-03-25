@@ -39,6 +39,8 @@ interface Debt {
 interface Detail {
   supplierUserId: string;
   supplierUsername: string;
+  supplierEmail: string | null;
+  supplierPhone: string | null;
   debt: Debt | null;
   productsReceived: InventoryRow[];
   totalValueSold: string;
@@ -70,6 +72,18 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           </Link>
           <h1 className="page-title">@{d.supplierUsername}</h1>
           <p className="page-sub">{t.suppliers.supplierAccount}</p>
+          {(d.supplierEmail || d.supplierPhone) && (
+            <div className="flex items-center gap-4 mt-2">
+              {d.supplierEmail && (
+                <span className="text-sm" style={{ color: 'var(--muted)' }}>✉️ {d.supplierEmail}</span>
+              )}
+              {d.supplierPhone && (
+                <a href={`tel:${d.supplierPhone}`} className="text-sm font-medium" style={{ color: 'var(--primary)' }}>
+                  📞 {d.supplierPhone}
+                </a>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

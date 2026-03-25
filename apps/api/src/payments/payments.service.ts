@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -44,6 +45,16 @@ export class PaymentsService {
     const amount = new Decimal(dto.amount);
     if (amount.lte(0)) {
       throw new BadRequestException('Payment amount must be greater than zero');
+    }
+
+    // Block if a PENDING payment already exists for this debt — only one at a time.
+    const existing = await this.paymentRepo.findOne({
+      where: { supplierDebtId: debt.id, status: PaymentStatus.PENDING },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'You already have a pending payment for this supplier. Wait for it to be approved or rejected.',
+      );
     }
 
     // Create a PENDING payment — balances are only updated once the supplier approves.
@@ -126,6 +137,24 @@ export class PaymentsService {
       payment.remainingBalance = debt.outstandingBalance;
       return manager.save(Payment, payment);
     });
+  }
+
+  // ─── Supplier: reject a pending payment from a debtor ────────────────────
+
+  async rejectPayment(supplierId: string, paymentId: string): Promise<Payment> {
+    const payment = await this.paymentRepo.findOne({
+      where: { id: paymentId, status: PaymentStatus.PENDING },
+      relations: { supplierDebt: true },
+    });
+    if (!payment) throw new NotFoundException('Pending payment not found');
+    if (!payment.supplierDebt) throw new BadRequestException('Payment not linked to a debt record');
+
+    if (payment.supplierDebt.supplierUserId !== supplierId) {
+      throw new ForbiddenException('This payment is not addressed to you');
+    }
+
+    payment.status = PaymentStatus.REJECTED;
+    return this.paymentRepo.save(payment);
   }
 
   // ─── Supplier: record a payment received directly from a debtor ───────────

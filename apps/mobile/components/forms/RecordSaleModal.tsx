@@ -154,10 +154,11 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   };
 
   const setQty = (productName: string, qty: number): void => {
+    const maxQty = products.find((p) => p.productName === productName)?.totalQty ?? Infinity;
     setCart((prev) => {
       const next = new Map(prev);
       const item = next.get(productName);
-      if (item) next.set(productName, { ...item, qty: Math.max(1, qty) });
+      if (item) next.set(productName, { ...item, qty: Math.max(1, Math.min(qty, maxQty)) });
       return next;
     });
   };
@@ -388,9 +389,18 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                         />
                         <TouchableOpacity
                           onPress={() => setQty(product.productName, cartItem.qty + 1)}
-                          className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                          disabled={cartItem.qty >= product.totalQty}
+                          className={`w-8 h-8 rounded-full items-center justify-center ${
+                            cartItem.qty >= product.totalQty
+                              ? 'bg-slate-100/50 dark:bg-slate-700/50'
+                              : 'bg-slate-100 dark:bg-slate-700'
+                          }`}
                         >
-                          <Text className="text-text dark:text-slate-100 font-bold text-lg leading-none">+</Text>
+                          <Text className={`font-bold text-lg leading-none ${
+                            cartItem.qty >= product.totalQty
+                              ? 'text-muted dark:text-slate-600'
+                              : 'text-text dark:text-slate-100'
+                          }`}>+</Text>
                         </TouchableOpacity>
                       </View>
 

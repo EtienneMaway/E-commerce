@@ -19,6 +19,7 @@ export enum PaymentDirection {
 export enum PaymentStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
 }
 
 @Entity('payments')

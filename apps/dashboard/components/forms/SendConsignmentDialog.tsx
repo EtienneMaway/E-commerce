@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { consignmentsApi } from '../../lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { consignmentsApi, inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { getErrorMessage } from '../../lib/utils';
 import { UserSearchInput } from '../ui/UserSearchInput';
@@ -11,6 +11,12 @@ import { useT } from '../../lib/i18n';
 interface UserOption {
   id: string;
   username: string;
+}
+
+interface ProductSummary {
+  productName: string;
+  latestUnitCost: string;
+  totalAvailable: number;
 }
 
 interface ItemRow {
@@ -36,15 +42,6 @@ const EMPTY_ITEM: ItemRow = {
   markupPct: 25,
 };
 
-function computedAgreedPrice(item: ItemRow): string {
-  if (item.priceMode === 'pct') {
-    const cost = parseFloat(item.unitCost);
-    if (isNaN(cost) || cost <= 0) return '';
-    return (cost * (1 + item.markupPct / 100)).toFixed(2);
-  }
-  return item.agreedUnitPrice;
-}
-
 export function SendConsignmentDialog({ open, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
@@ -52,6 +49,90 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
   const [note, setNote] = useState('');
   const [items, setItems] = useState<ItemRow[]>([{ ...EMPTY_ITEM }]);
   const [error, setError] = useState('');
+  const [focusedItemIndex, setFocusedItemIndex] = useState<number | null>(null);
+
+  const { data: products } = useQuery({
+    queryKey: QK.inventoryProducts,
+    queryFn: inventoryApi.listProducts,
+    staleTime: 60_000,
+    enabled: open,
+  });
+
+  const getFilteredProducts = (query: string): ProductSummary[] =>
+    (products as ProductSummary[] | undefined)?.filter((p) =>
+      p.productName.includes(query.toLowerCase().trim())
+    ) ?? [];
+
+  const selectProduct = (i: number, p: ProductSummary) => {
+    setItems((prev) =>
+      prev.map((row, idx) => {
+        if (idx !== i) return row;
+        const unitCost = p.latestUnitCost;
+        const agreedUnitPrice =
+          row.priceMode === 'pct' && parseFloat(unitCost) > 0
+            ? (parseFloat(unitCost) * (1 + row.markupPct / 100)).toFixed(2)
+            : row.agreedUnitPrice;
+        return { ...row, productName: p.productName, unitCost, agreedUnitPrice };
+      })
+    );
+    setFocusedItemIndex(null);
+  };
+
+  const setProductName = (i: number, value: string) => {
+    setItems((prev) =>
+      prev.map((row, idx) => (idx === i ? { ...row, productName: value } : row))
+    );
+  };
+
+  const setStringField =
+    (i: number, k: keyof Pick<ItemRow, 'quantity' | 'agreedUnitPrice'>) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, [k]: e.target.value } : row)));
+
+  const handleUnitCostChange = (i: number, value: string) => {
+    setItems((prev) =>
+      prev.map((row, idx) => {
+        if (idx !== i) return row;
+        const cost = parseFloat(value);
+        const agreedUnitPrice =
+          row.priceMode === 'pct' && !isNaN(cost) && cost > 0
+            ? (cost * (1 + row.markupPct / 100)).toFixed(2)
+            : row.agreedUnitPrice;
+        return { ...row, unitCost: value, agreedUnitPrice };
+      })
+    );
+  };
+
+  const setMode = (i: number, mode: 'manual' | 'pct') =>
+    setItems((prev) =>
+      prev.map((row, idx) => {
+        if (idx !== i) return row;
+        const cost = parseFloat(row.unitCost);
+        const agreedUnitPrice =
+          mode === 'pct' && !isNaN(cost) && cost > 0
+            ? (cost * (1 + row.markupPct / 100)).toFixed(2)
+            : row.agreedUnitPrice;
+        return { ...row, priceMode: mode, agreedUnitPrice };
+      })
+    );
+
+  const handleMarkupChange = (i: number, pct: number) =>
+    setItems((prev) =>
+      prev.map((row, idx) => {
+        if (idx !== i) return row;
+        const cost = parseFloat(row.unitCost);
+        const agreedUnitPrice =
+          !isNaN(cost) && cost > 0
+            ? (cost * (1 + pct / 100)).toFixed(2)
+            : row.agreedUnitPrice;
+        return { ...row, markupPct: pct, agreedUnitPrice };
+      })
+    );
+
+  const addItem = () => setItems((prev) => [...prev, { ...EMPTY_ITEM }]);
+
+  const removeItem = (i: number) =>
+    setItems((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -61,7 +142,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
         items: items.map((it) => ({
           productName: it.productName.trim(),
           quantity: Number(it.quantity),
-          agreedUnitPrice: computedAgreedPrice(it),
+          agreedUnitPrice: it.agreedUnitPrice,
         })),
       }),
     onSuccess: () => {
@@ -75,30 +156,16 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
     onError: (err) => setError(getErrorMessage(err)),
   });
 
-  const setStringField =
-    (i: number, k: keyof Pick<ItemRow, 'productName' | 'quantity' | 'agreedUnitPrice' | 'unitCost'>) =>
-    (e: React.ChangeEvent<HTMLInputElement>) =>
-      setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, [k]: e.target.value } : row)));
-
-  const setMode = (i: number, mode: 'manual' | 'pct') =>
-    setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, priceMode: mode } : row)));
-
-  const setMarkup = (i: number, pct: number) =>
-    setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, markupPct: pct } : row)));
-
-  const addItem = () => setItems((prev) => [...prev, { ...EMPTY_ITEM }]);
-
-  const removeItem = (i: number) =>
-    setItems((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
-
   const canSubmit =
     debtor &&
     items.length > 0 &&
-    items.every((it) => {
-      if (!it.productName.trim() || !it.quantity) return false;
-      if (it.priceMode === 'pct') return !!it.unitCost && parseFloat(it.unitCost) > 0;
-      return !!it.agreedUnitPrice;
-    });
+    items.every(
+      (it) =>
+        it.productName.trim() &&
+        it.quantity &&
+        it.agreedUnitPrice &&
+        parseFloat(it.agreedUnitPrice) > 0
+    );
 
   if (!open) return null;
 
@@ -132,18 +199,46 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
             </div>
             <div className="space-y-3">
               {items.map((item, i) => {
-                const computed = computedAgreedPrice(item);
+                const suggestions = getFilteredProducts(item.productName);
+                const showDrop = focusedItemIndex === i && item.productName.trim().length > 0 && suggestions.length > 0;
                 return (
                   <div key={i} className="rounded-xl border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-                    {/* Row 1: product, qty, mode toggle, remove */}
+                    {/* Row 1: product autocomplete, qty, remove */}
                     <div className="flex gap-2 items-start mb-2">
-                      <input
-                        value={item.productName}
-                        onChange={setStringField(i, 'productName')}
-                        placeholder={t.sendConsignment.productNamePlaceholder}
-                        className="input"
-                        style={{ flex: 2 }}
-                      />
+                      <div style={{ flex: 2 }}>
+                        <input
+                          value={item.productName}
+                          onChange={(e) => { setProductName(i, e.target.value); setFocusedItemIndex(i); }}
+                          onFocus={() => setFocusedItemIndex(i)}
+                          onBlur={() => setTimeout(() => setFocusedItemIndex(null), 150)}
+                          placeholder={t.sendConsignment.productNamePlaceholder}
+                          className="input w-full"
+                        />
+                        {showDrop && (
+                          <div
+                            className="rounded-xl border mt-1 overflow-hidden"
+                            style={{ borderColor: 'var(--border)', background: 'var(--card)', maxHeight: '180px', overflowY: 'auto' }}
+                          >
+                            {suggestions.map((p) => (
+                              <div
+                                key={p.productName}
+                                onMouseDown={(e) => { e.preventDefault(); selectProduct(i, p); }}
+                                className="px-3 py-2 cursor-pointer border-b last:border-b-0"
+                                style={{ borderColor: 'var(--border)' }}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface)')}
+                                onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--card)')}
+                              >
+                                <div className="text-sm font-medium capitalize" style={{ color: 'var(--foreground)' }}>
+                                  {p.productName}
+                                </div>
+                                <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                                  ${p.latestUnitCost} cost · {p.totalAvailable} {t.sendConsignment.inStock}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <input
                         value={item.quantity}
                         onChange={setStringField(i, 'quantity')}
@@ -211,7 +306,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                       <div className="space-y-2">
                         <input
                           value={item.unitCost}
-                          onChange={setStringField(i, 'unitCost')}
+                          onChange={(e) => handleUnitCostChange(i, e.target.value)}
                           placeholder={t.sendConsignment.unitCost}
                           type="number"
                           min="0"
@@ -229,7 +324,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                             max="100"
                             step="1"
                             value={item.markupPct}
-                            onChange={(e) => setMarkup(i, parseInt(e.target.value, 10))}
+                            onChange={(e) => handleMarkupChange(i, parseInt(e.target.value, 10))}
                             className="w-full"
                             style={{ accentColor: 'var(--primary)' }}
                           />
@@ -238,11 +333,20 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                             <span>100%</span>
                           </div>
                         </div>
-                        {computed && (
-                          <p className="text-sm font-semibold" style={{ color: 'var(--primary)' }}>
-                            {t.sendConsignment.computedPrice(computed)}
-                          </p>
-                        )}
+                        <div>
+                          <label className="block text-xs mb-1" style={{ color: 'var(--muted)' }}>
+                            {t.sendConsignment.sellingPrice}
+                          </label>
+                          <input
+                            value={item.agreedUnitPrice}
+                            onChange={setStringField(i, 'agreedUnitPrice')}
+                            placeholder={t.sendConsignment.pricePlaceholder}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="input w-full"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>

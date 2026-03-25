@@ -25,7 +25,7 @@ interface PaymentRow {
   note: string | null;
   date: string;
   remainingBalance: string | null;
-  status: 'PENDING' | 'APPROVED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 
 interface Credit {
@@ -37,6 +37,8 @@ interface Credit {
 interface Detail {
   debtorUserId: string;
   debtorUsername: string;
+  debtorEmail: string | null;
+  debtorPhone: string | null;
   credit: Credit | null;
   productsConsigned: InventoryRow[];
   payments: PaymentRow[];
@@ -63,6 +65,13 @@ export default function DebtorDetailPage({ params }: { params: Promise<{ id: str
     },
   });
 
+  const rejectMutation = useMutation({
+    mutationFn: (paymentId: string) => paymentsApi.rejectPayment(paymentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK.debtorDetail(id) });
+    },
+  });
+
   if (isLoading) return <div className="p-8 text-center" style={{ color: 'var(--muted)' }}>{t.common.loading}</div>;
 
   const d = data as Detail | undefined;
@@ -79,6 +88,18 @@ export default function DebtorDetailPage({ params }: { params: Promise<{ id: str
           </Link>
           <h1 className="page-title">@{d.debtorUsername}</h1>
           <p className="page-sub">{t.debtors.debtorAccount}</p>
+          {(d.debtorEmail || d.debtorPhone) && (
+            <div className="flex items-center gap-4 mt-2">
+              {d.debtorEmail && (
+                <span className="text-sm" style={{ color: 'var(--muted)' }}>✉️ {d.debtorEmail}</span>
+              )}
+              {d.debtorPhone && (
+                <a href={`tel:${d.debtorPhone}`} className="text-sm font-medium" style={{ color: 'var(--primary)' }}>
+                  📞 {d.debtorPhone}
+                </a>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -163,8 +184,16 @@ export default function DebtorDetailPage({ params }: { params: Promise<{ id: str
                       <td className="px-4 py-3" style={{ color: 'var(--muted)' }}>{row.note ?? '—'}</td>
                       <td className="px-4 py-3">
                         <Badge
-                          label={row.status === 'PENDING' ? t.debtors.statusPending : t.debtors.statusApproved}
-                          variant={row.status === 'PENDING' ? 'pending' : 'accepted'}
+                          label={
+                            row.status === 'PENDING' ? t.debtors.statusPending
+                            : row.status === 'REJECTED' ? t.debtors.statusRejected
+                            : t.debtors.statusApproved
+                          }
+                          variant={
+                            row.status === 'PENDING' ? 'pending'
+                            : row.status === 'REJECTED' ? 'rejected'
+                            : 'accepted'
+                          }
                         />
                       </td>
                       <td className="px-4 py-3 font-semibold" style={{ color: row.remainingBalance && parseFloat(row.remainingBalance) > 0 ? 'var(--success)' : 'var(--muted)' }}>
@@ -172,16 +201,28 @@ export default function DebtorDetailPage({ params }: { params: Promise<{ id: str
                       </td>
                       <td className="px-4 py-3">
                         {row.status === 'PENDING' && (
-                          <button
-                            onClick={() => approveMutation.mutate(row.id)}
-                            disabled={approveMutation.isPending}
-                            className="btn btn-primary"
-                            style={{ fontSize: '12px', padding: '5px 14px', whiteSpace: 'nowrap' }}
-                          >
-                            {approveMutation.isPending && approveMutation.variables === row.id
-                              ? t.debtors.approving
-                              : t.debtors.approveBtn}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => approveMutation.mutate(row.id)}
+                              disabled={approveMutation.isPending || rejectMutation.isPending}
+                              className="btn btn-primary"
+                              style={{ fontSize: '12px', padding: '5px 14px', whiteSpace: 'nowrap' }}
+                            >
+                              {approveMutation.isPending && approveMutation.variables === row.id
+                                ? t.debtors.approving
+                                : t.debtors.approveBtn}
+                            </button>
+                            <button
+                              onClick={() => rejectMutation.mutate(row.id)}
+                              disabled={approveMutation.isPending || rejectMutation.isPending}
+                              className="btn"
+                              style={{ fontSize: '12px', padding: '5px 14px', whiteSpace: 'nowrap', background: 'var(--danger-light)', color: 'var(--danger)', border: '1px solid rgba(var(--danger-rgb),0.2)' }}
+                            >
+                              {rejectMutation.isPending && rejectMutation.variables === row.id
+                                ? t.debtors.rejecting
+                                : t.debtors.rejectBtn}
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>

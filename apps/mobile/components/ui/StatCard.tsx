@@ -17,9 +17,9 @@ const colorMap = {
 export function StatCard({ label, value, sub, color = 'default' }: Props) {
   return (
     <View className="bg-card dark:bg-slate-800 rounded-2xl p-4 flex-1 shadow-sm border border-border dark:border-slate-700">
-      <Text className="text-muted dark:text-slate-500 text-xs font-medium uppercase tracking-wide mb-1">{label}</Text>
+      <Text className="text-muted dark:text-slate-500 text-sm font-medium uppercase tracking-wide mb-1">{label}</Text>
       <Text className={`text-2xl font-bold ${colorMap[color]}`}>{value}</Text>
-      {sub ? <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">{sub}</Text> : null}
+      {sub ? <Text className="text-muted dark:text-slate-500 text-sm mt-0.5">{sub}</Text> : null}
     </View>
   );
 }

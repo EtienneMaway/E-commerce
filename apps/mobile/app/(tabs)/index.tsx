@@ -1,4 +1,4 @@
-import { ScrollView, View, Text, RefreshControl, TouchableOpacity } from 'react-native';
+import { ScrollView, View, Text, RefreshControl, TouchableOpacity, Pressable } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { dashboardApi } from '../../lib/api';
@@ -89,49 +89,51 @@ export default function DashboardScreen() {
       {alerts.length > 0 && (
         <View className="mb-4 gap-2">
           {overdueDebtors.length > 0 && (
-            <TouchableOpacity
+            <Pressable
               onPress={() => router.push('/(tabs)/network')}
               className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 rounded-xl px-4 py-3 flex-row items-start gap-3"
+              style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
             >
               <Text className="text-lg">⏰</Text>
               <View className="flex-1">
                 <Text className="text-danger font-semibold text-sm">
                   {t.home.overdueDebtors(overdueDebtors.length)}
                 </Text>
-                <Text className="text-danger text-xs mt-0.5">
+                <Text className="text-danger text-sm mt-0.5">
                   {overdueDebtors.slice(0, 2).map((a) => `@${a.debtorUsername}`).join(', ')}
                   {overdueDebtors.length > 2 && ` +${overdueDebtors.length - 2} more`}
                   {` ${t.home.overdueSuffix}`}
                 </Text>
               </View>
-              <Text className="text-danger text-xs font-medium">{t.home.viewArrow}</Text>
-            </TouchableOpacity>
+              <Text className="text-danger text-sm font-medium">{t.home.viewArrow}</Text>
+            </Pressable>
           )}
           {lowStockItems.length > 0 && (
-            <TouchableOpacity
+            <Pressable
               onPress={() => router.push('/(tabs)/inventory')}
               className="bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-900 rounded-xl px-4 py-3 flex-row items-start gap-3"
+              style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
             >
               <Text className="text-lg">📦</Text>
               <View className="flex-1">
                 <Text className="text-warning font-semibold text-sm">
                   {t.home.lowStockItems(lowStockItems.length)}
                 </Text>
-                <Text className="text-warning text-xs mt-0.5">
+                <Text className="text-warning text-sm mt-0.5">
                   {lowStockItems.slice(0, 2).map((a) => a.productName).join(', ')}
                   {lowStockItems.length > 2 && ` +${lowStockItems.length - 2} more`}
                   {` ${t.home.lowStockSuffix}`}
                 </Text>
               </View>
-              <Text className="text-warning text-xs font-medium">{t.home.viewArrow}</Text>
-            </TouchableOpacity>
+              <Text className="text-warning text-sm font-medium">{t.home.viewArrow}</Text>
+            </Pressable>
           )}
         </View>
       )}
 
       {/* Net Position */}
       <Card className="mb-4">
-        <Text className="text-muted dark:text-slate-500 text-xs font-medium uppercase tracking-wide mb-1">{t.home.netPosition}</Text>
+        <Text className="text-muted dark:text-slate-500 text-sm font-medium uppercase tracking-wide mb-1">{t.home.netPosition}</Text>
         {isLoading ? (
           <Text className="text-3xl font-bold text-text dark:text-slate-100">—</Text>
         ) : (
@@ -143,7 +145,7 @@ export default function DashboardScreen() {
             {formatCurrency(data?.netPosition ?? '0')}
           </Text>
         )}
-        <Text className="text-muted dark:text-slate-500 text-xs mt-1">{t.home.netPositionSub}</Text>
+        <Text className="text-muted dark:text-slate-500 text-sm mt-1">{t.home.netPositionSub}</Text>
       </Card>
 
       {/* KPI row 1 */}
@@ -171,21 +173,22 @@ export default function DashboardScreen() {
       {/* Top Suppliers */}
       {(suppliers?.length ?? 0) > 0 && (
         <View className="mb-5">
-          <Text className="text-text dark:text-slate-100 font-semibold text-base mb-2">{t.home.topSuppliers}</Text>
+          <Text className="text-text dark:text-slate-100 font-semibold text-lg mb-2">{t.home.topSuppliers}</Text>
           {(suppliers as Array<{ supplierUserId: string; supplierUsername: string; outstandingBalance: string }>)
             .slice(0, 3)
             .map((s) => (
-              <TouchableOpacity
+              <Pressable
                 key={s.supplierUserId}
                 onPress={() => router.push(`/supplier/${s.supplierUserId}`)}
                 className="flex-row items-center justify-between bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 mb-2"
+                style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
               >
                 <View>
-                  <Text className="text-text dark:text-slate-100 font-medium">@{s.supplierUsername}</Text>
-                  <Text className="text-muted dark:text-slate-500 text-xs">{t.home.youOwe}</Text>
+                  <Text className="text-text dark:text-slate-100 font-semibold text-base">@{s.supplierUsername}</Text>
+                  <Text className="text-muted dark:text-slate-500 text-sm">{t.home.youOwe}</Text>
                 </View>
-                <Text className="text-danger font-semibold">{formatCurrency(s.outstandingBalance)}</Text>
-              </TouchableOpacity>
+                <Text className="text-danger font-bold text-base">{formatCurrency(s.outstandingBalance)}</Text>
+              </Pressable>
             ))}
           <TouchableOpacity onPress={() => router.push('/(tabs)/network')}>
             <Text className="text-primary text-sm font-medium text-center mt-1">{t.home.viewAllSuppliers}</Text>
@@ -196,21 +199,22 @@ export default function DashboardScreen() {
       {/* Top Debtors */}
       {(debtors?.length ?? 0) > 0 && (
         <View>
-          <Text className="text-text dark:text-slate-100 font-semibold text-base mb-2">{t.home.topDebtors}</Text>
+          <Text className="text-text dark:text-slate-100 font-semibold text-lg mb-2">{t.home.topDebtors}</Text>
           {(debtors as Array<{ debtorUserId: string; debtorUsername: string; outstandingBalance: string }>)
             .slice(0, 3)
             .map((d) => (
-              <TouchableOpacity
+              <Pressable
                 key={d.debtorUserId}
                 onPress={() => router.push(`/debtor/${d.debtorUserId}`)}
                 className="flex-row items-center justify-between bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 mb-2"
+                style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
               >
                 <View>
-                  <Text className="text-text dark:text-slate-100 font-medium">@{d.debtorUsername}</Text>
-                  <Text className="text-muted dark:text-slate-500 text-xs">{t.home.owesYou}</Text>
+                  <Text className="text-text dark:text-slate-100 font-semibold text-base">@{d.debtorUsername}</Text>
+                  <Text className="text-muted dark:text-slate-500 text-sm">{t.home.owesYou}</Text>
                 </View>
-                <Text className="text-success font-semibold">{formatCurrency(d.outstandingBalance)}</Text>
-              </TouchableOpacity>
+                <Text className="text-success font-bold text-base">{formatCurrency(d.outstandingBalance)}</Text>
+              </Pressable>
             ))}
           <TouchableOpacity onPress={() => router.push('/(tabs)/network')}>
             <Text className="text-primary text-sm font-medium text-center mt-1">{t.home.viewAllDebtors}</Text>

@@ -85,15 +85,31 @@ export function PaySupplierDialog({ supplier, onClose }: Props) {
         {/* Amount */}
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--foreground)' }}>
-              {t.suppliers.payAmount}
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold" style={{ color: 'var(--foreground)' }}>
+                {t.suppliers.payAmount}
+              </label>
+              {outstanding > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAmount(outstanding.toFixed(2))}
+                  className="text-xs font-bold px-2 py-0.5 rounded-md transition-colors"
+                  style={{ background: 'var(--primary-light, #eff6ff)', color: 'var(--primary)' }}
+                >
+                  Max
+                </button>
+              )}
+            </div>
             <input
               type="number"
               min="0.01"
               step="0.01"
+              max={outstanding > 0 ? outstanding.toFixed(2) : undefined}
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => {
+                setAmount(e.target.value);
+                if (error) setError('');
+              }}
               placeholder={outstanding > 0 ? outstanding.toFixed(2) : '0.00'}
               className="input"
             />
@@ -123,7 +139,18 @@ export function PaySupplierDialog({ supplier, onClose }: Props) {
               {t.common.cancel}
             </button>
             <button
-              onClick={() => mutation.mutate()}
+              onClick={() => {
+                const parsed = parseFloat(amount);
+                if (!amount || isNaN(parsed) || parsed <= 0) {
+                  setError(t.suppliers.payInvalidAmount ?? 'Enter a valid amount.');
+                  return;
+                }
+                if (parsed > outstanding) {
+                  setError(t.suppliers.payExceedsBalance ?? 'Amount exceeds the outstanding balance.');
+                  return;
+                }
+                mutation.mutate();
+              }}
               disabled={!amount || parseFloat(amount) <= 0 || mutation.isPending}
               className="btn btn-primary flex-1"
             >

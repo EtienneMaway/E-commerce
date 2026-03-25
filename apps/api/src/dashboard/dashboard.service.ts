@@ -40,6 +40,8 @@ export interface SupplierListItem {
 export interface SupplierDetailView {
   supplierUserId: string;
   supplierUsername: string;
+  supplierEmail: string | null;
+  supplierPhone: string | null;
   debt: SupplierDebt;
   productsReceived: InventoryEntry[];
   totalValueSold: string;
@@ -58,6 +60,8 @@ export interface DebtorListItem {
 export interface DebtorDetailView {
   debtorUserId: string;
   debtorUsername: string;
+  debtorEmail: string | null;
+  debtorPhone: string | null;
   credit: DebtorCredit;
   productsConsigned: InventoryEntry[];
   payments: Payment[];   // all statuses (PENDING + APPROVED), unified view
@@ -294,6 +298,8 @@ export class DashboardService {
     return {
       supplierUserId,
       supplierUsername: debt.supplierUser.username,
+      supplierEmail: debt.supplierUser.email,
+      supplierPhone: debt.supplierUser.phone,
       debt,
       productsReceived,
       totalValueSold,
@@ -348,6 +354,8 @@ export class DashboardService {
     return {
       debtorUserId,
       debtorUsername: credit.debtorUser.username,
+      debtorEmail: credit.debtorUser.email,
+      debtorPhone: credit.debtorUser.phone,
       credit,
       productsConsigned: credit.inventoryEntries,
       payments: allPayments,

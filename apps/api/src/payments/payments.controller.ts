@@ -54,6 +54,17 @@ export class PaymentsController {
     return this.paymentsService.approvePayment(user.id, id);
   }
 
+  @Patch(':id/reject')
+  @ApiOperation({
+    summary: 'Reject a pending payment from a debtor',
+    description: 'Marks the payment as REJECTED. No balance changes are made.',
+  })
+  @ApiResponse({ status: 200, description: 'Payment rejected' })
+  @ApiResponse({ status: 404, description: 'Pending payment not found' })
+  rejectPayment(@CurrentUser() user: User, @Param('id') id: string) {
+    return this.paymentsService.rejectPayment(user.id, id);
+  }
+
   @Post('from-debtor')
   @ApiOperation({
     summary: 'Record a payment received directly from a debtor',

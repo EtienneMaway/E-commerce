@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { View, Text, Modal, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, Modal, ScrollView, Alert, TouchableOpacity, TextInput } from 'react-native';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { paymentsApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { getErrorMessage } from '../../lib/utils';
-import { useFormatCurrency } from '../../lib/currency';
+import { useFormatCurrency, useExchangeRate, fcToUsd } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 
 interface Props {
@@ -21,16 +21,19 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
   const t = useT();
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
-  const [amount, setAmount] = useState('');
+  const rate = useExchangeRate();
+  const [amountFc, setAmountFc] = useState('');
   const [note, setNote] = useState('');
 
+  const amountUsd = fcToUsd(amountFc, rate);
+
   const { mutate, isPending } = useMutation({
-    mutationFn: () => paymentsApi.paySupplier({ supplierUserId: supplierId, amount, note: note || undefined }),
+    mutationFn: () => paymentsApi.paySupplier({ supplierUserId: supplierId, amount: amountUsd, note: note || undefined }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.supplierDetail(supplierId) });
       qc.invalidateQueries({ queryKey: QK.suppliers });
       qc.invalidateQueries({ queryKey: QK.dashboard });
-      setAmount('');
+      setAmountFc('');
       setNote('');
       onClose();
     },
@@ -38,9 +41,13 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
   });
 
   const handleSubmit = () => {
-    const parsed = parseFloat(amount);
-    if (!amount || isNaN(parsed) || parsed <= 0) {
+    const parsedFc = parseFloat(amountFc);
+    if (!amountFc || isNaN(parsedFc) || parsedFc <= 0) {
       Alert.alert(t.common.invalidAmount, t.paySupplierModal.invalidAmountMsg);
+      return;
+    }
+    if (parseFloat(amountUsd) > parseFloat(outstandingBalance)) {
+      Alert.alert(t.common.invalidAmount, t.paySupplierModal.exceedsBalance);
       return;
     }
     mutate();
@@ -63,13 +70,29 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
           </View>
         </View>
 
-        <Input
-          label={t.paySupplierModal.paymentAmount}
-          value={amount}
-          onChangeText={setAmount}
-          placeholder="0.00"
-          keyboardType="decimal-pad"
-        />
+        {/* Amount field with Max button */}
+        <View className="mb-4">
+          <View className="flex-row items-center justify-between mb-1.5">
+            <Text className="text-sm font-medium text-text dark:text-slate-100">{t.paySupplierModal.paymentAmount}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                const maxFc = Math.round(parseFloat(outstandingBalance) * parseFloat(rate));
+                setAmountFc(maxFc.toString());
+              }}
+              className="bg-primary/10 rounded-lg px-2.5 py-1"
+            >
+              <Text className="text-primary text-xs font-bold">{t.common.max}</Text>
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            value={amountFc}
+            onChangeText={setAmountFc}
+            placeholder="0"
+            keyboardType="decimal-pad"
+            placeholderTextColor="#94A3B8"
+            className="border rounded-xl px-4 py-3 text-text dark:text-slate-100 bg-card dark:bg-slate-800 text-base border-border dark:border-slate-700"
+          />
+        </View>
         <Input
           label={t.paySupplierModal.noteOptional}
           value={note}

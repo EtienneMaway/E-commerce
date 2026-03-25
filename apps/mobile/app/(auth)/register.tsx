@@ -62,7 +62,7 @@ export default function RegisterScreen() {
       <Input label={t.auth.phoneOptional} value={phone} onChangeText={setPhone}
         placeholder={t.auth.phonePlaceholder} keyboardType="phone-pad" />
       <Input label={t.auth.password} value={password} onChangeText={setPassword}
-        placeholder={t.auth.passwordMinChars} secureTextEntry />
+        placeholder={t.auth.passwordMinChars} secureTextEntry passwordToggle />
 
       <Button label={t.auth.createAccountBtn} onPress={handleRegister} loading={loading} className="mt-2" />
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Linking } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi } from '../../lib/api';
@@ -32,6 +32,8 @@ interface PaymentRow {
 interface DebtorDetail {
   debtorUserId: string;
   debtorUsername: string;
+  debtorEmail: string | null;
+  debtorPhone: string | null;
   credit: {
     outstandingBalance: string;
     totalCreditGiven: string;
@@ -85,9 +87,21 @@ export default function DebtorDetailScreen() {
           <Text className="text-primary font-medium">{t.common.back}</Text>
         </TouchableOpacity>
         <View className="flex-row justify-between items-start">
-          <View>
+          <View className="flex-1 mr-3">
             <Text className="text-2xl font-bold text-text dark:text-slate-100">@{detail.debtorUsername}</Text>
             <Text className="text-muted dark:text-slate-500 text-sm mt-0.5">Debtor</Text>
+            {(detail.debtorEmail || detail.debtorPhone) && (
+              <View className="mt-2 gap-1">
+                {detail.debtorEmail && (
+                  <Text className="text-muted dark:text-slate-400 text-sm">✉️ {detail.debtorEmail}</Text>
+                )}
+                {detail.debtorPhone && (
+                  <TouchableOpacity onPress={() => void Linking.openURL(`tel:${detail.debtorPhone}`)}>
+                    <Text className="text-primary text-sm font-medium">📞 {detail.debtorPhone}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
           <TouchableOpacity
             onPress={() => setPayModal(true)}
