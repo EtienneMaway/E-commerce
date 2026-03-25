@@ -19,8 +19,10 @@ import {
   getPriceGuardWarning,
   isPriceGuardWarning,
 } from '../../lib/utils';
-import { useFormatCurrency } from '../../lib/currency';
+import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
+import { useAuthStore } from '../../store/auth.store';
+import { printReceipt, shareReceiptAsPdf } from '../../lib/receipt';
 import type { InventoryEntry } from '@trading-app/types';
 
 interface Props {
@@ -78,6 +80,8 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   const t = useT();
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
+  const exchangeRate = useExchangeRate();
+  const user = useAuthStore((s) => s.user);
   const [search, setSearch] = useState(prefilledProduct);
   const [cart, setCart] = useState<Map<string, CartItem>>(new Map());
   const [priceGuardPending, setPriceGuardPending] = useState<PriceGuardPending[]>([]);
@@ -203,6 +207,35 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     qc.invalidateQueries({ queryKey: QK.dashboard });
   };
 
+  const offerReceipt = (soldItems: CartItem[]): void => {
+    const rate = parseFloat(exchangeRate) || 1;
+    const receiptData = {
+      items: soldItems.map((item) => {
+        const unitPriceFc = parseFloat(item.unitCost) * (1 + markupPct / 100) * rate;
+        return {
+          productName: item.productName,
+          qty: item.qty,
+          unitPriceFc,
+          totalFc: unitPriceFc * item.qty,
+        };
+      }),
+      grandTotalFc: grandTotal * rate,
+      markupPct,
+      date: new Date().toLocaleString('fr-CD'),
+      sellerUsername: user?.username,
+    };
+
+    Alert.alert(
+      '✅ Sale recorded',
+      'Would you like a receipt?',
+      [
+        { text: 'Print', onPress: () => void printReceipt(receiptData) },
+        { text: 'Share PDF', onPress: () => void shareReceiptAsPdf(receiptData) },
+        { text: 'Skip', style: 'cancel' },
+      ],
+    );
+  };
+
   const handleSubmit = async (): Promise<void> => {
     if (cart.size === 0) {
       Alert.alert(t.common.noProductsSelected, t.recordSaleModal.noProductsSelectedMsg);
@@ -215,20 +248,21 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     if (pending.length > 0) {
       setPriceGuardPending(pending);
     } else {
+      const soldItems = cartArray;
       invalidate();
       handleClose();
+      offerReceipt(soldItems);
     }
   };
 
   const handleConfirmOverrides = async (): Promise<void> => {
+    const soldItems = priceGuardPending.map((p) => p.cartItem);
     setIsSubmitting(true);
-    await submitItems(
-      priceGuardPending.map((p) => p.cartItem),
-      true,
-    );
+    await submitItems(soldItems, true);
     setIsSubmitting(false);
     invalidate();
     handleClose();
+    offerReceipt(soldItems);
   };
 
   // ─── Price guard confirmation screen ────────────────────────────────────────
