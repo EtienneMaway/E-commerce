@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "Trading App",
-    "slug": "trading-app",
+    "name": "KMB",
+    "slug": "kmb-app",
     "version": "1.0.0",
-    "scheme": "trading-app",
+    "scheme": "kmb-app",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,13 +14,13 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.tradingapp.mobile",
+      "bundleIdentifier": "com.kmb.mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.tradingapp.mobile",
+      "package": "com.kmb.mobile",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

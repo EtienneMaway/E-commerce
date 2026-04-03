@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'TradingApp — Dashboard',
-  description: 'Inventory & Credit Trading Analytics',
+  title: 'KMB — Dashboard',
+  description: 'Kristo Mosungi na Bato — Inventory & Credit Trading',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

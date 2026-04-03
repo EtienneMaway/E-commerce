@@ -7,6 +7,7 @@ import { authApi } from '../../lib/api';
 import { getErrorMessage } from '../../lib/utils';
 import { useAuthStore } from '../../store/auth.store';
 import { useT } from '../../lib/i18n';
+import { KmbLogo } from '../../components/ui/KmbLogo';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -61,15 +62,10 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div
-            className="inline-flex w-14 h-14 rounded-2xl items-center justify-center mb-4"
-            style={{
-              background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-              boxShadow: '0 8px 32px rgba(79,70,229,0.4)',
-            }}
+            className="inline-block mb-4"
+            style={{ filter: 'drop-shadow(0 8px 32px rgba(79,70,229,0.4))' }}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
+            <KmbLogo size={56} />
           </div>
           <h1
             className="text-2xl font-bold tracking-tight"

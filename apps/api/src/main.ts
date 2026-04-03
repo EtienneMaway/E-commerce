@@ -73,9 +73,9 @@ async function bootstrap(): Promise<void> {
 
   // Swagger documentation
   const config = new DocumentBuilder()
-    .setTitle('Trading App API')
+    .setTitle('KMB API')
     .setDescription(
-      'REST API for the Inventory & Credit Trading App. ' +
+      'REST API for KMB (Kristo Mosungi na Bato). ' +
       'Manage personal inventory, supplier credit, consignment, sales, and debt tracking.',
     )
     .setVersion('1.0')

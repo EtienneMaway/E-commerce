@@ -30,7 +30,7 @@ const en = {
     viewArrow: 'View →',
   },
   auth: {
-    title: 'TradingApp',
+    title: 'KMB',
     subtitle: 'Sign in to your dashboard',
     registerSubtitle: 'Create your account',
     emailOrPhone: 'Email or Phone',
@@ -54,7 +54,7 @@ const en = {
     signUpLink: 'Sign up',
     alreadyHaveAccount: 'Already have an account?',
     signInLink: 'Sign in',
-    tagline: 'Inventory & Credit Trading Platform',
+    tagline: 'Kristo Mosungi na Bato',
   },
   dashboard: {
     title: 'Financial Dashboard',
@@ -404,7 +404,7 @@ const fr: Translations = {
     viewArrow: 'Voir →',
   },
   auth: {
-    title: 'TradingApp',
+    title: 'KMB',
     subtitle: 'Connectez-vous à votre tableau de bord',
     registerSubtitle: 'Créez votre compte',
     emailOrPhone: 'Email ou Téléphone',
@@ -428,7 +428,7 @@ const fr: Translations = {
     signUpLink: 'S\'inscrire',
     alreadyHaveAccount: 'Déjà un compte ?',
     signInLink: 'Se connecter',
-    tagline: 'Plateforme de gestion d\'inventaire et de crédit',
+    tagline: 'Kristo Mosungi na Bato',
   },
   dashboard: {
     title: 'Tableau de bord financier',

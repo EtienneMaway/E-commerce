@@ -9,6 +9,7 @@ import { authApi } from '../../lib/api';
 import { useT } from '../../lib/i18n';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher';
 import { CurrencyToggle } from '../../components/ui/CurrencyToggle';
+import { KmbLogo } from '../../components/ui/KmbLogo';
 
 const NAV_ICONS = [
   <svg key="dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -134,15 +135,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           </svg>
         </button>
         <div className="flex items-center gap-2">
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)' }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
-          </div>
-          <span className="text-sm font-bold text-white">TradingApp</span>
+          <KmbLogo size={28} />
+          <span className="text-sm font-bold text-white">KMB</span>
         </div>
         <div className="ml-auto">
           <button
@@ -196,20 +190,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         {/* Logo */}
         <div className="relative px-5 pt-6 pb-5">
           <div className="flex items-center gap-3">
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{
-                background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-                boxShadow: '0 4px 12px rgba(99,102,241,0.45)',
-              }}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-              </svg>
+            <div className="flex-shrink-0" style={{ filter: 'drop-shadow(0 4px 12px rgba(99,102,241,0.45))' }}>
+              <KmbLogo size={36} />
             </div>
             <div>
-              <div className="text-sm font-bold text-white leading-tight tracking-tight">TradingApp</div>
-              {user && <div className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>@{user.username}</div>}
+              <div className="text-sm font-bold text-white leading-tight tracking-tight">KMB</div>
+              <div className="text-[10px] leading-tight" style={{ color: 'rgba(255,255,255,0.35)' }}>Kristo Mosungi na Bato</div>
+              {user && <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>@{user.username}</div>}
             </div>
           </div>
         </div>
