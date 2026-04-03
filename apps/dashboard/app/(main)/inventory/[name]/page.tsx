@@ -18,6 +18,7 @@ interface InventoryEntry {
   productName: string;
   unitCost: string;
   sellingPrice: string;
+  cartonPrice: string | null;
   category: string | null;
   quantityOriginal: number;
   quantityRemaining: number;
@@ -56,12 +57,24 @@ export default function ProductDetailPage({
 
   const entries = (data as InventoryEntry[] | undefined) ?? [];
 
-  const totalAvailable = entries
-    .filter((e) => e.source !== 'CONSIGNED_OUT')
-    .reduce((s, e) => s + e.quantityRemaining, 0);
+  const activeEntries = entries.filter((e) => e.source !== 'CONSIGNED_OUT');
+
+  const totalAvailable = activeEntries.reduce((s, e) => s + e.quantityRemaining, 0);
 
   const piecesPerCarton = entries.find((e) => e.piecesPerCarton !== null)?.piecesPerCarton ?? null;
   const bd = breakdownQuantity(totalAvailable, piecesPerCarton);
+
+  // Current stock value totals (only remaining units)
+  const activePurchaseValue = activeEntries
+    .reduce((s, e) => s + parseFloat(e.unitCost) * e.quantityRemaining, 0);
+  const activeSellingValue = activeEntries
+    .reduce((s, e) => s + parseFloat(e.sellingPrice) * e.quantityRemaining, 0);
+
+  // All-time compound totals (all original quantities)
+  const allTimePurchaseValue = activeEntries
+    .reduce((s, e) => s + parseFloat(e.unitCost) * e.quantityOriginal, 0);
+  const allTimeSellingValue = activeEntries
+    .reduce((s, e) => s + parseFloat(e.sellingPrice) * e.quantityOriginal, 0);
 
   function sourceLabel(source: string): string {
     if (source === 'PERSONAL') return t.inventory.sourcePersonal;
@@ -114,6 +127,13 @@ export default function ProductDetailPage({
           </div>
         );
       },
+    },
+    {
+      key: 'cartonPrice',
+      header: t.inventory.colCartonPrice,
+      sortable: true,
+      getValue: (r) => r.cartonPrice ? parseFloat(r.cartonPrice) : 0,
+      render: (r) => r.cartonPrice ? formatCurrency(r.cartonPrice) : <span style={{ color: 'var(--muted)' }}>—</span>,
     },
     {
       key: 'unitCost',
@@ -194,6 +214,73 @@ export default function ProductDetailPage({
           </div>
         </div>
       </div>
+
+      {/* ── Value summary cards ─────────────────────────────────── */}
+      {entries.length > 0 && (
+        <div className="page-content" style={{ paddingTop: 0 }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Current stock values */}
+            <div
+              className="rounded-xl p-4 border"
+              style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-base">📦</span>
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--foreground)' }}>
+                    {t.inventory.currentStock}
+                  </h3>
+                  <p className="text-xs" style={{ color: 'var(--muted)' }}>{t.inventory.activeStockValues}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs" style={{ color: 'var(--muted)' }}>{t.inventory.totalPurchaseValue}</span>
+                  <span className="text-sm font-bold" style={{ color: 'var(--warning)' }}>
+                    {formatCurrency(activePurchaseValue.toFixed(2))}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs" style={{ color: 'var(--muted)' }}>{t.inventory.totalSellingValue}</span>
+                  <span className="text-sm font-bold" style={{ color: 'var(--success)' }}>
+                    {formatCurrency(activeSellingValue.toFixed(2))}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* All-time compound values */}
+            <div
+              className="rounded-xl p-4 border"
+              style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-base">📊</span>
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--foreground)' }}>
+                    {t.inventory.allTime}
+                  </h3>
+                  <p className="text-xs" style={{ color: 'var(--muted)' }}>{t.inventory.allTimeValues}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs" style={{ color: 'var(--muted)' }}>{t.inventory.totalPurchaseValue}</span>
+                  <span className="text-sm font-bold" style={{ color: 'var(--warning)' }}>
+                    {formatCurrency(allTimePurchaseValue.toFixed(2))}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs" style={{ color: 'var(--muted)' }}>{t.inventory.totalSellingValue}</span>
+                  <span className="text-sm font-bold" style={{ color: 'var(--success)' }}>
+                    {formatCurrency(allTimeSellingValue.toFixed(2))}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Entries table */}
       <div className="page-content">

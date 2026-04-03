@@ -54,6 +54,10 @@ export class InventoryEntry {
   @Column({ name: 'quantity_remaining' })
   quantityRemaining: number;
 
+  @ApiPropertyOptional({ example: '240.00', description: 'Purchase price for one full carton (null if not set)' })
+  @Column({ name: 'carton_price', type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
+  cartonPrice: string | null;
+
   @ApiPropertyOptional({ example: 20, description: 'How many pieces make one carton (null if not set)' })
   @Column({ name: 'pieces_per_carton', type: 'int', nullable: true, default: null })
   piecesPerCarton: number | null;

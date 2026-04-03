@@ -11,7 +11,7 @@ import { TopProductsChart } from '../../../components/charts/TopProductsChart';
 import { SourcePieChart } from '../../../components/charts/SourcePieChart';
 import { useT } from '../../../lib/i18n';
 
-interface Summary { totalIOwe: string; totalOwedToMe: string; netPosition: string; totalProfitAllTime: string; }
+interface Summary { totalIOwe: string; totalOwedToMe: string; netPosition: string; totalProfitAllTime: string; totalPurchaseValue: string; totalSellingValue: string; }
 interface TopProduct { productName: string; totalProfit: string; totalRevenue: string; totalQtySold: string; }
 interface SourceRow { source: string; supplierUsername?: string; totalProfit: string; }
 interface SaleRow { id: string; productName: string; salePrice: string; qtySold: number; profit: string; isLoss: boolean; date: string; }
@@ -127,11 +127,13 @@ export default function DashboardPage() {
         )}
 
         {/* ── KPI cards ─────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <KpiCard label={t.dashboard.iOweSuppliers} value={formatCurrency(s?.totalIOwe ?? '0')} icon="🏭" color="danger" sub={t.dashboard.outstandingSupplierDebt} loading={summaryLoading} />
           <KpiCard label={t.dashboard.debtorsOweMe} value={formatCurrency(s?.totalOwedToMe ?? '0')} icon="🤝" color="success" sub={t.dashboard.outstandingDebtorCredit} loading={summaryLoading} />
           <KpiCard label={t.dashboard.netPosition} value={formatCurrency(s?.netPosition ?? '0')} icon={net >= 0 ? '📈' : '📉'} color={net >= 0 ? 'success' : 'danger'} sub={net >= 0 ? t.dashboard.netPositive : t.dashboard.netNegative} loading={summaryLoading} />
           <KpiCard label={t.dashboard.totalProfit} value={formatCurrency(s?.totalProfitAllTime ?? '0')} icon="💰" color="primary" sub={t.dashboard.allTimeSalesProfit} loading={summaryLoading} />
+          <KpiCard label={t.dashboard.totalPurchaseValue} value={formatCurrency(s?.totalPurchaseValue ?? '0')} icon="🛒" color="warning" sub={t.dashboard.purchaseValueSub} loading={summaryLoading} />
+          <KpiCard label={t.dashboard.totalSellingValue} value={formatCurrency(s?.totalSellingValue ?? '0')} icon="💵" color="success" sub={t.dashboard.sellingValueSub} loading={summaryLoading} />
         </div>
 
         {/* ── Charts ────────────────────────────────────────────────── */}

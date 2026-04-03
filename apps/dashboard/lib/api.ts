@@ -50,9 +50,9 @@ export const inventoryApi = {
 
   list: (params?: { source?: string; category?: string; productName?: string }) =>
     api.get('/inventory', { params }).then((r) => r.data),
-  addPersonal: (body: { productName: string; unitCost: string; sellingPrice: string; quantity: number; category?: string; piecesPerCarton?: number }) =>
+  addPersonal: (body: { productName: string; unitCost: string; sellingPrice: string; quantity: number; category?: string; cartonPrice?: string; piecesPerCarton?: number }) =>
     api.post('/inventory/personal', body).then((r) => r.data),
-  receiveFromSupplier: (body: { supplierUserId: string; productName: string; unitCost: string; sellingPrice: string; quantity: number; category?: string; piecesPerCarton?: number }) =>
+  receiveFromSupplier: (body: { supplierUserId: string; productName: string; unitCost: string; sellingPrice: string; quantity: number; category?: string; cartonPrice?: string; piecesPerCarton?: number }) =>
     api.post('/inventory/receive', body).then((r) => r.data),
   updateSellingPrice: (id: string, sellingPrice: string) =>
     api.patch(`/inventory/${id}/selling-price`, { sellingPrice }).then((r) => r.data),
@@ -96,13 +96,13 @@ export const salesApi = {
 
 // ─── Currency ─────────────────────────────────────────────────────────────────
 
-interface RateResponse { usdToFcRate: string; updatedAt: string; }
+interface RateResponse { usdToFcRate: string; sellingRate: string | null; updatedAt: string; }
 
 export const currencyApi = {
   getRate: (): Promise<RateResponse> =>
     api.get('/currency/rate').then((r) => r.data),
-  setRate: (usdToFcRate: string): Promise<RateResponse> =>
-    api.put('/currency/rate', { usdToFcRate }).then((r) => r.data),
+  setRate: (body: { usdToFcRate: string; sellingRate?: string }): Promise<RateResponse> =>
+    api.put('/currency/rate', body).then((r) => r.data),
 };
 
 // ─── External Contacts ────────────────────────────────────────────────────────

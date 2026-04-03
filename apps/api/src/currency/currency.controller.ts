@@ -33,7 +33,11 @@ export class CurrencyController {
   async getRate() {
     const rate = await this.currencyService.getRate();
     if (!rate) throw new NotFoundException('Exchange rate has not been set');
-    return { usdToFcRate: rate.usdToFcRate, updatedAt: rate.updatedAt };
+    return {
+      usdToFcRate: rate.usdToFcRate,
+      sellingRate: rate.sellingRate,
+      updatedAt: rate.updatedAt,
+    };
   }
 
   @Put('rate')
@@ -44,6 +48,10 @@ export class CurrencyController {
   @ApiResponse({ status: 400, description: 'Rate must be greater than zero' })
   async setRate(@Body() dto: SetRateDto) {
     const rate = await this.currencyService.setRate(dto);
-    return { usdToFcRate: rate.usdToFcRate, updatedAt: rate.updatedAt };
+    return {
+      usdToFcRate: rate.usdToFcRate,
+      sellingRate: rate.sellingRate,
+      updatedAt: rate.updatedAt,
+    };
   }
 }

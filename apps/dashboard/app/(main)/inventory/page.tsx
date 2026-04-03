@@ -16,6 +16,7 @@ interface Row {
   productName: string;
   category: string | null;
   piecesPerCarton: number | null;
+  latestCartonPrice: string | null;
   totalAvailable: number;
   sourceBreakdown: {
     personal: number;
@@ -112,6 +113,13 @@ export default function InventoryPage() {
           )}
         </div>
       ),
+    },
+    {
+      key: 'latestCartonPrice',
+      header: t.inventory.colCartonPrice,
+      sortable: true,
+      getValue: (r) => r.latestCartonPrice ? parseFloat(r.latestCartonPrice) : 0,
+      render: (r) => r.latestCartonPrice ? formatCurrency(r.latestCartonPrice) : <span style={{ color: 'var(--muted)' }}>—</span>,
     },
     {
       key: 'latestUnitCost',

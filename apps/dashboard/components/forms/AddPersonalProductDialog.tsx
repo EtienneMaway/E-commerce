@@ -1,44 +1,134 @@
 'use client';
 
-import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { inventoryApi } from '../../lib/api';
+import { useState, useMemo, useCallback } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { inventoryApi, currencyApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+
+type EntryCurrency = 'USD' | 'FC';
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-const EMPTY = { productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '', piecesPerCarton: '' };
+const EMPTY = {
+  productName: '',
+  numberOfCartons: '',
+  cartonPrice: '',
+  piecesPerCarton: '',
+  category: '',
+};
 
 export function AddPersonalProductDialog({ open, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
   const [form, setForm] = useState(EMPTY);
+  const [entryCurrency, setEntryCurrency] = useState<EntryCurrency>('USD');
+  const [markup, setMarkup] = useState(0);
+  const [taxEnabled, setTaxEnabled] = useState(false);
+  const [taxPercent, setTaxPercent] = useState(0);
+  const [transportEnabled, setTransportEnabled] = useState(false);
+  const [transportPercent, setTransportPercent] = useState(0);
   const [error, setError] = useState('');
 
+  // Fetch selling rate for FC conversion
+  const { data: rateData } = useQuery({
+    queryKey: QK.exchangeRate,
+    queryFn: currencyApi.getRate,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+  const sellingRate = rateData?.sellingRate ? parseFloat(rateData.sellingRate) : null;
+  const isFC = entryCurrency === 'FC';
+  const canUseFC = sellingRate !== null && sellingRate > 0;
+
+  const fmtPrice = useCallback(
+    (value: string) => {
+      const n = parseFloat(value);
+      if (isNaN(n)) return isFC ? '0fc' : '$0.00';
+      if (isFC) return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(n) + 'fc';
+      return '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+    },
+    [isFC],
+  );
+
+  const totalPercent = markup + (taxEnabled ? taxPercent : 0) + (transportEnabled ? transportPercent : 0);
+
+  const computed = useMemo(() => {
+    const cpRaw = parseFloat(form.cartonPrice);
+    const ppc = parseInt(form.piecesPerCarton, 10);
+    const cartons = parseInt(form.numberOfCartons, 10);
+
+    if (!cpRaw || cpRaw <= 0 || !ppc || ppc <= 0) return null;
+
+    // All display values stay in the entry currency
+    const unitCost = cpRaw / ppc;
+    const cartonSelling = cpRaw * (1 + totalPercent / 100);
+    const unitSelling = cartonSelling / ppc;
+    const totalPieces = cartons > 0 ? cartons * ppc : null;
+
+    return {
+      unitCost: unitCost.toFixed(2),
+      cartonSelling: cartonSelling.toFixed(2),
+      unitSelling: unitSelling.toFixed(2),
+      totalPieces,
+    };
+  }, [form.cartonPrice, form.piecesPerCarton, form.numberOfCartons, totalPercent]);
+
+  // Convert a value from entry currency to USD for the backend
+  const toUsd = useCallback(
+    (value: string): string => {
+      if (!isFC || !sellingRate) return value;
+      return (parseFloat(value) / sellingRate).toFixed(2);
+    },
+    [isFC, sellingRate],
+  );
+
+  const canSubmit =
+    form.productName.trim() &&
+    form.numberOfCartons &&
+    parseInt(form.numberOfCartons, 10) > 0 &&
+    computed?.unitCost &&
+    computed?.unitSelling &&
+    (!isFC || canUseFC);
+
   const mutation = useMutation({
-    mutationFn: () =>
-      inventoryApi.addPersonal({
+    mutationFn: () => {
+      const ppc = Number(form.piecesPerCarton);
+      const cartons = Number(form.numberOfCartons);
+      return inventoryApi.addPersonal({
         productName: form.productName.trim(),
-        unitCost: form.unitCost,
-        sellingPrice: form.sellingPrice,
-        quantity: Number(form.quantity),
+        unitCost: toUsd(computed!.unitCost),
+        sellingPrice: toUsd(computed!.unitSelling),
+        cartonPrice: toUsd(form.cartonPrice),
+        quantity: cartons * ppc,
+        piecesPerCarton: ppc,
         ...(form.category.trim() ? { category: form.category.trim() } : {}),
-        ...(form.piecesPerCarton ? { piecesPerCarton: Number(form.piecesPerCarton) } : {}),
-      }),
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: ['inventory'] });
-      setForm(EMPTY);
-      setError('');
+      resetForm();
       onClose();
     },
     onError: (err) => setError(getErrorMessage(err)),
   });
+
+  const resetForm = useCallback(() => {
+    setForm(EMPTY);
+    setEntryCurrency('USD');
+    setMarkup(0);
+    setTaxEnabled(false);
+    setTaxPercent(0);
+    setTransportEnabled(false);
+    setTransportPercent(0);
+    setError('');
+  }, []);
 
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -50,41 +140,138 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
       <div className="w-full max-w-md rounded-2xl p-6 shadow-xl overflow-y-auto" style={{ background: 'var(--card)', maxHeight: '90vh' }}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold" style={{ color: 'var(--foreground)' }}>{t.addProduct.title}</h2>
-          <button onClick={onClose} style={{ color: 'var(--muted)' }}>✕</button>
+          <button onClick={() => { resetForm(); onClose(); }} style={{ color: 'var(--muted)' }}>✕</button>
         </div>
 
         <div className="space-y-4">
+          {/* Currency toggle */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
+              {t.addProduct.enterIn}
+            </span>
+            <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
+              {(['USD', 'FC'] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => {
+                    if (c === 'FC' && !canUseFC) return;
+                    setEntryCurrency(c);
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold transition-colors"
+                  style={{
+                    background: entryCurrency === c ? (c === 'FC' ? 'var(--warning)' : 'var(--primary)') : 'var(--surface)',
+                    color: entryCurrency === c ? '#fff' : 'var(--foreground)',
+                    opacity: c === 'FC' && !canUseFC ? 0.4 : 1,
+                    cursor: c === 'FC' && !canUseFC ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {c === 'USD' ? '$ USD' : 'FC'}
+                </button>
+              ))}
+            </div>
+            {isFC && sellingRate && (
+              <span className="text-xs tabular-nums" style={{ color: 'var(--warning)' }}>
+                1$ = {new Intl.NumberFormat('en-US').format(sellingRate)}fc
+              </span>
+            )}
+          </div>
+
+          {!canUseFC && entryCurrency === 'USD' && !sellingRate && rateData && (
+            <p className="text-xs" style={{ color: 'var(--warning)' }}>{t.addProduct.noSellingRate}</p>
+          )}
+
+          {/* Product name */}
           <Field label={t.addProduct.productName}>
-            <input value={form.productName} onChange={set('productName')} placeholder={t.addProduct.productNamePlaceholder} className={inputCls} style={inputStyle} />
+            <input value={form.productName} onChange={set('productName')} placeholder={t.addProduct.productNamePlaceholder} className="input" />
           </Field>
+
+          {/* Number of cartons + Purchase price */}
           <div className="grid grid-cols-2 gap-4">
-            <Field label={t.addProduct.unitCost}>
-              <input value={form.unitCost} onChange={set('unitCost')} placeholder={t.addProduct.pricePlaceholder} type="number" min="0" step="0.01" className={inputCls} style={inputStyle} />
+            <Field label={t.addProduct.numberOfCartons}>
+              <input value={form.numberOfCartons} onChange={set('numberOfCartons')} placeholder={t.addProduct.cartonsPlaceholder} type="number" min="1" className="input" />
             </Field>
-            <Field label={t.addProduct.sellingPrice}>
-              <input value={form.sellingPrice} onChange={set('sellingPrice')} placeholder={t.addProduct.pricePlaceholder} type="number" min="0" step="0.01" className={inputCls} style={inputStyle} />
+            <Field label={t.addProduct.cartonPrice}>
+              <div className="relative">
+                <input
+                  value={form.cartonPrice}
+                  onChange={set('cartonPrice')}
+                  placeholder={t.addProduct.pricePlaceholder}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="input"
+                  style={{ paddingRight: '36px' }}
+                />
+                <span
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold"
+                  style={{ color: isFC ? 'var(--warning)' : 'var(--primary)' }}
+                >
+                  {isFC ? 'fc' : '$'}
+                </span>
+              </div>
             </Field>
           </div>
+
+          {/* Pieces per carton + Category */}
           <div className="grid grid-cols-2 gap-4">
-            <Field label={t.addProduct.quantity}>
-              <input value={form.quantity} onChange={set('quantity')} placeholder={t.addProduct.qtyPlaceholder} type="number" min="1" className={inputCls} style={inputStyle} />
+            <Field label={t.addProduct.piecesPerCarton}>
+              <input value={form.piecesPerCarton} onChange={set('piecesPerCarton')} placeholder={t.addProduct.piecesPerCartonPlaceholder} type="number" min="1" className="input" />
             </Field>
             <Field label={t.addProduct.category}>
-              <input value={form.category} onChange={set('category')} placeholder={t.addProduct.categoryPlaceholder} className={inputCls} style={inputStyle} />
+              <input value={form.category} onChange={set('category')} placeholder={t.addProduct.categoryPlaceholder} className="input" />
             </Field>
           </div>
-          <Field label={t.addProduct.piecesPerCarton}>
-            <input value={form.piecesPerCarton} onChange={set('piecesPerCarton')} placeholder={t.addProduct.piecesPerCartonPlaceholder} type="number" min="1" className={inputCls} style={inputStyle} />
-          </Field>
+
+          {/* Markup slider */}
+          <PercentSlider label={t.addProduct.markup} value={markup} onChange={setMarkup} />
+
+          {/* Tax toggle + slider */}
+          <ToggleSlider
+            label={t.addProduct.tax}
+            toggleLabel={t.addProduct.includeTax}
+            enabled={taxEnabled}
+            onToggle={setTaxEnabled}
+            value={taxPercent}
+            onChange={setTaxPercent}
+          />
+
+          {/* Transport toggle + slider */}
+          <ToggleSlider
+            label={t.addProduct.transport}
+            toggleLabel={t.addProduct.includeTransport}
+            enabled={transportEnabled}
+            onToggle={setTransportEnabled}
+            value={transportPercent}
+            onChange={setTransportPercent}
+          />
+
+          {/* Computed price breakdown */}
+          {computed && (
+            <div
+              className="rounded-xl p-3 space-y-1.5 border"
+              style={{
+                background: isFC ? 'var(--warning-light)' : 'var(--surface)',
+                borderColor: isFC ? 'rgba(var(--warning-rgb), 0.25)' : 'var(--border)',
+              }}
+            >
+              {computed.totalPieces && (
+                <ComputedRow label={t.addProduct.totalPieces} value={`${computed.totalPieces}`} />
+              )}
+              <ComputedRow label={t.addProduct.computedUnitCost} value={fmtPrice(computed.unitCost)} />
+              <ComputedRow label={t.addProduct.computedCartonSelling} value={fmtPrice(computed.cartonSelling)} />
+              <ComputedRow label={t.addProduct.computedUnitSelling} value={fmtPrice(computed.unitSelling)} highlight />
+            </div>
+          )}
         </div>
 
         {error && <p className="mt-3 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
 
         <div className="flex gap-2 mt-5">
-          <button onClick={onClose} className="btn btn-secondary flex-1">{t.common.cancel}</button>
+          <button onClick={() => { resetForm(); onClose(); }} className="btn btn-secondary flex-1">{t.common.cancel}</button>
           <button
             onClick={() => mutation.mutate()}
-            disabled={mutation.isPending || !form.productName || !form.unitCost || !form.sellingPrice || !form.quantity}
+            disabled={mutation.isPending || !canSubmit}
             className="btn btn-primary flex-1"
           >
             {mutation.isPending ? t.addProduct.submitting : t.addProduct.submit}
@@ -95,6 +282,71 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
   );
 }
 
+/* ─── Percent slider ──────────────────────────────────────────────────────── */
+
+function PercentSlider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>{label}</span>
+        <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--primary)' }}>{value}%</span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="percent-slider"
+      />
+    </div>
+  );
+}
+
+/* ─── Toggle + slider combo ───────────────────────────────────────────────── */
+
+interface ToggleSliderProps {
+  label: string;
+  toggleLabel: string;
+  enabled: boolean;
+  onToggle: (v: boolean) => void;
+  value: number;
+  onChange: (v: number) => void;
+}
+
+function ToggleSlider({ label, toggleLabel, enabled, onToggle, value, onChange }: ToggleSliderProps) {
+  return (
+    <div
+      className="rounded-xl p-3 border transition-colors"
+      style={{
+        borderColor: enabled ? 'var(--primary)' : 'var(--border)',
+        background: enabled ? 'rgba(var(--primary-rgb), 0.04)' : 'transparent',
+      }}
+    >
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={() => onToggle(!enabled)}
+          className="toggle-switch"
+          data-on={enabled || undefined}
+        >
+          <span className="toggle-thumb" />
+        </button>
+        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>{toggleLabel}</span>
+      </label>
+      {enabled && (
+        <div className="mt-3">
+          <PercentSlider label={label} value={value} onChange={onChange} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Helpers ──────────────────────────────────────────────────────────────── */
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -104,5 +356,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputCls = 'input';
-const inputStyle = {};
+function ComputedRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className="flex justify-between text-sm">
+      <span style={{ color: 'var(--muted)' }}>{label}</span>
+      <span style={{ color: highlight ? 'var(--foreground)' : 'var(--muted)', fontWeight: highlight ? 600 : 400 }}>{value}</span>
+    </div>
+  );
+}

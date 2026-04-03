@@ -33,6 +33,11 @@ export class AddPersonalDto {
   @IsOptional()
   category?: string;
 
+  @ApiPropertyOptional({ example: '240.00', description: 'Purchase price for one full carton' })
+  @IsDecimal({ decimal_digits: '1,2' })
+  @IsOptional()
+  cartonPrice?: string;
+
   @ApiPropertyOptional({ example: 20, description: 'How many pieces make one carton' })
   @IsInt()
   @IsPositive()

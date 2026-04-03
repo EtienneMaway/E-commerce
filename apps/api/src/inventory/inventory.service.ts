@@ -19,6 +19,7 @@ export interface ProductSummary {
   productName: string;
   category: string | null;
   piecesPerCarton: number | null;
+  latestCartonPrice: string | null;
   totalAvailable: number;
   sourceBreakdown: {
     personal: number;
@@ -90,6 +91,7 @@ export class InventoryService {
       const consignedOutQty = consignedOut.reduce((s, e) => s + e.quantityRemaining, 0);
 
       const piecesPerCarton = productEntries.find((e) => e.piecesPerCarton !== null)?.piecesPerCarton ?? null;
+      const latestCartonPrice = productEntries.find((e) => e.cartonPrice !== null)?.cartonPrice ?? null;
       const category = productEntries.find((e) => e.category !== null)?.category ?? null;
 
       const sellable = [...personal, ...supplier, ...consignedIn];
@@ -100,6 +102,7 @@ export class InventoryService {
         productName,
         category,
         piecesPerCarton,
+        latestCartonPrice,
         totalAvailable: personalQty + supplierQty + consignedInQty,
         sourceBreakdown: {
           personal: personalQty,
@@ -127,6 +130,7 @@ export class InventoryService {
       existing.quantityRemaining += dto.quantity;
       existing.unitCost = dto.unitCost;
       existing.sellingPrice = dto.sellingPrice;
+      if (dto.cartonPrice !== undefined) existing.cartonPrice = dto.cartonPrice;
       if (dto.piecesPerCarton !== undefined) existing.piecesPerCarton = dto.piecesPerCarton;
       return this.entryRepo.save(existing);
     }
@@ -140,6 +144,7 @@ export class InventoryService {
       category: dto.category ?? null,
       quantityOriginal: dto.quantity,
       quantityRemaining: dto.quantity,
+      cartonPrice: dto.cartonPrice ?? null,
       piecesPerCarton: dto.piecesPerCarton ?? null,
     });
     return this.entryRepo.save(entry);
@@ -177,6 +182,7 @@ export class InventoryService {
         existing.quantityRemaining += dto.quantity;
         existing.unitCost = dto.unitCost;
         existing.sellingPrice = dto.sellingPrice;
+        if (dto.cartonPrice !== undefined) existing.cartonPrice = dto.cartonPrice;
         if (dto.piecesPerCarton !== undefined) existing.piecesPerCarton = dto.piecesPerCarton;
         savedEntry = await manager.save(InventoryEntry, existing);
       } else {
@@ -191,6 +197,7 @@ export class InventoryService {
           quantityOriginal: dto.quantity,
           quantityRemaining: dto.quantity,
           supplierUserId: dto.supplierUserId,
+          cartonPrice: dto.cartonPrice ?? null,
           piecesPerCarton: dto.piecesPerCarton ?? null,
         });
         savedEntry = await manager.save(InventoryEntry, entry);
@@ -284,7 +291,7 @@ export class InventoryService {
       // Determine unitCost from the stock that was deducted (use first matching entry's cost)
       const sourceCost = sorted[0]?.unitCost ?? dto.agreedUnitPrice;
 
-      // Create consigned-out entry (inherit piecesPerCarton from source stock)
+      // Create consigned-out entry (inherit cartonPrice and piecesPerCarton from source stock)
       const consignedEntry = manager.create(InventoryEntry, {
         ownerId,
         source: InventorySource.CONSIGNED_OUT,
@@ -295,6 +302,7 @@ export class InventoryService {
         quantityOriginal: dto.quantity,
         quantityRemaining: dto.quantity,
         debtorUserId: dto.debtorUserId,
+        cartonPrice: sorted[0]?.cartonPrice ?? null,
         piecesPerCarton: sorted[0]?.piecesPerCarton ?? null,
       });
       const savedEntry = await manager.save(InventoryEntry, consignedEntry);

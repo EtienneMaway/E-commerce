@@ -26,6 +26,8 @@ export interface DashboardSummary {
   totalOwedToMe: string;
   netPosition: string;
   totalProfitAllTime: string;
+  totalPurchaseValue: string;
+  totalSellingValue: string;
 }
 
 export interface SupplierListItem {
@@ -197,12 +199,13 @@ export class DashboardService {
   }
 
   async getSummary(ownerId: string): Promise<DashboardSummary> {
-    const [supplierDebts, debtorCredits, sales, { total: consignmentProfit }, externalContacts] = await Promise.all([
+    const [supplierDebts, debtorCredits, sales, { total: consignmentProfit }, externalContacts, inventoryEntries] = await Promise.all([
       this.supplierDebtRepo.find({ where: { ownerId } }),
       this.debtorCreditRepo.find({ where: { ownerId } }),
       this.saleRepo.find({ where: { ownerId } }),
       this.computeConsignmentProfits(ownerId),
       this.externalContactRepo.find({ where: { ownerId } }),
+      this.entryRepo.find({ where: { ownerId } }),
     ]);
 
     // App-user balances
@@ -235,6 +238,15 @@ export class DashboardService {
     const extProfit = new Decimal(externalProfit?.total ?? 0);
     const totalProfitAllTime = directSalesProfit.plus(consignmentProfit).plus(extProfit).toFixed(2);
 
+    // Inventory value totals (only entries with remaining stock, excluding CONSIGNED_OUT)
+    let totalPurchaseValue = new Decimal(0);
+    let totalSellingValue = new Decimal(0);
+    for (const entry of inventoryEntries) {
+      if (entry.source === InventorySource.CONSIGNED_OUT || entry.quantityRemaining <= 0) continue;
+      totalPurchaseValue = totalPurchaseValue.plus(new Decimal(entry.unitCost).mul(entry.quantityRemaining));
+      totalSellingValue = totalSellingValue.plus(new Decimal(entry.sellingPrice).mul(entry.quantityRemaining));
+    }
+
     const iOweFixed = totalIOwe.toFixed(2);
     const owedFixed = totalOwedToMe.toFixed(2);
 
@@ -243,6 +255,8 @@ export class DashboardService {
       totalOwedToMe: owedFixed,
       netPosition: new Decimal(owedFixed).minus(iOweFixed).toFixed(2),
       totalProfitAllTime,
+      totalPurchaseValue: totalPurchaseValue.toFixed(2),
+      totalSellingValue: totalSellingValue.toFixed(2),
     };
   }
 

@@ -25,13 +25,24 @@ export class CurrencyService {
 
     const [existing] = await this.rateRepo.find({ take: 1 });
 
+    if (dto.sellingRate !== undefined) {
+      const selling = new Decimal(dto.sellingRate);
+      if (selling.lte(0)) {
+        throw new BadRequestException('Selling rate must be greater than zero');
+      }
+    }
+
     if (existing) {
       existing.usdToFcRate = rate.toFixed(4);
+      if (dto.sellingRate !== undefined) {
+        existing.sellingRate = new Decimal(dto.sellingRate).toFixed(4);
+      }
       return this.rateRepo.save(existing);
     }
 
     const record = this.rateRepo.create({
       usdToFcRate: rate.toFixed(4),
+      sellingRate: dto.sellingRate ? new Decimal(dto.sellingRate).toFixed(4) : null,
     });
     return this.rateRepo.save(record);
   }

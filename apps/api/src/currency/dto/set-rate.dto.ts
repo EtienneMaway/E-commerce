@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsDecimal } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsDecimal, IsOptional } from 'class-validator';
 
 export class SetRateDto {
   @ApiProperty({
@@ -8,4 +8,12 @@ export class SetRateDto {
   })
   @IsDecimal({ decimal_digits: '0,4', force_decimal: false })
   usdToFcRate: string;
+
+  @ApiPropertyOptional({
+    example: '2750.0000',
+    description: 'Selling rate for personal product entry in FC. If omitted, not updated.',
+  })
+  @IsDecimal({ decimal_digits: '0,4', force_decimal: false })
+  @IsOptional()
+  sellingRate?: string;
 }

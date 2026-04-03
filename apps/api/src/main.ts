@@ -7,6 +7,8 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { winstonConfig } from './common/logger/winston.config';
 
+  const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || [];
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
     logger: WinstonModule.createLogger(winstonConfig),
@@ -15,18 +17,35 @@ async function bootstrap(): Promise<void> {
   // Global prefix for all routes
   app.setGlobalPrefix('api');
 
-  // Enable CORS for dashboard and mobile dev
-  app.enableCors({
-    origin: [
-      'http://localhost:3001', // Next.js dashboard
-      'http://localhost:8081', // Expo dev server
-      'https://e-commerce-dasboard-rbsysmbzs-etienne-maways-projects.vercel.app',
-      /^exp:\/\//,             // Expo Go
-      /^http:\/\/192\.168\./,  // Android emulator / physical device on LAN
-      /^http:\/\/10\./,        // Android emulator via 10.0.2.2
-    ],
-    credentials: true,
-  });
+app.enableCors({
+  origin: (origin: string, callback: (arg0: Error | null, arg1: boolean) => any) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    // Allow local network / Expo patterns in development
+    if (process.env.NODE_ENV !== 'production') {
+      const devPatterns = [
+        /^exp:\/\//,
+        /^http:\/\/192\.168\./,
+        /^http:\/\/10\./,
+      ];
+
+      if (devPatterns.some((regex) => regex.test(origin))) {
+        return callback(null, true);
+      }
+    }
+
+    return callback(new Error(`Not allowed by CORS: ${origin}`), false);
+  },
+
+  credentials: true,
+});
 
   // Global exception filters (applied in reverse: AllExceptions catches first, then HttpException)
   app.useGlobalFilters(new AllExceptionsFilter(), new HttpExceptionFilter());
