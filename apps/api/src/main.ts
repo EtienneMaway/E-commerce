@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -7,8 +8,6 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { winstonConfig } from './common/logger/winston.config';
 
-  const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || [];
-
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
     logger: WinstonModule.createLogger(winstonConfig),
@@ -17,35 +16,47 @@ async function bootstrap(): Promise<void> {
   // Global prefix for all routes
   app.setGlobalPrefix('api');
 
-app.enableCors({
-  origin: (origin: string, callback: (arg0: Error | null, arg1: boolean) => any) => {
-    // Allow requests with no origin (mobile apps, curl, Postman)
-    if (!origin) {
-      return callback(null, true);
-    }
+  const allowedOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
+    : [];
 
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    // Allow local network / Expo patterns in development
-    if (process.env.NODE_ENV !== 'production') {
-      const devPatterns = [
-        /^exp:\/\//,
-        /^http:\/\/192\.168\./,
-        /^http:\/\/10\./,
-      ];
-
-      if (devPatterns.some((regex) => regex.test(origin))) {
+  app.enableCors({
+    origin: (origin: string, callback: (arg0: Error | null, arg1: boolean) => any) => {
+      // Allow requests with no origin (mobile apps, curl, Postman)
+      if (!origin) {
         return callback(null, true);
       }
-    }
 
-    return callback(new Error(`Not allowed by CORS: ${origin}`), false);
-  },
+      if (allowedOrigins.length > 0 && allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
 
-  credentials: true,
-});
+      // Allow local network / Expo patterns in development
+      if (process.env.NODE_ENV !== 'production') {
+        const devPatterns = [
+          /^exp:\/\//,
+          /^http:\/\/192\.168\./,
+          /^http:\/\/10\./,
+          /^http:\/\/localhost/,
+        ];
+
+        if (devPatterns.some((regex) => regex.test(origin))) {
+          return callback(null, true);
+        }
+      }
+
+      // Fallback: if no CORS_ORIGINS configured at all, warn and allow
+      // (prevents total lockout from misconfiguration)
+      if (allowedOrigins.length === 0) {
+        console.warn(`CORS: No CORS_ORIGINS configured — allowing origin "${origin}". Set CORS_ORIGINS in production.`);
+        return callback(null, true);
+      }
+
+      return callback(new Error(`Not allowed by CORS: ${origin}`), false);
+    },
+
+    credentials: true,
+  });
 
   // Global exception filters (applied in reverse: AllExceptions catches first, then HttpException)
   app.useGlobalFilters(new AllExceptionsFilter(), new HttpExceptionFilter());
