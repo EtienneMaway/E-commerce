@@ -87,7 +87,20 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const { theme, toggle } = useThemeStore();
   const t = useT();
   const [hydrated, setHydrated] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Track screen size to differentiate mobile/desktop behavior
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+      setIsMobile(e.matches);
+      if (e.matches) setSidebarOpen(false); // default closed on mobile
+    };
+    handler(mq);
+    mq.addEventListener('change', handler as (e: MediaQueryListEvent) => void);
+    return () => mq.removeEventListener('change', handler as (e: MediaQueryListEvent) => void);
+  }, []);
 
   const NAV = [
     { href: '/dashboard', label: t.nav.dashboard, icon: NAV_ICONS[0] },
@@ -111,17 +124,17 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     authApi.me().catch(() => { logout(); router.replace('/login'); });
   }, [hydrated, token, router, logout]);
 
-  // Close sidebar on route change (mobile navigation)
-  useEffect(() => { setSidebarOpen(false); }, [pathname]);
+  // Close sidebar on route change (mobile only)
+  useEffect(() => { if (isMobile) setSidebarOpen(false); }, [pathname, isMobile]);
 
   if (!hydrated) return null;
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--background)' }}>
 
-      {/* ─── Mobile top bar ───────────────────────────────────────────── */}
+      {/* ─── Top bar (mobile always, desktop when sidebar closed) ──── */}
       <div
-        className="md:hidden fixed top-0 inset-x-0 z-40 flex items-center gap-3 px-4 h-14"
+        className={`fixed top-0 inset-x-0 z-40 flex items-center gap-3 px-4 h-14 ${sidebarOpen && !isMobile ? 'hidden' : ''}`}
         style={{ background: 'var(--sidebar)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
       >
         <button
@@ -149,10 +162,10 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         </div>
       </div>
 
-      {/* ─── Sidebar overlay (mobile) ─────────────────────────────────── */}
-      {sidebarOpen && (
+      {/* ─── Sidebar overlay (mobile only) ──────────────────────────── */}
+      {sidebarOpen && isMobile && (
         <div
-          className="md:hidden fixed inset-0 z-40"
+          className="fixed inset-0 z-40"
           style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)' }}
           onClick={() => setSidebarOpen(false)}
         />
@@ -160,7 +173,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
       {/* ─── Sidebar ─────────────────────────────────────────────────────── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col md:relative md:w-60 md:translate-x-0 md:flex-shrink-0 transition-transform duration-300 ease-in-out${sidebarOpen ? ' translate-x-0' : ' -translate-x-full'}`}
+        className={`${isMobile ? 'fixed inset-y-0 left-0 z-50' : 'relative flex-shrink-0'} flex flex-col transition-all duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${!isMobile && !sidebarOpen ? 'hidden' : ''}`}
         style={{
           width: '240px',
           background: 'var(--sidebar)',
@@ -175,11 +188,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           }}
         />
 
-        {/* Mobile close button */}
+        {/* Close / collapse button */}
         <button
           onClick={() => setSidebarOpen(false)}
-          className="md:hidden absolute top-4 right-4 p-1.5 rounded-lg z-10"
+          className="absolute top-4 right-4 p-1.5 rounded-lg z-10 transition-colors duration-200"
           style={{ color: 'rgba(255,255,255,0.5)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.9)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.1)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.5)'; (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
           aria-label="Close menu"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -300,8 +315,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       </aside>
 
       {/* ─── Main content ─────────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-auto pt-14 md:pt-0" style={{ background: 'var(--background)' }}>
-        {children}
+      <main
+        className={`flex-1 overflow-auto ${isMobile || !sidebarOpen ? 'pt-14' : 'pt-0'}`}
+        style={{ background: 'var(--background)' }}
+      >
+        <div className={!isMobile && !sidebarOpen ? 'max-w-7xl mx-auto' : ''}>
+          {children}
+        </div>
       </main>
     </div>
   );

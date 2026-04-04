@@ -26,7 +26,10 @@ interface ProductSummary {
 interface ItemRow {
   productName: string;
   quantity: string;
+  extraPieces: string;
+  showExtraPieces: boolean;
   agreedUnitPrice: string;
+  cartonPrice: string;
   priceMode: 'manual' | 'pct';
   unitCost: string;
   markupPct: number;
@@ -41,12 +44,22 @@ interface Props {
 const EMPTY_ITEM: ItemRow = {
   productName: '',
   quantity: '',
+  extraPieces: '',
+  showExtraPieces: false,
   agreedUnitPrice: '',
+  cartonPrice: '',
   priceMode: 'manual',
   unitCost: '',
   markupPct: 25,
   piecesPerCarton: null,
 };
+
+/** Compute total pieces from cartons + optional extra loose pieces */
+function getTotalPieces(cartonQty: number, ppc: number | null, extraPieces: string): number {
+  const extra = parseInt(extraPieces, 10) || 0;
+  if (ppc && !isNaN(cartonQty)) return cartonQty * ppc + extra;
+  return cartonQty;
+}
 
 export function SendConsignmentDialog({ open, onClose }: Props) {
   const t = useT();
@@ -70,6 +83,11 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
       p.productName.includes(query.toLowerCase().trim())
     ) ?? [];
 
+  const deriveCartonPrice = (unitPrice: string, ppc: number | null): string => {
+    const up = parseFloat(unitPrice);
+    return !isNaN(up) && up > 0 && ppc ? (up * ppc).toFixed(2) : '';
+  };
+
   const selectProduct = (i: number, p: ProductSummary) => {
     setItems((prev) =>
       prev.map((row, idx) => {
@@ -79,7 +97,9 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
           row.priceMode === 'pct' && parseFloat(unitCost) > 0
             ? (parseFloat(unitCost) * (1 + row.markupPct / 100)).toFixed(2)
             : p.latestSellingPrice;
-        return { ...row, productName: p.productName, unitCost, agreedUnitPrice, piecesPerCarton: p.piecesPerCarton };
+        const ppc = p.piecesPerCarton;
+        const cartonPrice = deriveCartonPrice(agreedUnitPrice, ppc);
+        return { ...row, productName: p.productName, unitCost, agreedUnitPrice, cartonPrice, piecesPerCarton: ppc };
       })
     );
     setFocusedItemIndex(null);
@@ -91,10 +111,36 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
     );
   };
 
-  const setStringField =
-    (i: number, k: keyof Pick<ItemRow, 'quantity' | 'agreedUnitPrice'>) =>
-    (e: React.ChangeEvent<HTMLInputElement>) =>
-      setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, [k]: e.target.value } : row)));
+  const setQuantity = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, quantity: e.target.value } : row)));
+
+  const setExtraPieces = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, extraPieces: e.target.value } : row)));
+
+  const toggleExtraPieces = (i: number) =>
+    setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, showExtraPieces: !row.showExtraPieces, extraPieces: row.showExtraPieces ? '' : row.extraPieces } : row)));
+
+  const handleUnitPriceChange = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setItems((prev) =>
+      prev.map((row, idx) => {
+        if (idx !== i) return row;
+        return { ...row, agreedUnitPrice: value, cartonPrice: deriveCartonPrice(value, row.piecesPerCarton) };
+      })
+    );
+  };
+
+  const handleCartonPriceChange = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setItems((prev) =>
+      prev.map((row, idx) => {
+        if (idx !== i || !row.piecesPerCarton) return row;
+        const cp = parseFloat(value);
+        const agreedUnitPrice = !isNaN(cp) ? (cp / row.piecesPerCarton).toFixed(2) : row.agreedUnitPrice;
+        return { ...row, cartonPrice: value, agreedUnitPrice };
+      })
+    );
+  };
 
   const handleUnitCostChange = (i: number, value: string) => {
     setItems((prev) =>
@@ -105,7 +151,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
           row.priceMode === 'pct' && !isNaN(cost) && cost > 0
             ? (cost * (1 + row.markupPct / 100)).toFixed(2)
             : row.agreedUnitPrice;
-        return { ...row, unitCost: value, agreedUnitPrice };
+        return { ...row, unitCost: value, agreedUnitPrice, cartonPrice: deriveCartonPrice(agreedUnitPrice, row.piecesPerCarton) };
       })
     );
   };
@@ -119,7 +165,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
           mode === 'pct' && !isNaN(cost) && cost > 0
             ? (cost * (1 + row.markupPct / 100)).toFixed(2)
             : row.agreedUnitPrice;
-        return { ...row, priceMode: mode, agreedUnitPrice };
+        return { ...row, priceMode: mode, agreedUnitPrice, cartonPrice: deriveCartonPrice(agreedUnitPrice, row.piecesPerCarton) };
       })
     );
 
@@ -132,7 +178,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
           !isNaN(cost) && cost > 0
             ? (cost * (1 + pct / 100)).toFixed(2)
             : row.agreedUnitPrice;
-        return { ...row, markupPct: pct, agreedUnitPrice };
+        return { ...row, markupPct: pct, agreedUnitPrice, cartonPrice: deriveCartonPrice(agreedUnitPrice, row.piecesPerCarton) };
       })
     );
 
@@ -146,15 +192,11 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
       consignmentsApi.create({
         debtorUserId: debtor!.id,
         ...(note.trim() ? { note: note.trim() } : {}),
-        items: items.map((it) => {
-          const cartonQty = Number(it.quantity);
-          const totalPieces = it.piecesPerCarton ? cartonQty * it.piecesPerCarton : cartonQty;
-          return {
-            productName: it.productName.trim(),
-            quantity: totalPieces,
-            agreedUnitPrice: it.agreedUnitPrice,
-          };
-        }),
+        items: items.map((it) => ({
+          productName: it.productName.trim(),
+          quantity: getTotalPieces(Number(it.quantity), it.piecesPerCarton, it.extraPieces),
+          agreedUnitPrice: it.agreedUnitPrice,
+        })),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.consignmentsOutgoing });
@@ -167,16 +209,31 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
     onError: (err) => setError(getErrorMessage(err)),
   });
 
+  const isBelowCost = (it: ItemRow): boolean => {
+    const cost = parseFloat(it.unitCost);
+    const sell = parseFloat(it.agreedUnitPrice);
+    return !isNaN(cost) && cost > 0 && !isNaN(sell) && sell > 0 && sell <= cost;
+  };
+
+  const hasBelowCost = items.some(isBelowCost);
+
+  const hasInvalidExtraPieces = items.some((it) => {
+    const extra = parseInt(it.extraPieces, 10) || 0;
+    return it.piecesPerCarton && extra >= it.piecesPerCarton;
+  });
+
   const canSubmit =
     debtor &&
     items.length > 0 &&
-    items.every(
-      (it) =>
-        it.productName.trim() &&
-        it.quantity &&
+    !hasBelowCost &&
+    !hasInvalidExtraPieces &&
+    items.every((it) => {
+      const totalPcs = getTotalPieces(parseInt(it.quantity, 10), it.piecesPerCarton, it.extraPieces);
+      return it.productName.trim() &&
+        totalPcs > 0 &&
         it.agreedUnitPrice &&
-        parseFloat(it.agreedUnitPrice) > 0
-    );
+        parseFloat(it.agreedUnitPrice) > 0;
+    });
 
   if (!open) return null;
 
@@ -214,7 +271,9 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                 const showDrop = focusedItemIndex === i && item.productName.trim().length > 0 && suggestions.length > 0;
                 const ppc = item.piecesPerCarton;
                 const cartonQty = parseInt(item.quantity, 10);
-                const totalPieces = ppc && !isNaN(cartonQty) ? cartonQty * ppc : cartonQty;
+                const extraPcs = parseInt(item.extraPieces, 10) || 0;
+                const totalPieces = getTotalPieces(cartonQty, ppc, item.extraPieces);
+                const extraPiecesInvalid = ppc && extraPcs >= ppc;
                 const matchedProduct = (products as ProductSummary[] | undefined)?.find((p) => p.productName === item.productName);
                 const stockInCartons = matchedProduct && ppc ? Math.floor(matchedProduct.totalAvailable / ppc) : null;
                 return (
@@ -276,16 +335,46 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                       <div style={{ flex: 1 }}>
                         <input
                           value={item.quantity}
-                          onChange={setStringField(i, 'quantity')}
+                          onChange={setQuantity(i)}
                           placeholder={ppc ? 'Cartons' : t.sendConsignment.qtyPlaceholder}
                           type="number"
-                          min="1"
+                          min={ppc && item.showExtraPieces ? '0' : '1'}
                           className="input w-full"
                         />
-                        {ppc && !isNaN(cartonQty) && cartonQty > 0 && (
-                          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-                            = {totalPieces} pcs
-                          </p>
+                        {ppc && (
+                          <div className="mt-0.5">
+                            {!item.showExtraPieces ? (
+                              <button type="button" onClick={() => toggleExtraPieces(i)} className="text-xs" style={{ color: 'var(--primary)' }}>
+                                + loose pieces
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs" style={{ color: 'var(--muted)' }}>+</span>
+                                <input
+                                  value={item.extraPieces}
+                                  onChange={setExtraPieces(i)}
+                                  placeholder="pcs"
+                                  type="number"
+                                  min="0"
+                                  max={ppc - 1}
+                                  className="input w-16 text-xs"
+                                  style={{ padding: '2px 6px' }}
+                                />
+                                <span className="text-xs" style={{ color: 'var(--muted)' }}>pcs</span>
+                                <button type="button" onClick={() => toggleExtraPieces(i)} className="text-xs ml-1" style={{ color: 'var(--danger)' }}>✕</button>
+                              </div>
+                            )}
+                            {extraPiecesInvalid && (
+                              <p className="text-xs mt-0.5" style={{ color: 'var(--danger)' }}>
+                                Max {ppc - 1} loose pcs (a full carton is {ppc})
+                              </p>
+                            )}
+                            {!isNaN(totalPieces) && totalPieces > 0 && (
+                              <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                                = {totalPieces} pcs total
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
                       {items.length > 1 && (
@@ -340,15 +429,36 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
 
                     {/* Manual mode */}
                     {item.priceMode === 'manual' && (
-                      <input
-                        value={item.agreedUnitPrice}
-                        onChange={setStringField(i, 'agreedUnitPrice')}
-                        placeholder={t.sendConsignment.pricePlaceholder}
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="input w-full"
-                      />
+                      <div className="space-y-2">
+                        {ppc && (
+                          <div>
+                            <label className="block text-xs mb-1" style={{ color: 'var(--muted)' }}>
+                              Carton price ({ppc} pcs)
+                            </label>
+                            <input
+                              value={item.cartonPrice}
+                              onChange={handleCartonPriceChange(i)}
+                              placeholder="Carton price"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="input w-full"
+                            />
+                          </div>
+                        )}
+                        <div>
+                          {ppc && <label className="block text-xs mb-1" style={{ color: 'var(--muted)' }}>Unit price per piece</label>}
+                          <input
+                            value={item.agreedUnitPrice}
+                            onChange={handleUnitPriceChange(i)}
+                            placeholder={t.sendConsignment.pricePlaceholder}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="input w-full"
+                          />
+                        </div>
+                      </div>
                     )}
 
                     {/* Pct markup mode */}
@@ -371,7 +481,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                           <input
                             type="range"
                             min="0"
-                            max="100"
+                            max="300"
                             step="1"
                             value={item.markupPct}
                             onChange={(e) => handleMarkupChange(i, parseInt(e.target.value, 10))}
@@ -380,16 +490,32 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                           />
                           <div className="flex justify-between text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
                             <span>0%</span>
-                            <span>100%</span>
+                            <span>300%</span>
                           </div>
                         </div>
+                        {ppc && (
+                          <div>
+                            <label className="block text-xs mb-1" style={{ color: 'var(--muted)' }}>
+                              Carton price ({ppc} pcs)
+                            </label>
+                            <input
+                              value={item.cartonPrice}
+                              onChange={handleCartonPriceChange(i)}
+                              placeholder="Carton price"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="input w-full"
+                            />
+                          </div>
+                        )}
                         <div>
                           <label className="block text-xs mb-1" style={{ color: 'var(--muted)' }}>
-                            {t.sendConsignment.sellingPrice}
+                            {ppc ? `${t.sendConsignment.sellingPrice} (per piece)` : t.sendConsignment.sellingPrice}
                           </label>
                           <input
                             value={item.agreedUnitPrice}
-                            onChange={setStringField(i, 'agreedUnitPrice')}
+                            onChange={handleUnitPriceChange(i)}
                             placeholder={t.sendConsignment.pricePlaceholder}
                             type="number"
                             min="0"
@@ -397,6 +523,13 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                             className="input w-full"
                           />
                         </div>
+                      </div>
+                    )}
+
+                    {/* Below-cost warning */}
+                    {isBelowCost(item) && (
+                      <div className="rounded-lg px-3 py-2 mt-2 text-xs font-medium" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)' }}>
+                        Selling price ({formatCurrency(item.agreedUnitPrice)}/pc) is at or below cost ({formatCurrency(item.unitCost)}/pc). You will make a loss on this item.
                       </div>
                     )}
 
@@ -413,13 +546,16 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                             <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{formatCurrency((parseFloat(item.agreedUnitPrice) * ppc).toFixed(2))}</span>
                           </div>
                         )}
-                        {!isNaN(cartonQty) && cartonQty > 0 && (
+                        {!isNaN(totalPieces) && totalPieces > 0 && (
                           <div className="flex justify-between mt-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
                             <span style={{ color: 'var(--muted)' }}>
-                              Total ({ppc ? <>{cartonQty} carton{cartonQty > 1 ? 's' : ''} · {totalPieces} pcs</> : <>{cartonQty} pcs</>})
+                              Total ({ppc
+                                ? <>{cartonQty > 0 ? `${cartonQty} carton${cartonQty > 1 ? 's' : ''}` : ''}{extraPcs > 0 ? `${cartonQty > 0 ? ' + ' : ''}${extraPcs} pcs` : ''} · {totalPieces} pcs</>
+                                : <>{totalPieces} pcs</>
+                              })
                             </span>
-                            <span className="font-bold" style={{ color: 'var(--success)' }}>
-                              {formatCurrency((parseFloat(item.agreedUnitPrice) * (ppc ? totalPieces : cartonQty)).toFixed(2))}
+                            <span className="font-bold" style={{ color: isBelowCost(item) ? 'var(--danger)' : 'var(--success)' }}>
+                              {formatCurrency((parseFloat(item.agreedUnitPrice) * totalPieces).toFixed(2))}
                             </span>
                           </div>
                         )}
@@ -439,9 +575,11 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
             {items.map((it, i) => {
               const q = parseInt(it.quantity, 10);
               const price = parseFloat(it.agreedUnitPrice);
-              if (isNaN(q) || q <= 0 || isNaN(price) || price <= 0) return null;
+              if (isNaN(price) || price <= 0) return null;
               const ppc = it.piecesPerCarton;
-              const pieces = ppc ? q * ppc : q;
+              const pieces = getTotalPieces(q, ppc, it.extraPieces);
+              if (isNaN(pieces) || pieces <= 0) return null;
+              const extra = parseInt(it.extraPieces, 10) || 0;
               const lineTotal = price * pieces;
               return (
                 <div key={i} className="flex justify-between text-xs py-0.5">
@@ -449,7 +587,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                     <span className="capitalize">{it.productName}</span>
                     {' '}
                     <span style={{ color: 'var(--muted)' }}>
-                      {ppc ? <>{q} carton{q > 1 ? 's' : ''} ({pieces} pcs)</> : <>{q} pcs</>}
+                      {ppc ? <>{q > 0 ? `${q} carton${q > 1 ? 's' : ''}` : ''}{extra > 0 ? `${q > 0 ? ' + ' : ''}${extra} pcs` : ''} ({pieces} pcs)</> : <>{pieces} pcs</>}
                     </span>
                   </span>
                   <span className="font-medium" style={{ color: 'var(--foreground)' }}>{formatCurrency(lineTotal.toFixed(2))}</span>
@@ -462,12 +600,8 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                 <span className="font-normal text-xs ml-1" style={{ color: 'var(--muted)' }}>
                   ({items.reduce((s, it) => {
                     const q = parseInt(it.quantity, 10);
-                    if (isNaN(q) || q <= 0) return s;
-                    return s + (it.piecesPerCarton ? q * it.piecesPerCarton : q);
-                  }, 0)} pcs
-                  {items.some((it) => it.piecesPerCarton && parseInt(it.quantity, 10) > 0) && (
-                    <> / {items.reduce((s, it) => { const q = parseInt(it.quantity, 10); return isNaN(q) || q <= 0 ? s : s + q; }, 0)} cartons</>
-                  )})
+                    return s + getTotalPieces(q, it.piecesPerCarton, it.extraPieces);
+                  }, 0)} pcs)
                 </span>
               </span>
               <span style={{ color: 'var(--success)' }}>
@@ -475,8 +609,8 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                   items.reduce((s, it) => {
                     const q = parseInt(it.quantity, 10);
                     const price = parseFloat(it.agreedUnitPrice);
-                    if (isNaN(q) || q <= 0 || isNaN(price) || price <= 0) return s;
-                    const pieces = it.piecesPerCarton ? q * it.piecesPerCarton : q;
+                    const pieces = getTotalPieces(q, it.piecesPerCarton, it.extraPieces);
+                    if (isNaN(pieces) || pieces <= 0 || isNaN(price) || price <= 0) return s;
                     return s + price * pieces;
                   }, 0).toFixed(2)
                 )}

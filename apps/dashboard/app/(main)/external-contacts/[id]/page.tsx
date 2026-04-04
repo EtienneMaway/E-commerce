@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useRef, useEffect } from 'react';
+import { use, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -65,14 +65,42 @@ interface ProductSummary {
   totalAvailable: number;
 }
 
+interface ProductOutItem {
+  productName: string;
+  quantity: string;
+  extraPieces: string;
+  showExtraPieces: boolean;
+  unitPrice: string;
+  cartonPrice: string;
+  unitCost: string;
+  piecesPerCarton: number | null;
+  selectedStock: number | null;
+}
+
+const EMPTY_PO_ITEM: ProductOutItem = {
+  productName: '',
+  quantity: '',
+  extraPieces: '',
+  showExtraPieces: false,
+  unitPrice: '',
+  cartonPrice: '',
+  unitCost: '',
+  piecesPerCarton: null,
+  selectedStock: null,
+};
+
+function getPoTotalPieces(cartonQty: number, ppc: number | null, extraPieces: string): number {
+  const extra = parseInt(extraPieces, 10) || 0;
+  if (ppc && !isNaN(cartonQty)) return cartonQty * ppc + extra;
+  return cartonQty;
+}
+
 function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: string; onClose: () => void }) {
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
   const [form, setForm] = useState({ productName: '', quantity: '', unitPrice: '', unitCost: '', sellingPrice: '', category: '', amount: '', notes: '' });
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [selectedStock, setSelectedStock] = useState<number | null>(null);
-  const [piecesPerCarton, setPiecesPerCarton] = useState<number | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [poItems, setPoItems] = useState<ProductOutItem[]>([{ ...EMPTY_PO_ITEM }]);
+  const [focusedItemIndex, setFocusedItemIndex] = useState<number | null>(null);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -85,45 +113,82 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
     enabled: modal === 'product-out',
   });
 
-  const filteredProducts: ProductSummary[] =
+  const getFilteredProducts = (query: string): ProductSummary[] =>
     (products as ProductSummary[] | undefined)?.filter((p) =>
-      p.productName.includes(form.productName.toLowerCase().trim())
+      p.productName.includes(query.toLowerCase().trim())
     ) ?? [];
 
-  const selectProduct = (p: ProductSummary) => {
-    const ppc = p.piecesPerCarton;
-    // Unit price sent to API is per-piece; display carton price for user convenience
-    const cartonSellingPrice = ppc && parseFloat(p.latestSellingPrice) > 0
-      ? (parseFloat(p.latestSellingPrice) * ppc).toFixed(2)
-      : null;
-    setForm((f) => ({
-      ...f,
-      productName: p.productName,
-      unitPrice: p.latestSellingPrice,
-      // Store carton selling price in a display-only way (unitPrice stays per-piece for API)
-    }));
-    setSelectedStock(p.totalAvailable);
-    setPiecesPerCarton(ppc);
-    setShowDropdown(false);
+  const deriveCartonPrice = (unitPrice: string, ppc: number | null): string => {
+    const up = parseFloat(unitPrice);
+    return !isNaN(up) && up > 0 && ppc ? (up * ppc).toFixed(2) : '';
   };
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  const selectPoProduct = (i: number, p: ProductSummary) => {
+    setPoItems((prev) =>
+      prev.map((row, idx) => {
+        if (idx !== i) return row;
+        const ppc = p.piecesPerCarton;
+        const unitPrice = p.latestSellingPrice;
+        const cartonPrice = deriveCartonPrice(unitPrice, ppc);
+        return { ...row, productName: p.productName, unitPrice, cartonPrice, unitCost: p.latestUnitCost, piecesPerCarton: ppc, selectedStock: p.totalAvailable };
+      })
+    );
+    setFocusedItemIndex(null);
+  };
+
+  const setPoProductName = (i: number, value: string) => {
+    setPoItems((prev) =>
+      prev.map((row, idx) => (idx === i ? { ...row, productName: value, selectedStock: null } : row))
+    );
+  };
+
+  const handlePoUnitPriceChange = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setPoItems((prev) =>
+      prev.map((row, idx) => {
+        if (idx !== i) return row;
+        return { ...row, unitPrice: value, cartonPrice: deriveCartonPrice(value, row.piecesPerCarton) };
+      })
+    );
+  };
+
+  const handlePoCartonPriceChange = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setPoItems((prev) =>
+      prev.map((row, idx) => {
+        if (idx !== i || !row.piecesPerCarton) return row;
+        const cp = parseFloat(value);
+        const unitPrice = !isNaN(cp) ? (cp / row.piecesPerCarton).toFixed(2) : row.unitPrice;
+        return { ...row, cartonPrice: value, unitPrice };
+      })
+    );
+  };
+
+  const setPoQuantity = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setPoItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, quantity: e.target.value } : row)));
+
+  const setPoExtraPieces = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setPoItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, extraPieces: e.target.value } : row)));
+
+  const togglePoExtraPieces = (i: number) =>
+    setPoItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, showExtraPieces: !row.showExtraPieces, extraPieces: row.showExtraPieces ? '' : row.extraPieces } : row)));
+
+  const addPoItem = () => setPoItems((prev) => [...prev, { ...EMPTY_PO_ITEM }]);
+  const removePoItem = (i: number) => setPoItems((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+
+  const isPoItemBelowCost = (it: ProductOutItem): boolean => {
+    const cost = parseFloat(it.unitCost);
+    const sell = parseFloat(it.unitPrice);
+    return !isNaN(cost) && cost > 0 && !isNaN(sell) && sell > 0 && sell <= cost;
+  };
+
+  const hasPoItemBelowCost = poItems.some(isPoItemBelowCost);
 
   // Reset form when modal changes
   useEffect(() => {
     setForm({ productName: '', quantity: '', unitPrice: '', unitCost: '', sellingPrice: '', category: '', amount: '', notes: '' });
-    setSelectedStock(null);
-    setPiecesPerCarton(null);
-    setShowDropdown(false);
+    setPoItems([{ ...EMPTY_PO_ITEM }]);
+    setFocusedItemIndex(null);
   }, [modal]);
 
   const onSuccess = () => {
@@ -134,15 +199,16 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
   };
 
   const mut = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (modal === 'product-out') {
-        const cartonQty = parseInt(form.quantity, 10);
-        // API expects quantity in pieces — multiply by piecesPerCarton if available
-        const totalPieces = piecesPerCarton ? cartonQty * piecesPerCarton : cartonQty;
-        return externalContactsApi.recordProductOut(contactId, {
-          productName: form.productName, quantity: totalPieces,
-          unitPrice: form.unitPrice, notes: form.notes || undefined,
-        });
+        for (const item of poItems) {
+          const totalPieces = getPoTotalPieces(parseInt(item.quantity, 10), item.piecesPerCarton, item.extraPieces);
+          await externalContactsApi.recordProductOut(contactId, {
+            productName: item.productName, quantity: totalPieces,
+            unitPrice: item.unitPrice, notes: form.notes || undefined,
+          });
+        }
+        return;
       }
       if (modal === 'payment-in') {
         return externalContactsApi.recordPaymentIn(contactId, { amount: form.amount, notes: form.notes || undefined });
@@ -168,141 +234,272 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
 
   if (!modal) return null;
 
-  const cartonQty = parseInt(form.quantity, 10);
-  const totalPieces = piecesPerCarton && !isNaN(cartonQty) ? cartonQty * piecesPerCarton : cartonQty;
-  const overStock = modal === 'product-out' && selectedStock != null && !isNaN(totalPieces) && totalPieces > selectedStock;
-  const stockInCartons = selectedStock != null && piecesPerCarton ? Math.floor(selectedStock / piecesPerCarton) : null;
-  const cartonSellingPrice = piecesPerCarton && form.unitPrice ? (parseFloat(form.unitPrice) * piecesPerCarton).toFixed(2) : null;
+  const hasInvalidExtraPieces = poItems.some((it) => {
+    const extra = parseInt(it.extraPieces, 10) || 0;
+    return it.piecesPerCarton && extra >= it.piecesPerCarton;
+  });
+
+  const canSubmitProductOut =
+    poItems.length > 0 &&
+    !hasPoItemBelowCost &&
+    !hasInvalidExtraPieces &&
+    poItems.every((it) => {
+      const totalPcs = getPoTotalPieces(parseInt(it.quantity, 10), it.piecesPerCarton, it.extraPieces);
+      return it.productName.trim() &&
+        totalPcs > 0 &&
+        it.unitPrice &&
+        parseFloat(it.unitPrice) > 0;
+    });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}>
-      <div className="rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-        <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--foreground)' }}>{titles[modal]}</h2>
+      <div className="rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--foreground)' }}>{titles[modal]}</h2>
+          {modal === 'product-out' && (
+            <button type="button" onClick={addPoItem} className="text-xs font-medium" style={{ color: 'var(--primary)' }}>
+              + Add item
+            </button>
+          )}
+        </div>
         <div className="space-y-3">
           {modal === 'product-out' && (
             <>
-              {/* Product autocomplete */}
-              <div ref={dropdownRef} className="relative">
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>Product Name</label>
-                <input
-                  value={form.productName}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, productName: e.target.value }));
-                    setShowDropdown(true);
-                    setSelectedStock(null);
-                  }}
-                  onFocus={() => setShowDropdown(true)}
-                  placeholder="Start typing to search..."
-                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                  style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
-                />
-                {showDropdown && form.productName.length > 0 && filteredProducts.length > 0 && (
-                  <div
-                    className="absolute z-10 left-0 right-0 mt-1 rounded-lg border max-h-48 overflow-y-auto"
-                    style={{ background: 'var(--card)', borderColor: 'var(--border)', boxShadow: 'var(--shadow-lg)' }}
-                  >
-                    {filteredProducts.map((p) => {
-                      const ppc = p.piecesPerCarton;
-                      const cartonSell = ppc ? (parseFloat(p.latestSellingPrice) * ppc).toFixed(2) : null;
-                      const stockCartons = ppc ? Math.floor(p.totalAvailable / ppc) : null;
-                      return (
-                        <button
-                          key={p.productName}
-                          type="button"
-                          onClick={() => selectProduct(p)}
-                          className="w-full text-left px-3 py-2 text-sm hover:opacity-80 transition-opacity border-b last:border-b-0"
-                          style={{ color: 'var(--foreground)', borderColor: 'var(--border)' }}
-                        >
-                          <span className="font-medium capitalize">{p.productName}</span>
-                          {ppc && (
-                            <span className="text-xs ml-1" style={{ color: 'var(--muted-foreground)' }}>
-                              ({ppc} pcs/carton)
-                            </span>
-                          )}
-                          <span className="flex justify-between mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                            <span>
-                              {cartonSell
-                                ? <>Carton: {formatCurrency(cartonSell)} · Piece: {formatCurrency(p.latestSellingPrice)}</>
-                                : <>Sell: {formatCurrency(p.latestSellingPrice)}</>
-                              }
-                            </span>
-                            <span>
-                              {stockCartons != null
-                                ? <>{stockCartons} cartons ({p.totalAvailable} pcs)</>
-                                : <>{p.totalAvailable} pcs</>
-                              }
-                            </span>
-                          </span>
+              {poItems.map((item, i) => {
+                const suggestions = getFilteredProducts(item.productName);
+                const showDrop = focusedItemIndex === i && item.productName.trim().length > 0 && suggestions.length > 0;
+                const ppc = item.piecesPerCarton;
+                const cartonQty = parseInt(item.quantity, 10);
+                const extraPcs = parseInt(item.extraPieces, 10) || 0;
+                const totalPieces = getPoTotalPieces(cartonQty, ppc, item.extraPieces);
+                const extraPiecesInvalid = ppc && extraPcs >= ppc;
+                const overStock = item.selectedStock != null && !isNaN(totalPieces) && totalPieces > item.selectedStock;
+                const stockInCartons = item.selectedStock != null && ppc ? Math.floor(item.selectedStock / ppc) : null;
+                const belowCost = isPoItemBelowCost(item);
+
+                return (
+                  <div key={i} className="rounded-xl border p-3" style={{ borderColor: belowCost ? 'var(--danger)' : 'var(--border)', background: 'var(--input)' }}>
+                    {/* Row 1: product autocomplete, qty, remove */}
+                    <div className="flex gap-2 items-start mb-2">
+                      <div className="flex-[2] relative">
+                        <input
+                          value={item.productName}
+                          onChange={(e) => { setPoProductName(i, e.target.value); setFocusedItemIndex(i); }}
+                          onFocus={() => setFocusedItemIndex(i)}
+                          onBlur={() => setTimeout(() => setFocusedItemIndex(null), 150)}
+                          placeholder="Product name..."
+                          className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                          style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                        />
+                        {showDrop && (
+                          <div
+                            className="absolute z-10 left-0 right-0 mt-1 rounded-lg border max-h-48 overflow-y-auto"
+                            style={{ background: 'var(--card)', borderColor: 'var(--border)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
+                          >
+                            {suggestions.map((p) => {
+                              const sPpc = p.piecesPerCarton;
+                              const cartonSell = sPpc ? (parseFloat(p.latestSellingPrice) * sPpc).toFixed(2) : null;
+                              const sCartons = sPpc ? Math.floor(p.totalAvailable / sPpc) : null;
+                              return (
+                                <div
+                                  key={p.productName}
+                                  onMouseDown={(e) => { e.preventDefault(); selectPoProduct(i, p); }}
+                                  className="px-3 py-2 cursor-pointer border-b last:border-b-0 text-sm"
+                                  style={{ borderColor: 'var(--border)' }}
+                                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--input)')}
+                                  onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--card)')}
+                                >
+                                  <span className="font-medium capitalize" style={{ color: 'var(--foreground)' }}>
+                                    {p.productName}
+                                    {sPpc && <span className="text-xs font-normal ml-1" style={{ color: 'var(--muted-foreground)' }}>({sPpc} pcs/carton)</span>}
+                                  </span>
+                                  <span className="flex justify-between mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                                    <span>
+                                      {formatCurrency(p.latestUnitCost)} cost
+                                      {cartonSell ? <> · {formatCurrency(cartonSell)}/carton</> : null}
+                                    </span>
+                                    <span>
+                                      {sCartons != null
+                                        ? <>{sCartons} cartons ({p.totalAvailable} pcs)</>
+                                        : <>{p.totalAvailable} pcs</>
+                                      }
+                                    </span>
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <input
+                          value={item.quantity}
+                          onChange={setPoQuantity(i)}
+                          placeholder={ppc ? 'Cartons' : 'Qty'}
+                          type="number"
+                          min={ppc && item.showExtraPieces ? '0' : '1'}
+                          className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                          style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                        />
+                        {ppc && (
+                          <div className="mt-0.5">
+                            {!item.showExtraPieces ? (
+                              <button type="button" onClick={() => togglePoExtraPieces(i)} className="text-xs" style={{ color: 'var(--primary)' }}>
+                                + loose pieces
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>+</span>
+                                <input
+                                  value={item.extraPieces}
+                                  onChange={setPoExtraPieces(i)}
+                                  placeholder="pcs"
+                                  type="number"
+                                  min="0"
+                                  max={ppc - 1}
+                                  className="w-16 px-2 py-0.5 rounded-lg text-xs border outline-none"
+                                  style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                                />
+                                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>pcs</span>
+                                <button type="button" onClick={() => togglePoExtraPieces(i)} className="text-xs ml-1" style={{ color: 'var(--danger)' }}>✕</button>
+                              </div>
+                            )}
+                            {extraPiecesInvalid && (
+                              <p className="text-xs mt-0.5" style={{ color: 'var(--danger)' }}>
+                                Max {ppc - 1} loose pcs (a full carton is {ppc})
+                              </p>
+                            )}
+                            {!isNaN(totalPieces) && totalPieces > 0 && (
+                              <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                                = {totalPieces} pcs total
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {poItems.length > 1 && (
+                        <button type="button" onClick={() => removePoItem(i)} className="px-2 py-2 text-sm flex-shrink-0" style={{ color: 'var(--danger)' }}>
+                          ✕
                         </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {showDropdown && form.productName.length > 0 && filteredProducts.length === 0 && (
-                  <div
-                    className="absolute z-10 left-0 right-0 mt-1 rounded-lg border px-3 py-2 text-xs"
-                    style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
-                  >
-                    No matching products in stock
-                  </div>
-                )}
-              </div>
-
-              {/* Stock indicator */}
-              {selectedStock != null && (
-                <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  Available: {stockInCartons != null ? (
-                    <><span className="font-semibold" style={{ color: 'var(--foreground)' }}>{stockInCartons} cartons</span> ({selectedStock} pieces)</>
-                  ) : (
-                    <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{selectedStock} pieces</span>
-                  )}
-                </p>
-              )}
-
-              <Field
-                label={piecesPerCarton ? `Cartons (${piecesPerCarton} pcs each)` : 'Quantity'}
-                value={form.quantity}
-                onChange={set('quantity')}
-                placeholder={piecesPerCarton ? 'e.g. 2 cartons' : '10'}
-                type="number"
-              />
-
-              {/* Piece breakdown when entering carton quantity */}
-              {piecesPerCarton && !isNaN(cartonQty) && cartonQty > 0 && (
-                <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  = <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{cartonQty * piecesPerCarton} pieces</span> total
-                </p>
-              )}
-
-              {overStock && (
-                <p className="text-xs" style={{ color: 'var(--danger)' }}>
-                  Exceeds available stock ({selectedStock} pieces{stockInCartons != null ? ` / ${stockInCartons} cartons` : ''})
-                </p>
-              )}
-
-              {/* Prices: show carton price and unit price */}
-              {piecesPerCarton && cartonSellingPrice ? (
-                <div className="space-y-2">
-                  <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--input)', border: '1px solid var(--border)' }}>
-                    <div className="flex justify-between">
-                      <span style={{ color: 'var(--muted-foreground)' }}>Carton selling price</span>
-                      <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{formatCurrency(cartonSellingPrice)}</span>
+                      )}
                     </div>
-                    <div className="flex justify-between mt-1">
-                      <span style={{ color: 'var(--muted-foreground)' }}>Per piece</span>
-                      <span className="font-medium" style={{ color: 'var(--foreground)' }}>{formatCurrency(form.unitPrice)}</span>
-                    </div>
-                    {!isNaN(cartonQty) && cartonQty > 0 && (
-                      <div className="flex justify-between mt-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
-                        <span style={{ color: 'var(--muted-foreground)' }}>Total ({cartonQty} carton{cartonQty > 1 ? 's' : ''})</span>
-                        <span className="font-bold" style={{ color: 'var(--success)' }}>{formatCurrency((parseFloat(cartonSellingPrice) * cartonQty).toFixed(2))}</span>
+
+                    {/* Stock info */}
+                    {item.selectedStock != null && (
+                      <p className="text-xs mb-2" style={{ color: 'var(--muted-foreground)' }}>
+                        Available: {stockInCartons != null ? (
+                          <><span className="font-semibold" style={{ color: 'var(--foreground)' }}>{stockInCartons} cartons</span> ({item.selectedStock} pcs)</>
+                        ) : (
+                          <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{item.selectedStock} pcs</span>
+                        )}
+                        {overStock && <span style={{ color: 'var(--danger)' }}> — exceeds stock</span>}
+                      </p>
+                    )}
+
+                    {/* Prices */}
+                    {ppc ? (
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>
+                            Carton price ({ppc} pcs)
+                          </label>
+                          <input
+                            value={item.cartonPrice}
+                            onChange={handlePoCartonPriceChange(i)}
+                            placeholder="Carton price"
+                            type="number" min="0" step="0.01"
+                            className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                            style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>Unit price per piece</label>
+                          <input
+                            value={item.unitPrice}
+                            onChange={handlePoUnitPriceChange(i)}
+                            placeholder="28.00"
+                            type="number" min="0" step="0.01"
+                            className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                            style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>Unit Price</label>
+                        <input
+                          value={item.unitPrice}
+                          onChange={handlePoUnitPriceChange(i)}
+                          placeholder="28.00"
+                          type="number" min="0" step="0.01"
+                          className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                          style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Below-cost warning */}
+                    {belowCost && (
+                      <div className="rounded-lg px-3 py-2 mt-2 text-xs font-medium" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)' }}>
+                        Selling price ({formatCurrency(item.unitPrice)}/pc) is at or below cost ({formatCurrency(item.unitCost)}/pc). You will make a loss.
+                      </div>
+                    )}
+
+                    {/* Line total */}
+                    {parseFloat(item.unitPrice) > 0 && !isNaN(totalPieces) && totalPieces > 0 && (
+                      <div className="rounded-lg px-3 py-2 mt-2 text-xs" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--muted-foreground)' }}>
+                            Total ({ppc ? <>{cartonQty > 0 ? `${cartonQty} carton${cartonQty > 1 ? 's' : ''}` : ''}{extraPcs > 0 ? `${cartonQty > 0 ? ' + ' : ''}${extraPcs} pcs` : ''} · {totalPieces} pcs</> : <>{totalPieces} pcs</>})
+                          </span>
+                          <span className="font-bold" style={{ color: belowCost ? 'var(--danger)' : 'var(--success)' }}>
+                            {formatCurrency((parseFloat(item.unitPrice) * totalPieces).toFixed(2))}
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>
-                  <Field label="Unit Price per piece (editable)" value={form.unitPrice} onChange={set('unitPrice')} placeholder="28.00" type="number" />
+                );
+              })}
+
+              {/* Grand total for multi-item */}
+              {poItems.length > 1 && poItems.some((it) => parseFloat(it.unitPrice) > 0 && getPoTotalPieces(parseInt(it.quantity, 10), it.piecesPerCarton, it.extraPieces) > 0) && (
+                <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+                  <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--muted-foreground)' }}>Summary</div>
+                  {poItems.map((it, i) => {
+                    const q = parseInt(it.quantity, 10);
+                    const price = parseFloat(it.unitPrice);
+                    const ppc = it.piecesPerCarton;
+                    const pieces = getPoTotalPieces(q, ppc, it.extraPieces);
+                    if (isNaN(pieces) || pieces <= 0 || isNaN(price) || price <= 0) return null;
+                    const extra = parseInt(it.extraPieces, 10) || 0;
+                    return (
+                      <div key={i} className="flex justify-between text-xs py-0.5">
+                        <span style={{ color: 'var(--foreground)' }}>
+                          <span className="capitalize">{it.productName}</span>{' '}
+                          <span style={{ color: 'var(--muted-foreground)' }}>
+                            {ppc ? <>{q > 0 ? `${q} carton${q > 1 ? 's' : ''}` : ''}{extra > 0 ? `${q > 0 ? ' + ' : ''}${extra} pcs` : ''} ({pieces} pcs)</> : <>{pieces} pcs</>}
+                          </span>
+                        </span>
+                        <span className="font-medium" style={{ color: 'var(--foreground)' }}>{formatCurrency((price * pieces).toFixed(2))}</span>
+                      </div>
+                    );
+                  })}
+                  <div className="flex justify-between text-sm font-bold pt-1.5 mt-1.5 border-t" style={{ borderColor: 'var(--border)' }}>
+                    <span style={{ color: 'var(--foreground)' }}>Grand Total</span>
+                    <span style={{ color: hasPoItemBelowCost ? 'var(--danger)' : 'var(--success)' }}>
+                      {formatCurrency(
+                        poItems.reduce((s, it) => {
+                          const q = parseInt(it.quantity, 10);
+                          const price = parseFloat(it.unitPrice);
+                          const pieces = getPoTotalPieces(q, it.piecesPerCarton, it.extraPieces);
+                          if (isNaN(pieces) || pieces <= 0 || isNaN(price) || price <= 0) return s;
+                          return s + price * pieces;
+                        }, 0).toFixed(2)
+                      )}
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <Field label="Unit Price (they owe you)" value={form.unitPrice} onChange={set('unitPrice')} placeholder="28.00" type="number" />
               )}
             </>
           )}
@@ -339,9 +536,9 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
           </button>
           <button
             onClick={() => mut.mutate()}
-            disabled={mut.isPending}
+            disabled={mut.isPending || (modal === 'product-out' && !canSubmitProductOut)}
             className="flex-1 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
-            style={{ background: 'var(--primary)' }}
+            style={{ background: modal === 'product-out' && !canSubmitProductOut ? 'var(--muted-foreground)' : 'var(--primary)' }}
           >
             {mut.isPending ? 'Saving...' : 'Save'}
           </button>
