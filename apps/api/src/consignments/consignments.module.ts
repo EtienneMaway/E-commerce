@@ -9,6 +9,7 @@ import {
 } from '../entities';
 import { ConsignmentsService } from './consignments.service';
 import { ConsignmentsController } from './consignments.controller';
+import { StockMovementsModule } from '../stock-movements/stock-movements.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ConsignmentsController } from './consignments.controller';
       InventoryEntry,
       DebtorCredit,
     ]),
+    StockMovementsModule,
   ],
   controllers: [ConsignmentsController],
   providers: [ConsignmentsService],

@@ -10,6 +10,7 @@ import { useFormatCurrency } from '../../../../lib/currency';
 import { Badge } from '../../../../components/ui/Badge';
 import { DataTable, type Column } from '../../../../components/ui/DataTable';
 import { EditSellingPriceDialog } from '../../../../components/forms/EditSellingPriceDialog';
+import { AdjustStockDialog } from '../../../../components/forms/AdjustStockDialog';
 import { useT } from '../../../../lib/i18n';
 
 interface InventoryEntry {
@@ -37,6 +38,13 @@ interface EditPriceTarget {
   sellingPrice: string;
 }
 
+interface AdjustTarget {
+  id: string;
+  productName: string;
+  quantityRemaining: number;
+  source: string;
+}
+
 export default function ProductDetailPage({
   params,
 }: {
@@ -47,6 +55,7 @@ export default function ProductDetailPage({
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const [editPriceTarget, setEditPriceTarget] = useState<EditPriceTarget | null>(null);
+  const [adjustTarget, setAdjustTarget] = useState<AdjustTarget | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: QK.inventory({ productName }),
@@ -130,10 +139,32 @@ export default function ProductDetailPage({
     },
     {
       key: 'cartonPrice',
-      header: t.inventory.colCartonPrice,
+      header: t.inventory.colBuyingCarton,
       sortable: true,
-      getValue: (r) => r.cartonPrice ? parseFloat(r.cartonPrice) : 0,
-      render: (r) => r.cartonPrice ? formatCurrency(r.cartonPrice) : <span style={{ color: 'var(--muted)' }}>—</span>,
+      getValue: (r) => {
+        if (r.cartonPrice) return parseFloat(r.cartonPrice);
+        if (r.piecesPerCarton) return parseFloat(r.unitCost) * r.piecesPerCarton;
+        return 0;
+      },
+      render: (r) => {
+        if (r.cartonPrice) return formatCurrency(r.cartonPrice);
+        if (r.piecesPerCarton) {
+          const computed = (parseFloat(r.unitCost) * r.piecesPerCarton).toFixed(2);
+          return <span style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{formatCurrency(computed)}</span>;
+        }
+        return <span style={{ color: 'var(--muted)' }}>—</span>;
+      },
+    },
+    {
+      key: 'sellingCartonPrice',
+      header: t.inventory.colSellingCarton,
+      sortable: true,
+      getValue: (r) => r.piecesPerCarton ? parseFloat(r.sellingPrice) * r.piecesPerCarton : 0,
+      render: (r) => {
+        if (!r.piecesPerCarton) return <span style={{ color: 'var(--muted)' }}>—</span>;
+        const computed = (parseFloat(r.sellingPrice) * r.piecesPerCarton).toFixed(2);
+        return <span style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{formatCurrency(computed)}</span>;
+      },
     },
     {
       key: 'unitCost',
@@ -159,29 +190,49 @@ export default function ProductDetailPage({
     {
       key: 'actions',
       header: '',
-      render: (r) =>
-        r.source === 'CONSIGNED_IN' ? (
-          <button
-            onClick={() =>
-              setEditPriceTarget({
-                id: r.id,
-                productName: r.productName,
-                unitCost: r.unitCost,
-                sellingPrice: r.sellingPrice,
-              })
-            }
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '5px 12px' }}
-          >
-            {t.inventory.editPriceBtn}
-          </button>
-        ) : null,
+      render: (r) => (
+        <div className="flex gap-1 flex-wrap justify-end">
+          {r.source === 'CONSIGNED_IN' && (
+            <button
+              onClick={() =>
+                setEditPriceTarget({
+                  id: r.id,
+                  productName: r.productName,
+                  unitCost: r.unitCost,
+                  sellingPrice: r.sellingPrice,
+                })
+              }
+              className="btn btn-secondary"
+              style={{ fontSize: '12px', padding: '5px 12px' }}
+            >
+              {t.inventory.editPriceBtn}
+            </button>
+          )}
+          {r.source !== 'CONSIGNED_OUT' && (
+            <button
+              onClick={() =>
+                setAdjustTarget({
+                  id: r.id,
+                  productName: r.productName,
+                  quantityRemaining: r.quantityRemaining,
+                  source: r.source,
+                })
+              }
+              className="btn btn-secondary"
+              style={{ fontSize: '12px', padding: '5px 12px' }}
+            >
+              {t.inventory.adjustBtn}
+            </button>
+          )}
+        </div>
+      ),
     },
   ];
 
   return (
     <div>
       <EditSellingPriceDialog entry={editPriceTarget} onClose={() => setEditPriceTarget(null)} />
+      <AdjustStockDialog entry={adjustTarget} onClose={() => setAdjustTarget(null)} />
 
       {/* Header */}
       <div className="page-header">

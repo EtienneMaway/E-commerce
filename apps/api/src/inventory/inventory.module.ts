@@ -8,10 +8,12 @@ import {
   SupplierDebt,
   User,
 } from '../entities';
+import { StockMovementsModule } from '../stock-movements/stock-movements.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([InventoryEntry, User, SupplierDebt, DebtorCredit]),
+    StockMovementsModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService],

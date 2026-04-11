@@ -10,7 +10,9 @@ import {
   InventoryEntry,
   InventorySource,
   SaleTransaction,
+  StockMovementReason,
 } from '../entities';
+import { StockMovementsService } from '../stock-movements/stock-movements.service';
 import { RecordSaleDto } from './dto/record-sale.dto';
 import {
   SalesFilterDto,
@@ -37,6 +39,7 @@ export class SalesService {
     @InjectRepository(InventoryEntry)
     private readonly entryRepo: Repository<InventoryEntry>,
     private readonly dataSource: DataSource,
+    private readonly stockMovements: StockMovementsService,
   ) {}
 
   // PriceGuardWarningDto is thrown as an UnprocessableEntityException (HTTP 422),
@@ -113,6 +116,7 @@ export class SalesService {
         const deduct = Math.min(entry.quantityRemaining, remaining);
         const entryCost = new Decimal(entry.unitCost);
         const entryProfit = salePrice.minus(entryCost).mul(deduct);
+        const qtyBeforeDeduct = entry.quantityRemaining;
 
         entry.quantityRemaining -= deduct;
         remaining -= deduct;
@@ -130,7 +134,17 @@ export class SalesService {
           isLoss: entryProfit.lt(0),
           inventoryEntryId: entry.id,
         });
-        sales.push(await manager.save(SaleTransaction, sale));
+        const savedSale = await manager.save(SaleTransaction, sale);
+        sales.push(savedSale);
+
+        await this.stockMovements.record(manager, {
+          ownerId,
+          entry,
+          reason: StockMovementReason.SALE,
+          qty: deduct,
+          qtyBefore: qtyBeforeDeduct,
+          saleTransactionId: savedSale.id,
+        });
       }
 
       // Return the primary sale record (first entry deducted)

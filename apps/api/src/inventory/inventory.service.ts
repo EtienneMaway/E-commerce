@@ -11,9 +11,15 @@ import {
   DebtorCredit,
   InventoryEntry,
   InventorySource,
+  ManualStockMovementReason,
+  NOTES_REQUIRED_REASONS,
+  POSITIVE_REASONS,
+  StockMovement,
+  StockMovementReason,
   SupplierDebt,
   User,
 } from '../entities';
+import { StockMovementsService } from '../stock-movements/stock-movements.service';
 
 export interface ProductSummary {
   productName: string;
@@ -36,6 +42,7 @@ import { ReceiveFromSupplierDto } from './dto/receive-from-supplier.dto';
 import { ConsignToDebtorDto } from './dto/consign-to-debtor.dto';
 import { InventoryFilterDto } from './dto/inventory-filter.dto';
 import { UpdateSellingPriceDto } from './dto/update-selling-price.dto';
+import { AdjustStockDto } from './dto/adjust-stock.dto';
 
 @Injectable()
 export class InventoryService {
@@ -49,6 +56,7 @@ export class InventoryService {
     @InjectRepository(DebtorCredit)
     private readonly debtorCreditRepo: Repository<DebtorCredit>,
     private readonly dataSource: DataSource,
+    private readonly stockMovements: StockMovementsService,
   ) {}
 
   async findAll(ownerId: string, filter: InventoryFilterDto): Promise<InventoryEntry[]> {
@@ -121,33 +129,50 @@ export class InventoryService {
   async addPersonal(ownerId: string, dto: AddPersonalDto): Promise<InventoryEntry> {
     const normalizedName = dto.productName.trim().toLowerCase();
 
-    const existing = await this.entryRepo.findOne({
-      where: { ownerId, source: InventorySource.PERSONAL, productName: ILike(normalizedName) },
-    });
+    return this.dataSource.transaction(async (manager) => {
+      const existing = await manager.findOne(InventoryEntry, {
+        where: { ownerId, source: InventorySource.PERSONAL, productName: ILike(normalizedName) },
+      });
 
-    if (existing) {
-      existing.quantityOriginal += dto.quantity;
-      existing.quantityRemaining += dto.quantity;
-      existing.unitCost = dto.unitCost;
-      existing.sellingPrice = dto.sellingPrice;
-      if (dto.cartonPrice !== undefined) existing.cartonPrice = dto.cartonPrice;
-      if (dto.piecesPerCarton !== undefined) existing.piecesPerCarton = dto.piecesPerCarton;
-      return this.entryRepo.save(existing);
-    }
+      let saved: InventoryEntry;
+      let qtyBefore: number;
 
-    const entry = this.entryRepo.create({
-      ownerId,
-      source: InventorySource.PERSONAL,
-      productName: normalizedName,
-      unitCost: dto.unitCost,
-      sellingPrice: dto.sellingPrice,
-      category: dto.category ?? null,
-      quantityOriginal: dto.quantity,
-      quantityRemaining: dto.quantity,
-      cartonPrice: dto.cartonPrice ?? null,
-      piecesPerCarton: dto.piecesPerCarton ?? null,
+      if (existing) {
+        qtyBefore = existing.quantityRemaining;
+        existing.quantityOriginal += dto.quantity;
+        existing.quantityRemaining += dto.quantity;
+        existing.unitCost = dto.unitCost;
+        existing.sellingPrice = dto.sellingPrice;
+        if (dto.cartonPrice !== undefined) existing.cartonPrice = dto.cartonPrice;
+        if (dto.piecesPerCarton !== undefined) existing.piecesPerCarton = dto.piecesPerCarton;
+        saved = await manager.save(InventoryEntry, existing);
+      } else {
+        qtyBefore = 0;
+        const entry = manager.create(InventoryEntry, {
+          ownerId,
+          source: InventorySource.PERSONAL,
+          productName: normalizedName,
+          unitCost: dto.unitCost,
+          sellingPrice: dto.sellingPrice,
+          category: dto.category ?? null,
+          quantityOriginal: dto.quantity,
+          quantityRemaining: dto.quantity,
+          cartonPrice: dto.cartonPrice ?? null,
+          piecesPerCarton: dto.piecesPerCarton ?? null,
+        });
+        saved = await manager.save(InventoryEntry, entry);
+      }
+
+      await this.stockMovements.record(manager, {
+        ownerId,
+        entry: saved,
+        reason: StockMovementReason.PURCHASE,
+        qty: dto.quantity,
+        qtyBefore,
+      });
+
+      return saved;
     });
-    return this.entryRepo.save(entry);
   }
 
   async receiveFromSupplier(
@@ -176,8 +201,10 @@ export class InventoryService {
       });
 
       let savedEntry: InventoryEntry;
+      let qtyBefore: number;
 
       if (existing) {
+        qtyBefore = existing.quantityRemaining;
         existing.quantityOriginal += dto.quantity;
         existing.quantityRemaining += dto.quantity;
         existing.unitCost = dto.unitCost;
@@ -186,6 +213,7 @@ export class InventoryService {
         if (dto.piecesPerCarton !== undefined) existing.piecesPerCarton = dto.piecesPerCarton;
         savedEntry = await manager.save(InventoryEntry, existing);
       } else {
+        qtyBefore = 0;
         // Create inventory entry
         const entry = manager.create(InventoryEntry, {
           ownerId,
@@ -233,6 +261,15 @@ export class InventoryService {
       savedEntry.supplierDebtId = savedDebt.id;
       await manager.save(InventoryEntry, savedEntry);
 
+      await this.stockMovements.record(manager, {
+        ownerId,
+        entry: savedEntry,
+        reason: StockMovementReason.RECEIVE_SUPPLIER,
+        qty: dto.quantity,
+        qtyBefore,
+        supplierDebtId: savedDebt.id,
+      });
+
       return savedEntry;
     });
   }
@@ -278,14 +315,23 @@ export class InventoryService {
         );
       }
 
-      // Deduct from source entries
+      // Deduct from source entries — emit one CONSIGN_OUT movement per source lot
       let remaining = dto.quantity;
       for (const entry of sorted) {
         if (remaining === 0) break;
         const deduct = Math.min(entry.quantityRemaining, remaining);
+        const qtyBeforeDeduct = entry.quantityRemaining;
         entry.quantityRemaining -= deduct;
         remaining -= deduct;
         await manager.save(InventoryEntry, entry);
+
+        await this.stockMovements.record(manager, {
+          ownerId,
+          entry,
+          reason: StockMovementReason.CONSIGN_OUT,
+          qty: deduct,
+          qtyBefore: qtyBeforeDeduct,
+        });
       }
 
       // Determine unitCost from the stock that was deducted (use first matching entry's cost)
@@ -357,5 +403,87 @@ export class InventoryService {
 
     entry.sellingPrice = dto.sellingPrice;
     return this.entryRepo.save(entry);
+  }
+
+  async adjustStock(
+    ownerId: string,
+    entryId: string,
+    dto: AdjustStockDto,
+  ): Promise<{ entry: InventoryEntry; movement: StockMovement }> {
+    return this.dataSource.transaction(async (manager) => {
+      const entry = await manager.findOne(InventoryEntry, { where: { id: entryId } });
+      if (!entry) throw new NotFoundException('Inventory entry not found');
+      if (entry.ownerId !== ownerId) {
+        throw new ForbiddenException('You do not own this inventory entry');
+      }
+
+      // CONSIGNED_OUT is owned by the debtor lifecycle — owners cannot adjust it manually.
+      if (entry.source === InventorySource.CONSIGNED_OUT) {
+        throw new BadRequestException(
+          'Cannot manually adjust CONSIGNED_OUT entries — they are managed by consignment lifecycle',
+        );
+      }
+
+      const reason = dto.reason as unknown as StockMovementReason;
+      const sign = POSITIVE_REASONS.has(reason) ? 1 : -1;
+      const signedDelta = sign * dto.qty;
+
+      // Notes-required reasons
+      if (NOTES_REQUIRED_REASONS.has(reason) && (!dto.notes || dto.notes.trim() === '')) {
+        throw new BadRequestException(`Notes are required for reason ${reason}`);
+      }
+
+      const qtyBefore = entry.quantityRemaining;
+      const qtyAfter = qtyBefore + signedDelta;
+      if (qtyAfter < 0) {
+        throw new BadRequestException(
+          `Insufficient stock to adjust. Current: ${qtyBefore}, requested delta: ${signedDelta}`,
+        );
+      }
+
+      // Special-case: SUPPLIER_RETURN reduces supplier debt
+      let supplierDebtId: string | null = null;
+      if (reason === StockMovementReason.SUPPLIER_RETURN) {
+        if (entry.source !== InventorySource.SUPPLIER || !entry.supplierDebtId) {
+          throw new BadRequestException(
+            'Only supplier-sourced stock can be returned to a supplier',
+          );
+        }
+        const debt = await manager.findOne(SupplierDebt, {
+          where: { id: entry.supplierDebtId },
+        });
+        if (!debt) {
+          throw new BadRequestException('Linked supplier debt not found');
+        }
+        const valueReturned = new Decimal(entry.unitCost).mul(dto.qty);
+        const newCredit = new Decimal(debt.totalCreditReceived).minus(valueReturned);
+        const newOutstanding = new Decimal(debt.outstandingBalance).minus(valueReturned);
+        if (newOutstanding.lt(0)) {
+          throw new BadRequestException(
+            'Returned value exceeds outstanding debt — record a refund instead',
+          );
+        }
+        debt.totalCreditReceived = newCredit.toFixed(2);
+        debt.outstandingBalance = newOutstanding.toFixed(2);
+        await manager.save(SupplierDebt, debt);
+        supplierDebtId = debt.id;
+      }
+
+      entry.quantityRemaining = qtyAfter;
+      // Note: quantityOriginal is intentionally left untouched (historical "received" count).
+      const savedEntry = await manager.save(InventoryEntry, entry);
+
+      const movement = await this.stockMovements.record(manager, {
+        ownerId,
+        entry: savedEntry,
+        reason,
+        qty: dto.qty,
+        qtyBefore,
+        notes: dto.notes ?? null,
+        supplierDebtId,
+      });
+
+      return { entry: savedEntry, movement };
+    });
   }
 }

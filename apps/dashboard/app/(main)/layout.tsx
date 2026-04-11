@@ -20,6 +20,11 @@ const NAV_ICONS = [
     <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
     <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
   </svg>,
+  <svg key="movements" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <line x1="12" y1="20" x2="12" y2="10"/>
+    <line x1="18" y1="20" x2="18" y2="4"/>
+    <line x1="6" y1="20" x2="6" y2="16"/>
+  </svg>,
   <svg key="suppliers" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
     <polyline points="9 22 9 12 15 12 15 22"/>
@@ -105,12 +110,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const NAV = [
     { href: '/dashboard', label: t.nav.dashboard, icon: NAV_ICONS[0] },
     { href: '/inventory', label: t.nav.inventory, icon: NAV_ICONS[1] },
-    { href: '/suppliers', label: t.nav.suppliers, icon: NAV_ICONS[2] },
-    { href: '/debtors', label: t.nav.debtors, icon: NAV_ICONS[3] },
-    { href: '/sales', label: t.nav.sales, icon: NAV_ICONS[4] },
-    { href: '/consignments', label: t.nav.consignments, icon: NAV_ICONS[5] },
-    { href: '/external-contacts', label: t.nav.externalContacts, icon: NAV_ICONS[6] },
-    { href: '/settings', label: t.nav.settings, icon: NAV_ICONS[7] },
+    { href: '/inventory/movements', label: t.nav.movements, icon: NAV_ICONS[2] },
+    { href: '/suppliers', label: t.nav.suppliers, icon: NAV_ICONS[3] },
+    { href: '/debtors', label: t.nav.debtors, icon: NAV_ICONS[4] },
+    { href: '/sales', label: t.nav.sales, icon: NAV_ICONS[5] },
+    { href: '/consignments', label: t.nav.consignments, icon: NAV_ICONS[6] },
+    { href: '/external-contacts', label: t.nav.externalContacts, icon: NAV_ICONS[7] },
+    { href: '/settings', label: t.nav.settings, icon: NAV_ICONS[8] },
   ];
 
   useEffect(() => {

@@ -116,10 +116,32 @@ export default function InventoryPage() {
     },
     {
       key: 'latestCartonPrice',
-      header: t.inventory.colCartonPrice,
+      header: t.inventory.colBuyingCarton,
       sortable: true,
-      getValue: (r) => r.latestCartonPrice ? parseFloat(r.latestCartonPrice) : 0,
-      render: (r) => r.latestCartonPrice ? formatCurrency(r.latestCartonPrice) : <span style={{ color: 'var(--muted)' }}>—</span>,
+      getValue: (r) => {
+        if (r.latestCartonPrice) return parseFloat(r.latestCartonPrice);
+        if (r.piecesPerCarton) return parseFloat(r.latestUnitCost) * r.piecesPerCarton;
+        return 0;
+      },
+      render: (r) => {
+        if (r.latestCartonPrice) return formatCurrency(r.latestCartonPrice);
+        if (r.piecesPerCarton) {
+          const computed = (parseFloat(r.latestUnitCost) * r.piecesPerCarton).toFixed(2);
+          return <span style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{formatCurrency(computed)}</span>;
+        }
+        return <span style={{ color: 'var(--muted)' }}>—</span>;
+      },
+    },
+    {
+      key: 'sellingCartonPrice',
+      header: t.inventory.colSellingCarton,
+      sortable: true,
+      getValue: (r) => r.piecesPerCarton ? parseFloat(r.latestSellingPrice) * r.piecesPerCarton : 0,
+      render: (r) => {
+        if (!r.piecesPerCarton) return <span style={{ color: 'var(--muted)' }}>—</span>;
+        const computed = (parseFloat(r.latestSellingPrice) * r.piecesPerCarton).toFixed(2);
+        return <span style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{formatCurrency(computed)}</span>;
+      },
     },
     {
       key: 'latestUnitCost',

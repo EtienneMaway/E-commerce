@@ -11,6 +11,7 @@ import { ReceiveFromSupplierDto } from './dto/receive-from-supplier.dto';
 import { ConsignToDebtorDto } from './dto/consign-to-debtor.dto';
 import { InventoryFilterDto } from './dto/inventory-filter.dto';
 import { UpdateSellingPriceDto } from './dto/update-selling-price.dto';
+import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { User } from '../entities';
@@ -73,6 +74,26 @@ export class InventoryController {
     @Body() dto: UpdateSellingPriceDto,
   ) {
     return this.inventoryService.updateSellingPrice(user.id, id, dto);
+  }
+
+  @Post(':entryId/adjust')
+  @ApiOperation({
+    summary: 'Manually adjust stock for an inventory entry with a typed reason',
+    description:
+      'Records a stock movement (audit ledger) and updates quantity_remaining. ' +
+      'SUPPLIER_RETURN also reduces the linked supplier debt. ' +
+      'Notes are required for RECOUNT_UP, RECOUNT_DOWN, OTHER_IN, OTHER_OUT.',
+  })
+  @ApiResponse({ status: 201, description: '{ entry, movement }' })
+  @ApiResponse({ status: 400, description: 'Invalid reason / source mismatch / insufficient stock / missing notes' })
+  @ApiResponse({ status: 403, description: 'Entry does not belong to you' })
+  @ApiResponse({ status: 404, description: 'Inventory entry not found' })
+  adjustStock(
+    @CurrentUser() user: User,
+    @Param('entryId') entryId: string,
+    @Body() dto: AdjustStockDto,
+  ) {
+    return this.inventoryService.adjustStock(user.id, entryId, dto);
   }
 
   @Post('consign')

@@ -14,10 +14,12 @@ import {
   DebtorCredit,
   InventoryEntry,
   InventorySource,
+  StockMovementReason,
   SupplierDebt,
   User,
 } from '../entities';
 import { CreateConsignmentDto } from './dto/create-consignment.dto';
+import { StockMovementsService } from '../stock-movements/stock-movements.service';
 
 @Injectable()
 export class ConsignmentsService {
@@ -33,6 +35,7 @@ export class ConsignmentsService {
     @InjectRepository(DebtorCredit)
     private readonly debtorCreditRepo: Repository<DebtorCredit>,
     private readonly dataSource: DataSource,
+    private readonly stockMovements: StockMovementsService,
   ) {}
 
   // ─── Supplier: create a consignment request ────────────────────────────────
@@ -138,14 +141,24 @@ export class ConsignmentsService {
           );
         }
 
-        // Deduct from supplier's stock (SUPPLIER-first priority)
+        // Deduct from supplier's stock (SUPPLIER-first priority) — emit CONSIGN_OUT per source lot
         let remaining = item.quantity;
         for (const entry of sorted) {
           if (remaining === 0) break;
           const deduct = Math.min(entry.quantityRemaining, remaining);
+          const qtyBeforeDeduct = entry.quantityRemaining;
           entry.quantityRemaining -= deduct;
           remaining -= deduct;
           await manager.save(InventoryEntry, entry);
+
+          await this.stockMovements.record(manager, {
+            ownerId: request.supplierId,
+            entry,
+            reason: StockMovementReason.CONSIGN_OUT,
+            qty: deduct,
+            qtyBefore: qtyBeforeDeduct,
+            consignmentRequestId: request.id,
+          });
         }
 
         const creditValue = new Decimal(item.agreedUnitPrice).mul(item.quantity).toFixed(2);

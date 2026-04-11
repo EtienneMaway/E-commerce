@@ -15,6 +15,7 @@ import {
   ExchangeRate,
   ExternalContact,
   ExternalTransaction,
+  StockMovement,
 } from './entities';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -25,6 +26,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { ConsignmentsModule } from './consignments/consignments.module';
 import { CurrencyModule } from './currency/currency.module';
 import { ExternalContactsModule } from './external-contacts/external-contacts.module';
+import { StockMovementsModule } from './stock-movements/stock-movements.module';
 
 @Module({
   imports: [
@@ -49,6 +51,7 @@ import { ExternalContactsModule } from './external-contacts/external-contacts.mo
           ExchangeRate,
           ExternalContact,
           ExternalTransaction,
+          StockMovement,
         ],
         synchronize: config.get<string>('NODE_ENV') !== 'production',
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -68,6 +71,7 @@ import { ExternalContactsModule } from './external-contacts/external-contacts.mo
     ConsignmentsModule,
     CurrencyModule,
     ExternalContactsModule,
+    StockMovementsModule,
   ],
   providers: [
     // Apply throttle guard globally

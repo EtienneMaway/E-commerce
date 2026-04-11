@@ -12,6 +12,7 @@ import { User } from './user.entity';
 import { SupplierDebt } from './supplier-debt.entity';
 import { DebtorCredit } from './debtor-credit.entity';
 import { SaleTransaction } from './sale-transaction.entity';
+import { StockMovement } from './stock-movement.entity';
 
 export enum InventorySource {
   PERSONAL = 'PERSONAL',
@@ -103,4 +104,7 @@ export class InventoryEntry {
 
   @OneToMany(() => SaleTransaction, (sale) => sale.inventoryEntry)
   saleTransactions: SaleTransaction[];
+
+  @OneToMany(() => StockMovement, (m) => m.inventoryEntry)
+  movements: StockMovement[];
 }

@@ -18,4 +18,7 @@ export const QK = {
   pendingPayments: ['payments', 'pending-from-debtors'] as const,
   externalContacts: ['external-contacts'] as const,
   externalContactDetail: (id: string) => ['external-contacts', id] as const,
+  stockMovements: (filters?: object) => ['inventory', 'movements', filters] as const,
+  stockMovementsByEntry: (entryId: string) =>
+    ['inventory', 'entries', entryId, 'movements'] as const,
 } as const;

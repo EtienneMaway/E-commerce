@@ -56,7 +56,93 @@ export const inventoryApi = {
     api.post('/inventory/receive', body).then((r) => r.data),
   updateSellingPrice: (id: string, sellingPrice: string) =>
     api.patch(`/inventory/${id}/selling-price`, { sellingPrice }).then((r) => r.data),
+  adjustStock: (
+    entryId: string,
+    body: { reason: string; qty: number; notes?: string },
+  ) => api.post(`/inventory/${entryId}/adjust`, body).then((r) => r.data),
 };
+
+// ─── Stock Movements ──────────────────────────────────────────────────────────
+
+export interface StockMovement {
+  id: string;
+  inventoryEntryId: string;
+  ownerId: string;
+  reason: string;
+  qtyDelta: number;
+  qtyBefore: number;
+  qtyAfter: number;
+  unitCostSnapshot: string;
+  notes: string | null;
+  saleTransactionId: string | null;
+  consignmentRequestId: string | null;
+  supplierDebtId: string | null;
+  createdAt: string;
+  inventoryEntry?: {
+    id: string;
+    productName: string;
+    source: string;
+    unitCost: string;
+  };
+}
+
+export interface StockMovementsFilter {
+  entryId?: string;
+  productName?: string;
+  reason?: string | string[];
+  source?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  limit?: number;
+}
+
+export const stockMovementsApi = {
+  list: (
+    params?: StockMovementsFilter,
+  ): Promise<{ data: StockMovement[]; total: number }> => {
+    const query: Record<string, string | number> = {};
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        if (v === undefined || v === null) continue;
+        query[k] = Array.isArray(v) ? v.join(',') : (v as string | number);
+      }
+    }
+    return api.get('/inventory/movements', { params: query }).then((r) => r.data);
+  },
+  byEntry: (entryId: string): Promise<StockMovement[]> =>
+    api.get(`/inventory/entries/${entryId}/movements`).then((r) => r.data),
+};
+
+export const MANUAL_STOCK_REASONS = [
+  'CUSTOMER_RETURN',
+  'RECOUNT_UP',
+  'OTHER_IN',
+  'DAMAGE',
+  'LOSS',
+  'THEFT',
+  'EXPIRY',
+  'SUPPLIER_RETURN',
+  'INTERNAL_USE',
+  'RECOUNT_DOWN',
+  'OTHER_OUT',
+] as const;
+export type ManualStockReason = (typeof MANUAL_STOCK_REASONS)[number];
+
+export const POSITIVE_REASONS_SET: ReadonlySet<string> = new Set([
+  'PURCHASE',
+  'RECEIVE_SUPPLIER',
+  'CUSTOMER_RETURN',
+  'RECOUNT_UP',
+  'OTHER_IN',
+]);
+
+export const NOTES_REQUIRED_REASONS_SET: ReadonlySet<string> = new Set([
+  'RECOUNT_UP',
+  'RECOUNT_DOWN',
+  'OTHER_IN',
+  'OTHER_OUT',
+]);
 
 // ─── Consignments ─────────────────────────────────────────────────────────────
 
