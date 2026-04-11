@@ -63,6 +63,7 @@ export default function StockMovementsPage() {
   const rows = data?.data ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
+  const summary = data?.summary;
 
   function reasonLabel(r: string): string {
     return (
@@ -193,6 +194,62 @@ export default function StockMovementsPage() {
       </div>
 
       <div className="page-content">
+        {/* Summary cards */}
+        {summary && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <div
+              className="rounded-xl p-4 border"
+              style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            >
+              <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--muted)' }}>
+                {t.stockMovements.summaryIn}
+              </div>
+              <div className="text-lg font-bold" style={{ color: 'var(--success)' }}>
+                +{summary.qtyIn} {t.stockMovements.summaryPieces}
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                {t.stockMovements.summaryValue}: {formatCurrency(summary.valueIn)}
+              </div>
+            </div>
+            <div
+              className="rounded-xl p-4 border"
+              style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            >
+              <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--muted)' }}>
+                {t.stockMovements.summaryOut}
+              </div>
+              <div className="text-lg font-bold" style={{ color: 'var(--danger)' }}>
+                −{summary.qtyOut} {t.stockMovements.summaryPieces}
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                {t.stockMovements.summaryValue}: {formatCurrency(summary.valueOut)}
+              </div>
+            </div>
+            <div
+              className="rounded-xl p-4 border"
+              style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            >
+              <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--muted)' }}>
+                {t.stockMovements.summaryNet}
+              </div>
+              <div
+                className="text-lg font-bold"
+                style={{
+                  color: summary.qtyNet >= 0 ? 'var(--success)' : 'var(--danger)',
+                }}
+              >
+                {summary.qtyNet >= 0 ? '+' : ''}
+                {summary.qtyNet} {t.stockMovements.summaryPieces}
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                {t.stockMovements.summaryValue}:{' '}
+                {parseFloat(summary.valueNet) >= 0 ? '+' : ''}
+                {formatCurrency(summary.valueNet)}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Filters */}
         <div
           className="rounded-xl p-4 mb-4 border grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3"

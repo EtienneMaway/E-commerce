@@ -97,10 +97,23 @@ export interface StockMovementsFilter {
   limit?: number;
 }
 
+export interface StockMovementsSummary {
+  qtyIn: number;
+  qtyOut: number;
+  qtyNet: number;
+  valueIn: string;
+  valueOut: string;
+  valueNet: string;
+}
+
 export const stockMovementsApi = {
   list: (
     params?: StockMovementsFilter,
-  ): Promise<{ data: StockMovement[]; total: number }> => {
+  ): Promise<{
+    data: StockMovement[];
+    total: number;
+    summary: StockMovementsSummary;
+  }> => {
     const query: Record<string, string | number> = {};
     if (params) {
       for (const [k, v] of Object.entries(params)) {

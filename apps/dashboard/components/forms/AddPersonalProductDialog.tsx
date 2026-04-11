@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi, currencyApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
@@ -22,6 +22,42 @@ const EMPTY = {
   category: '',
 };
 
+const CATEGORIES = [
+  'Food & Beverages',
+  'Groceries',
+  'Snacks & Confectionery',
+  'Beverages',
+  'Dairy & Eggs',
+  'Meat & Poultry',
+  'Bakery',
+  'Fruits & Vegetables',
+  'Frozen Foods',
+  'Household Cleaning',
+  'Laundry & Detergents',
+  'Personal Care',
+  'Health & Beauty',
+  'Baby Products',
+  'Pet Supplies',
+  'Kitchen & Dining',
+  'Stationery',
+  'Electronics',
+  'Mobile Accessories',
+  'Clothing & Apparel',
+  'Footwear',
+  'Tools & Hardware',
+  'Toys & Games',
+  'Other',
+] as const;
+
+interface ExistingProduct {
+  productName: string;
+  category: string | null;
+  piecesPerCarton: number | null;
+  latestCartonPrice: string | null;
+  latestUnitCost: string;
+  latestSellingPrice: string;
+}
+
 export function AddPersonalProductDialog({ open, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
@@ -33,6 +69,9 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
   const [transportEnabled, setTransportEnabled] = useState(false);
   const [transportPercent, setTransportPercent] = useState(0);
   const [error, setError] = useState('');
+  const [selectedExisting, setSelectedExisting] = useState<ExistingProduct | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
 
   // Fetch selling rate for FC conversion
   const { data: rateData } = useQuery({
@@ -41,6 +80,49 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
     staleTime: 5 * 60_000,
     retry: false,
   });
+
+  // Fetch existing products for autocomplete
+  const { data: existingProducts } = useQuery<ExistingProduct[]>({
+    queryKey: QK.inventoryProducts,
+    queryFn: () => inventoryApi.listProducts(),
+    staleTime: 30_000,
+    enabled: open,
+  });
+
+  const matchingProducts = useMemo(() => {
+    const q = form.productName.trim().toLowerCase();
+    if (!q || !existingProducts) return [];
+    return existingProducts
+      .filter((p) => p.productName.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [form.productName, existingProducts]);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  function pickExisting(p: ExistingProduct) {
+    setSelectedExisting(p);
+    setForm((f) => ({
+      ...f,
+      productName: p.productName,
+      cartonPrice: p.latestCartonPrice
+        ? p.latestCartonPrice
+        : p.piecesPerCarton
+        ? (parseFloat(p.latestUnitCost) * p.piecesPerCarton).toFixed(2)
+        : '',
+      piecesPerCarton: p.piecesPerCarton ? String(p.piecesPerCarton) : '',
+      category: p.category ?? '',
+    }));
+    setShowSuggestions(false);
+  }
 
   const sellingRate = rateData?.sellingRate ? parseFloat(rateData.sellingRate) : null;
   const isFC = entryCurrency === 'FC';
@@ -128,10 +210,14 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
     setTransportEnabled(false);
     setTransportPercent(0);
     setError('');
+    setSelectedExisting(null);
+    setShowSuggestions(false);
   }, []);
 
-  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
+  const set =
+    (k: keyof typeof EMPTY) =>
+    (e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<HTMLSelectElement>) =>
+      setForm((f) => ({ ...f, [k]: e.target.value }));
 
   if (!open) return null;
 
@@ -181,9 +267,60 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
             <p className="text-xs" style={{ color: 'var(--warning)' }}>{t.addProduct.noSellingRate}</p>
           )}
 
-          {/* Product name */}
+          {/* Product name with autocomplete */}
           <Field label={t.addProduct.productName}>
-            <input value={form.productName} onChange={set('productName')} placeholder={t.addProduct.productNamePlaceholder} className="input" />
+            <div className="relative" ref={suggestionsRef}>
+              <input
+                value={form.productName}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, productName: e.target.value }));
+                  setSelectedExisting(null);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                placeholder={t.addProduct.productNamePlaceholder}
+                className="input"
+                autoComplete="off"
+              />
+              {showSuggestions && matchingProducts.length > 0 && (
+                <div
+                  className="absolute z-10 left-0 right-0 mt-1 rounded-lg border shadow-lg overflow-hidden"
+                  style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+                >
+                  <div
+                    className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide"
+                    style={{ color: 'var(--muted)', background: 'var(--surface)' }}
+                  >
+                    {t.addProduct.suggestionsTitle}
+                  </div>
+                  {matchingProducts.map((p) => (
+                    <button
+                      type="button"
+                      key={p.productName}
+                      onClick={() => pickExisting(p)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--surface)] transition-colors"
+                      style={{ color: 'var(--foreground)' }}
+                    >
+                      <div className="font-medium">
+                        {p.productName.charAt(0).toUpperCase() + p.productName.slice(1)}
+                      </div>
+                      <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                        {p.category ?? '—'}
+                        {p.piecesPerCarton ? ` · ${p.piecesPerCarton} pcs/ctn` : ''}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {selectedExisting && (
+              <p
+                className="text-xs mt-1.5"
+                style={{ color: 'var(--primary)' }}
+              >
+                ✓ {t.addProduct.existingProductHint}
+              </p>
+            )}
           </Field>
 
           {/* Number of cartons + Purchase price */}
@@ -219,7 +356,17 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
               <input value={form.piecesPerCarton} onChange={set('piecesPerCarton')} placeholder={t.addProduct.piecesPerCartonPlaceholder} type="number" min="1" className="input" />
             </Field>
             <Field label={t.addProduct.category}>
-              <input value={form.category} onChange={set('category')} placeholder={t.addProduct.categoryPlaceholder} className="input" />
+              <select value={form.category} onChange={set('category')} className="input">
+                <option value="">{t.addProduct.categorySelect}</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+                {form.category && !CATEGORIES.includes(form.category as typeof CATEGORIES[number]) && (
+                  <option value={form.category}>{form.category}</option>
+                )}
+              </select>
             </Field>
           </div>
 

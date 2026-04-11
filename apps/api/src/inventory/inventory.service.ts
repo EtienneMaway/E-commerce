@@ -397,8 +397,8 @@ export class InventoryService {
     const entry = await this.entryRepo.findOne({ where: { id: entryId } });
     if (!entry) throw new NotFoundException('Inventory entry not found');
     if (entry.ownerId !== ownerId) throw new ForbiddenException('You do not own this inventory entry');
-    if (entry.source !== InventorySource.CONSIGNED_IN) {
-      throw new BadRequestException('Selling price can only be updated on CONSIGNED_IN entries');
+    if (entry.source === InventorySource.CONSIGNED_OUT) {
+      throw new BadRequestException('Selling price cannot be updated on CONSIGNED_OUT entries');
     }
 
     entry.sellingPrice = dto.sellingPrice;

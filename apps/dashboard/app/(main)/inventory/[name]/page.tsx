@@ -11,6 +11,7 @@ import { Badge } from '../../../../components/ui/Badge';
 import { DataTable, type Column } from '../../../../components/ui/DataTable';
 import { EditSellingPriceDialog } from '../../../../components/forms/EditSellingPriceDialog';
 import { AdjustStockDialog } from '../../../../components/forms/AdjustStockDialog';
+import { EditProductSellingPriceDialog } from '../../../../components/forms/EditProductSellingPriceDialog';
 import { useT } from '../../../../lib/i18n';
 
 interface InventoryEntry {
@@ -56,6 +57,8 @@ export default function ProductDetailPage({
   const formatCurrency = useFormatCurrency();
   const [editPriceTarget, setEditPriceTarget] = useState<EditPriceTarget | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<AdjustTarget | null>(null);
+  const [adjustPickerOpen, setAdjustPickerOpen] = useState(false);
+  const [bulkPriceOpen, setBulkPriceOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: QK.inventory({ productName }),
@@ -208,22 +211,6 @@ export default function ProductDetailPage({
               {t.inventory.editPriceBtn}
             </button>
           )}
-          {r.source !== 'CONSIGNED_OUT' && (
-            <button
-              onClick={() =>
-                setAdjustTarget({
-                  id: r.id,
-                  productName: r.productName,
-                  quantityRemaining: r.quantityRemaining,
-                  source: r.source,
-                })
-              }
-              className="btn btn-secondary"
-              style={{ fontSize: '12px', padding: '5px 12px' }}
-            >
-              {t.inventory.adjustBtn}
-            </button>
-          )}
         </div>
       ),
     },
@@ -233,6 +220,71 @@ export default function ProductDetailPage({
     <div>
       <EditSellingPriceDialog entry={editPriceTarget} onClose={() => setEditPriceTarget(null)} />
       <AdjustStockDialog entry={adjustTarget} onClose={() => setAdjustTarget(null)} />
+      <EditProductSellingPriceDialog
+        open={bulkPriceOpen}
+        productName={productName}
+        entries={entries}
+        onClose={() => setBulkPriceOpen(false)}
+      />
+      {adjustPickerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setAdjustPickerOpen(false);
+          }}
+        >
+          <div
+            className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-6 shadow-xl"
+            style={{ background: 'var(--card)' }}
+          >
+            <div className="mb-4">
+              <h2 className="text-base font-bold" style={{ color: 'var(--foreground)' }}>
+                {t.inventory.pickEntryTitle}
+              </h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                {t.inventory.pickEntrySub}
+              </p>
+            </div>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {activeEntries.map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => {
+                    setAdjustTarget({
+                      id: e.id,
+                      productName: e.productName,
+                      quantityRemaining: e.quantityRemaining,
+                      source: e.source,
+                    });
+                    setAdjustPickerOpen(false);
+                  }}
+                  className="w-full text-left rounded-lg border p-3 hover:bg-[var(--surface)] transition-colors"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-sm" style={{ color: 'var(--foreground)' }}>
+                      {sourceLabel(e.source)}
+                    </span>
+                    <span className="text-xs tabular-nums" style={{ color: 'var(--muted)' }}>
+                      {e.quantityRemaining} pcs · {formatCurrency(e.unitCost)}
+                    </span>
+                  </div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                    {formatDate(e.createdAt)}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setAdjustPickerOpen(false)}
+              className="btn btn-secondary w-full mt-4"
+            >
+              {t.common.cancel}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="page-header">
@@ -264,6 +316,31 @@ export default function ProductDetailPage({
             )}
           </div>
         </div>
+        {activeEntries.length > 0 && (
+          <div className="flex gap-2 flex-shrink-0 self-end sm:self-auto">
+            <button
+              onClick={() => {
+                if (activeEntries.length === 1) {
+                  const e = activeEntries[0];
+                  setAdjustTarget({
+                    id: e.id,
+                    productName: e.productName,
+                    quantityRemaining: e.quantityRemaining,
+                    source: e.source,
+                  });
+                } else {
+                  setAdjustPickerOpen(true);
+                }
+              }}
+              className="btn btn-secondary"
+            >
+              {t.inventory.adjustStockTopBtn}
+            </button>
+            <button onClick={() => setBulkPriceOpen(true)} className="btn btn-primary">
+              {t.inventory.editSellingPriceTopBtn}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Value summary cards ─────────────────────────────────── */}
