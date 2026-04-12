@@ -8,6 +8,8 @@ import { externalContactsApi, inventoryApi } from '../../../../lib/api';
 import { QK } from '../../../../lib/query-keys';
 import { useFormatCurrency } from '../../../../lib/currency';
 import { useT } from '../../../../lib/i18n';
+import { singleExternalTxHtml } from '../../../../lib/print-templates';
+import { PrintDialog } from '../../../../components/ui/PrintDialog';
 
 type TxType = 'PRODUCT_OUT' | 'PAYMENT_IN' | 'PRODUCT_IN' | 'PAYMENT_OUT';
 type Role = 'DEBTOR' | 'SUPPLIER' | 'BOTH';
@@ -577,6 +579,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
   const formatCurrency = useFormatCurrency();
   const t = useT();
   const [openModal, setOpenModal] = useState<Modal>(null);
+  const [printTx, setPrintTx] = useState<ExternalTransaction | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: QK.externalContactDetail(id),
@@ -718,6 +721,14 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                     )}
                   </div>
                   <button
+                    onClick={() => setPrintTx(tx)}
+                    className="text-xs px-2 py-1 rounded border mt-0.5"
+                    style={{ color: 'var(--primary)', borderColor: 'var(--primary)' }}
+                    title={t.print.printBtn}
+                  >
+                    🖨️
+                  </button>
+                  <button
                     onClick={() => { if (confirm('Delete this transaction? Balance will be corrected but inventory changes are not reversed.')) deleteTxMutation.mutate(tx.id); }}
                     className="text-xs px-2 py-1 rounded border mt-0.5"
                     style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
@@ -733,6 +744,34 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
 
       {/* Action modals */}
       <ActionModal modal={openModal} contactId={id} onClose={() => setOpenModal(null)} />
+      {contact && (
+        <PrintDialog
+          open={!!printTx}
+          onClose={() => setPrintTx(null)}
+          buildHtml={(fmt) => {
+            const tx = printTx!;
+            const isProductOut = tx.type === 'PRODUCT_OUT';
+            const isProductIn = tx.type === 'PRODUCT_IN';
+            const isPaymentIn = tx.type === 'PAYMENT_IN';
+            const title = isProductOut
+              ? t.print.deliveryNote
+              : isProductIn
+              ? t.print.goodsReceivedNote
+              : t.print.paymentReceipt;
+            const balance = (isProductOut || isPaymentIn)
+              ? contact.debtorBalance
+              : contact.supplierBalance;
+            return singleExternalTxHtml({
+              contactName: contact.name,
+              contactPhone: contact.phone,
+              tx: { type: tx.type, productName: tx.productName, quantity: tx.quantity, unitPrice: tx.unitPrice, amount: tx.amount, createdAt: tx.createdAt, notes: tx.notes },
+              balance,
+              formatCurrency: fmt,
+              t: { title, contact: t.print.contact, phone: t.print.phone, date: t.print.date, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, balance: t.print.balance },
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -9,6 +9,8 @@ import { useFormatCurrency } from '../../../lib/currency';
 import { Badge } from '../../../components/ui/Badge';
 import { SendConsignmentDialog } from '../../../components/forms/SendConsignmentDialog';
 import { useT } from '@/lib/i18n';
+import { consignmentHtml } from '../../../lib/print-templates';
+import { PrintDialog } from '../../../components/ui/PrintDialog';
 
 type ConsignmentStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
 type Variant = 'pending' | 'accepted' | 'rejected' | 'cancelled';
@@ -95,6 +97,7 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
+  const [printRow, setPrintRow] = useState<ConsignmentRequest | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: QK.consignmentsOutgoing,
     queryFn: () => consignmentsApi.outgoing(),
@@ -112,6 +115,21 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
   if (rows.length === 0) return <EmptyState message={t.consignments.noOutgoing} />;
 
   return (
+    <>
+    <PrintDialog
+      open={!!printRow}
+      onClose={() => setPrintRow(null)}
+      buildHtml={(fmt) => consignmentHtml({
+        supplierUsername: printRow?.supplier?.username ?? printRow?.supplierId ?? '',
+        debtorUsername: printRow?.debtor?.username ?? printRow?.debtorId ?? '',
+        status: printRow?.status ?? '',
+        note: printRow?.note ?? null,
+        createdAt: printRow?.createdAt ?? '',
+        items: printRow?.items ?? [],
+        formatCurrency: fmt,
+        t: { title: t.print.consignmentNote, from: t.print.from, to: t.print.to, date: t.print.date, status: t.print.status, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, note: t.print.note, grandTotal: t.print.grandTotal, cartonPrice: t.print.cartonPrice },
+      })}
+    />
     <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
       <div style={{ overflowX: 'auto' }}>
       <table className="w-full text-sm" style={{ minWidth: '600px' }}>
@@ -146,16 +164,26 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
                 </td>
                 <td className="px-4 py-3" style={{ color: 'var(--muted)' }}>{formatDate(row.createdAt)}</td>
                 <td className="px-4 py-3">
-                  {row.status === 'PENDING' && (
+                  <div className="flex gap-1.5">
                     <button
-                      onClick={() => cancelMutation.mutate(row.id)}
-                      disabled={cancelMutation.isPending}
-                      className="btn btn-danger"
+                      onClick={() => setPrintRow(row)}
+                      className="btn btn-secondary"
                       style={{ fontSize: '12px', padding: '5px 12px' }}
+                      title={t.print.printBtn}
                     >
-                      {t.consignments.cancel}
+                      🖨️
                     </button>
-                  )}
+                    {row.status === 'PENDING' && (
+                      <button
+                        onClick={() => cancelMutation.mutate(row.id)}
+                        disabled={cancelMutation.isPending}
+                        className="btn btn-danger"
+                        style={{ fontSize: '12px', padding: '5px 12px' }}
+                      >
+                        {t.consignments.cancel}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
               {expandedId === row.id && (
@@ -171,6 +199,7 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
       </table>
       </div>
     </div>
+    </>
   );
 }
 
@@ -179,6 +208,7 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
   const [actionError, setActionError] = useState<Record<string, string>>({});
+  const [printRow, setPrintRow] = useState<ConsignmentRequest | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: QK.consignmentsIncoming,
@@ -204,6 +234,21 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
   if (rows.length === 0) return <EmptyState message={t.consignments.noIncoming} />;
 
   return (
+    <>
+    <PrintDialog
+      open={!!printRow}
+      onClose={() => setPrintRow(null)}
+      buildHtml={(fmt) => consignmentHtml({
+        supplierUsername: printRow?.supplier?.username ?? printRow?.supplierId ?? '',
+        debtorUsername: printRow?.debtor?.username ?? printRow?.debtorId ?? '',
+        status: printRow?.status ?? '',
+        note: printRow?.note ?? null,
+        createdAt: printRow?.createdAt ?? '',
+        items: printRow?.items ?? [],
+        formatCurrency: fmt,
+        t: { title: t.print.consignmentNote, from: t.print.from, to: t.print.to, date: t.print.date, status: t.print.status, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, note: t.print.note, grandTotal: t.print.grandTotal, cartonPrice: t.print.cartonPrice },
+      })}
+    />
     <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
       <div style={{ overflowX: 'auto' }}>
       <table className="w-full text-sm" style={{ minWidth: '680px' }}>
@@ -239,26 +284,36 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
                 <td className="px-4 py-3" style={{ color: 'var(--muted)' }}>{formatDate(row.createdAt)}</td>
                 <td className="px-4 py-3 max-w-xs truncate" style={{ color: 'var(--muted)' }}>{row.note ?? '—'}</td>
                 <td className="px-4 py-3">
-                  {row.status === 'PENDING' && (
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => confirmMutation.mutate(row.id)}
-                        disabled={confirmMutation.isPending || rejectMutation.isPending}
-                        className="btn btn-success"
-                        style={{ fontSize: '12px', padding: '5px 12px' }}
-                      >
-                        {t.consignments.confirm}
-                      </button>
-                      <button
-                        onClick={() => rejectMutation.mutate(row.id)}
-                        disabled={confirmMutation.isPending || rejectMutation.isPending}
-                        className="btn btn-danger"
-                        style={{ fontSize: '12px', padding: '5px 12px' }}
-                      >
-                        {t.consignments.reject}
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex gap-1.5 flex-wrap">
+                    <button
+                      onClick={() => setPrintRow(row)}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '12px', padding: '5px 12px' }}
+                      title={t.print.printBtn}
+                    >
+                      🖨️
+                    </button>
+                    {row.status === 'PENDING' && (
+                      <>
+                        <button
+                          onClick={() => confirmMutation.mutate(row.id)}
+                          disabled={confirmMutation.isPending || rejectMutation.isPending}
+                          className="btn btn-success"
+                          style={{ fontSize: '12px', padding: '5px 12px' }}
+                        >
+                          {t.consignments.confirm}
+                        </button>
+                        <button
+                          onClick={() => rejectMutation.mutate(row.id)}
+                          disabled={confirmMutation.isPending || rejectMutation.isPending}
+                          className="btn btn-danger"
+                          style={{ fontSize: '12px', padding: '5px 12px' }}
+                        >
+                          {t.consignments.reject}
+                        </button>
+                      </>
+                    )}
+                  </div>
                   {actionError[row.id] && (
                     <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{actionError[row.id]}</p>
                   )}
@@ -277,6 +332,7 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
       </table>
       </div>
     </div>
+    </>
   );
 }
 

@@ -10,6 +10,8 @@ import { useFormatCurrency } from '../../../lib/currency';
 import { DataTable, type Column } from '../../../components/ui/DataTable';
 import { Badge } from '../../../components/ui/Badge';
 import { useT } from '../../../lib/i18n';
+import { saleReceiptHtml } from '../../../lib/print-templates';
+import { PrintDialog } from '../../../components/ui/PrintDialog';
 
 type Period = '7d' | '30d' | '90d' | 'all';
 
@@ -29,6 +31,7 @@ export default function SalesPage() {
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const [period, setPeriod] = useState<Period>('30d');
+  const [printRow, setPrintRow] = useState<Row | null>(null);
 
   const PERIODS: { label: string; value: Period }[] = [
     { label: t.sales.period7d, value: '7d' },
@@ -72,6 +75,20 @@ export default function SalesPage() {
       ),
     },
     { key: 'date', header: t.sales.colDate, sortable: true, getValue: (r) => r.date, render: (r) => formatDate(r.date) },
+    {
+      key: 'print',
+      header: '',
+      render: (r) => (
+        <button
+          onClick={() => setPrintRow(r)}
+          className="btn btn-secondary"
+          style={{ fontSize: '12px', padding: '5px 12px' }}
+          title={t.print.printBtn}
+        >
+          🖨️
+        </button>
+      ),
+    },
   ];
 
   const { data, isLoading } = useQuery({
@@ -87,6 +104,16 @@ export default function SalesPage() {
 
   return (
     <div>
+      <PrintDialog
+        open={!!printRow}
+        onClose={() => setPrintRow(null)}
+        buildHtml={(fmt) => saleReceiptHtml({
+          items: printRow ? [{ productName: printRow.productName, qtySold: printRow.qtySold, salePrice: printRow.salePrice }] : [],
+          date: printRow?.date ?? '',
+          formatCurrency: fmt,
+          t: { title: t.print.saleReceipt, date: t.print.date, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, grandTotal: t.print.grandTotal, cartonPrice: t.print.cartonPrice },
+        })}
+      />
       <div className="page-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
         <div className="flex-1 min-w-0">
           <h1 className="page-title">{t.sales.title}</h1>
