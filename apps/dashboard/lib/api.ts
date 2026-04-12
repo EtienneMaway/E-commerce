@@ -148,6 +148,7 @@ export const POSITIVE_REASONS_SET: ReadonlySet<string> = new Set([
   'CUSTOMER_RETURN',
   'RECOUNT_UP',
   'OTHER_IN',
+  'EXTERNAL_IN',
 ]);
 
 export const NOTES_REQUIRED_REASONS_SET: ReadonlySet<string> = new Set([

@@ -11,7 +11,11 @@ function cap(s: string): string {
 }
 
 function fmtDate(d: string): string {
-  return new Date(d).toLocaleDateString();
+  const dt = new Date(d);
+  const dd = String(dt.getDate()).padStart(2, '0');
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const yyyy = dt.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 /* ── Types for each template ───────────────────────────────────────────── */

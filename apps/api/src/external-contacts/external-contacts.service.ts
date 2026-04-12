@@ -14,7 +14,9 @@ import {
   ExternalTransactionType,
   InventoryEntry,
   InventorySource,
+  StockMovementReason,
 } from '../entities';
+import { StockMovementsService } from '../stock-movements/stock-movements.service';
 import { CreateExternalContactDto } from './dto/create-external-contact.dto';
 import { UpdateExternalContactDto } from './dto/update-external-contact.dto';
 import { RecordProductOutDto } from './dto/record-product-out.dto';
@@ -32,6 +34,7 @@ export class ExternalContactsService {
     @InjectRepository(InventoryEntry)
     private readonly entryRepo: Repository<InventoryEntry>,
     private readonly dataSource: DataSource,
+    private readonly stockMovements: StockMovementsService,
   ) {}
 
   // ─── CRUD ──────────────────────────────────────────────────────────────────
@@ -129,11 +132,21 @@ export class ExternalContactsService {
       for (const entry of sorted) {
         if (remaining === 0) break;
         const deduct = Math.min(entry.quantityRemaining, remaining);
+        const qtyBefore = entry.quantityRemaining;
         totalCostDeducted = totalCostDeducted.plus(new Decimal(entry.unitCost).mul(deduct));
         totalQtyDeducted += deduct;
         entry.quantityRemaining -= deduct;
         remaining -= deduct;
         await manager.save(InventoryEntry, entry);
+
+        await this.stockMovements.record(manager, {
+          ownerId,
+          entry,
+          reason: StockMovementReason.EXTERNAL_OUT,
+          qty: deduct,
+          qtyBefore,
+          notes: dto.notes ?? null,
+        });
       }
 
       const unitCostUsed = totalQtyDeducted > 0
@@ -233,6 +246,15 @@ export class ExternalContactsService {
         quantityRemaining: dto.quantity,
       });
       await manager.save(InventoryEntry, entry);
+
+      await this.stockMovements.record(manager, {
+        ownerId,
+        entry,
+        reason: StockMovementReason.EXTERNAL_IN,
+        qty: dto.quantity,
+        qtyBefore: 0,
+        notes: dto.notes ?? null,
+      });
 
       const amount = new Decimal(dto.unitCost).mul(dto.quantity).toFixed(2);
 
