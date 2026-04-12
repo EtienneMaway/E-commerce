@@ -47,23 +47,25 @@ export function buildDocumentHtml(opts: DocumentOptions): string {
   .header-right { text-align: right; font-size: 11px; color: #555; margin-bottom: 12px; }
   .divider { border: none; border-top: 1px dashed #999; margin: 12px 0; }
   .divider-solid { border: none; border-top: 1px solid #111; margin: 12px 0; }
-  table { width: 100%; border-collapse: collapse; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th {
     font-size: 10px;
     text-transform: uppercase;
-    padding: 4px 0;
+    padding: 4px 4px;
     color: #555;
     text-align: left;
     border-bottom: 1px solid #ccc;
   }
   th.right { text-align: right; }
   th.center { text-align: center; }
-  td { padding: 5px 0; vertical-align: top; }
-  td.right { text-align: right; }
-  td.center { text-align: center; }
+  th:first-child { width: 40%; }
+  td { padding: 5px 4px; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; }
+  td.right { text-align: right; white-space: nowrap; }
+  td.center { text-align: center; white-space: nowrap; }
   td.bold { font-weight: bold; }
   td.cap { text-transform: capitalize; }
-  .total-row td { font-size: 15px; font-weight: bold; padding-top: 8px; }
+  .total-row td { font-size: 15px; font-weight: bold; padding-top: 8px; white-space: nowrap; }
+  .total-row td:first-child { white-space: normal; }
   .summary-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
   .summary-row .label { color: #555; }
   .summary-row .value { font-weight: bold; }

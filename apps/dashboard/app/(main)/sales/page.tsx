@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { salesApi } from '../../../lib/api';
+import { salesApi, inventoryApi } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { formatDate } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
@@ -32,6 +32,13 @@ export default function SalesPage() {
   const formatCurrency = useFormatCurrency();
   const [period, setPeriod] = useState<Period>('30d');
   const [printRow, setPrintRow] = useState<Row | null>(null);
+
+  const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
+    queryKey: QK.inventoryProducts,
+    queryFn: () => inventoryApi.listProducts(),
+    staleTime: 60_000,
+  });
+  const ppcMap = new Map((productsData ?? []).map((p) => [p.productName, p.piecesPerCarton]));
 
   const PERIODS: { label: string; value: Period }[] = [
     { label: t.sales.period7d, value: '7d' },
@@ -108,10 +115,10 @@ export default function SalesPage() {
         open={!!printRow}
         onClose={() => setPrintRow(null)}
         buildHtml={(fmt) => saleReceiptHtml({
-          items: printRow ? [{ productName: printRow.productName, qtySold: printRow.qtySold, salePrice: printRow.salePrice }] : [],
+          items: printRow ? [{ productName: printRow.productName, qtySold: printRow.qtySold, salePrice: printRow.salePrice, piecesPerCarton: ppcMap.get(printRow.productName) ?? null }] : [],
           date: printRow?.date ?? '',
           formatCurrency: fmt,
-          t: { title: t.print.saleReceipt, date: t.print.date, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, grandTotal: t.print.grandTotal, cartonPrice: t.print.cartonPrice },
+          t: { title: t.print.saleReceipt, date: t.print.date, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, grandTotal: t.print.grandTotal, cartonPrice: t.print.cartonPrice, pcsPerCarton: t.print.pcsPerCarton },
         })}
       />
       <div className="page-header" style={{ flexWrap: 'wrap', gap: '12px' }}>

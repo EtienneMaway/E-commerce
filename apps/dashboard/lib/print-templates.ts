@@ -37,6 +37,7 @@ export interface ConsignmentPrintData {
     note: string;
     grandTotal: string;
     cartonPrice: string;
+    pcsPerCarton: string;
   };
 }
 
@@ -86,6 +87,7 @@ export interface SaleReceiptPrintData {
     total: string;
     grandTotal: string;
     cartonPrice: string;
+    pcsPerCarton: string;
   };
 }
 
@@ -100,13 +102,21 @@ export function consignmentHtml(data: ConsignmentPrintData): string {
   const rows = data.items
     .map(
       (it) => {
-        const carton = it.piecesPerCarton
-          ? data.formatCurrency((parseFloat(it.agreedUnitPrice) * it.piecesPerCarton).toFixed(2))
+        const ppc = it.piecesPerCarton;
+        const cartonPrice = ppc
+          ? data.formatCurrency((parseFloat(it.agreedUnitPrice) * ppc).toFixed(2))
           : null;
+        const ppcLine = ppc
+          ? `<span style="font-size:10px;color:#777">1 ctn = ${ppc} ${data.t.pcsPerCarton}</span>`
+          : '';
+        const cartonLine = cartonPrice
+          ? `<span style="font-size:10px;color:#777">${data.t.cartonPrice}: ${cartonPrice}</span>`
+          : '';
+        const sub = [ppcLine, cartonLine].filter(Boolean).join(' &middot; ');
         return `<tr>
-          <td class="cap">${esc(it.productName)}</td>
+          <td class="cap">${esc(it.productName)}${sub ? `<br>${sub}` : ''}</td>
           <td class="center">${it.quantity}</td>
-          <td class="right">${data.formatCurrency(it.agreedUnitPrice)}${carton ? `<br><span style="font-size:10px;color:#777">${data.t.cartonPrice}: ${carton}</span>` : ''}</td>
+          <td class="right">${data.formatCurrency(it.agreedUnitPrice)}</td>
           <td class="right bold">${data.formatCurrency((parseFloat(it.agreedUnitPrice) * it.quantity).toFixed(2))}</td>
         </tr>`;
       },
@@ -215,6 +225,7 @@ export interface SingleExternalTxPrintData {
     productName: string | null;
     quantity: number | null;
     unitPrice: string | null;
+    piecesPerCarton?: number | null;
     amount: string;
     createdAt: string;
     notes: string | null;
@@ -231,6 +242,8 @@ export interface SingleExternalTxPrintData {
     unitPrice: string;
     total: string;
     balance: string;
+    cartonPrice: string;
+    pcsPerCarton: string;
   };
 }
 
@@ -243,7 +256,19 @@ export function singleExternalTxHtml(data: SingleExternalTxPrintData): string {
     ${data.contactPhone ? `<div class="summary-row"><span class="label">${data.t.phone}:</span><span class="value">${esc(data.contactPhone)}</span></div>` : ''}
     <div class="summary-row"><span class="label">${data.t.date}:</span><span class="value">${fmtDate(tx.createdAt)}</span></div>
     <hr class="divider" />
-    ${isProduct ? `
+    ${isProduct ? (() => {
+      const ppc = tx.piecesPerCarton;
+      const cartonPrice = ppc && tx.unitPrice
+        ? data.formatCurrency((parseFloat(tx.unitPrice) * ppc).toFixed(2))
+        : null;
+      const ppcLine = ppc
+        ? `<span style="font-size:10px;color:#777">1 ctn = ${ppc} ${data.t.pcsPerCarton}</span>`
+        : '';
+      const cartonLine = cartonPrice
+        ? `<span style="font-size:10px;color:#777">${data.t.cartonPrice}: ${cartonPrice}</span>`
+        : '';
+      const sub = [ppcLine, cartonLine].filter(Boolean).join(' &middot; ');
+      return `
     <table>
       <thead><tr>
         <th>${data.t.product}</th>
@@ -252,12 +277,13 @@ export function singleExternalTxHtml(data: SingleExternalTxPrintData): string {
         <th class="right">${data.t.total}</th>
       </tr></thead>
       <tbody><tr>
-        <td class="cap">${esc(tx.productName!)}</td>
+        <td class="cap">${esc(tx.productName!)}${sub ? `<br>${sub}` : ''}</td>
         <td class="center">${tx.quantity ?? '—'}</td>
         <td class="right">${tx.unitPrice ? data.formatCurrency(tx.unitPrice) : '—'}</td>
         <td class="right bold">${data.formatCurrency(tx.amount)}</td>
       </tr></tbody>
-    </table>` : `
+    </table>`;
+    })() : `
     <div class="summary-row"><span class="label">${data.t.total}:</span><span class="value" style="font-size:15px">${data.formatCurrency(tx.amount)}</span></div>`}
     ${tx.notes ? `<p style="margin-top:8px;font-size:11px;color:#555">${esc(tx.notes)}</p>` : ''}
     <hr class="divider-solid" />
@@ -281,13 +307,21 @@ export function saleReceiptHtml(data: SaleReceiptPrintData): string {
   const rows = data.items
     .map(
       (it) => {
-        const carton = it.piecesPerCarton
-          ? data.formatCurrency((parseFloat(it.salePrice) * it.piecesPerCarton).toFixed(2))
+        const ppc = it.piecesPerCarton;
+        const cartonPrice = ppc
+          ? data.formatCurrency((parseFloat(it.salePrice) * ppc).toFixed(2))
           : null;
+        const ppcLine = ppc
+          ? `<span style="font-size:10px;color:#777">1 ctn = ${ppc} ${data.t.pcsPerCarton}</span>`
+          : '';
+        const cartonLine = cartonPrice
+          ? `<span style="font-size:10px;color:#777">${data.t.cartonPrice}: ${cartonPrice}</span>`
+          : '';
+        const sub = [ppcLine, cartonLine].filter(Boolean).join(' &middot; ');
         return `<tr>
-          <td class="cap">${esc(it.productName)}</td>
+          <td class="cap">${esc(it.productName)}${sub ? `<br>${sub}` : ''}</td>
           <td class="center">x${it.qtySold}</td>
-          <td class="right">${data.formatCurrency(it.salePrice)}${carton ? `<br><span style="font-size:10px;color:#777">${data.t.cartonPrice}: ${carton}</span>` : ''}</td>
+          <td class="right">${data.formatCurrency(it.salePrice)}</td>
           <td class="right bold">${data.formatCurrency((parseFloat(it.salePrice) * it.qtySold).toFixed(2))}</td>
         </tr>`;
       },

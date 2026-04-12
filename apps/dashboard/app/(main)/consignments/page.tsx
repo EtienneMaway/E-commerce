@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { consignmentsApi } from '../../../lib/api';
+import { consignmentsApi, inventoryApi } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
@@ -98,6 +98,12 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
   const [printRow, setPrintRow] = useState<ConsignmentRequest | null>(null);
+  const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
+    queryKey: QK.inventoryProducts,
+    queryFn: () => inventoryApi.listProducts(),
+    staleTime: 60_000,
+  });
+  const ppcMap = new Map((productsData ?? []).map((p) => [p.productName, p.piecesPerCarton]));
   const { data, isLoading } = useQuery({
     queryKey: QK.consignmentsOutgoing,
     queryFn: () => consignmentsApi.outgoing(),
@@ -125,9 +131,9 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
         status: printRow?.status ?? '',
         note: printRow?.note ?? null,
         createdAt: printRow?.createdAt ?? '',
-        items: printRow?.items ?? [],
+        items: (printRow?.items ?? []).map((it) => ({ ...it, piecesPerCarton: ppcMap.get(it.productName) ?? null })),
         formatCurrency: fmt,
-        t: { title: t.print.consignmentNote, from: t.print.from, to: t.print.to, date: t.print.date, status: t.print.status, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, note: t.print.note, grandTotal: t.print.grandTotal, cartonPrice: t.print.cartonPrice },
+        t: { title: t.print.consignmentNote, from: t.print.from, to: t.print.to, date: t.print.date, status: t.print.status, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, note: t.print.note, grandTotal: t.print.grandTotal, cartonPrice: t.print.cartonPrice, pcsPerCarton: t.print.pcsPerCarton },
       })}
     />
     <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
@@ -209,6 +215,12 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
   const qc = useQueryClient();
   const [actionError, setActionError] = useState<Record<string, string>>({});
   const [printRow, setPrintRow] = useState<ConsignmentRequest | null>(null);
+  const { data: productsData2 } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
+    queryKey: QK.inventoryProducts,
+    queryFn: () => inventoryApi.listProducts(),
+    staleTime: 60_000,
+  });
+  const ppcMap = new Map((productsData2 ?? []).map((p) => [p.productName, p.piecesPerCarton]));
 
   const { data, isLoading } = useQuery({
     queryKey: QK.consignmentsIncoming,
@@ -244,9 +256,9 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
         status: printRow?.status ?? '',
         note: printRow?.note ?? null,
         createdAt: printRow?.createdAt ?? '',
-        items: printRow?.items ?? [],
+        items: (printRow?.items ?? []).map((it) => ({ ...it, piecesPerCarton: ppcMap.get(it.productName) ?? null })),
         formatCurrency: fmt,
-        t: { title: t.print.consignmentNote, from: t.print.from, to: t.print.to, date: t.print.date, status: t.print.status, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, note: t.print.note, grandTotal: t.print.grandTotal, cartonPrice: t.print.cartonPrice },
+        t: { title: t.print.consignmentNote, from: t.print.from, to: t.print.to, date: t.print.date, status: t.print.status, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, note: t.print.note, grandTotal: t.print.grandTotal, cartonPrice: t.print.cartonPrice, pcsPerCarton: t.print.pcsPerCarton },
       })}
     />
     <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>

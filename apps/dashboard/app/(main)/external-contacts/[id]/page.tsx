@@ -580,6 +580,12 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
   const t = useT();
   const [openModal, setOpenModal] = useState<Modal>(null);
   const [printTx, setPrintTx] = useState<ExternalTransaction | null>(null);
+  const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
+    queryKey: QK.inventoryProducts,
+    queryFn: () => inventoryApi.listProducts(),
+    staleTime: 60_000,
+  });
+  const ppcMap = new Map((productsData ?? []).map((p) => [p.productName, p.piecesPerCarton]));
 
   const { data, isLoading } = useQuery({
     queryKey: QK.externalContactDetail(id),
@@ -764,10 +770,10 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
             return singleExternalTxHtml({
               contactName: contact.name,
               contactPhone: contact.phone,
-              tx: { type: tx.type, productName: tx.productName, quantity: tx.quantity, unitPrice: tx.unitPrice, amount: tx.amount, createdAt: tx.createdAt, notes: tx.notes },
+              tx: { type: tx.type, productName: tx.productName, quantity: tx.quantity, unitPrice: tx.unitPrice, piecesPerCarton: tx.productName ? ppcMap.get(tx.productName) ?? null : null, amount: tx.amount, createdAt: tx.createdAt, notes: tx.notes },
               balance,
               formatCurrency: fmt,
-              t: { title, contact: t.print.contact, phone: t.print.phone, date: t.print.date, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, balance: t.print.balance },
+              t: { title, contact: t.print.contact, phone: t.print.phone, date: t.print.date, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, balance: t.print.balance, cartonPrice: t.print.cartonPrice, pcsPerCarton: t.print.pcsPerCarton },
             });
           }}
         />

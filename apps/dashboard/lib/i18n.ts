@@ -473,7 +473,8 @@ const en = {
     note: 'Note',
     printBtn: 'Print',
     chooseCurrency: 'Print currency',
-    cartonPrice: 'Carton',
+    cartonPrice: 'Carton price',
+    pcsPerCarton: 'pcs/ctn',
   },
 };
 
@@ -944,7 +945,8 @@ const fr: Translations = {
     note: 'Note',
     printBtn: 'Imprimer',
     chooseCurrency: 'Devise d\'impression',
-    cartonPrice: 'Carton',
+    cartonPrice: 'Prix carton',
+    pcsPerCarton: 'pcs/ctn',
   },
 };
 
