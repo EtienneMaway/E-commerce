@@ -54,6 +54,7 @@ import { StockMovementsModule } from './stock-movements/stock-movements.module';
           StockMovement,
         ],
         synchronize: config.get<string>('NODE_ENV') !== 'production',
+        migrations: [__dirname + '/database/migrations/*.{ts,js}'],
         logging: config.get<string>('NODE_ENV') === 'development',
       }),
     }),
