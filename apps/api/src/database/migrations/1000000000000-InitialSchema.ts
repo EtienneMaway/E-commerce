@@ -70,9 +70,11 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ------------------------------------------------------- inventory_entries
     await queryRunner.query(`
-      CREATE TYPE IF NOT EXISTS "inventory_entries_source_enum" AS ENUM (
-        'PERSONAL', 'SUPPLIER', 'CONSIGNED_OUT', 'CONSIGNED_IN'
-      )
+      DO $$ BEGIN
+        CREATE TYPE "inventory_entries_source_enum" AS ENUM (
+          'PERSONAL', 'SUPPLIER', 'CONSIGNED_OUT', 'CONSIGNED_IN'
+        );
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
     `);
 
     await queryRunner.query(`
@@ -113,15 +115,19 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ---------------------------------------------------------------- payments
     await queryRunner.query(`
-      CREATE TYPE IF NOT EXISTS "payments_direction_enum" AS ENUM (
-        'OWNER_TO_SUPPLIER', 'DEBTOR_TO_OWNER'
-      )
+      DO $$ BEGIN
+        CREATE TYPE "payments_direction_enum" AS ENUM (
+          'OWNER_TO_SUPPLIER', 'DEBTOR_TO_OWNER'
+        );
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
     `);
 
     await queryRunner.query(`
-      CREATE TYPE IF NOT EXISTS "payments_status_enum" AS ENUM (
-        'PENDING', 'APPROVED', 'REJECTED'
-      )
+      DO $$ BEGIN
+        CREATE TYPE "payments_status_enum" AS ENUM (
+          'PENDING', 'APPROVED', 'REJECTED'
+        );
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
     `);
 
     await queryRunner.query(`
@@ -183,9 +189,11 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ------------------------------------------------- consignment_requests
     await queryRunner.query(`
-      CREATE TYPE IF NOT EXISTS "consignment_requests_status_enum" AS ENUM (
-        'PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED'
-      )
+      DO $$ BEGIN
+        CREATE TYPE "consignment_requests_status_enum" AS ENUM (
+          'PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED'
+        );
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
     `);
 
     await queryRunner.query(`
@@ -242,9 +250,11 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ----------------------------------------------------- external_contacts
     await queryRunner.query(`
-      CREATE TYPE IF NOT EXISTS "external_contacts_role_enum" AS ENUM (
-        'DEBTOR', 'SUPPLIER', 'BOTH'
-      )
+      DO $$ BEGIN
+        CREATE TYPE "external_contacts_role_enum" AS ENUM (
+          'DEBTOR', 'SUPPLIER', 'BOTH'
+        );
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
     `);
 
     await queryRunner.query(`
@@ -271,9 +281,11 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ------------------------------------------------- external_transactions
     await queryRunner.query(`
-      CREATE TYPE IF NOT EXISTS "external_transactions_type_enum" AS ENUM (
-        'PRODUCT_OUT', 'PAYMENT_IN', 'PRODUCT_IN', 'PAYMENT_OUT'
-      )
+      DO $$ BEGIN
+        CREATE TYPE "external_transactions_type_enum" AS ENUM (
+          'PRODUCT_OUT', 'PAYMENT_IN', 'PRODUCT_IN', 'PAYMENT_OUT'
+        );
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
     `);
 
     await queryRunner.query(`
@@ -303,25 +315,27 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ------------------------------------------------------- stock_movements
     await queryRunner.query(`
-      CREATE TYPE IF NOT EXISTS "stock_movements_reason_enum" AS ENUM (
-        'PURCHASE',
-        'RECEIVE_SUPPLIER',
-        'CUSTOMER_RETURN',
-        'RECOUNT_UP',
-        'OTHER_IN',
-        'EXTERNAL_IN',
-        'SALE',
-        'CONSIGN_OUT',
-        'EXTERNAL_OUT',
-        'DAMAGE',
-        'LOSS',
-        'THEFT',
-        'EXPIRY',
-        'SUPPLIER_RETURN',
-        'INTERNAL_USE',
-        'RECOUNT_DOWN',
-        'OTHER_OUT'
-      )
+      DO $$ BEGIN
+        CREATE TYPE "stock_movements_reason_enum" AS ENUM (
+          'PURCHASE',
+          'RECEIVE_SUPPLIER',
+          'CUSTOMER_RETURN',
+          'RECOUNT_UP',
+          'OTHER_IN',
+          'EXTERNAL_IN',
+          'SALE',
+          'CONSIGN_OUT',
+          'EXTERNAL_OUT',
+          'DAMAGE',
+          'LOSS',
+          'THEFT',
+          'EXPIRY',
+          'SUPPLIER_RETURN',
+          'INTERNAL_USE',
+          'RECOUNT_DOWN',
+          'OTHER_OUT'
+        );
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
     `);
 
     await queryRunner.query(`
@@ -352,17 +366,17 @@ export class InitialSchema1000000000000 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      CREATE INDEX "idx_stock_movements_owner_created"
+      CREATE INDEX IF NOT EXISTS "idx_stock_movements_owner_created"
         ON "stock_movements" ("owner_id", "created_at")
     `);
 
     await queryRunner.query(`
-      CREATE INDEX "idx_stock_movements_entry_created"
+      CREATE INDEX IF NOT EXISTS "idx_stock_movements_entry_created"
         ON "stock_movements" ("inventory_entry_id", "created_at")
     `);
 
     await queryRunner.query(`
-      CREATE INDEX "idx_stock_movements_reason"
+      CREATE INDEX IF NOT EXISTS "idx_stock_movements_reason"
         ON "stock_movements" ("reason")
     `);
   }
