@@ -70,7 +70,7 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ------------------------------------------------------- inventory_entries
     await queryRunner.query(`
-      CREATE TYPE "inventory_entries_source_enum" AS ENUM (
+      CREATE TYPE IF NOT EXISTS "inventory_entries_source_enum" AS ENUM (
         'PERSONAL', 'SUPPLIER', 'CONSIGNED_OUT', 'CONSIGNED_IN'
       )
     `);
@@ -113,13 +113,13 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ---------------------------------------------------------------- payments
     await queryRunner.query(`
-      CREATE TYPE "payments_direction_enum" AS ENUM (
+      CREATE TYPE IF NOT EXISTS "payments_direction_enum" AS ENUM (
         'OWNER_TO_SUPPLIER', 'DEBTOR_TO_OWNER'
       )
     `);
 
     await queryRunner.query(`
-      CREATE TYPE "payments_status_enum" AS ENUM (
+      CREATE TYPE IF NOT EXISTS "payments_status_enum" AS ENUM (
         'PENDING', 'APPROVED', 'REJECTED'
       )
     `);
@@ -183,7 +183,7 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ------------------------------------------------- consignment_requests
     await queryRunner.query(`
-      CREATE TYPE "consignment_requests_status_enum" AS ENUM (
+      CREATE TYPE IF NOT EXISTS "consignment_requests_status_enum" AS ENUM (
         'PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED'
       )
     `);
@@ -242,7 +242,7 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ----------------------------------------------------- external_contacts
     await queryRunner.query(`
-      CREATE TYPE "external_contacts_role_enum" AS ENUM (
+      CREATE TYPE IF NOT EXISTS "external_contacts_role_enum" AS ENUM (
         'DEBTOR', 'SUPPLIER', 'BOTH'
       )
     `);
@@ -271,7 +271,7 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ------------------------------------------------- external_transactions
     await queryRunner.query(`
-      CREATE TYPE "external_transactions_type_enum" AS ENUM (
+      CREATE TYPE IF NOT EXISTS "external_transactions_type_enum" AS ENUM (
         'PRODUCT_OUT', 'PAYMENT_IN', 'PRODUCT_IN', 'PAYMENT_OUT'
       )
     `);
@@ -303,7 +303,7 @@ export class InitialSchema1000000000000 implements MigrationInterface {
 
     // ------------------------------------------------------- stock_movements
     await queryRunner.query(`
-      CREATE TYPE "stock_movements_reason_enum" AS ENUM (
+      CREATE TYPE IF NOT EXISTS "stock_movements_reason_enum" AS ENUM (
         'PURCHASE',
         'RECEIVE_SUPPLIER',
         'CUSTOMER_RETURN',
