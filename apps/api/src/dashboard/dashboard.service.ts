@@ -225,12 +225,12 @@ export class DashboardService {
       }
     }
 
-    // External contact profits (from PRODUCT_OUT transactions)
+    // External contact profits (realized at PAYMENT_IN time, like consignments)
     const externalProfit = await this.externalTxRepo
       .createQueryBuilder('tx')
       .select('SUM(CAST(tx.profit AS DECIMAL))', 'total')
       .where('tx.ownerId = :ownerId', { ownerId })
-      .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
+      .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
       .andWhere('tx.profit IS NOT NULL')
       .getRawOne<{ total: string | null }>();
 
@@ -377,27 +377,55 @@ export class DashboardService {
   }
 
   async getProfitByProduct(ownerId: string): Promise<ProfitByProduct[]> {
-    const [rows, { byProduct: consignmentByProduct }, extRows] = await Promise.all([
-      this.saleRepo
-        .createQueryBuilder('sale')
-        .select('sale.productName', 'productName')
-        .addSelect('SUM(CAST(sale.profit AS DECIMAL))', 'totalProfit')
-        .addSelect('SUM(sale.qtySold)', 'totalQtySold')
-        .where('sale.ownerId = :ownerId', { ownerId })
-        .groupBy('sale.productName')
-        .getRawMany<{ productName: string; totalProfit: string; totalQtySold: string }>(),
-      this.computeConsignmentProfits(ownerId),
-      this.externalTxRepo
-        .createQueryBuilder('tx')
-        .select('tx.productName', 'productName')
-        .addSelect('SUM(CAST(tx.profit AS DECIMAL))', 'totalProfit')
-        .addSelect('SUM(tx.quantity)', 'totalQty')
-        .where('tx.ownerId = :ownerId', { ownerId })
-        .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
-        .andWhere('tx.profit IS NOT NULL')
-        .groupBy('tx.productName')
-        .getRawMany<{ productName: string; totalProfit: string; totalQty: string }>(),
-    ]);
+    // For external contacts we no longer store profit on PRODUCT_OUT. Instead,
+    // aggregate per-product margin from PRODUCT_OUT rows, then scale by the
+    // realization ratio (total PAYMENT_IN profit ÷ total PRODUCT_OUT margin).
+    const [rows, { byProduct: consignmentByProduct }, extProductOutRows, extPaymentInTotal] =
+      await Promise.all([
+        this.saleRepo
+          .createQueryBuilder('sale')
+          .select('sale.productName', 'productName')
+          .addSelect('SUM(CAST(sale.profit AS DECIMAL))', 'totalProfit')
+          .addSelect('SUM(sale.qtySold)', 'totalQtySold')
+          .where('sale.ownerId = :ownerId', { ownerId })
+          .groupBy('sale.productName')
+          .getRawMany<{ productName: string; totalProfit: string; totalQtySold: string }>(),
+        this.computeConsignmentProfits(ownerId),
+        this.externalTxRepo
+          .createQueryBuilder('tx')
+          .select('tx.productName', 'productName')
+          .addSelect(
+            'SUM((CAST(tx.unitPrice AS DECIMAL) - CAST(tx.unitCostUsed AS DECIMAL)) * tx.quantity)',
+            'totalMargin',
+          )
+          .addSelect('SUM(tx.quantity)', 'totalQty')
+          .where('tx.ownerId = :ownerId', { ownerId })
+          .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
+          .andWhere('tx.unitCostUsed IS NOT NULL')
+          .groupBy('tx.productName')
+          .getRawMany<{ productName: string; totalMargin: string; totalQty: string }>(),
+        this.externalTxRepo
+          .createQueryBuilder('tx')
+          .select('SUM(CAST(tx.profit AS DECIMAL))', 'total')
+          .where('tx.ownerId = :ownerId', { ownerId })
+          .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
+          .andWhere('tx.profit IS NOT NULL')
+          .getRawOne<{ total: string | null }>(),
+      ]);
+
+    const totalExtMargin = extProductOutRows.reduce(
+      (sum, r) => sum.plus(r.totalMargin ?? 0),
+      new Decimal(0),
+    );
+    const totalExtRealized = new Decimal(extPaymentInTotal?.total ?? 0);
+    const extRealizationRatio = totalExtMargin.gt(0)
+      ? totalExtRealized.div(totalExtMargin)
+      : new Decimal(0);
+    const extRows = extProductOutRows.map((r) => ({
+      productName: r.productName,
+      totalProfit: new Decimal(r.totalMargin ?? 0).mul(extRealizationRatio).toFixed(2),
+      totalQty: r.totalQty,
+    }));
 
     // Merge sale rows into a map
     const profitMap = new Map<string, { profit: Decimal; qtySold: number }>();
@@ -482,12 +510,12 @@ export class DashboardService {
       });
     }
 
-    // Append external contact profit
+    // Append external contact profit (realized at PAYMENT_IN time)
     const extProfitRow = await this.externalTxRepo
       .createQueryBuilder('tx')
       .select('SUM(CAST(tx.profit AS DECIMAL))', 'total')
       .where('tx.ownerId = :ownerId', { ownerId })
-      .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
+      .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
       .andWhere('tx.profit IS NOT NULL')
       .getRawOne<{ total: string | null }>();
 

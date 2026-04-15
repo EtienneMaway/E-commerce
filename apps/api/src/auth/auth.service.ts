@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { Repository } from 'typeorm';
+import { ILike, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { User } from '../entities';
 import { RegisterDto } from './dto/register.dto';
@@ -31,14 +31,15 @@ export class AuthService {
       const existing = await this.userRepo.findOne({ where: { phone: dto.phone } });
       if (existing) throw new ConflictException('Phone already registered');
     }
+    const normalizedUsername = dto.username.trim().toLowerCase();
     const existingUsername = await this.userRepo.findOne({
-      where: { username: dto.username },
+      where: { username: ILike(normalizedUsername) },
     });
     if (existingUsername) throw new ConflictException('Username already taken');
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
     const user = this.userRepo.create({
-      username: dto.username,
+      username: normalizedUsername,
       email: dto.email ?? null,
       phone: dto.phone ?? null,
       passwordHash,

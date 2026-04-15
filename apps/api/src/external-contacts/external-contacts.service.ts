@@ -154,14 +154,13 @@ export class ExternalContactsService {
         : dto.unitPrice;
 
       const amount = new Decimal(dto.unitPrice).mul(dto.quantity).toFixed(2);
-      const profit = new Decimal(dto.unitPrice).minus(unitCostUsed).mul(dto.quantity).toFixed(2);
-      const isLoss = new Decimal(profit).lt(0);
 
       // Update balance
       contact.debtorBalance = new Decimal(contact.debtorBalance).plus(amount).toFixed(2);
       await manager.save(ExternalContact, contact);
 
-      // Record transaction
+      // Record transaction — profit is deferred until payment is received
+      // (mirrors consignment behavior: no profit recognized at give-out time)
       const tx = manager.create(ExternalTransaction, {
         ownerId,
         contactId,
@@ -171,8 +170,8 @@ export class ExternalContactsService {
         unitPrice: dto.unitPrice,
         amount,
         unitCostUsed,
-        profit,
-        isLoss,
+        profit: null,
+        isLoss: null,
         notes: dto.notes ?? null,
       });
       return manager.save(ExternalTransaction, tx);
@@ -201,6 +200,35 @@ export class ExternalContactsService {
       contact.debtorBalance = new Decimal(contact.debtorBalance).minus(amount).toFixed(2);
       await manager.save(ExternalContact, contact);
 
+      // Realize profit proportional to the contact's PRODUCT_OUT margin ratio.
+      // ratio = Σ(sellingValue − costValue) / Σ(sellingValue) across all PRODUCT_OUTs
+      // profit on this payment = payment × ratio
+      const productOuts = await manager.find(ExternalTransaction, {
+        where: {
+          ownerId,
+          contactId,
+          type: ExternalTransactionType.PRODUCT_OUT,
+        },
+      });
+
+      let totalSelling = new Decimal(0);
+      let totalCost = new Decimal(0);
+      for (const po of productOuts) {
+        const qty = new Decimal(po.quantity ?? 0);
+        totalSelling = totalSelling.plus(po.amount);
+        if (po.unitCostUsed) {
+          totalCost = totalCost.plus(new Decimal(po.unitCostUsed).mul(qty));
+        }
+      }
+
+      let profit: string | null = null;
+      let isLoss: boolean | null = null;
+      if (totalSelling.gt(0)) {
+        const marginRatio = totalSelling.minus(totalCost).div(totalSelling);
+        profit = amount.mul(marginRatio).toFixed(2);
+        isLoss = new Decimal(profit).lt(0);
+      }
+
       const tx = manager.create(ExternalTransaction, {
         ownerId,
         contactId,
@@ -210,8 +238,8 @@ export class ExternalContactsService {
         unitPrice: null,
         amount: amount.toFixed(2),
         unitCostUsed: null,
-        profit: null,
-        isLoss: null,
+        profit,
+        isLoss,
         notes: dto.notes ?? null,
       });
       return manager.save(ExternalTransaction, tx);

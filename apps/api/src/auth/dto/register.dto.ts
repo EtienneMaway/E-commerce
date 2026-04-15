@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsOptional,
@@ -10,8 +11,13 @@ import {
 
 export class RegisterDto {
   @ApiProperty({ example: 'trader_alice' })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsString()
   @MinLength(3)
+  @Matches(/^[a-z0-9_]+$/, {
+    message:
+      'Username must contain only lowercase letters, digits, or underscores (e.g. etienne, etienne_jb, etiennejb)',
+  })
   username: string;
 
   @ApiPropertyOptional({ example: 'alice@example.com' })
