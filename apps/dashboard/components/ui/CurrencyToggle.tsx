@@ -9,20 +9,20 @@ export function CurrencyToggle() {
     <button
       onClick={toggle}
       className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
-      style={{ color: 'rgba(255,255,255,0.5)' }}
+      style={{ color: 'rgba(var(--sidebar-fg-rgb),0.5)' }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)';
-        (e.currentTarget as HTMLButtonElement).style.color = '#fff';
+        (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--sidebar-fg-rgb),0.06)';
+        (e.currentTarget as HTMLButtonElement).style.color = 'var(--sidebar-fg)';
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-        (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.5)';
+        (e.currentTarget as HTMLButtonElement).style.color = 'rgba(var(--sidebar-fg-rgb),0.5)';
       }}
       title={displayCurrency === 'USD' ? 'Switch to FC display' : 'Switch to USD display'}
     >
       <span
         className="flex-shrink-0 text-xs font-bold w-4 h-4 flex items-center justify-center rounded"
-        style={{ color: 'rgba(255,255,255,0.35)' }}
+        style={{ color: 'rgba(var(--sidebar-fg-rgb),0.35)' }}
       >
         ⇄
       </span>
@@ -34,8 +34,8 @@ export function CurrencyToggle() {
         style={{
           background: displayCurrency === 'FC'
             ? 'rgba(99,102,241,0.25)'
-            : 'rgba(255,255,255,0.08)',
-          color: displayCurrency === 'FC' ? '#818CF8' : 'rgba(255,255,255,0.4)',
+            : 'rgba(var(--sidebar-fg-rgb),0.08)',
+          color: displayCurrency === 'FC' ? '#818CF8' : 'rgba(var(--sidebar-fg-rgb),0.4)',
         }}
       >
         {displayCurrency}

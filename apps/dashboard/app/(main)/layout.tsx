@@ -155,12 +155,12 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       {(isMobile || !sidebarOpen) && (
         <div
           className="fixed top-0 inset-x-0 z-40 flex items-center gap-3 px-4 h-14"
-          style={{ background: 'var(--sidebar)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+          style={{ background: 'var(--sidebar)', borderBottom: '1px solid rgba(var(--sidebar-fg-rgb),0.08)' }}
         >
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-2 rounded-lg flex-shrink-0"
-            style={{ color: 'rgba(255,255,255,0.7)' }}
+            style={{ color: 'rgba(var(--sidebar-fg-rgb),0.7)' }}
             aria-label="Open menu"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
@@ -169,13 +169,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           </button>
           <div className="flex items-center gap-2">
             <KmbLogo size={28} />
-            <span className="text-sm font-bold text-white">KMB</span>
+            <span className="text-sm font-bold" style={{ color: 'var(--sidebar-fg)' }}>KMB</span>
           </div>
           <div className="ml-auto">
             <button
               onClick={toggle}
               className="p-2 rounded-lg"
-              style={{ color: 'rgba(255,255,255,0.6)' }}
+              style={{ color: 'rgba(var(--sidebar-fg-rgb),0.6)' }}
             >
               {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
             </button>
@@ -198,7 +198,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         style={{
           width: !isMobile && !sidebarOpen ? 0 : 240,
           background: 'var(--sidebar)',
-          borderRight: isMobile || sidebarOpen ? '1px solid rgba(255,255,255,0.05)' : '0 solid transparent',
+          borderRight: isMobile || sidebarOpen ? '1px solid rgba(var(--sidebar-fg-rgb),0.05)' : '0 solid transparent',
         }}
       >
         {/* Gradient accent at top */}
@@ -213,9 +213,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <button
           onClick={() => setSidebarOpen(false)}
           className="absolute top-4 right-4 p-1.5 rounded-lg transition-colors duration-200"
-          style={{ color: 'rgba(255,255,255,0.5)', zIndex: 60 }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.9)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.1)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.5)'; (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+          style={{ color: 'rgba(var(--sidebar-fg-rgb),0.5)', zIndex: 60 }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(var(--sidebar-fg-rgb),0.9)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--sidebar-fg-rgb),0.1)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(var(--sidebar-fg-rgb),0.5)'; (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
           aria-label="Close menu"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -230,19 +230,19 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
               <KmbLogo size={36} />
             </div>
             <div>
-              <div className="text-sm font-bold text-white leading-tight tracking-tight">KMB</div>
-              <div className="text-[10px] leading-tight" style={{ color: 'rgba(255,255,255,0.35)' }}>Kristo Mosungi na Bato</div>
-              {user && <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>@{user.username}</div>}
+              <div className="text-sm font-bold leading-tight tracking-tight" style={{ color: 'var(--sidebar-fg)' }}>KMB</div>
+              <div className="text-[10px] leading-tight" style={{ color: 'rgba(var(--sidebar-fg-rgb),0.35)' }}>Kristo Mosungi na Bato</div>
+              {user && <div className="text-xs mt-0.5" style={{ color: 'rgba(var(--sidebar-fg-rgb),0.4)' }}>@{user.username}</div>}
             </div>
           </div>
         </div>
 
         {/* Divider */}
-        <div className="mx-5 mb-3" style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} />
+        <div className="mx-5 mb-3" style={{ height: '1px', background: 'rgba(var(--sidebar-fg-rgb),0.06)' }} />
 
         {/* Nav section label */}
         <div className="px-5 mb-2">
-          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>
+          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(var(--sidebar-fg-rgb),0.25)' }}>
             {t.nav.navigation}
           </span>
         </div>
@@ -257,9 +257,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 href={item.href}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative"
                 style={{
-                  color: active ? '#fff' : 'rgba(255,255,255,0.5)',
-                  background: active ? 'rgba(99,102,241,0.22)' : 'transparent',
-                  boxShadow: active ? 'inset 0 0 0 1px rgba(99,102,241,0.3)' : 'none',
+                  color: active ? 'var(--sidebar-fg)' : 'rgba(var(--sidebar-fg-rgb),0.7)',
+                  background: active ? 'var(--sidebar-accent)' : 'transparent',
+                  boxShadow: active ? 'inset 0 0 0 1px var(--sidebar-accent-border)' : 'none',
                 }}
               >
                 {/* Active indicator bar */}
@@ -273,7 +273,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 {/* Icon */}
                 <span
                   className="transition-colors duration-200 flex-shrink-0"
-                  style={{ color: active ? '#818CF8' : 'rgba(255,255,255,0.35)', }}
+                  style={{ color: active ? '#818CF8' : 'rgba(var(--sidebar-fg-rgb),0.35)', }}
                 >
                   {item.icon}
                 </span>
@@ -284,7 +284,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 {!active && (
                   <span
                     className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
-                    style={{ background: 'rgba(255,255,255,0.04)' }}
+                    style={{ background: 'rgba(var(--sidebar-fg-rgb),0.04)' }}
                   />
                 )}
               </Link>
@@ -293,7 +293,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         </nav>
 
         {/* Bottom section */}
-        <div className="relative p-3 space-y-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="relative p-3 space-y-1" style={{ borderTop: '1px solid rgba(var(--sidebar-fg-rgb),0.06)' }}>
           {/* Language switcher */}
           <div className="px-1 py-1.5">
             <LanguageSwitcher />
@@ -308,11 +308,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <button
             onClick={toggle}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
-            style={{ color: 'rgba(255,255,255,0.5)' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; (e.currentTarget as HTMLButtonElement).style.color = '#fff'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.5)'; }}
+            style={{ color: 'rgba(var(--sidebar-fg-rgb),0.5)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--sidebar-fg-rgb),0.06)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--sidebar-fg)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(var(--sidebar-fg-rgb),0.6)'; }}
           >
-            <span style={{ color: 'rgba(255,255,255,0.35)' }}>
+            <span style={{ color: 'rgba(var(--sidebar-fg-rgb),0.35)' }}>
               {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
             </span>
             <span>{theme === 'dark' ? t.nav.lightMode : t.nav.darkMode}</span>
@@ -322,9 +322,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <button
             onClick={() => { logout(); router.push('/login'); }}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
-            style={{ color: 'rgba(255,255,255,0.5)' }}
+            style={{ color: 'rgba(var(--sidebar-fg-rgb),0.5)' }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.1)'; (e.currentTarget as HTMLButtonElement).style.color = '#F87171'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.5)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(var(--sidebar-fg-rgb),0.5)'; }}
           >
             {user && <UserAvatar username={user.username} />}
             <span className="flex-1 text-left truncate">{t.nav.signOut}</span>
