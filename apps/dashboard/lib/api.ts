@@ -227,10 +227,74 @@ export const externalContactsApi = {
     api.delete(`/external-contacts/${contactId}/transactions/${txId}`),
 };
 
+// ─── Expenses ─────────────────────────────────────────────────────────────────
+
+export const EXPENSE_CATEGORIES = [
+  'TRANSPORT',
+  'RENT',
+  'UTILITIES',
+  'COMMUNICATION',
+  'STAFF',
+  'PACKAGING',
+  'MARKETING',
+  'TAXES',
+  'MAINTENANCE',
+  'MEALS',
+  'OTHER',
+] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+export type ExpenseCurrency = 'USD' | 'FC';
+export type ExpensePeriod = 'today' | 'week' | 'month' | 'lastNDays' | 'all';
+
+export interface Expense {
+  id: string;
+  ownerId: string;
+  amount: string;
+  currency: ExpenseCurrency;
+  category: ExpenseCategory;
+  description: string | null;
+  usdToFcRateSnapshot: string | null;
+  date: string;
+  createdAt: string;
+  updatedAt: string;
+  amountUsd: string;
+}
+
+export interface ExpenseListResponse {
+  data: Expense[];
+  totals: {
+    totalAmountUsd: string;
+    byCategory: { category: ExpenseCategory; totalUsd: string; count: number }[];
+    count: number;
+  };
+}
+
+export interface ExpenseListParams {
+  period?: ExpensePeriod;
+  days?: number;
+  from?: string;
+  to?: string;
+  category?: ExpenseCategory;
+}
+
+export const expensesApi = {
+  list: (params?: ExpenseListParams): Promise<ExpenseListResponse> =>
+    api.get('/expenses', { params }).then((r) => r.data),
+  create: (body: {
+    amount: string;
+    currency: ExpenseCurrency;
+    category: ExpenseCategory;
+    description?: string;
+    date?: string;
+  }): Promise<Expense> => api.post('/expenses', body).then((r) => r.data),
+  delete: (id: string): Promise<void> => api.delete(`/expenses/${id}`),
+};
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export const dashboardApi = {
   summary: () => api.get('/dashboard').then((r) => r.data),
+  cashPosition: () => api.get('/dashboard/cash-position').then((r) => r.data),
   suppliers: () => api.get('/dashboard/suppliers').then((r) => r.data),
   supplierDetail: (id: string) => api.get(`/dashboard/suppliers/${id}`).then((r) => r.data),
   debtors: () => api.get('/dashboard/debtors').then((r) => r.data),

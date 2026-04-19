@@ -9,6 +9,7 @@ export { ConsignmentItem } from './consignment-item.entity';
 export { ExchangeRate } from './exchange-rate.entity';
 export { ExternalContact, ExternalContactRole } from './external-contact.entity';
 export { ExternalTransaction, ExternalTransactionType } from './external-transaction.entity';
+export { Expense, ExpenseCurrency, ExpenseCategory } from './expense.entity';
 export {
   StockMovement,
   StockMovementReason,

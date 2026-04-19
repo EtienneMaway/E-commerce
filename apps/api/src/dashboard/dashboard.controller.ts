@@ -29,6 +29,19 @@ export class DashboardController {
     return this.dashboardService.getSummary(user.id);
   }
 
+  @Get('cash-position')
+  @ApiOperation({
+    summary: 'Cash position overview',
+    description:
+      'Returns total income (direct sales + accepted consignments + external product-out), ' +
+      'COGS, total profit, total expenses (USD), and available cash ready for restock. ' +
+      'Available cash may be negative when expenses exceed profit.',
+  })
+  @ApiResponse({ status: 200, description: 'Cash position summary' })
+  getCashPosition(@CurrentUser() user: User) {
+    return this.dashboardService.getCashPosition(user.id);
+  }
+
   @Get('suppliers')
   @ApiOperation({ summary: 'List all suppliers with outstanding balances' })
   @ApiResponse({ status: 200, description: 'Supplier list sorted by balance desc' })

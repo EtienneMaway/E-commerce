@@ -12,6 +12,14 @@ import { SourcePieChart } from '../../../components/charts/SourcePieChart';
 import { useT } from '../../../lib/i18n';
 
 interface Summary { totalIOwe: string; totalOwedToMe: string; netPosition: string; totalProfitAllTime: string; totalPurchaseValue: string; totalSellingValue: string; }
+interface CashPosition {
+  totalIncome: string;
+  totalCogs: string;
+  totalProfit: string;
+  totalExpenses: string;
+  availableCash: string;
+  breakdown: { directSalesRevenue: string; consignmentRevenue: string; externalProductOutRevenue: string };
+}
 interface TopProduct { productName: string; totalProfit: string; totalRevenue: string; totalQtySold: string; }
 interface SourceRow { source: string; supplierUsername?: string; totalProfit: string; }
 interface SaleRow { id: string; productName: string; salePrice: string; qtySold: number; profit: string; isLoss: boolean; date: string; }
@@ -50,6 +58,10 @@ export default function DashboardPage() {
     queryFn: () => dashboardApi.alerts(),
     staleTime: 5 * 60_000,
   });
+  const { data: cashPosition, isLoading: cashLoading } = useQuery({
+    queryKey: QK.cashPosition,
+    queryFn: () => dashboardApi.cashPosition(),
+  });
 
   const alerts = (alertsData as AlertItem[] | undefined) ?? [];
   const overdueDebtors = alerts.filter((a) => a.type === 'overdue_debtor');
@@ -57,6 +69,9 @@ export default function DashboardPage() {
 
   const s = summary as Summary | undefined;
   const net = s ? parseFloat(s.netPosition) : 0;
+  const cp = cashPosition as CashPosition | undefined;
+  const availableCash = cp ? parseFloat(cp.availableCash) : 0;
+  const overSpent = availableCash < 0;
 
   return (
     <div>
@@ -125,6 +140,54 @@ export default function DashboardPage() {
             )}
           </div>
         )}
+
+        {/* ── Cash Position ─────────────────────────────────────────── */}
+        <div>
+          <div className="flex items-baseline justify-between mb-3">
+            <div>
+              <h2 className="font-bold text-sm tracking-tight" style={{ color: 'var(--foreground)' }}>
+                {t.dashboard.cashPositionTitle}
+              </h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                {t.dashboard.cashPositionSub}
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <KpiCard
+              label={t.dashboard.totalIncome}
+              value={formatCurrency(cp?.totalIncome ?? '0')}
+              icon="💵"
+              color="primary"
+              sub={t.dashboard.totalIncomeSub}
+              loading={cashLoading}
+            />
+            <KpiCard
+              label={t.dashboard.totalProfitBeforeExpenses}
+              value={formatCurrency(cp?.totalProfit ?? '0')}
+              icon="📊"
+              color="success"
+              sub={t.dashboard.totalProfitSub}
+              loading={cashLoading}
+            />
+            <KpiCard
+              label={t.dashboard.totalExpenses}
+              value={formatCurrency(cp?.totalExpenses ?? '0')}
+              icon="🧾"
+              color="warning"
+              sub={t.dashboard.totalExpensesSub}
+              loading={cashLoading}
+            />
+            <KpiCard
+              label={t.dashboard.availableCash}
+              value={formatCurrency(cp?.availableCash ?? '0')}
+              icon={overSpent ? '⚠️' : '💰'}
+              color={overSpent ? 'danger' : 'success'}
+              sub={overSpent ? t.dashboard.availableCashOver : t.dashboard.availableCashSub}
+              loading={cashLoading}
+            />
+          </div>
+        </div>
 
         {/* ── KPI cards ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">

@@ -2,6 +2,7 @@ export const QK = {
   me: ['auth', 'me'] as const,
   exchangeRate: ['currency', 'rate'] as const,
   dashboard: ['dashboard', 'summary'] as const,
+  cashPosition: ['dashboard', 'cash-position'] as const,
   inventoryProducts: ['inventory', 'products'] as const,
   inventory: (filters?: object) => ['inventory', filters] as const,
   salesHistory: (filters?: object) => ['sales', 'history', filters] as const,
@@ -18,6 +19,7 @@ export const QK = {
   pendingPayments: ['payments', 'pending-from-debtors'] as const,
   externalContacts: ['external-contacts'] as const,
   externalContactDetail: (id: string) => ['external-contacts', id] as const,
+  expenses: (filters?: object) => ['expenses', filters] as const,
   stockMovements: (filters?: object) => ['inventory', 'movements', filters] as const,
   stockMovementsByEntry: (entryId: string) =>
     ['inventory', 'entries', entryId, 'movements'] as const,

@@ -5,6 +5,7 @@ import { DashboardService } from './dashboard.service';
 import {
   ConsignmentRequest,
   DebtorCredit,
+  Expense,
   ExternalContact,
   ExternalTransaction,
   InventoryEntry,
@@ -13,6 +14,7 @@ import {
   SupplierDebt,
 } from '../entities';
 import { ConsignmentsModule } from '../consignments/consignments.module';
+import { CurrencyModule } from '../currency/currency.module';
 
 @Module({
   imports: [
@@ -25,8 +27,10 @@ import { ConsignmentsModule } from '../consignments/consignments.module';
       ConsignmentRequest,
       ExternalContact,
       ExternalTransaction,
+      Expense,
     ]),
     ConsignmentsModule,
+    CurrencyModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],
