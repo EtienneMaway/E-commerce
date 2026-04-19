@@ -4,12 +4,10 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '../../store/auth.store';
-import { useThemeStore } from '../../store/theme.store';
 import { authApi } from '../../lib/api';
 import { useT } from '../../lib/i18n';
-import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher';
-import { CurrencyToggle } from '../../components/ui/CurrencyToggle';
 import { KmbLogo } from '../../components/ui/KmbLogo';
+import { UserMenu } from '../../components/ui/UserMenu';
 
 const NAV_ICONS = [
   <svg key="dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -60,26 +58,6 @@ const NAV_ICONS = [
   </svg>,
 ];
 
-function SunIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-      <circle cx="12" cy="12" r="5"/>
-      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-    </svg>
-  );
-}
-
-function MoonIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-      <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
-    </svg>
-  );
-}
-
 function UserAvatar({ username }: { username: string }) {
   const initials = username.slice(0, 2).toUpperCase();
   return (
@@ -99,8 +77,7 @@ function UserAvatar({ username }: { username: string }) {
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { token, user, hydrate, logout } = useAuthStore();
-  const { theme, toggle } = useThemeStore();
+  const { token, user, hydrate, logout, setUser } = useAuthStore();
   const t = useT();
   const [hydrated, setHydrated] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -140,8 +117,10 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!hydrated) return;
     if (!token) { router.replace('/login'); return; }
-    authApi.me().catch(() => { logout(); router.replace('/login'); });
-  }, [hydrated, token, router, logout]);
+    authApi.me()
+      .then((me) => { if (me) setUser(me); })
+      .catch(() => { logout(); router.replace('/login'); });
+  }, [hydrated, token, router, logout, setUser]);
 
   // Close sidebar on route change (mobile only)
   useEffect(() => { if (isMobile) setSidebarOpen(false); }, [pathname, isMobile]);
@@ -151,12 +130,12 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--background)' }}>
 
-      {/* ─── Top bar (mobile always, desktop when sidebar closed) ──── */}
-      {(isMobile || !sidebarOpen) && (
-        <div
-          className="fixed top-0 inset-x-0 z-40 flex items-center gap-3 px-4 h-14"
-          style={{ background: 'var(--sidebar)', borderBottom: '1px solid rgba(var(--sidebar-fg-rgb),0.08)' }}
-        >
+      {/* ─── Top bar (always visible; acts as the global navbar) ────── */}
+      <div
+        className="fixed top-0 inset-x-0 z-40 flex items-center gap-3 px-4 h-14"
+        style={{ background: 'var(--sidebar)', borderBottom: '1px solid rgba(var(--sidebar-fg-rgb),0.08)' }}
+      >
+        {!sidebarOpen && (
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-2 rounded-lg flex-shrink-0"
@@ -167,21 +146,17 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
               <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
             </svg>
           </button>
+        )}
+        {!sidebarOpen && (
           <div className="flex items-center gap-2">
             <KmbLogo size={28} />
             <span className="text-sm font-bold" style={{ color: 'var(--sidebar-fg)' }}>KMB</span>
           </div>
-          <div className="ml-auto">
-            <button
-              onClick={toggle}
-              className="p-2 rounded-lg"
-              style={{ color: 'rgba(var(--sidebar-fg-rgb),0.6)' }}
-            >
-              {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-            </button>
-          </div>
+        )}
+        <div className="ml-auto">
+          <UserMenu />
         </div>
-      )}
+      </div>
 
       {/* ─── Sidebar overlay (mobile only) ──────────────────────────── */}
       {sidebarOpen && isMobile && (
@@ -197,6 +172,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         className={`${isMobile ? 'fixed inset-y-0 left-0 z-50' : 'relative flex-shrink-0'} flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${isMobile ? (sidebarOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}`}
         style={{
           width: !isMobile && !sidebarOpen ? 0 : 240,
+          paddingTop: isMobile ? 0 : 56,
           background: 'var(--sidebar)',
           borderRight: isMobile || sidebarOpen ? '1px solid rgba(var(--sidebar-fg-rgb),0.05)' : '0 solid transparent',
         }}
@@ -293,32 +269,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         </nav>
 
         {/* Bottom section */}
-        <div className="relative p-3 space-y-1" style={{ borderTop: '1px solid rgba(var(--sidebar-fg-rgb),0.06)' }}>
-          {/* Language switcher */}
-          <div className="px-1 py-1.5">
-            <LanguageSwitcher />
-          </div>
-
-          {/* Currency toggle */}
-          <div className="px-1 py-0.5">
-            <CurrencyToggle />
-          </div>
-
-          {/* Dark mode toggle */}
-          <button
-            onClick={toggle}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
-            style={{ color: 'rgba(var(--sidebar-fg-rgb),0.5)' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--sidebar-fg-rgb),0.06)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--sidebar-fg)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(var(--sidebar-fg-rgb),0.6)'; }}
-          >
-            <span style={{ color: 'rgba(var(--sidebar-fg-rgb),0.35)' }}>
-              {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-            </span>
-            <span>{theme === 'dark' ? t.nav.lightMode : t.nav.darkMode}</span>
-          </button>
-
-          {/* User + logout */}
+        <div className="relative p-3" style={{ borderTop: '1px solid rgba(var(--sidebar-fg-rgb),0.06)' }}>
           <button
             onClick={() => { logout(); router.push('/login'); }}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
@@ -337,7 +288,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
       {/* ─── Main content ─────────────────────────────────────────────────── */}
       <main
-        className={`flex-1 overflow-auto ${isMobile || !sidebarOpen ? 'pt-14' : 'pt-0'}`}
+        className="flex-1 overflow-auto pt-14"
         style={{ background: 'var(--background)' }}
       >
         <div className={!isMobile && !sidebarOpen ? 'max-w-7xl mx-auto' : ''}>

@@ -85,12 +85,6 @@ export default function DashboardPage() {
           <h1 className="page-title">{t.dashboard.title}</h1>
           <p className="page-sub">{t.dashboard.sub}</p>
         </div>
-        <div
-          className="text-xs font-semibold px-3 py-1.5 rounded-full"
-          style={{ background: 'rgba(var(--success-rgb),0.1)', color: 'var(--success)', border: '1px solid rgba(var(--success-rgb),0.2)' }}
-        >
-          ● {t.common.live}
-        </div>
       </div>
 
       <div className="page-content space-y-6">

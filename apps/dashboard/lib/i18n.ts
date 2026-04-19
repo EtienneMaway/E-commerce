@@ -19,6 +19,8 @@ const en = {
     lightMode: 'Light mode',
     darkMode: 'Dark mode',
     signOut: 'Sign out',
+    signedInAs: 'Signed in as',
+    more: 'More',
     language: 'Language',
   },
   common: {
@@ -604,6 +606,8 @@ const fr: Translations = {
     lightMode: 'Mode clair',
     darkMode: 'Mode sombre',
     signOut: 'Déconnexion',
+    signedInAs: 'Connecté en tant que',
+    more: 'Plus',
     language: 'Langue',
   },
   common: {
