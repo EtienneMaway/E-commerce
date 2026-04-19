@@ -37,12 +37,12 @@ export class ExpensesService {
     let rateSnapshot: string | null = null;
     if (dto.currency === ExpenseCurrency.FC) {
       const rate = await this.currencyService.getRate();
-      if (!rate || !rate.sellingRate || new Decimal(rate.sellingRate).lte(0)) {
+      if (!rate || new Decimal(rate.usdToFcRate).lte(0)) {
         throw new BadRequestException(
-          'Buying rate not set — configure the Buying Rate (USD → FC) in Settings before recording FC expenses',
+          'System rate not set — configure the USD → FC rate in Settings before recording FC expenses',
         );
       }
-      rateSnapshot = new Decimal(rate.sellingRate).toFixed(4);
+      rateSnapshot = new Decimal(rate.usdToFcRate).toFixed(4);
     }
 
     const expense = this.expenseRepo.create({
@@ -75,10 +75,10 @@ export class ExpensesService {
       order: { date: 'DESC' },
     });
 
-    // Fallback rate for FC rows missing a snapshot — uses Buying Rate.
+    // Fallback rate for FC rows missing a snapshot — uses System Rate.
     const currentRate = await this.currencyService.getRate();
-    const fallbackRate = currentRate?.sellingRate
-      ? new Decimal(currentRate.sellingRate)
+    const fallbackRate = currentRate?.usdToFcRate
+      ? new Decimal(currentRate.usdToFcRate)
       : null;
 
     const data = expenses.map((e) => ({

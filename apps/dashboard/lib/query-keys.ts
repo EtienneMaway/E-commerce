@@ -20,6 +20,8 @@ export const QK = {
   externalContacts: ['external-contacts'] as const,
   externalContactDetail: (id: string) => ['external-contacts', id] as const,
   expenses: (filters?: object) => ['expenses', filters] as const,
+  withdrawals: ['withdrawals'] as const,
+  withdrawalAvailable: ['withdrawals', 'available'] as const,
   stockMovements: (filters?: object) => ['inventory', 'movements', filters] as const,
   stockMovementsByEntry: (entryId: string) =>
     ['inventory', 'entries', entryId, 'movements'] as const,

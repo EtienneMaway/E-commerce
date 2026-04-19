@@ -17,8 +17,10 @@ interface CashPosition {
   totalCogs: string;
   totalProfit: string;
   totalExpenses: string;
-  availableCash: string;
-  breakdown: { directSalesRevenue: string; consignmentRevenue: string; externalProductOutRevenue: string };
+  availableProfitCash: string;
+  totalCashReceived: string;
+  totalWithdrawn: string;
+  availableBusinessCash: string;
 }
 interface TopProduct { productName: string; totalProfit: string; totalRevenue: string; totalQtySold: string; }
 interface SourceRow { source: string; supplierUsername?: string; totalProfit: string; }
@@ -70,8 +72,10 @@ export default function DashboardPage() {
   const s = summary as Summary | undefined;
   const net = s ? parseFloat(s.netPosition) : 0;
   const cp = cashPosition as CashPosition | undefined;
-  const availableCash = cp ? parseFloat(cp.availableCash) : 0;
-  const overSpent = availableCash < 0;
+  const profitCash = cp ? parseFloat(cp.availableProfitCash) : 0;
+  const profitOverSpent = profitCash < 0;
+  const businessCash = cp ? parseFloat(cp.availableBusinessCash) : 0;
+  const businessNegative = businessCash < 0;
 
   return (
     <div>
@@ -141,60 +145,28 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── Cash Position ─────────────────────────────────────────── */}
-        <div>
-          <div className="flex items-baseline justify-between mb-3">
-            <div>
-              <h2 className="font-bold text-sm tracking-tight" style={{ color: 'var(--foreground)' }}>
-                {t.dashboard.cashPositionTitle}
-              </h2>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-                {t.dashboard.cashPositionSub}
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard
-              label={t.dashboard.totalIncome}
-              value={formatCurrency(cp?.totalIncome ?? '0')}
-              icon="💵"
-              color="primary"
-              sub={t.dashboard.totalIncomeSub}
-              loading={cashLoading}
-            />
-            <KpiCard
-              label={t.dashboard.totalProfitBeforeExpenses}
-              value={formatCurrency(cp?.totalProfit ?? '0')}
-              icon="📊"
-              color="success"
-              sub={t.dashboard.totalProfitSub}
-              loading={cashLoading}
-            />
-            <KpiCard
-              label={t.dashboard.totalExpenses}
-              value={formatCurrency(cp?.totalExpenses ?? '0')}
-              icon="🧾"
-              color="warning"
-              sub={t.dashboard.totalExpensesSub}
-              loading={cashLoading}
-            />
-            <KpiCard
-              label={t.dashboard.availableCash}
-              value={formatCurrency(cp?.availableCash ?? '0')}
-              icon={overSpent ? '⚠️' : '💰'}
-              color={overSpent ? 'danger' : 'success'}
-              sub={overSpent ? t.dashboard.availableCashOver : t.dashboard.availableCashSub}
-              loading={cashLoading}
-            />
-          </div>
-        </div>
-
         {/* ── KPI cards ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <KpiCard label={t.dashboard.iOweSuppliers} value={formatCurrency(s?.totalIOwe ?? '0')} icon="🏭" color="danger" sub={t.dashboard.outstandingSupplierDebt} loading={summaryLoading} />
           <KpiCard label={t.dashboard.debtorsOweMe} value={formatCurrency(s?.totalOwedToMe ?? '0')} icon="🤝" color="success" sub={t.dashboard.outstandingDebtorCredit} loading={summaryLoading} />
           <KpiCard label={t.dashboard.netPosition} value={formatCurrency(s?.netPosition ?? '0')} icon={net >= 0 ? '📈' : '📉'} color={net >= 0 ? 'success' : 'danger'} sub={net >= 0 ? t.dashboard.netPositive : t.dashboard.netNegative} loading={summaryLoading} />
           <KpiCard label={t.dashboard.totalProfit} value={formatCurrency(s?.totalProfitAllTime ?? '0')} icon="💰" color="primary" sub={t.dashboard.allTimeSalesProfit} loading={summaryLoading} />
+          <KpiCard
+            label={t.dashboard.availableProfitCash}
+            value={formatCurrency(cp?.availableProfitCash ?? '0')}
+            icon={profitOverSpent ? '⚠️' : '💰'}
+            color={profitOverSpent ? 'danger' : 'success'}
+            sub={profitOverSpent ? t.dashboard.availableProfitCashOver : t.dashboard.availableProfitCashSub}
+            loading={cashLoading}
+          />
+          <KpiCard
+            label={t.dashboard.availableBusinessCash}
+            value={formatCurrency(cp?.availableBusinessCash ?? '0')}
+            icon={businessNegative ? '⚠️' : '🏦'}
+            color={businessNegative ? 'danger' : 'success'}
+            sub={businessNegative ? t.dashboard.availableBusinessCashOver : t.dashboard.availableBusinessCashSub}
+            loading={cashLoading}
+          />
           <KpiCard label={t.dashboard.totalPurchaseValue} value={formatCurrency(s?.totalPurchaseValue ?? '0')} icon="🛒" color="warning" sub={t.dashboard.purchaseValueSub} loading={summaryLoading} />
           <KpiCard label={t.dashboard.totalSellingValue} value={formatCurrency(s?.totalSellingValue ?? '0')} icon="💵" color="success" sub={t.dashboard.sellingValueSub} loading={summaryLoading} />
         </div>

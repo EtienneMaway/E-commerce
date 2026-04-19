@@ -15,10 +15,12 @@ import {
   InventoryEntry,
   InventorySource,
   Payment,
+  PaymentDirection,
   PaymentStatus,
   SaleTransaction,
   SupplierDebt,
   User,
+  Withdrawal,
 } from '../entities';
 import { LOW_STOCK_THRESHOLD, OVERDUE_DAYS } from '../common/constants';
 import { ConsignmentsService } from '../consignments/consignments.service';
@@ -101,15 +103,23 @@ export interface ProfitBySource {
 }
 
 export interface CashPosition {
-  totalIncome: string;        // Gross revenue across all streams (USD)
-  totalCogs: string;          // Cost of goods sold (USD)
-  totalProfit: string;        // totalIncome − totalCogs (USD)
-  totalExpenses: string;      // Sum of all expenses converted to USD
-  availableCash: string;      // totalProfit − totalExpenses; negative = over-spent
+  // Accrual view — used to guard spending against earned profit
+  totalIncome: string;              // Gross revenue across all streams (USD, accrual)
+  totalCogs: string;                // Cost of goods sold (USD)
+  totalProfit: string;              // totalIncome − totalCogs (USD)
+  totalExpenses: string;            // Sum of all expenses converted to USD
+  availableProfitCash: string;      // totalProfit − totalExpenses; negative = over-spent
+  // Cash-basis view — actual money that has arrived
+  totalCashReceived: string;        // direct sales + debtor payments + external PAYMENT_IN
+  totalWithdrawn: string;           // Cumulative withdrawals (USD)
+  availableBusinessCash: string;    // totalCashReceived − totalExpenses − totalWithdrawn
   breakdown: {
-    directSalesRevenue: string;
-    consignmentRevenue: string;         // Recognized at ACCEPTED status
-    externalProductOutRevenue: string;  // Recognized at PRODUCT_OUT
+    directSalesRevenue: string;         // Accrual
+    consignmentRevenue: string;         // Accrual at ACCEPTED
+    externalProductOutRevenue: string;  // Accrual at PRODUCT_OUT
+    directSalesCash: string;
+    debtorPaymentsCash: string;
+    externalPaymentInCash: string;
   };
 }
 
@@ -134,6 +144,8 @@ export class DashboardService {
     private readonly externalTxRepo: Repository<ExternalTransaction>,
     @InjectRepository(Expense)
     private readonly expenseRepo: Repository<Expense>,
+    @InjectRepository(Withdrawal)
+    private readonly withdrawalRepo: Repository<Withdrawal>,
     private readonly consignmentsService: ConsignmentsService,
     private readonly currencyService: CurrencyService,
   ) {}
@@ -280,39 +292,64 @@ export class DashboardService {
   }
 
   /**
-   * Cash position: income recognized at creation/approval moment across all
-   * streams (no double-counting of receivables). Income avenues:
+   * Cash position: two parallel views.
+   *
+   * Accrual (for spending guard):
    *   - Direct sales: revenue = salePrice × qtySold, COGS = unitCost × qtySold
    *   - Consignments ACCEPTED: revenue = Σ agreedUnitPrice × qty, COGS = Σ unitCost × qty
    *   - External PRODUCT_OUT: revenue = amount, COGS = unitCostUsed × qty
+   *   - availableProfitCash = totalProfit − totalExpenses
    *
-   * Expenses are summed in USD using each entry's captured buying rate.
-   * availableCash = totalProfit − totalExpenses (may be negative).
+   * Cash-basis (for withdrawal / business cash):
+   *   - totalCashReceived = direct sales + approved debtor payments + external PAYMENT_IN
+   *   - availableBusinessCash = totalCashReceived − totalExpenses − totalWithdrawn
+   *
+   * Expenses: summed in USD using each entry's snapshot Buying Rate.
+   * Withdrawals: summed from persisted amountUsd (snapshotted at withdrawal time).
    */
   async getCashPosition(ownerId: string): Promise<CashPosition> {
-    const [salesAgg, acceptedRequests, extOutAgg, expenses] = await Promise.all([
-      this.saleRepo
-        .createQueryBuilder('s')
-        .select('COALESCE(SUM(CAST(s.salePrice AS DECIMAL) * s.qtySold), 0)', 'revenue')
-        .addSelect('COALESCE(SUM(CAST(s.unitCost AS DECIMAL) * s.qtySold), 0)', 'cogs')
-        .where('s.ownerId = :ownerId', { ownerId })
-        .getRawOne<{ revenue: string; cogs: string }>(),
-      this.consignmentRequestRepo.find({
-        where: { supplierId: ownerId, status: ConsignmentStatus.ACCEPTED },
-        relations: { items: true },
-      }),
-      this.externalTxRepo
-        .createQueryBuilder('tx')
-        .select('COALESCE(SUM(CAST(tx.amount AS DECIMAL)), 0)', 'revenue')
-        .addSelect(
-          'COALESCE(SUM(CAST(tx.unitCostUsed AS DECIMAL) * tx.quantity), 0)',
-          'cogs',
-        )
-        .where('tx.ownerId = :ownerId', { ownerId })
-        .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
-        .getRawOne<{ revenue: string; cogs: string }>(),
-      this.expenseRepo.find({ where: { ownerId } }),
-    ]);
+    const [salesAgg, acceptedRequests, extOutAgg, expenses, cashPayments, extPaymentIn, withdrawnAgg] =
+      await Promise.all([
+        this.saleRepo
+          .createQueryBuilder('s')
+          .select('COALESCE(SUM(CAST(s.salePrice AS DECIMAL) * s.qtySold), 0)', 'revenue')
+          .addSelect('COALESCE(SUM(CAST(s.unitCost AS DECIMAL) * s.qtySold), 0)', 'cogs')
+          .where('s.ownerId = :ownerId', { ownerId })
+          .getRawOne<{ revenue: string; cogs: string }>(),
+        this.consignmentRequestRepo.find({
+          where: { supplierId: ownerId, status: ConsignmentStatus.ACCEPTED },
+          relations: { items: true },
+        }),
+        this.externalTxRepo
+          .createQueryBuilder('tx')
+          .select('COALESCE(SUM(CAST(tx.amount AS DECIMAL)), 0)', 'revenue')
+          .addSelect(
+            'COALESCE(SUM(CAST(tx.unitCostUsed AS DECIMAL) * tx.quantity), 0)',
+            'cogs',
+          )
+          .where('tx.ownerId = :ownerId', { ownerId })
+          .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
+          .getRawOne<{ revenue: string; cogs: string }>(),
+        this.expenseRepo.find({ where: { ownerId } }),
+        this.paymentRepo
+          .createQueryBuilder('p')
+          .select('COALESCE(SUM(CAST(p.amount AS DECIMAL)), 0)', 'total')
+          .where('p.paidToUserId = :ownerId', { ownerId })
+          .andWhere('p.direction = :dir', { dir: PaymentDirection.DEBTOR_TO_OWNER })
+          .andWhere('p.status = :status', { status: PaymentStatus.APPROVED })
+          .getRawOne<{ total: string }>(),
+        this.externalTxRepo
+          .createQueryBuilder('tx')
+          .select('COALESCE(SUM(CAST(tx.amount AS DECIMAL)), 0)', 'total')
+          .where('tx.ownerId = :ownerId', { ownerId })
+          .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
+          .getRawOne<{ total: string }>(),
+        this.withdrawalRepo
+          .createQueryBuilder('w')
+          .select('COALESCE(SUM(CAST(w.amountUsd AS DECIMAL)), 0)', 'total')
+          .where('w.ownerId = :ownerId', { ownerId })
+          .getRawOne<{ total: string }>(),
+      ]);
 
     let consignmentRevenue = new Decimal(0);
     let consignmentCogs = new Decimal(0);
@@ -336,11 +373,10 @@ export class DashboardService {
     const totalCogs = directCogs.plus(consignmentCogs).plus(extCogs);
     const totalProfit = totalIncome.minus(totalCogs);
 
-    // Convert expenses to USD using each entry's captured rate (Buying Rate).
-    // Fallback to current Buying Rate if snapshot missing.
+    // Convert expenses to USD using each entry's captured rate (System Rate).
     const currentRate = await this.currencyService.getRate();
-    const fallbackRate = currentRate?.sellingRate
-      ? new Decimal(currentRate.sellingRate)
+    const fallbackRate = currentRate?.usdToFcRate
+      ? new Decimal(currentRate.usdToFcRate)
       : null;
 
     let totalExpenses = new Decimal(0);
@@ -353,22 +389,40 @@ export class DashboardService {
       const rate = e.usdToFcRateSnapshot
         ? new Decimal(e.usdToFcRateSnapshot)
         : fallbackRate;
-      if (!rate || rate.lte(0)) continue; // Cannot convert without a rate
+      if (!rate || rate.lte(0)) continue;
       totalExpenses = totalExpenses.plus(amount.div(rate));
     }
 
-    const availableCash = totalProfit.minus(totalExpenses);
+    const availableProfitCash = totalProfit.minus(totalExpenses);
+
+    // Cash-basis (for business cash / withdrawal)
+    const directSalesCash = directRevenue; // sale price received at sale time
+    const debtorPaymentsCash = new Decimal(cashPayments?.total ?? 0);
+    const externalPaymentInCash = new Decimal(extPaymentIn?.total ?? 0);
+    const totalCashReceived = directSalesCash
+      .plus(debtorPaymentsCash)
+      .plus(externalPaymentInCash);
+    const totalWithdrawn = new Decimal(withdrawnAgg?.total ?? 0);
+    const availableBusinessCash = totalCashReceived
+      .minus(totalExpenses)
+      .minus(totalWithdrawn);
 
     return {
       totalIncome: totalIncome.toFixed(2),
       totalCogs: totalCogs.toFixed(2),
       totalProfit: totalProfit.toFixed(2),
       totalExpenses: totalExpenses.toFixed(2),
-      availableCash: availableCash.toFixed(2),
+      availableProfitCash: availableProfitCash.toFixed(2),
+      totalCashReceived: totalCashReceived.toFixed(2),
+      totalWithdrawn: totalWithdrawn.toFixed(2),
+      availableBusinessCash: availableBusinessCash.toFixed(2),
       breakdown: {
         directSalesRevenue: directRevenue.toFixed(2),
         consignmentRevenue: consignmentRevenue.toFixed(2),
         externalProductOutRevenue: extRevenue.toFixed(2),
+        directSalesCash: directSalesCash.toFixed(2),
+        debtorPaymentsCash: debtorPaymentsCash.toFixed(2),
+        externalPaymentInCash: externalPaymentInCash.toFixed(2),
       },
     };
   }

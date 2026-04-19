@@ -50,6 +50,11 @@ const NAV_ICONS = [
     <line x1="9" y1="13" x2="15" y2="13"/>
     <line x1="9" y1="17" x2="15" y2="17"/>
   </svg>,
+  <svg key="withdrawals" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <rect x="2" y="6" width="20" height="12" rx="2"/>
+    <circle cx="12" cy="12" r="2.5"/>
+    <path d="M6 12h.01M18 12h.01"/>
+  </svg>,
   <svg key="settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
   </svg>,
@@ -123,7 +128,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     { href: '/consignments', label: t.nav.consignments, icon: NAV_ICONS[6] },
     { href: '/external-contacts', label: t.nav.externalContacts, icon: NAV_ICONS[7] },
     { href: '/expenses', label: t.nav.expenses, icon: NAV_ICONS[8] },
-    { href: '/settings', label: t.nav.settings, icon: NAV_ICONS[9] },
+    { href: '/withdrawals', label: t.nav.withdrawals, icon: NAV_ICONS[9] },
+    { href: '/settings', label: t.nav.settings, icon: NAV_ICONS[10] },
   ];
 
   useEffect(() => {
@@ -146,34 +152,36 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     <div className="flex min-h-screen" style={{ background: 'var(--background)' }}>
 
       {/* ─── Top bar (mobile always, desktop when sidebar closed) ──── */}
-      <div
-        className={`fixed top-0 inset-x-0 z-40 flex items-center gap-3 px-4 h-14 ${sidebarOpen && !isMobile ? 'hidden' : ''}`}
-        style={{ background: 'var(--sidebar)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
-      >
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="p-2 rounded-lg flex-shrink-0"
-          style={{ color: 'rgba(255,255,255,0.7)' }}
-          aria-label="Open menu"
+      {(isMobile || !sidebarOpen) && (
+        <div
+          className="fixed top-0 inset-x-0 z-40 flex items-center gap-3 px-4 h-14"
+          style={{ background: 'var(--sidebar)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
-          </svg>
-        </button>
-        <div className="flex items-center gap-2">
-          <KmbLogo size={28} />
-          <span className="text-sm font-bold text-white">KMB</span>
-        </div>
-        <div className="ml-auto">
           <button
-            onClick={toggle}
-            className="p-2 rounded-lg"
-            style={{ color: 'rgba(255,255,255,0.6)' }}
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-lg flex-shrink-0"
+            style={{ color: 'rgba(255,255,255,0.7)' }}
+            aria-label="Open menu"
           >
-            {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+              <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
           </button>
+          <div className="flex items-center gap-2">
+            <KmbLogo size={28} />
+            <span className="text-sm font-bold text-white">KMB</span>
+          </div>
+          <div className="ml-auto">
+            <button
+              onClick={toggle}
+              className="p-2 rounded-lg"
+              style={{ color: 'rgba(255,255,255,0.6)' }}
+            >
+              {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ─── Sidebar overlay (mobile only) ──────────────────────────── */}
       {sidebarOpen && isMobile && (
@@ -186,11 +194,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
       {/* ─── Sidebar ─────────────────────────────────────────────────────── */}
       <aside
-        className={`${isMobile ? 'fixed inset-y-0 left-0 z-50' : 'relative flex-shrink-0'} flex flex-col transition-all duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${!isMobile && !sidebarOpen ? 'hidden' : ''}`}
+        className={`${isMobile ? 'fixed inset-y-0 left-0 z-50' : 'relative flex-shrink-0'} flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${isMobile ? (sidebarOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}`}
         style={{
-          width: '240px',
+          width: !isMobile && !sidebarOpen ? 0 : 240,
           background: 'var(--sidebar)',
-          borderRight: '1px solid rgba(255,255,255,0.05)',
+          borderRight: isMobile || sidebarOpen ? '1px solid rgba(255,255,255,0.05)' : '0 solid transparent',
         }}
       >
         {/* Gradient accent at top */}
@@ -204,8 +212,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         {/* Close / collapse button */}
         <button
           onClick={() => setSidebarOpen(false)}
-          className="absolute top-4 right-4 p-1.5 rounded-lg z-10 transition-colors duration-200"
-          style={{ color: 'rgba(255,255,255,0.5)' }}
+          className="absolute top-4 right-4 p-1.5 rounded-lg transition-colors duration-200"
+          style={{ color: 'rgba(255,255,255,0.5)', zIndex: 60 }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.9)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.1)'; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.5)'; (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
           aria-label="Close menu"

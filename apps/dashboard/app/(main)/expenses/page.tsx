@@ -16,12 +16,12 @@ import { QK } from '../../../lib/query-keys';
 import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useT } from '../../../lib/i18n';
+import { KpiCard } from '../../../components/ui/KpiCard';
 
 interface CashPosition {
-  totalIncome: string;
   totalProfit: string;
   totalExpenses: string;
-  availableCash: string;
+  availableProfitCash: string;
 }
 
 type FilterKey = 'all' | 'today' | 'week' | 'month' | 'lastN' | 'custom';
@@ -96,6 +96,7 @@ export default function ExpensesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['expenses'] });
       qc.invalidateQueries({ queryKey: QK.cashPosition });
+      qc.invalidateQueries({ queryKey: QK.withdrawalAvailable });
       setAmount('');
       setDescription('');
       setFormError('');
@@ -109,6 +110,7 @@ export default function ExpensesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['expenses'] });
       qc.invalidateQueries({ queryKey: QK.cashPosition });
+      qc.invalidateQueries({ queryKey: QK.withdrawalAvailable });
     },
   });
 
@@ -119,9 +121,9 @@ export default function ExpensesPage() {
       setFormError('Amount must be greater than zero');
       return;
     }
-    // Compute projected availableCash — only for USD amounts (FC needs rate, server handles precisely)
+    // Compute projected availableProfitCash — only for USD amounts
     if (cash && currency === 'USD') {
-      const projected = parseFloat(cash.availableCash) - parseFloat(amount);
+      const projected = parseFloat(cash.availableProfitCash) - parseFloat(amount);
       if (projected < 0) {
         setOverBudgetProjection(projected.toFixed(2));
         setOverBudgetOpen(true);
@@ -163,19 +165,38 @@ export default function ExpensesPage() {
           <div
             className="text-xs font-semibold px-3 py-1.5 rounded-full"
             style={{
-              background: parseFloat(cash.availableCash) < 0
+              background: parseFloat(cash.availableProfitCash) < 0
                 ? 'rgba(var(--danger-rgb),0.1)'
                 : 'rgba(var(--success-rgb),0.1)',
-              color: parseFloat(cash.availableCash) < 0 ? 'var(--danger)' : 'var(--success)',
-              border: `1px solid ${parseFloat(cash.availableCash) < 0 ? 'rgba(var(--danger-rgb),0.2)' : 'rgba(var(--success-rgb),0.2)'}`,
+              color: parseFloat(cash.availableProfitCash) < 0 ? 'var(--danger)' : 'var(--success)',
+              border: `1px solid ${parseFloat(cash.availableProfitCash) < 0 ? 'rgba(var(--danger-rgb),0.2)' : 'rgba(var(--success-rgb),0.2)'}`,
             }}
           >
-            {t.dashboard.availableCash}: {formatCurrency(cash.availableCash)}
+            {t.dashboard.availableProfitCash}: {formatCurrency(cash.availableProfitCash)}
           </div>
         )}
       </div>
 
-      <div className="page-content grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="page-content space-y-6">
+        {/* ── Top KPIs ────────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <KpiCard
+            label={t.dashboard.totalProfit}
+            value={formatCurrency(cash?.totalProfit ?? '0')}
+            icon="💰"
+            color="primary"
+            sub={t.dashboard.totalProfitSub}
+          />
+          <KpiCard
+            label={t.dashboard.totalExpenses}
+            value={formatCurrency(cash?.totalExpenses ?? '0')}
+            icon="🧾"
+            color="warning"
+            sub={t.dashboard.totalExpensesSub}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ── Left: add form ──────────────────────────────────────── */}
         <div className="card" style={{ padding: '24px', height: 'fit-content' }}>
           <h2 className="font-bold text-sm tracking-tight mb-4" style={{ color: 'var(--foreground)' }}>
@@ -439,6 +460,7 @@ export default function ExpensesPage() {
               </table>
             </div>
           </div>
+        </div>
         </div>
       </div>
 

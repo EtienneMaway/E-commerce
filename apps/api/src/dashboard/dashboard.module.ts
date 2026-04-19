@@ -12,6 +12,7 @@ import {
   Payment,
   SaleTransaction,
   SupplierDebt,
+  Withdrawal,
 } from '../entities';
 import { ConsignmentsModule } from '../consignments/consignments.module';
 import { CurrencyModule } from '../currency/currency.module';
@@ -28,6 +29,7 @@ import { CurrencyModule } from '../currency/currency.module';
       ExternalContact,
       ExternalTransaction,
       Expense,
+      Withdrawal,
     ]),
     ConsignmentsModule,
     CurrencyModule,

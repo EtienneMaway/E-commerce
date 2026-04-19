@@ -290,6 +290,52 @@ export const expensesApi = {
   delete: (id: string): Promise<void> => api.delete(`/expenses/${id}`),
 };
 
+// ─── Withdrawals ──────────────────────────────────────────────────────────────
+
+export type WithdrawalCurrency = 'USD' | 'FC';
+
+export interface Withdrawal {
+  id: string;
+  ownerId: string;
+  amount: string;
+  currency: WithdrawalCurrency;
+  amountUsd: string;
+  usdToFcRateSnapshot: string | null;
+  withdrawnAt: string;
+  periodStartAt: string;
+  periodIncome: string;
+  periodExpenses: string;
+  leftoverCarried: string;
+  leftoverOut: string;
+  note: string | null;
+}
+
+export interface AvailableWithdrawal {
+  lastWithdrawalAt: string | null;
+  periodStartAt: string;
+  periodIncome: string;
+  periodExpenses: string;
+  leftoverCarried: string;
+  available: string;
+  incomeBreakdown: {
+    directSales: string;
+    debtorPayments: string;
+    externalPaymentIn: string;
+  };
+}
+
+export const withdrawalsApi = {
+  available: (): Promise<AvailableWithdrawal> =>
+    api.get('/withdrawals/available').then((r) => r.data),
+  list: (): Promise<Withdrawal[]> => api.get('/withdrawals').then((r) => r.data),
+  create: (body: {
+    amount: string;
+    currency: WithdrawalCurrency;
+    note?: string;
+  }): Promise<Withdrawal> => api.post('/withdrawals', body).then((r) => r.data),
+  delete: (id: string): Promise<void> => api.delete(`/withdrawals/${id}`),
+};
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export const dashboardApi = {
