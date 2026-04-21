@@ -108,7 +108,7 @@ export interface CashPosition {
   totalCogs: string;                // Cost of goods sold (USD)
   totalProfit: string;              // totalIncome − totalCogs (USD)
   totalExpenses: string;            // Sum of all expenses converted to USD
-  availableProfitCash: string;      // totalProfit − totalExpenses; negative = over-spent
+  availableProfitCash: string;      // totalProfit − totalExpenses − totalWithdrawn; negative = over-spent
   // Cash-basis view — actual money that has arrived
   totalCashReceived: string;        // direct sales + debtor payments + external PAYMENT_IN
   totalWithdrawn: string;           // Cumulative withdrawals (USD)
@@ -298,7 +298,7 @@ export class DashboardService {
    *   - Direct sales: revenue = salePrice × qtySold, COGS = unitCost × qtySold
    *   - Consignments ACCEPTED: revenue = Σ agreedUnitPrice × qty, COGS = Σ unitCost × qty
    *   - External PRODUCT_OUT: revenue = amount, COGS = unitCostUsed × qty
-   *   - availableProfitCash = totalProfit − totalExpenses
+   *   - availableProfitCash = totalProfit − totalExpenses − totalWithdrawn
    *
    * Cash-basis (for withdrawal / business cash):
    *   - totalCashReceived = direct sales + approved debtor payments + external PAYMENT_IN
@@ -393,8 +393,6 @@ export class DashboardService {
       totalExpenses = totalExpenses.plus(amount.div(rate));
     }
 
-    const availableProfitCash = totalProfit.minus(totalExpenses);
-
     // Cash-basis (for business cash / withdrawal)
     const directSalesCash = directRevenue; // sale price received at sale time
     const debtorPaymentsCash = new Decimal(cashPayments?.total ?? 0);
@@ -404,6 +402,10 @@ export class DashboardService {
       .plus(externalPaymentInCash);
     const totalWithdrawn = new Decimal(withdrawnAgg?.total ?? 0);
     const availableBusinessCash = totalCashReceived
+      .minus(totalExpenses)
+      .minus(totalWithdrawn);
+
+    const availableProfitCash = totalProfit
       .minus(totalExpenses)
       .minus(totalWithdrawn);
 
