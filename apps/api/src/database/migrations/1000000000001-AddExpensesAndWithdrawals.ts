@@ -23,7 +23,7 @@ export class AddExpensesAndWithdrawals1000000000001 implements MigrationInterfac
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "expenses" (
         "id"                       uuid                      NOT NULL DEFAULT gen_random_uuid(),
-        "owner_id"                 character varying         NOT NULL,
+        "owner_id"                 uuid                      NOT NULL,
         "amount"                   numeric(12,2)             NOT NULL,
         "currency"                 "expenses_currency_enum"  NOT NULL,
         "category"                 "expenses_category_enum"  NOT NULL,
@@ -57,7 +57,7 @@ export class AddExpensesAndWithdrawals1000000000001 implements MigrationInterfac
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "withdrawals" (
         "id"                       uuid                         NOT NULL DEFAULT gen_random_uuid(),
-        "owner_id"                 character varying            NOT NULL,
+        "owner_id"                 uuid                         NOT NULL,
         "amount"                   numeric(12,2)                NOT NULL,
         "currency"                 "withdrawals_currency_enum"  NOT NULL,
         "usd_to_fc_rate_snapshot"  numeric(14,4),
