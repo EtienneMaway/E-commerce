@@ -18,6 +18,7 @@ import { KpiCard } from '../../../components/ui/KpiCard';
 interface CashPosition {
   totalCashReceived: string;
   totalWithdrawn: string;
+  availableBusinessCash: string;
 }
 
 export default function WithdrawalsPage() {
@@ -136,13 +137,13 @@ export default function WithdrawalsPage() {
             }}
           >
             <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--primary)' }}>
-              {t.withdrawals.availableTitle}
+              {t.dashboard.availableBusinessCash}
             </p>
             <p className="text-3xl font-bold tracking-tight mt-2" style={{ color: 'var(--primary)' }}>
-              {availableLoading ? '…' : formatCurrency(avail?.available ?? '0')}
+              {cp ? formatCurrency(cp.availableBusinessCash) : '…'}
             </p>
             <p className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>
-              {t.withdrawals.availableSub}
+              {t.dashboard.availableBusinessCashSub}
             </p>
           </div>
 

@@ -135,18 +135,24 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         className="fixed top-0 inset-x-0 z-40 flex items-center gap-3 px-4 h-14"
         style={{ background: 'var(--sidebar)', borderBottom: '1px solid rgba(var(--sidebar-fg-rgb),0.08)' }}
       >
-        {!sidebarOpen && (
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-lg flex-shrink-0"
-            style={{ color: 'rgba(var(--sidebar-fg-rgb),0.7)' }}
-            aria-label="Open menu"
-          >
+        <button
+          onClick={() => setSidebarOpen((o) => !o)}
+          className="p-2 rounded-lg flex-shrink-0 transition-colors"
+          style={{ color: 'rgba(var(--sidebar-fg-rgb),0.7)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--sidebar-fg-rgb),0.08)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+          aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+        >
+          {sidebarOpen ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          ) : (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
               <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
             </svg>
-          </button>
-        )}
+          )}
+        </button>
         {!sidebarOpen && (
           <div className="flex items-center gap-2">
             <KmbLogo size={28} />
@@ -184,20 +190,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             background: 'radial-gradient(ellipse at 60% 0%, rgba(99,102,241,0.2) 0%, transparent 70%)',
           }}
         />
-
-        {/* Close / collapse button */}
-        <button
-          onClick={() => setSidebarOpen(false)}
-          className="absolute top-4 right-4 p-1.5 rounded-lg transition-colors duration-200"
-          style={{ color: 'rgba(var(--sidebar-fg-rgb),0.5)', zIndex: 60 }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(var(--sidebar-fg-rgb),0.9)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--sidebar-fg-rgb),0.1)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(var(--sidebar-fg-rgb),0.5)'; (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-          aria-label="Close menu"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
 
         {/* Logo */}
         <div className="relative px-5 pt-6 pb-5">

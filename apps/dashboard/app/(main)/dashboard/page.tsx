@@ -13,13 +13,6 @@ import { useT } from '../../../lib/i18n';
 
 interface Summary { totalIOwe: string; totalOwedToMe: string; netPosition: string; totalProfitAllTime: string; totalPurchaseValue: string; totalSellingValue: string; }
 interface CashPosition {
-  totalIncome: string;
-  totalCogs: string;
-  totalProfit: string;
-  totalExpenses: string;
-  availableProfitCash: string;
-  totalCashReceived: string;
-  totalWithdrawn: string;
   availableBusinessCash: string;
 }
 interface TopProduct { productName: string; totalProfit: string; totalRevenue: string; totalQtySold: string; }
@@ -72,8 +65,6 @@ export default function DashboardPage() {
   const s = summary as Summary | undefined;
   const net = s ? parseFloat(s.netPosition) : 0;
   const cp = cashPosition as CashPosition | undefined;
-  const profitCash = cp ? parseFloat(cp.availableProfitCash) : 0;
-  const profitOverSpent = profitCash < 0;
   const businessCash = cp ? parseFloat(cp.availableBusinessCash) : 0;
   const businessNegative = businessCash < 0;
 
@@ -139,20 +130,14 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── KPI cards ─────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* ── KPI cards: 3 on top, 4 on bottom ──────────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <KpiCard label={t.dashboard.iOweSuppliers} value={formatCurrency(s?.totalIOwe ?? '0')} icon="🏭" color="danger" sub={t.dashboard.outstandingSupplierDebt} loading={summaryLoading} />
           <KpiCard label={t.dashboard.debtorsOweMe} value={formatCurrency(s?.totalOwedToMe ?? '0')} icon="🤝" color="success" sub={t.dashboard.outstandingDebtorCredit} loading={summaryLoading} />
           <KpiCard label={t.dashboard.netPosition} value={formatCurrency(s?.netPosition ?? '0')} icon={net >= 0 ? '📈' : '📉'} color={net >= 0 ? 'success' : 'danger'} sub={net >= 0 ? t.dashboard.netPositive : t.dashboard.netNegative} loading={summaryLoading} />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <KpiCard label={t.dashboard.totalProfit} value={formatCurrency(s?.totalProfitAllTime ?? '0')} icon="💰" color="primary" sub={t.dashboard.allTimeSalesProfit} loading={summaryLoading} />
-          <KpiCard
-            label={t.dashboard.availableProfitCash}
-            value={formatCurrency(cp?.availableProfitCash ?? '0')}
-            icon={profitOverSpent ? '⚠️' : '💰'}
-            color={profitOverSpent ? 'danger' : 'success'}
-            sub={profitOverSpent ? t.dashboard.availableProfitCashOver : t.dashboard.availableProfitCashSub}
-            loading={cashLoading}
-          />
           <KpiCard
             label={t.dashboard.availableBusinessCash}
             value={formatCurrency(cp?.availableBusinessCash ?? '0')}

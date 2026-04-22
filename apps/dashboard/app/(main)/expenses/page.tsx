@@ -19,9 +19,8 @@ import { useT } from '../../../lib/i18n';
 import { KpiCard } from '../../../components/ui/KpiCard';
 
 interface CashPosition {
-  totalProfit: string;
   totalExpenses: string;
-  availableProfitCash: string;
+  availableBusinessCash: string;
 }
 
 type FilterKey = 'all' | 'today' | 'week' | 'month' | 'lastN' | 'custom';
@@ -121,9 +120,9 @@ export default function ExpensesPage() {
       setFormError('Amount must be greater than zero');
       return;
     }
-    // Compute projected availableProfitCash — only for USD amounts
+    // Warn if the expense would push Business Cash below zero — USD only
     if (cash && currency === 'USD') {
-      const projected = parseFloat(cash.availableProfitCash) - parseFloat(amount);
+      const projected = parseFloat(cash.availableBusinessCash) - parseFloat(amount);
       if (projected < 0) {
         setOverBudgetProjection(projected.toFixed(2));
         setOverBudgetOpen(true);
@@ -165,28 +164,21 @@ export default function ExpensesPage() {
           <div
             className="text-xs font-semibold px-3 py-1.5 rounded-full"
             style={{
-              background: parseFloat(cash.availableProfitCash) < 0
+              background: parseFloat(cash.availableBusinessCash) < 0
                 ? 'rgba(var(--danger-rgb),0.1)'
                 : 'rgba(var(--success-rgb),0.1)',
-              color: parseFloat(cash.availableProfitCash) < 0 ? 'var(--danger)' : 'var(--success)',
-              border: `1px solid ${parseFloat(cash.availableProfitCash) < 0 ? 'rgba(var(--danger-rgb),0.2)' : 'rgba(var(--success-rgb),0.2)'}`,
+              color: parseFloat(cash.availableBusinessCash) < 0 ? 'var(--danger)' : 'var(--success)',
+              border: `1px solid ${parseFloat(cash.availableBusinessCash) < 0 ? 'rgba(var(--danger-rgb),0.2)' : 'rgba(var(--success-rgb),0.2)'}`,
             }}
           >
-            {t.dashboard.availableProfitCash}: {formatCurrency(cash.availableProfitCash)}
+            {t.dashboard.availableBusinessCash}: {formatCurrency(cash.availableBusinessCash)}
           </div>
         )}
       </div>
 
       <div className="page-content space-y-6">
         {/* ── Top KPIs ────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <KpiCard
-            label={t.dashboard.totalProfit}
-            value={formatCurrency(cash?.totalProfit ?? '0')}
-            icon="💰"
-            color="primary"
-            sub={t.dashboard.totalProfitSub}
-          />
+        <div className="grid grid-cols-1 gap-4">
           <KpiCard
             label={t.dashboard.totalExpenses}
             value={formatCurrency(cash?.totalExpenses ?? '0')}
