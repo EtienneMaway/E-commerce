@@ -10,6 +10,7 @@ import {
   Withdrawal,
 } from '../entities';
 import { CurrencyModule } from '../currency/currency.module';
+import { DashboardModule } from '../dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { CurrencyModule } from '../currency/currency.module';
       Expense,
     ]),
     CurrencyModule,
+    DashboardModule,
   ],
   controllers: [WithdrawalsController],
   providers: [WithdrawalsService],

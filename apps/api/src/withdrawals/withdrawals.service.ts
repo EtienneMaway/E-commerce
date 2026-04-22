@@ -20,6 +20,7 @@ import {
   WithdrawalCurrency,
 } from '../entities';
 import { CurrencyService } from '../currency/currency.service';
+import { DashboardService } from '../dashboard/dashboard.service';
 import { CreateWithdrawalDto } from './dto/create-withdrawal.dto';
 
 export interface IncomeBreakdown {
@@ -52,6 +53,7 @@ export class WithdrawalsService {
     @InjectRepository(Expense)
     private readonly expenseRepo: Repository<Expense>,
     private readonly currencyService: CurrencyService,
+    private readonly dashboardService: DashboardService,
   ) {}
 
   async getAvailable(ownerId: string): Promise<AvailableWithdrawal> {
@@ -106,16 +108,26 @@ export class WithdrawalsService {
       amountUsd = amountOriginal.div(rate.usdToFcRate);
     }
 
-    const snapshot = await this.getAvailable(ownerId);
+    const [snapshot, position] = await Promise.all([
+      this.getAvailable(ownerId),
+      this.dashboardService.getCashPosition(ownerId),
+    ]);
     const available = new Decimal(snapshot.available);
+    const availableProfit = new Decimal(position.availableProfitCash);
+    const availableBusinessCash = new Decimal(position.availableBusinessCash);
 
-    if (amountUsd.gt(available)) {
+    if (amountUsd.gt(availableProfit)) {
       throw new BadRequestException(
-        `Withdrawal exceeds available cash (${available.toFixed(2)} USD)`,
+        `Cannot spend more than current profit — available profit is ${availableProfit.toFixed(2)} USD`,
+      );
+    }
+    if (amountUsd.gt(availableBusinessCash)) {
+      throw new BadRequestException(
+        `Cannot spend more than available business cash (${availableBusinessCash.toFixed(2)} USD)`,
       );
     }
 
-    const leftoverOut = available.minus(amountUsd);
+    const leftoverOut = Decimal.max(available.minus(amountUsd), new Decimal(0));
 
     const withdrawal = this.withdrawalRepo.create({
       ownerId,

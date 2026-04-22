@@ -4,6 +4,7 @@ import { Between, LessThanOrEqual, MoreThanOrEqual, Repository, FindOptionsWhere
 import Decimal from 'decimal.js';
 import { Expense, ExpenseCategory, ExpenseCurrency } from '../entities';
 import { CurrencyService } from '../currency/currency.service';
+import { DashboardService } from '../dashboard/dashboard.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ExpensePeriod, ListExpensesQueryDto } from './dto/list-expenses-query.dto';
 
@@ -22,10 +23,12 @@ export class ExpensesService {
     @InjectRepository(Expense)
     private readonly expenseRepo: Repository<Expense>,
     private readonly currencyService: CurrencyService,
+    private readonly dashboardService: DashboardService,
   ) {}
 
   async create(ownerId: string, dto: CreateExpenseDto): Promise<Expense> {
-    if (new Decimal(dto.amount).lte(0)) {
+    const amountOriginal = new Decimal(dto.amount);
+    if (amountOriginal.lte(0)) {
       throw new BadRequestException('Amount must be greater than zero');
     }
 
@@ -35,6 +38,7 @@ export class ExpensesService {
     }
 
     let rateSnapshot: string | null = null;
+    let amountUsd = amountOriginal;
     if (dto.currency === ExpenseCurrency.FC) {
       const rate = await this.currencyService.getRate();
       if (!rate || new Decimal(rate.usdToFcRate).lte(0)) {
@@ -43,11 +47,27 @@ export class ExpensesService {
         );
       }
       rateSnapshot = new Decimal(rate.usdToFcRate).toFixed(4);
+      amountUsd = amountOriginal.div(rate.usdToFcRate);
+    }
+
+    const position = await this.dashboardService.getCashPosition(ownerId);
+    const availableProfit = new Decimal(position.availableProfitCash);
+    const availableBusinessCash = new Decimal(position.availableBusinessCash);
+
+    if (amountUsd.gt(availableProfit)) {
+      throw new BadRequestException(
+        `Cannot spend more than current profit — available profit is ${availableProfit.toFixed(2)} USD`,
+      );
+    }
+    if (amountUsd.gt(availableBusinessCash)) {
+      throw new BadRequestException(
+        `Cannot spend more than available business cash (${availableBusinessCash.toFixed(2)} USD)`,
+      );
     }
 
     const expense = this.expenseRepo.create({
       ownerId,
-      amount: new Decimal(dto.amount).toFixed(2),
+      amount: amountOriginal.toFixed(2),
       currency: dto.currency,
       category: dto.category,
       description: dto.description ?? null,

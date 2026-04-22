@@ -36,5 +36,6 @@ import { CurrencyModule } from '../currency/currency.module';
   ],
   controllers: [DashboardController],
   providers: [DashboardService],
+  exports: [DashboardService],
 })
 export class DashboardModule {}
