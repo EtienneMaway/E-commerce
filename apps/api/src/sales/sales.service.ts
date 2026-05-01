@@ -13,6 +13,7 @@ import {
   StockMovementReason,
 } from '../entities';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
+import { PricingService } from '../pricing/pricing.service';
 import { RecordSaleDto } from './dto/record-sale.dto';
 import {
   SalesFilterDto,
@@ -22,6 +23,7 @@ import {
   TopProductsRankBy,
 } from './dto/sales-filter.dto';
 import { PriceGuardWarningDto } from './dto/price-guard-warning.dto';
+import { ActorContext } from '../common/types/actor-context';
 
 export interface TopProduct {
   productName: string;
@@ -40,14 +42,16 @@ export class SalesService {
     private readonly entryRepo: Repository<InventoryEntry>,
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
+    private readonly pricingService: PricingService,
   ) {}
 
-  // PriceGuardWarningDto is thrown as an UnprocessableEntityException (HTTP 422),
-  // never returned — so the return type is always SaleTransaction on success.
   async recordSale(
-    ownerId: string,
+    ctx: ActorContext,
     dto: RecordSaleDto,
   ): Promise<SaleTransaction> {
+    const ownerId = ctx.effectiveOwnerId;
+    const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
+
     // Find available stock: SUPPLIER first, then CONSIGNED_IN, then PERSONAL
     const productNamePattern = ILike(dto.productName.trim().toLowerCase());
 
@@ -86,20 +90,28 @@ export class SalesService {
       );
     }
 
-    // Price guard check — use the unit cost of the first entry (supplier stock if any)
+    // Apply employee pricing rule (cap or require discount reason).
+    // Owner-performed sales pass through unchanged.
+    const priceCheck = await this.pricingService.applyEmployeePriceRule({
+      ctx,
+      productName: dto.productName,
+      submittedUnitPrice: dto.salePrice,
+      discountReason: dto.discountReason,
+    });
+    const effectiveSalePrice = new Decimal(priceCheck.effectiveUnitPrice);
+
+    // Price guard — uses unit cost of the first entry to be deducted.
     const firstEntry = allEntries[0];
-    const salePrice = new Decimal(dto.salePrice);
     const unitCost = new Decimal(firstEntry.unitCost);
 
-    if (salePrice.lte(unitCost) && !dto.confirmedOverride) {
-      // potentialLoss is a positive number representing total money lost
-      const potentialLoss = unitCost.minus(salePrice).mul(dto.qtySold).toFixed(2);
+    if (effectiveSalePrice.lte(unitCost) && !dto.confirmedOverride) {
+      const potentialLoss = unitCost.minus(effectiveSalePrice).mul(dto.qtySold).toFixed(2);
       const warning: PriceGuardWarningDto = {
         warning: true,
         costPrice: unitCost.toFixed(2),
         potentialLoss,
         message:
-          `Selling at ${salePrice.toFixed(2)} is at or below cost price of ${unitCost.toFixed(2)}. ` +
+          `Selling at ${effectiveSalePrice.toFixed(2)} is at or below cost price of ${unitCost.toFixed(2)}. ` +
           `You will lose ${potentialLoss} total. ` +
           `Send confirmedOverride: true to proceed.`,
       };
@@ -115,7 +127,7 @@ export class SalesService {
 
         const deduct = Math.min(entry.quantityRemaining, remaining);
         const entryCost = new Decimal(entry.unitCost);
-        const entryProfit = salePrice.minus(entryCost).mul(deduct);
+        const entryProfit = effectiveSalePrice.minus(entryCost).mul(deduct);
         const qtyBeforeDeduct = entry.quantityRemaining;
 
         entry.quantityRemaining -= deduct;
@@ -124,15 +136,18 @@ export class SalesService {
 
         const sale = manager.create(SaleTransaction, {
           ownerId,
+          actorId,
           productName: entry.productName,
           source: entry.source,
           supplierUserId: entry.supplierUserId,
           qtySold: deduct,
           unitCost: entryCost.toFixed(2),
-          salePrice: salePrice.toFixed(2),
+          salePrice: effectiveSalePrice.toFixed(2),
           profit: entryProfit.toFixed(2),
           isLoss: entryProfit.lt(0),
           inventoryEntryId: entry.id,
+          originalUnitPrice: priceCheck.originalUnitPrice,
+          discountReason: priceCheck.originalUnitPrice ? dto.discountReason ?? null : null,
         });
         const savedSale = await manager.save(SaleTransaction, sale);
         sales.push(savedSale);
@@ -147,20 +162,21 @@ export class SalesService {
         });
       }
 
-      // Return the primary sale record (first entry deducted)
       return sales[0];
     });
   }
 
   async findAll(
-    ownerId: string,
+    ctx: ActorContext,
     filter: SalesFilterDto,
   ): Promise<{ data: SaleTransaction[]; total: number }> {
+    const ownerId = ctx.effectiveOwnerId;
     const page = filter.page ?? 1;
     const limit = filter.limit ?? 20;
 
     const qb = this.saleRepo
       .createQueryBuilder('sale')
+      .leftJoinAndSelect('sale.actor', 'actor')
       .where('sale.ownerId = :ownerId', { ownerId })
       .orderBy('sale.date', 'DESC')
       .skip((page - 1) * limit)
@@ -171,8 +187,10 @@ export class SalesService {
         name: `%${filter.productName}%`,
       });
     }
+    if (filter.actorId) {
+      qb.andWhere('sale.actor_id = :actorId', { actorId: filter.actorId });
+    }
 
-    // Period shorthand takes precedence over explicit dateFrom/dateTo
     const periodDateFrom = this.resolveHistoryPeriod(filter.period);
     if (periodDateFrom) {
       qb.andWhere('sale.date >= :from', { from: periodDateFrom });
@@ -190,9 +208,10 @@ export class SalesService {
   }
 
   async topProducts(
-    ownerId: string,
+    ctx: ActorContext,
     filter: TopProductsFilterDto,
   ): Promise<TopProduct[]> {
+    const ownerId = ctx.effectiveOwnerId;
     const { dateFrom, dateTo } = this.resolvePeriod(filter);
 
     const qb = this.saleRepo
@@ -222,7 +241,6 @@ export class SalesService {
       isLossProduct: new Decimal(r.totalProfit ?? 0).lt(0),
     }));
 
-    // Sort based on rankBy
     const rankBy = filter.rankBy ?? TopProductsRankBy.PROFIT;
     return mapped.sort((a, b) => {
       if (rankBy === TopProductsRankBy.QTY)

@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -63,6 +64,11 @@ export class SalesFilterDto {
   @IsPositive()
   @IsOptional()
   limit?: number = 20;
+
+  @ApiPropertyOptional({ description: 'Filter by actor (employee). Omit for all actors.' })
+  @IsUUID()
+  @IsOptional()
+  actorId?: string;
 }
 
 export class TopProductsFilterDto {

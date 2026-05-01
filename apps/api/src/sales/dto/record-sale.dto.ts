@@ -32,4 +32,13 @@ export class RecordSaleDto {
   @IsBoolean()
   @IsOptional()
   confirmedOverride?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'Loyal customer',
+    description:
+      'Reason for discounting below the owner\'s standard price. Required (employee only) when submitted price is below the standard, after a 422 DISCOUNT_REASON_REQUIRED response.',
+  })
+  @IsString()
+  @IsOptional()
+  discountReason?: string;
 }

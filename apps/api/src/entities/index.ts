@@ -18,3 +18,5 @@ export {
   POSITIVE_REASONS,
   NOTES_REQUIRED_REASONS,
 } from './stock-movement.entity';
+export { Employment, EmploymentTier, EmploymentStatus } from './employment.entity';
+export { ProductPrice } from './product-price.entity';

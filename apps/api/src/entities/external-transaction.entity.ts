@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ExternalContact } from './external-contact.entity';
+import { User } from './user.entity';
 
 export enum ExternalTransactionType {
   /** Trader gave products to an external debtor — deducts inventory, increases debtorBalance */
@@ -74,4 +75,20 @@ export class ExternalTransaction {
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
+
+  @ApiPropertyOptional({ description: 'Employee who performed this transaction on owner\'s behalf' })
+  @Column({ name: 'actor_id', type: 'uuid', nullable: true })
+  actorId: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'actor_id' })
+  actor: User | null;
+
+  @ApiPropertyOptional({ example: '25.00', description: 'Owner\'s standard unit price at action time; set only when employee discounted (PRODUCT_OUT only)' })
+  @Column({ name: 'original_unit_price', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  originalUnitPrice: string | null;
+
+  @ApiPropertyOptional({ example: 'Returning customer' })
+  @Column({ name: 'discount_reason', type: 'varchar', nullable: true })
+  discountReason: string | null;
 }

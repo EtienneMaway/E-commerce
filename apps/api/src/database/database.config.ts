@@ -14,6 +14,10 @@ import {
   ExternalContact,
   ExternalTransaction,
   StockMovement,
+  Expense,
+  Withdrawal,
+  Employment,
+  ProductPrice,
 } from '../entities';
 
 dotenv.config();
@@ -34,6 +38,10 @@ export const AppDataSource = new DataSource({
     ExternalContact,
     ExternalTransaction,
     StockMovement,
+    Expense,
+    Withdrawal,
+    Employment,
+    ProductPrice,
   ],
   migrations: [__dirname + '/migrations/*.{ts,js}'],
   synchronize: false,

@@ -33,6 +33,10 @@ export class User {
   @Column({ name: 'password_hash' })
   passwordHash: string;
 
+  @ApiProperty({ example: false, description: 'Mini employee — mobile-only, no dashboard login' })
+  @Column({ name: 'is_mini_employee', type: 'boolean', default: false })
+  isMiniEmployee: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

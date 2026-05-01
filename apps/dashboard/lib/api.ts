@@ -188,7 +188,7 @@ export const paymentsApi = {
 // ─── Sales ────────────────────────────────────────────────────────────────────
 
 export const salesApi = {
-  list: (params?: { productName?: string; period?: string; page?: number; limit?: number }) =>
+  list: (params?: { productName?: string; period?: string; page?: number; limit?: number; actorId?: string }) =>
     api.get('/sales', { params }).then((r) => r.data),
   topProducts: (params?: { rankBy?: 'qty' | 'revenue' | 'profit'; period?: string }) =>
     api.get('/sales/top-products', { params }).then((r) => r.data),
@@ -275,6 +275,7 @@ export interface ExpenseListParams {
   from?: string;
   to?: string;
   category?: ExpenseCategory;
+  actorId?: string;
 }
 
 export const expensesApi = {
@@ -334,6 +335,88 @@ export const withdrawalsApi = {
     note?: string;
   }): Promise<Withdrawal> => api.post('/withdrawals', body).then((r) => r.data),
   delete: (id: string): Promise<void> => api.delete(`/withdrawals/${id}`),
+};
+
+// ─── Employments ──────────────────────────────────────────────────────────────
+
+export type EmploymentTier = 'FULL' | 'SALES_ONLY';
+export type EmploymentStatus =
+  | 'PENDING'
+  | 'ACTIVE'
+  | 'REJECTED'
+  | 'TERMINATION_REQUESTED'
+  | 'TERMINATED';
+
+export interface EmploymentParty {
+  id: string;
+  username: string;
+  email?: string | null;
+  phone?: string | null;
+  isMiniEmployee?: boolean;
+}
+
+export interface Employment {
+  id: string;
+  employerId: string;
+  employer?: EmploymentParty;
+  employeeId: string;
+  employee?: EmploymentParty;
+  tier: EmploymentTier;
+  status: EmploymentStatus;
+  terminationRequestedBy: string | null;
+  acceptedAt: string | null;
+  terminatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateMiniEmployeeResult {
+  employment: Employment;
+  employee: { id: string; username: string; name: string };
+  pairingCode: string;
+}
+
+export const employmentsApi = {
+  list: (params?: { role?: 'employer' | 'employee'; status?: EmploymentStatus }): Promise<Employment[]> =>
+    api.get('/employments', { params }).then((r) => r.data),
+  get: (id: string): Promise<Employment> =>
+    api.get(`/employments/${id}`).then((r) => r.data),
+  create: (body: { employeeUserId?: string; emailOrPhone?: string; tier: EmploymentTier }): Promise<Employment> =>
+    api.post('/employments', body).then((r) => r.data),
+  createMiniEmployee: (body: { name: string; phone?: string }): Promise<CreateMiniEmployeeResult> =>
+    api.post('/employments/mini-employee', body).then((r) => r.data),
+  accept: (id: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/accept`).then((r) => r.data),
+  reject: (id: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/reject`).then((r) => r.data),
+  requestTermination: (id: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/request-termination`).then((r) => r.data),
+  approveTermination: (id: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/approve-termination`).then((r) => r.data),
+  cancelTermination: (id: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/cancel-termination`).then((r) => r.data),
+  rejectTermination: (id: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/reject-termination`).then((r) => r.data),
+};
+
+// ─── Pricing ──────────────────────────────────────────────────────────────────
+
+export interface ProductPrice {
+  id: string;
+  ownerId: string;
+  productName: string;
+  unitPrice: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const pricingApi = {
+  list: (): Promise<ProductPrice[]> => api.get('/pricing').then((r) => r.data),
+  upsert: (body: { productName: string; unitPrice: string }): Promise<ProductPrice> =>
+    api.post('/pricing', body).then((r) => r.data),
+  update: (id: string, unitPrice: string): Promise<ProductPrice> =>
+    api.patch(`/pricing/${id}`, { unitPrice }).then((r) => r.data),
+  delete: (id: string): Promise<void> => api.delete(`/pricing/${id}`),
 };
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────

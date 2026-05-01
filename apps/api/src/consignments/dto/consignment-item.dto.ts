@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsString,
@@ -6,6 +6,7 @@ import {
   IsInt,
   IsPositive,
   IsDecimal,
+  IsOptional,
 } from 'class-validator';
 
 export class ConsignmentItemDto {
@@ -23,4 +24,9 @@ export class ConsignmentItemDto {
   @ApiProperty({ example: '32.00', description: 'Agreed price per unit the debtor will owe' })
   @IsDecimal({ decimal_digits: '0,2' })
   agreedUnitPrice: string;
+
+  @ApiPropertyOptional({ description: 'Required (employee only) when below owner\'s standard price' })
+  @IsString()
+  @IsOptional()
+  discountReason?: string;
 }

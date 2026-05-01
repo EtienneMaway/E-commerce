@@ -8,8 +8,8 @@ import {
 } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { User } from '../entities';
+import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
+import type { ActorContext } from '../common/types/actor-context';
 
 @ApiTags('dashboard')
 @ApiBearerAuth('jwt')
@@ -25,8 +25,8 @@ export class DashboardController {
       'Returns totalIOwe, totalOwedToMe, netPosition, and totalProfitAllTime.',
   })
   @ApiResponse({ status: 200, description: 'Dashboard summary' })
-  getSummary(@CurrentUser() user: User) {
-    return this.dashboardService.getSummary(user.id);
+  getSummary(@CurrentActorContext() ctx: ActorContext) {
+    return this.dashboardService.getSummary(ctx.effectiveOwnerId);
   }
 
   @Get('cash-position')
@@ -38,15 +38,15 @@ export class DashboardController {
       'Available cash may be negative when expenses exceed profit.',
   })
   @ApiResponse({ status: 200, description: 'Cash position summary' })
-  getCashPosition(@CurrentUser() user: User) {
-    return this.dashboardService.getCashPosition(user.id);
+  getCashPosition(@CurrentActorContext() ctx: ActorContext) {
+    return this.dashboardService.getCashPosition(ctx.effectiveOwnerId);
   }
 
   @Get('suppliers')
   @ApiOperation({ summary: 'List all suppliers with outstanding balances' })
   @ApiResponse({ status: 200, description: 'Supplier list sorted by balance desc' })
-  getSuppliers(@CurrentUser() user: User) {
-    return this.dashboardService.getSuppliers(user.id);
+  getSuppliers(@CurrentActorContext() ctx: ActorContext) {
+    return this.dashboardService.getSuppliers(ctx.effectiveOwnerId);
   }
 
   @Get('suppliers/:supplierUserId')
@@ -59,17 +59,17 @@ export class DashboardController {
   @ApiResponse({ status: 200, description: 'Supplier detail' })
   @ApiResponse({ status: 404, description: 'No relationship found' })
   getSupplierDetail(
-    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
     @Param('supplierUserId', ParseUUIDPipe) supplierUserId: string,
   ) {
-    return this.dashboardService.getSupplierDetail(user.id, supplierUserId);
+    return this.dashboardService.getSupplierDetail(ctx.effectiveOwnerId, supplierUserId);
   }
 
   @Get('debtors')
   @ApiOperation({ summary: 'List all debtors with outstanding balances' })
   @ApiResponse({ status: 200, description: 'Debtor list sorted by balance desc' })
-  getDebtors(@CurrentUser() user: User) {
-    return this.dashboardService.getDebtors(user.id);
+  getDebtors(@CurrentActorContext() ctx: ActorContext) {
+    return this.dashboardService.getDebtors(ctx.effectiveOwnerId);
   }
 
   @Get('debtors/:debtorUserId')
@@ -82,17 +82,17 @@ export class DashboardController {
   @ApiResponse({ status: 200, description: 'Debtor detail' })
   @ApiResponse({ status: 404, description: 'No relationship found' })
   getDebtorDetail(
-    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
     @Param('debtorUserId', ParseUUIDPipe) debtorUserId: string,
   ) {
-    return this.dashboardService.getDebtorDetail(user.id, debtorUserId);
+    return this.dashboardService.getDebtorDetail(ctx.effectiveOwnerId, debtorUserId);
   }
 
   @Get('profit-by-product')
   @ApiOperation({ summary: 'Profit breakdown per product (all time)' })
   @ApiResponse({ status: 200, description: 'Products sorted by total profit desc' })
-  getProfitByProduct(@CurrentUser() user: User) {
-    return this.dashboardService.getProfitByProduct(user.id);
+  getProfitByProduct(@CurrentActorContext() ctx: ActorContext) {
+    return this.dashboardService.getProfitByProduct(ctx.effectiveOwnerId);
   }
 
   @Get('profit-by-source')
@@ -100,8 +100,8 @@ export class DashboardController {
     summary: 'Profit split by stock source (personal vs each supplier)',
   })
   @ApiResponse({ status: 200, description: 'Sources sorted by total profit desc' })
-  getProfitBySource(@CurrentUser() user: User) {
-    return this.dashboardService.getProfitBySource(user.id);
+  getProfitBySource(@CurrentActorContext() ctx: ActorContext) {
+    return this.dashboardService.getProfitBySource(ctx.effectiveOwnerId);
   }
 
   @Get('alerts')
@@ -112,7 +112,7 @@ export class DashboardController {
       `and low-stock inventory entries (quantityRemaining ≤ ${5}).`,
   })
   @ApiResponse({ status: 200, description: 'Array of AlertItem objects' })
-  getAlerts(@CurrentUser() user: User) {
-    return this.dashboardService.getAlerts(user.id);
+  getAlerts(@CurrentActorContext() ctx: ActorContext) {
+    return this.dashboardService.getAlerts(ctx.effectiveOwnerId);
   }
 }

@@ -25,4 +25,7 @@ export const QK = {
   stockMovements: (filters?: object) => ['inventory', 'movements', filters] as const,
   stockMovementsByEntry: (entryId: string) =>
     ['inventory', 'entries', entryId, 'movements'] as const,
+  employments: (filters?: object) => ['employments', filters] as const,
+  employmentDetail: (id: string) => ['employments', id] as const,
+  pricing: ['pricing'] as const,
 } as const;

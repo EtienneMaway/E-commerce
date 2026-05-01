@@ -17,6 +17,8 @@ import {
   StockMovementReason,
 } from '../entities';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
+import { PricingService } from '../pricing/pricing.service';
+import { ActorContext } from '../common/types/actor-context';
 import { CreateExternalContactDto } from './dto/create-external-contact.dto';
 import { UpdateExternalContactDto } from './dto/update-external-contact.dto';
 import { RecordProductOutDto } from './dto/record-product-out.dto';
@@ -35,30 +37,31 @@ export class ExternalContactsService {
     private readonly entryRepo: Repository<InventoryEntry>,
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
+    private readonly pricingService: PricingService,
   ) {}
 
   // ─── CRUD ──────────────────────────────────────────────────────────────────
 
-  async findAll(ownerId: string): Promise<ExternalContact[]> {
+  async findAll(ctx: ActorContext): Promise<ExternalContact[]> {
     return this.contactRepo.find({
-      where: { ownerId },
+      where: { ownerId: ctx.effectiveOwnerId },
       order: { name: 'ASC' },
     });
   }
 
-  async findOne(ownerId: string, id: string): Promise<ExternalContact> {
+  async findOne(ctx: ActorContext, id: string): Promise<ExternalContact> {
     const contact = await this.contactRepo.findOne({
-      where: { id, ownerId },
-      relations: { transactions: true },
+      where: { id, ownerId: ctx.effectiveOwnerId },
+      relations: { transactions: { actor: true } },
       order: { transactions: { createdAt: 'DESC' } },
     });
     if (!contact) throw new NotFoundException('External contact not found');
     return contact;
   }
 
-  async create(ownerId: string, dto: CreateExternalContactDto): Promise<ExternalContact> {
+  async create(ctx: ActorContext, dto: CreateExternalContactDto): Promise<ExternalContact> {
     const contact = this.contactRepo.create({
-      ownerId,
+      ownerId: ctx.effectiveOwnerId,
       name: dto.name.trim(),
       phone: dto.phone?.trim() ?? null,
       notes: dto.notes?.trim() ?? null,
@@ -69,8 +72,8 @@ export class ExternalContactsService {
     return this.contactRepo.save(contact);
   }
 
-  async update(ownerId: string, id: string, dto: UpdateExternalContactDto): Promise<ExternalContact> {
-    const contact = await this.contactRepo.findOne({ where: { id, ownerId } });
+  async update(ctx: ActorContext, id: string, dto: UpdateExternalContactDto): Promise<ExternalContact> {
+    const contact = await this.contactRepo.findOne({ where: { id, ownerId: ctx.effectiveOwnerId } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (dto.name !== undefined) contact.name = dto.name.trim();
     if (dto.phone !== undefined) contact.phone = dto.phone.trim() || null;
@@ -79,31 +82,37 @@ export class ExternalContactsService {
     return this.contactRepo.save(contact);
   }
 
-  async remove(ownerId: string, id: string): Promise<void> {
-    const contact = await this.contactRepo.findOne({ where: { id, ownerId } });
+  async remove(ctx: ActorContext, id: string): Promise<void> {
+    const contact = await this.contactRepo.findOne({ where: { id, ownerId: ctx.effectiveOwnerId } });
     if (!contact) throw new NotFoundException('External contact not found');
     await this.contactRepo.remove(contact);
   }
 
   // ─── Transactions ──────────────────────────────────────────────────────────
 
-  /**
-   * Give products to an external debtor.
-   * Deducts from trader's inventory (SUPPLIER-first), increases debtorBalance.
-   */
   async recordProductOut(
-    ownerId: string,
+    ctx: ActorContext,
     contactId: string,
     dto: RecordProductOutDto,
   ): Promise<ExternalTransaction> {
+    const ownerId = ctx.effectiveOwnerId;
+    const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
+
     const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (contact.role === ExternalContactRole.SUPPLIER) {
       throw new BadRequestException('This contact is a supplier, not a debtor');
     }
 
+    // Apply employee pricing rule on the unit price.
+    const priceCheck = await this.pricingService.applyEmployeePriceRule({
+      ctx,
+      productName: dto.productName,
+      submittedUnitPrice: dto.unitPrice,
+      discountReason: dto.discountReason,
+    });
+
     return this.dataSource.transaction(async (manager) => {
-      // Find available stock (SUPPLIER-first)
       const productNameNorm = dto.productName.trim().toLowerCase();
       const entries = await manager.find(InventoryEntry, {
         where: [
@@ -125,7 +134,6 @@ export class ExternalContactsService {
         );
       }
 
-      // Deduct stock and capture weighted average unit cost
       let remaining = dto.quantity;
       let totalCostDeducted = new Decimal(0);
       let totalQtyDeducted = 0;
@@ -151,42 +159,41 @@ export class ExternalContactsService {
 
       const unitCostUsed = totalQtyDeducted > 0
         ? totalCostDeducted.div(totalQtyDeducted).toFixed(4)
-        : dto.unitPrice;
+        : priceCheck.effectiveUnitPrice;
 
-      const amount = new Decimal(dto.unitPrice).mul(dto.quantity).toFixed(2);
+      const amount = new Decimal(priceCheck.effectiveUnitPrice).mul(dto.quantity).toFixed(2);
 
-      // Update balance
       contact.debtorBalance = new Decimal(contact.debtorBalance).plus(amount).toFixed(2);
       await manager.save(ExternalContact, contact);
 
-      // Record transaction — profit is deferred until payment is received
-      // (mirrors consignment behavior: no profit recognized at give-out time)
       const tx = manager.create(ExternalTransaction, {
         ownerId,
+        actorId,
         contactId,
         type: ExternalTransactionType.PRODUCT_OUT,
         productName: productNameNorm,
         quantity: dto.quantity,
-        unitPrice: dto.unitPrice,
+        unitPrice: priceCheck.effectiveUnitPrice,
         amount,
         unitCostUsed,
         profit: null,
         isLoss: null,
         notes: dto.notes ?? null,
+        originalUnitPrice: priceCheck.originalUnitPrice,
+        discountReason: priceCheck.originalUnitPrice ? dto.discountReason ?? null : null,
       });
       return manager.save(ExternalTransaction, tx);
     });
   }
 
-  /**
-   * Record cash received from an external debtor.
-   * Decreases debtorBalance.
-   */
   async recordPaymentIn(
-    ownerId: string,
+    ctx: ActorContext,
     contactId: string,
     dto: RecordPaymentInDto,
   ): Promise<ExternalTransaction> {
+    const ownerId = ctx.effectiveOwnerId;
+    const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
+
     const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (contact.role === ExternalContactRole.SUPPLIER) {
@@ -200,9 +207,6 @@ export class ExternalContactsService {
       contact.debtorBalance = new Decimal(contact.debtorBalance).minus(amount).toFixed(2);
       await manager.save(ExternalContact, contact);
 
-      // Realize profit proportional to the contact's PRODUCT_OUT margin ratio.
-      // ratio = Σ(sellingValue − costValue) / Σ(sellingValue) across all PRODUCT_OUTs
-      // profit on this payment = payment × ratio
       const productOuts = await manager.find(ExternalTransaction, {
         where: {
           ownerId,
@@ -231,6 +235,7 @@ export class ExternalContactsService {
 
       const tx = manager.create(ExternalTransaction, {
         ownerId,
+        actorId,
         contactId,
         type: ExternalTransactionType.PAYMENT_IN,
         productName: null,
@@ -246,15 +251,14 @@ export class ExternalContactsService {
     });
   }
 
-  /**
-   * Record products received from an external supplier.
-   * Adds to trader's inventory as PERSONAL stock, increases supplierBalance.
-   */
   async recordProductIn(
-    ownerId: string,
+    ctx: ActorContext,
     contactId: string,
     dto: RecordProductInDto,
   ): Promise<ExternalTransaction> {
+    const ownerId = ctx.effectiveOwnerId;
+    const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
+
     const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (contact.role === ExternalContactRole.DEBTOR) {
@@ -262,9 +266,9 @@ export class ExternalContactsService {
     }
 
     return this.dataSource.transaction(async (manager) => {
-      // Add to inventory
       const entry = manager.create(InventoryEntry, {
         ownerId,
+        actorId,
         source: InventorySource.PERSONAL,
         productName: dto.productName.trim().toLowerCase(),
         unitCost: dto.unitCost,
@@ -286,13 +290,12 @@ export class ExternalContactsService {
 
       const amount = new Decimal(dto.unitCost).mul(dto.quantity).toFixed(2);
 
-      // Update balance
       contact.supplierBalance = new Decimal(contact.supplierBalance).plus(amount).toFixed(2);
       await manager.save(ExternalContact, contact);
 
-      // Record transaction
       const tx = manager.create(ExternalTransaction, {
         ownerId,
+        actorId,
         contactId,
         type: ExternalTransactionType.PRODUCT_IN,
         productName: dto.productName.trim().toLowerCase(),
@@ -308,15 +311,14 @@ export class ExternalContactsService {
     });
   }
 
-  /**
-   * Record cash paid to an external supplier.
-   * Decreases supplierBalance.
-   */
   async recordPaymentOut(
-    ownerId: string,
+    ctx: ActorContext,
     contactId: string,
     dto: RecordPaymentOutDto,
   ): Promise<ExternalTransaction> {
+    const ownerId = ctx.effectiveOwnerId;
+    const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
+
     const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (contact.role === ExternalContactRole.DEBTOR) {
@@ -332,6 +334,7 @@ export class ExternalContactsService {
 
       const tx = manager.create(ExternalTransaction, {
         ownerId,
+        actorId,
         contactId,
         type: ExternalTransactionType.PAYMENT_OUT,
         productName: null,
@@ -347,28 +350,22 @@ export class ExternalContactsService {
     });
   }
 
-  /**
-   * Delete a transaction and reverse its effect on the contact's balance.
-   * NOTE: Inventory changes from PRODUCT_OUT / PRODUCT_IN are NOT reversed.
-   */
-  async deleteTransaction(ownerId: string, contactId: string, txId: string): Promise<void> {
+  async deleteTransaction(ctx: ActorContext, contactId: string, txId: string): Promise<void> {
+    const ownerId = ctx.effectiveOwnerId;
     const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
     if (!contact) throw new NotFoundException('External contact not found');
 
     const tx = await this.txRepo.findOne({ where: { id: txId, contactId, ownerId } });
     if (!tx) throw new NotFoundException('Transaction not found');
 
-    // Check ownership
     if (tx.ownerId !== ownerId) throw new ForbiddenException('Access denied');
 
     return this.dataSource.transaction(async (manager) => {
       const amount = new Decimal(tx.amount);
 
-      // Reverse balance effect
       switch (tx.type) {
         case ExternalTransactionType.PRODUCT_OUT:
         case ExternalTransactionType.PAYMENT_IN:
-          // PRODUCT_OUT increased debtorBalance; PAYMENT_IN decreased it
           if (tx.type === ExternalTransactionType.PRODUCT_OUT) {
             contact.debtorBalance = new Decimal(contact.debtorBalance).minus(amount).toFixed(2);
           } else {
@@ -377,7 +374,6 @@ export class ExternalContactsService {
           break;
         case ExternalTransactionType.PRODUCT_IN:
         case ExternalTransactionType.PAYMENT_OUT:
-          // PRODUCT_IN increased supplierBalance; PAYMENT_OUT decreased it
           if (tx.type === ExternalTransactionType.PRODUCT_IN) {
             contact.supplierBalance = new Decimal(contact.supplierBalance).minus(amount).toFixed(2);
           } else {

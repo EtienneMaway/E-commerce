@@ -15,6 +15,7 @@ import {
   PaymentStatus,
   SupplierDebt,
 } from '../entities';
+import { ActorContext } from '../common/types/actor-context';
 import { PaySupplierDto } from './dto/pay-supplier.dto';
 import { RecordDebtorPaymentDto } from './dto/record-debtor-payment.dto';
 
@@ -32,7 +33,10 @@ export class PaymentsService {
 
   // ─── Debtor: submit a payment to a supplier (starts as PENDING) ────────────
 
-  async paySupplier(ownerId: string, dto: PaySupplierDto): Promise<Payment> {
+  async paySupplier(ctx: ActorContext, dto: PaySupplierDto): Promise<Payment> {
+    const ownerId = ctx.effectiveOwnerId;
+    const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
+
     const debt = await this.supplierDebtRepo.findOne({
       where: { ownerId, supplierUserId: dto.supplierUserId },
     });
@@ -47,7 +51,6 @@ export class PaymentsService {
       throw new BadRequestException('Payment amount must be greater than zero');
     }
 
-    // Block if a PENDING payment already exists for this debt — only one at a time.
     const existing = await this.paymentRepo.findOne({
       where: { supplierDebtId: debt.id, status: PaymentStatus.PENDING },
     });
@@ -57,7 +60,6 @@ export class PaymentsService {
       );
     }
 
-    // Create a PENDING payment — balances are only updated once the supplier approves.
     const payment = this.paymentRepo.create({
       amount: amount.toFixed(2),
       note: dto.note ?? null,
@@ -67,16 +69,15 @@ export class PaymentsService {
       supplierDebtId: debt.id,
       paidByUserId: ownerId,
       paidToUserId: dto.supplierUserId,
+      actorId,
     });
     return this.paymentRepo.save(payment);
   }
 
   // ─── Supplier: list pending payments sent to them by debtors ──────────────
 
-  async getPendingFromDebtors(supplierId: string): Promise<Payment[]> {
-    // Find SupplierDebt records where this user is the supplier,
-    // then return all PENDING payments linked to those debts.
-    // This covers both new payments (paidToUserId set) and old ones (paidToUserId null).
+  async getPendingFromDebtors(ctx: ActorContext): Promise<Payment[]> {
+    const supplierId = ctx.effectiveOwnerId;
     const debts = await this.supplierDebtRepo.find({
       where: { supplierUserId: supplierId },
       select: ['id'],
@@ -88,6 +89,7 @@ export class PaymentsService {
       .createQueryBuilder('payment')
       .leftJoinAndSelect('payment.paidByUser', 'paidByUser')
       .leftJoinAndSelect('payment.supplierDebt', 'supplierDebt')
+      .leftJoinAndSelect('payment.actor', 'actor')
       .where('payment.supplier_debt_id IN (:...debtIds)', { debtIds })
       .andWhere('payment.status = :status', { status: PaymentStatus.PENDING })
       .orderBy('payment.created_at', 'DESC')
@@ -96,7 +98,8 @@ export class PaymentsService {
 
   // ─── Supplier: approve a pending payment ──────────────────────────────────
 
-  async approvePayment(supplierId: string, paymentId: string): Promise<Payment> {
+  async approvePayment(ctx: ActorContext, paymentId: string): Promise<Payment> {
+    const supplierId = ctx.effectiveOwnerId;
     const payment = await this.paymentRepo.findOne({
       where: { id: paymentId, status: PaymentStatus.PENDING },
       relations: { supplierDebt: true },
@@ -104,9 +107,6 @@ export class PaymentsService {
     if (!payment) throw new NotFoundException('Pending payment not found');
     if (!payment.supplierDebt) throw new BadRequestException('Payment not linked to a debt record');
 
-    // Verify the current user is the supplier being paid.
-    // Use supplierDebt.supplierUserId rather than payment.paidToUserId because
-    // old payments were created before paidToUserId was added (it can be null).
     if (payment.supplierDebt.supplierUserId !== supplierId) {
       throw new ForbiddenException('This payment is not addressed to you');
     }
@@ -116,12 +116,10 @@ export class PaymentsService {
     const debtorId = debt.ownerId;
 
     return this.dataSource.transaction(async (manager) => {
-      // 1. Deduct from SupplierDebt (debtor's record)
       debt.totalPaid = new Decimal(debt.totalPaid).plus(amount).toFixed(2);
       debt.outstandingBalance = new Decimal(debt.outstandingBalance).minus(amount).toFixed(2);
       await manager.save(SupplierDebt, debt);
 
-      // 2. Deduct from DebtorCredit (supplier's mirror record)
       const credit = await manager.findOne(DebtorCredit, {
         where: { ownerId: supplierId, debtorUserId: debtorId },
       });
@@ -132,7 +130,6 @@ export class PaymentsService {
         payment.debtorCreditId = savedCredit.id;
       }
 
-      // 3. Approve the payment and record the resulting balance
       payment.status = PaymentStatus.APPROVED;
       payment.remainingBalance = debt.outstandingBalance;
       return manager.save(Payment, payment);
@@ -141,7 +138,8 @@ export class PaymentsService {
 
   // ─── Supplier: reject a pending payment from a debtor ────────────────────
 
-  async rejectPayment(supplierId: string, paymentId: string): Promise<Payment> {
+  async rejectPayment(ctx: ActorContext, paymentId: string): Promise<Payment> {
+    const supplierId = ctx.effectiveOwnerId;
     const payment = await this.paymentRepo.findOne({
       where: { id: paymentId, status: PaymentStatus.PENDING },
       relations: { supplierDebt: true },
@@ -160,9 +158,12 @@ export class PaymentsService {
   // ─── Supplier: record a payment received directly from a debtor ───────────
 
   async recordDebtorPayment(
-    ownerId: string,
+    ctx: ActorContext,
     dto: RecordDebtorPaymentDto,
   ): Promise<Payment> {
+    const ownerId = ctx.effectiveOwnerId;
+    const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
+
     const credit = await this.debtorCreditRepo.findOne({
       where: { ownerId, debtorUserId: dto.debtorUserId },
       relations: { debtorUser: true },
@@ -194,6 +195,7 @@ export class PaymentsService {
         debtorCreditId: credit.id,
         paidByUserId: dto.debtorUserId,
         paidToUserId: ownerId,
+        actorId,
       });
       return manager.save(Payment, payment);
     });

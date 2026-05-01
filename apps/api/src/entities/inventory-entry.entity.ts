@@ -107,4 +107,12 @@ export class InventoryEntry {
 
   @OneToMany(() => StockMovement, (m) => m.inventoryEntry)
   movements: StockMovement[];
+
+  @ApiPropertyOptional({ description: 'Employee who created this entry on owner\'s behalf (consignment-out flows etc.)' })
+  @Column({ name: 'actor_id', type: 'uuid', nullable: true })
+  actorId: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'actor_id' })
+  actor: User | null;
 }

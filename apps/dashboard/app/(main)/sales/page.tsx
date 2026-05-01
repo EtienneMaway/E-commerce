@@ -9,6 +9,13 @@ import { formatDate } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { DataTable, type Column } from '../../../components/ui/DataTable';
 import { Badge } from '../../../components/ui/Badge';
+import { ActorPill } from '../../../components/ui/ActorPill';
+import {
+  ACTOR_FILTER_ALL,
+  ActorFilter,
+  resolveActorFilter,
+} from '../../../components/ui/ActorFilter';
+import { useAuthStore } from '../../../store/auth.store';
 import { useT } from '../../../lib/i18n';
 import { saleReceiptHtml } from '../../../lib/print-templates';
 import { PrintDialog } from '../../../components/ui/PrintDialog';
@@ -25,12 +32,18 @@ interface Row {
   profit: string;
   isLoss: boolean;
   date: string;
+  actorId: string | null;
+  actor: { id: string; username: string } | null;
+  originalUnitPrice: string | null;
+  discountReason: string | null;
 }
 
 export default function SalesPage() {
   const t = useT();
   const formatCurrency = useFormatCurrency();
+  const { user } = useAuthStore();
   const [period, setPeriod] = useState<Period>('30d');
+  const [actorFilter, setActorFilter] = useState<string>(ACTOR_FILTER_ALL);
   const [printRow, setPrintRow] = useState<Row | null>(null);
 
   const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
@@ -51,9 +64,19 @@ export default function SalesPage() {
     {
       key: 'productName', header: t.sales.colProduct, sortable: true,
       render: (r) => (
-        <span className="font-medium" style={{ color: 'var(--foreground)' }}>
-          {r.productName.charAt(0).toUpperCase() + r.productName.slice(1)}
-        </span>
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium" style={{ color: 'var(--foreground)' }}>
+            {r.productName.charAt(0).toUpperCase() + r.productName.slice(1)}
+          </span>
+          <ActorPill
+            actor={r.actor}
+            viewerId={user?.id}
+            discount={{
+              originalUnitPrice: r.originalUnitPrice,
+              discountReason: r.discountReason,
+            }}
+          />
+        </div>
       ),
     },
     {
@@ -98,9 +121,10 @@ export default function SalesPage() {
     },
   ];
 
+  const queryParams = { period, actorId: resolveActorFilter(actorFilter) };
   const { data, isLoading } = useQuery({
-    queryKey: QK.salesHistory({ period }),
-    queryFn: () => salesApi.list({ period }),
+    queryKey: QK.salesHistory(queryParams),
+    queryFn: () => salesApi.list(queryParams),
     staleTime: 30_000,
   });
 
@@ -135,13 +159,16 @@ export default function SalesPage() {
               <span style={{ color: 'var(--danger)' }}> · {t.sales.lossSales(lossCount)}</span>
             )}
           </p>
-          {/* Period filter */}
-          <div className="flex gap-1.5 mt-3">
-            {PERIODS.map((p) => (
-              <button key={p.value} onClick={() => setPeriod(p.value)} className={`pill${period === p.value ? ' active' : ''}`}>
-                {p.label}
-              </button>
-            ))}
+          {/* Period + actor filters */}
+          <div className="flex gap-2 mt-3 flex-wrap items-center">
+            <div className="flex gap-1.5">
+              {PERIODS.map((p) => (
+                <button key={p.value} onClick={() => setPeriod(p.value)} className={`pill${period === p.value ? ' active' : ''}`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <ActorFilter value={actorFilter} onChange={setActorFilter} />
           </div>
         </div>
         <Link href="/sales/top-products" className="btn btn-primary flex-shrink-0">

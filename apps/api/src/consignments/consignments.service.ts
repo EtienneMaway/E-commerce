@@ -20,6 +20,8 @@ import {
 } from '../entities';
 import { CreateConsignmentDto } from './dto/create-consignment.dto';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
+import { PricingService } from '../pricing/pricing.service';
+import { ActorContext } from '../common/types/actor-context';
 
 @Injectable()
 export class ConsignmentsService {
@@ -36,77 +38,91 @@ export class ConsignmentsService {
     private readonly debtorCreditRepo: Repository<DebtorCredit>,
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
+    private readonly pricingService: PricingService,
   ) {}
 
   // ─── Supplier: create a consignment request ────────────────────────────────
 
-  async create(supplierId: string, dto: CreateConsignmentDto): Promise<ConsignmentRequest> {
+  async create(ctx: ActorContext, dto: CreateConsignmentDto): Promise<ConsignmentRequest> {
+    const supplierId = ctx.effectiveOwnerId;
+    const actorId = ctx.actorId !== supplierId ? ctx.actorId : null;
+
     const debtor = await this.userRepo.findOne({ where: { id: dto.debtorUserId } });
     if (!debtor) throw new NotFoundException('Debtor user not found');
     if (debtor.id === supplierId) {
       throw new BadRequestException('You cannot consign goods to yourself');
     }
 
-    // Soft-validate stock availability for each item
-    for (const item of dto.items) {
-      const available = await this.countAvailableStock(supplierId, item.productName);
-      if (available < item.quantity) {
+    // Soft-validate stock + apply pricing rule per item
+    const itemEntities: ConsignmentItem[] = [];
+    for (const dto_item of dto.items) {
+      const available = await this.countAvailableStock(supplierId, dto_item.productName);
+      if (available < dto_item.quantity) {
         throw new BadRequestException(
-          `Insufficient stock for "${item.productName}". Available: ${available}, requested: ${item.quantity}`,
+          `Insufficient stock for "${dto_item.productName}". Available: ${available}, requested: ${dto_item.quantity}`,
         );
       }
+
+      const priceCheck = await this.pricingService.applyEmployeePriceRule({
+        ctx,
+        productName: dto_item.productName,
+        submittedUnitPrice: dto_item.agreedUnitPrice,
+        discountReason: dto_item.discountReason,
+      });
+
+      const stockEntries = await this.getStockEntriesSorted(supplierId, dto_item.productName);
+      const unitCost = stockEntries[0]?.unitCost ?? priceCheck.effectiveUnitPrice;
+
+      itemEntities.push(
+        this.itemRepo.create({
+          productName: dto_item.productName.trim().toLowerCase(),
+          quantity: dto_item.quantity,
+          agreedUnitPrice: priceCheck.effectiveUnitPrice,
+          unitCost,
+          actorId,
+          originalUnitPrice: priceCheck.originalUnitPrice,
+          discountReason: priceCheck.originalUnitPrice ? dto_item.discountReason ?? null : null,
+        }),
+      );
     }
 
-    // Build the request entity (items are cascaded)
     const request = this.requestRepo.create({
       supplierId,
       debtorId: dto.debtorUserId,
       status: ConsignmentStatus.PENDING,
       note: dto.note ?? null,
+      items: itemEntities,
     });
 
-    // Resolve unit costs from supplier's stock for audit trail
-    const itemEntities: ConsignmentItem[] = [];
-    for (const dto_item of dto.items) {
-      const stockEntries = await this.getStockEntriesSorted(supplierId, dto_item.productName);
-      const unitCost = stockEntries[0]?.unitCost ?? dto_item.agreedUnitPrice;
-      itemEntities.push(
-        this.itemRepo.create({
-          productName: dto_item.productName.trim().toLowerCase(),
-          quantity: dto_item.quantity,
-          agreedUnitPrice: dto_item.agreedUnitPrice,
-          unitCost,
-        }),
-      );
-    }
-
-    request.items = itemEntities;
     return this.requestRepo.save(request);
   }
 
   // ─── Debtor: view incoming consignments ────────────────────────────────────
 
-  async findIncoming(debtorId: string): Promise<ConsignmentRequest[]> {
+  async findIncoming(ctx: ActorContext): Promise<ConsignmentRequest[]> {
     return this.requestRepo.find({
-      where: { debtorId },
-      relations: { supplier: true, items: true },
+      where: { debtorId: ctx.effectiveOwnerId },
+      relations: { supplier: true, items: { actor: true } },
       order: { createdAt: 'DESC' },
     });
   }
 
   // ─── Supplier: view outgoing consignments ──────────────────────────────────
 
-  async findOutgoing(supplierId: string): Promise<ConsignmentRequest[]> {
+  async findOutgoing(ctx: ActorContext): Promise<ConsignmentRequest[]> {
     return this.requestRepo.find({
-      where: { supplierId },
-      relations: { debtor: true, items: true },
+      where: { supplierId: ctx.effectiveOwnerId },
+      relations: { debtor: true, items: { actor: true } },
       order: { createdAt: 'DESC' },
     });
   }
 
   // ─── Debtor: confirm reception (atomic) ───────────────────────────────────
 
-  async confirm(requestId: string, debtorId: string): Promise<ConsignmentRequest> {
+  async confirm(ctx: ActorContext, requestId: string): Promise<ConsignmentRequest> {
+    const debtorId = ctx.effectiveOwnerId;
+    const actorId = ctx.actorId !== debtorId ? ctx.actorId : null;
+
     const request = await this.requestRepo.findOne({
       where: { id: requestId },
       relations: { items: true },
@@ -120,7 +136,6 @@ export class ConsignmentsService {
 
     return this.dataSource.transaction(async (manager) => {
       for (const item of request.items) {
-        // Hard-validate stock (race-condition safe, inside transaction)
         const stockEntries = await manager.find(InventoryEntry, {
           where: [
             { ownerId: request.supplierId, productName: ILike(item.productName), source: InventorySource.SUPPLIER },
@@ -141,7 +156,6 @@ export class ConsignmentsService {
           );
         }
 
-        // Deduct from supplier's stock (SUPPLIER-first priority) — emit CONSIGN_OUT per source lot
         let remaining = item.quantity;
         for (const entry of sorted) {
           if (remaining === 0) break;
@@ -163,7 +177,6 @@ export class ConsignmentsService {
 
         const creditValue = new Decimal(item.agreedUnitPrice).mul(item.quantity).toFixed(2);
 
-        // Upsert DebtorCredit (supplier=owner, debtor=debtorUser)
         let credit = await manager.findOne(DebtorCredit, {
           where: { ownerId: request.supplierId, debtorUserId: request.debtorId },
         });
@@ -182,7 +195,6 @@ export class ConsignmentsService {
         }
         const savedCredit = await manager.save(DebtorCredit, credit);
 
-        // Upsert SupplierDebt (debtor=owner, supplier=supplierUser) — mirror of DebtorCredit
         let debt = await manager.findOne(SupplierDebt, {
           where: { ownerId: request.debtorId, supplierUserId: request.supplierId },
         });
@@ -200,7 +212,8 @@ export class ConsignmentsService {
         }
         const savedDebt = await manager.save(SupplierDebt, debt);
 
-        // Create CONSIGNED_OUT entry on supplier's books
+        // Supplier-side CONSIGNED_OUT entry — the request item already records
+        // who triggered this on the supplier side via item.actorId.
         const supplierEntry = manager.create(InventoryEntry, {
           ownerId: request.supplierId,
           source: InventorySource.CONSIGNED_OUT,
@@ -212,12 +225,11 @@ export class ConsignmentsService {
           quantityRemaining: item.quantity,
           debtorUserId: request.debtorId,
           debtorCreditId: savedCredit.id,
+          actorId: null,
         });
         await manager.save(InventoryEntry, supplierEntry);
 
-        // Create CONSIGNED_IN entry on debtor's books.
-        // unitCost = agreedUnitPrice (what the debtor owes the supplier per unit — their cost).
-        // sellingPrice defaults to agreedUnitPrice; debtor can raise it later to earn a margin.
+        // Debtor-side CONSIGNED_IN entry — actor is whoever confirmed.
         const debtorEntry = manager.create(InventoryEntry, {
           ownerId: request.debtorId,
           source: InventorySource.CONSIGNED_IN,
@@ -229,11 +241,11 @@ export class ConsignmentsService {
           quantityRemaining: item.quantity,
           supplierUserId: request.supplierId,
           supplierDebtId: savedDebt.id,
+          actorId,
         });
         await manager.save(InventoryEntry, debtorEntry);
       }
 
-      // Mark request as accepted
       request.status = ConsignmentStatus.ACCEPTED;
       request.confirmedAt = new Date();
       return manager.save(ConsignmentRequest, request);
@@ -242,10 +254,12 @@ export class ConsignmentsService {
 
   // ─── Debtor: reject consignment ────────────────────────────────────────────
 
-  async reject(requestId: string, debtorId: string): Promise<ConsignmentRequest> {
+  async reject(ctx: ActorContext, requestId: string): Promise<ConsignmentRequest> {
     const request = await this.requestRepo.findOne({ where: { id: requestId } });
     if (!request) throw new NotFoundException('Consignment request not found');
-    if (request.debtorId !== debtorId) throw new ForbiddenException('This consignment is not addressed to you');
+    if (request.debtorId !== ctx.effectiveOwnerId) {
+      throw new ForbiddenException('This consignment is not addressed to you');
+    }
     if (request.status !== ConsignmentStatus.PENDING) {
       throw new BadRequestException(`Cannot reject a consignment with status: ${request.status}`);
     }
@@ -256,10 +270,12 @@ export class ConsignmentsService {
 
   // ─── Supplier: cancel pending consignment ──────────────────────────────────
 
-  async cancel(requestId: string, supplierId: string): Promise<ConsignmentRequest> {
+  async cancel(ctx: ActorContext, requestId: string): Promise<ConsignmentRequest> {
     const request = await this.requestRepo.findOne({ where: { id: requestId } });
     if (!request) throw new NotFoundException('Consignment request not found');
-    if (request.supplierId !== supplierId) throw new ForbiddenException('You did not send this consignment');
+    if (request.supplierId !== ctx.effectiveOwnerId) {
+      throw new ForbiddenException('You did not send this consignment');
+    }
     if (request.status !== ConsignmentStatus.PENDING) {
       throw new BadRequestException(`Cannot cancel a consignment with status: ${request.status}`);
     }
@@ -270,7 +286,6 @@ export class ConsignmentsService {
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
-  /** Count total available stock (SUPPLIER + PERSONAL) for a given owner and product */
   async countAvailableStock(ownerId: string, productName: string): Promise<number> {
     const entries = await this.entryRepo.find({
       where: [
@@ -281,7 +296,6 @@ export class ConsignmentsService {
     return entries.reduce((sum, e) => sum + e.quantityRemaining, 0);
   }
 
-  /** Get stock entries sorted SUPPLIER-first, then PERSONAL, oldest first */
   private async getStockEntriesSorted(ownerId: string, productName: string): Promise<InventoryEntry[]> {
     const entries = await this.entryRepo.find({
       where: [
@@ -296,7 +310,6 @@ export class ConsignmentsService {
     ].filter((e) => e.quantityRemaining > 0);
   }
 
-  /** Count pending incoming consignments for a debtor (used by dashboard alerts) */
   async countPendingIncoming(debtorId: string): Promise<number> {
     return this.requestRepo.count({
       where: { debtorId, status: ConsignmentStatus.PENDING },

@@ -13,8 +13,9 @@ import { InventoryFilterDto } from './dto/inventory-filter.dto';
 import { UpdateSellingPriceDto } from './dto/update-selling-price.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { User } from '../entities';
+import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
+import type { ActorContext } from '../common/types/actor-context';
 
 @ApiTags('inventory')
 @ApiBearerAuth('jwt')
@@ -26,54 +27,59 @@ export class InventoryController {
   @Get('products')
   @ApiOperation({ summary: 'Get aggregated product list — one entry per unique product name' })
   @ApiResponse({ status: 200, description: 'Array of ProductSummary objects' })
-  getProducts(@CurrentUser() user: User) {
-    return this.inventoryService.getProductList(user.id);
+  getProducts(@CurrentActorContext() ctx: ActorContext) {
+    return this.inventoryService.getProductList(ctx.effectiveOwnerId);
   }
 
   @Get()
   @ApiOperation({ summary: 'List all inventory entries for the authenticated user' })
   @ApiResponse({ status: 200, description: 'Array of inventory entries' })
-  findAll(@CurrentUser() user: User, @Query() filter: InventoryFilterDto) {
-    return this.inventoryService.findAll(user.id, filter);
+  findAll(@CurrentActorContext() ctx: ActorContext, @Query() filter: InventoryFilterDto) {
+    return this.inventoryService.findAll(ctx.effectiveOwnerId, filter);
   }
 
   @Post('personal')
-  @ApiOperation({ summary: 'Add a product purchased with personal funds' })
+  @AllowedFor('OWNER')
+  @ApiOperation({ summary: 'Add a product purchased with personal funds (owner only)' })
   @ApiResponse({ status: 201, description: 'Inventory entry created' })
-  addPersonal(@CurrentUser() user: User, @Body() dto: AddPersonalDto) {
-    return this.inventoryService.addPersonal(user.id, dto);
+  addPersonal(@CurrentActorContext() ctx: ActorContext, @Body() dto: AddPersonalDto) {
+    return this.inventoryService.addPersonal(ctx.effectiveOwnerId, dto);
   }
 
   @Post('receive')
+  @AllowedFor('OWNER')
   @ApiOperation({
-    summary: 'Receive product from a supplier on credit',
+    summary: 'Receive product from a supplier on credit (owner only)',
     description:
       'Creates an inventory entry (source: SUPPLIER) and increases the debt owed to that supplier.',
   })
   @ApiResponse({ status: 201, description: 'Entry created, supplier debt updated' })
   @ApiResponse({ status: 404, description: 'Supplier user not found' })
   receiveFromSupplier(
-    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
     @Body() dto: ReceiveFromSupplierDto,
   ) {
-    return this.inventoryService.receiveFromSupplier(user.id, dto);
+    return this.inventoryService.receiveFromSupplier(ctx.effectiveOwnerId, dto);
   }
 
   @Patch(':id/selling-price')
+  @AllowedFor('OWNER')
   @ApiOperation({
-    summary: 'Update selling price on a CONSIGNED_IN inventory entry',
-    description: 'Allows a debtor to set their own selling price on goods received via consignment.',
+    summary: 'Update selling price on an inventory entry (owner only)',
+    description:
+      'Owner-only because changing a product\'s standard price affects all subsequent sales — ' +
+      'employees use per-transaction discountReason instead.',
   })
   @ApiResponse({ status: 200, description: 'Selling price updated' })
   @ApiResponse({ status: 400, description: 'Entry is not CONSIGNED_IN' })
   @ApiResponse({ status: 403, description: 'Entry does not belong to you' })
   @ApiResponse({ status: 404, description: 'Entry not found' })
   updateSellingPrice(
-    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
     @Param('id') id: string,
     @Body() dto: UpdateSellingPriceDto,
   ) {
-    return this.inventoryService.updateSellingPrice(user.id, id, dto);
+    return this.inventoryService.updateSellingPrice(ctx.effectiveOwnerId, id, dto);
   }
 
   @Post(':entryId/adjust')
@@ -89,11 +95,11 @@ export class InventoryController {
   @ApiResponse({ status: 403, description: 'Entry does not belong to you' })
   @ApiResponse({ status: 404, description: 'Inventory entry not found' })
   adjustStock(
-    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
     @Param('entryId') entryId: string,
     @Body() dto: AdjustStockDto,
   ) {
-    return this.inventoryService.adjustStock(user.id, entryId, dto);
+    return this.inventoryService.adjustStock(ctx.effectiveOwnerId, entryId, dto);
   }
 
   @Post('consign')
@@ -105,7 +111,7 @@ export class InventoryController {
   @ApiResponse({ status: 201, description: 'Entry created, debtor credit updated' })
   @ApiResponse({ status: 400, description: 'Insufficient stock' })
   @ApiResponse({ status: 404, description: 'Debtor user not found' })
-  consignToDebtor(@CurrentUser() user: User, @Body() dto: ConsignToDebtorDto) {
-    return this.inventoryService.consignToDebtor(user.id, dto);
+  consignToDebtor(@CurrentActorContext() ctx: ActorContext, @Body() dto: ConsignToDebtorDto) {
+    return this.inventoryService.consignToDebtor(ctx.effectiveOwnerId, dto);
   }
 }

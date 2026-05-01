@@ -531,6 +531,7 @@ export class DashboardService {
     ];
     const allPayments = await this.paymentRepo.find({
       where: whereClause,
+      relations: { actor: true },
       order: { date: 'DESC' },
     });
 

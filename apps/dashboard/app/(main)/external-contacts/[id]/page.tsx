@@ -10,6 +10,8 @@ import { useFormatCurrency } from '../../../../lib/currency';
 import { useT } from '../../../../lib/i18n';
 import { singleExternalTxHtml } from '../../../../lib/print-templates';
 import { PrintDialog } from '../../../../components/ui/PrintDialog';
+import { ActorPill } from '../../../../components/ui/ActorPill';
+import { useAuthStore } from '../../../../store/auth.store';
 
 type TxType = 'PRODUCT_OUT' | 'PAYMENT_IN' | 'PRODUCT_IN' | 'PAYMENT_OUT';
 type Role = 'DEBTOR' | 'SUPPLIER' | 'BOTH';
@@ -27,6 +29,9 @@ interface ExternalTransaction {
   isLoss: boolean | null;
   notes: string | null;
   createdAt: string;
+  actor?: { id: string; username: string } | null;
+  originalUnitPrice?: string | null;
+  discountReason?: string | null;
 }
 
 interface Contact {
@@ -578,6 +583,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
   const t = useT();
+  const { user } = useAuthStore();
   const [openModal, setOpenModal] = useState<Modal>(null);
   const [printTx, setPrintTx] = useState<ExternalTransaction | null>(null);
   const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
@@ -714,6 +720,16 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                   <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
                     {new Date(tx.createdAt).toLocaleDateString()}
                   </p>
+                  <div className="mt-1">
+                    <ActorPill
+                      actor={tx.actor ?? null}
+                      viewerId={user?.id}
+                      discount={{
+                        originalUnitPrice: tx.originalUnitPrice ?? null,
+                        discountReason: tx.discountReason ?? null,
+                      }}
+                    />
+                  </div>
                 </div>
                 <div className="flex items-start gap-3 ml-4">
                   <div className="text-right">

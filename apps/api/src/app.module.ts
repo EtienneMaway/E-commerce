@@ -18,6 +18,8 @@ import {
   StockMovement,
   Expense,
   Withdrawal,
+  Employment,
+  ProductPrice,
 } from './entities';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -31,6 +33,8 @@ import { ExternalContactsModule } from './external-contacts/external-contacts.mo
 import { StockMovementsModule } from './stock-movements/stock-movements.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
+import { EmploymentsModule } from './employments/employments.module';
+import { PricingModule } from './pricing/pricing.module';
 
 @Module({
   imports: [
@@ -58,6 +62,8 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
           StockMovement,
           Expense,
           Withdrawal,
+          Employment,
+          ProductPrice,
         ],
         synchronize: config.get<string>('NODE_ENV') !== 'production',
         migrations: [__dirname + '/database/migrations/*.{ts,js}'],
@@ -81,6 +87,8 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
     StockMovementsModule,
     ExpensesModule,
     WithdrawalsModule,
+    EmploymentsModule,
+    PricingModule,
   ],
   providers: [
     // Apply throttle guard globally

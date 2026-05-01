@@ -3,7 +3,22 @@
 import { create } from 'zustand';
 import { setAuthToken } from '../lib/api';
 
-interface User { id: string; username: string; email: string | null; phone: string | null; }
+export interface ActiveEmployment {
+  id: string;
+  tier: 'FULL' | 'SALES_ONLY';
+  status: 'ACTIVE' | 'TERMINATION_REQUESTED';
+  employer: { id: string; username: string };
+  terminationRequestedBy: string | null;
+}
+
+interface User {
+  id: string;
+  username: string;
+  email: string | null;
+  phone: string | null;
+  isMiniEmployee?: boolean;
+  activeEmployment?: ActiveEmployment | null;
+}
 
 interface AuthState {
   token: string | null;

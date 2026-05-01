@@ -9,6 +9,8 @@ import { formatDate } from '../../../../lib/utils';
 import { useFormatCurrency } from '../../../../lib/currency';
 import { KpiCard } from '../../../../components/ui/KpiCard';
 import { Badge } from '../../../../components/ui/Badge';
+import { ActorPill } from '../../../../components/ui/ActorPill';
+import { useAuthStore } from '../../../../store/auth.store';
 import { useT } from '../../../../lib/i18n';
 
 interface InventoryRow {
@@ -26,6 +28,7 @@ interface PaymentRow {
   date: string;
   remainingBalance: string | null;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  actor?: { id: string; username: string } | null;
 }
 
 interface Credit {
@@ -49,6 +52,7 @@ export default function DebtorDetailPage({ params }: { params: Promise<{ id: str
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
+  const { user } = useAuthStore();
 
   const { data, isLoading } = useQuery({
     queryKey: QK.debtorDetail(id),
@@ -179,7 +183,12 @@ export default function DebtorDetailPage({ params }: { params: Promise<{ id: str
                 ) : (
                   d.payments.map((row, i) => (
                     <tr key={row.id} style={{ background: i % 2 === 0 ? 'var(--card)' : '#FAFAFA', borderBottom: '1px solid var(--border)' }}>
-                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--muted)' }}>{formatDate(row.date)}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--muted)' }}>
+                        <div className="flex flex-col gap-0.5">
+                          <span>{formatDate(row.date)}</span>
+                          <ActorPill actor={row.actor ?? null} viewerId={user?.id} />
+                        </div>
+                      </td>
                       <td className="px-4 py-3 font-semibold" style={{ color: 'var(--foreground)' }}>{formatCurrency(row.amount)}</td>
                       <td className="px-4 py-3" style={{ color: 'var(--muted)' }}>{row.note ?? '—'}</td>
                       <td className="px-4 py-3">

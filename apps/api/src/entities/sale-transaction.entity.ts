@@ -69,4 +69,20 @@ export class SaleTransaction {
   @ManyToOne(() => InventoryEntry, (entry) => entry.saleTransactions)
   @JoinColumn({ name: 'inventory_entry_id' })
   inventoryEntry: InventoryEntry;
+
+  @ApiPropertyOptional({ description: 'Employee who performed this sale on the owner\'s behalf; null when owner-performed' })
+  @Column({ name: 'actor_id', type: 'uuid', nullable: true })
+  actorId: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'actor_id' })
+  actor: User | null;
+
+  @ApiPropertyOptional({ example: '32.00', description: 'Owner\'s standard unit price at sale time; set only when employee discounted' })
+  @Column({ name: 'original_unit_price', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  originalUnitPrice: string | null;
+
+  @ApiPropertyOptional({ example: 'Loyal customer', description: 'Reason the employee discounted; required when employee sells below standard' })
+  @Column({ name: 'discount_reason', type: 'varchar', nullable: true })
+  discountReason: string | null;
 }

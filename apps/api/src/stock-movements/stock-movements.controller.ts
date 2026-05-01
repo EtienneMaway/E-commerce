@@ -8,8 +8,8 @@ import {
 import { StockMovementsService } from './stock-movements.service';
 import { StockMovementsFilterDto } from './dto/stock-movements-filter.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { User } from '../entities';
+import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
+import type { ActorContext } from '../common/types/actor-context';
 
 @ApiTags('stock-movements')
 @ApiBearerAuth('jwt')
@@ -23,8 +23,8 @@ export class StockMovementsController {
     summary: 'List stock movements (audit ledger) — paginated, filterable',
   })
   @ApiResponse({ status: 200, description: '{ data, total }' })
-  list(@CurrentUser() user: User, @Query() filter: StockMovementsFilterDto) {
-    return this.service.findAll(user.id, filter);
+  list(@CurrentActorContext() ctx: ActorContext, @Query() filter: StockMovementsFilterDto) {
+    return this.service.findAll(ctx.effectiveOwnerId, filter);
   }
 
   @Get('entries/:entryId/movements')
@@ -32,7 +32,7 @@ export class StockMovementsController {
     summary: 'List all movements for one inventory entry (no pagination)',
   })
   @ApiResponse({ status: 200, description: 'Array of stock movements' })
-  byEntry(@CurrentUser() user: User, @Param('entryId') entryId: string) {
-    return this.service.findByEntry(user.id, entryId);
+  byEntry(@CurrentActorContext() ctx: ActorContext, @Param('entryId') entryId: string) {
+    return this.service.findByEntry(ctx.effectiveOwnerId, entryId);
   }
 }

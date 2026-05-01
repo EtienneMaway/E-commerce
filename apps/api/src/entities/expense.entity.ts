@@ -71,4 +71,12 @@ export class Expense {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @ApiPropertyOptional({ description: 'Employee who registered this expense on owner\'s behalf' })
+  @Column({ name: 'actor_id', type: 'uuid', nullable: true })
+  actorId: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'actor_id' })
+  actor: User | null;
 }

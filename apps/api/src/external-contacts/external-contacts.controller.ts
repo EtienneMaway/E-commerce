@@ -24,8 +24,9 @@ import { RecordPaymentInDto } from './dto/record-payment-in.dto';
 import { RecordProductInDto } from './dto/record-product-in.dto';
 import { RecordPaymentOutDto } from './dto/record-payment-out.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { User } from '../entities';
+import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
+import type { ActorContext } from '../common/types/actor-context';
 
 @ApiTags('external-contacts')
 @ApiBearerAuth('jwt')
@@ -39,38 +40,38 @@ export class ExternalContactsController {
   @Post()
   @ApiOperation({ summary: 'Create a new external contact' })
   @ApiResponse({ status: 201, description: 'Contact created' })
-  create(@CurrentUser() user: User, @Body() dto: CreateExternalContactDto) {
-    return this.service.create(user.id, dto);
+  create(@CurrentActorContext() ctx: ActorContext, @Body() dto: CreateExternalContactDto) {
+    return this.service.create(ctx, dto);
   }
 
   @Get()
   @ApiOperation({ summary: 'List all external contacts for the current trader' })
   @ApiResponse({ status: 200, description: 'Array of contacts with balances' })
-  findAll(@CurrentUser() user: User) {
-    return this.service.findAll(user.id);
+  findAll(@CurrentActorContext() ctx: ActorContext) {
+    return this.service.findAll(ctx);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get one external contact with full transaction history' })
   @ApiResponse({ status: 200, description: 'Contact with transactions' })
   @ApiResponse({ status: 404, description: 'Contact not found' })
-  findOne(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.findOne(user.id, id);
+  findOne(@CurrentActorContext() ctx: ActorContext, @Param('id') id: string) {
+    return this.service.findOne(ctx, id);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update external contact info' })
   @ApiResponse({ status: 200, description: 'Contact updated' })
-  update(@CurrentUser() user: User, @Param('id') id: string, @Body() dto: UpdateExternalContactDto) {
-    return this.service.update(user.id, id, dto);
+  update(@CurrentActorContext() ctx: ActorContext, @Param('id') id: string, @Body() dto: UpdateExternalContactDto) {
+    return this.service.update(ctx, id, dto);
   }
 
   @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete external contact (cascade-deletes transactions)' })
+  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiResponse({ status: 204, description: 'Contact deleted' })
-  remove(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.remove(user.id, id);
+  remove(@CurrentActorContext() ctx: ActorContext, @Param('id') id: string) {
+    return this.service.remove(ctx, id);
   }
 
   // ─── Transactions ─────────────────────────────────────────────────────────
@@ -79,48 +80,51 @@ export class ExternalContactsController {
   @ApiOperation({ summary: 'Give products to external debtor (deducts inventory)' })
   @ApiResponse({ status: 201, description: 'Transaction recorded, inventory deducted' })
   @ApiResponse({ status: 400, description: 'Insufficient stock or contact not a debtor' })
+  @ApiResponse({ status: 422, description: 'DISCOUNT_REASON_REQUIRED — employee priced below owner\'s standard without a reason' })
   recordProductOut(
-    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
     @Param('id') id: string,
     @Body() dto: RecordProductOutDto,
   ) {
-    return this.service.recordProductOut(user.id, id, dto);
+    return this.service.recordProductOut(ctx, id, dto);
   }
 
   @Post(':id/payment-in')
   @ApiOperation({ summary: 'Record cash received from external debtor' })
   @ApiResponse({ status: 201, description: 'Payment recorded, debtorBalance decreased' })
   recordPaymentIn(
-    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
     @Param('id') id: string,
     @Body() dto: RecordPaymentInDto,
   ) {
-    return this.service.recordPaymentIn(user.id, id, dto);
+    return this.service.recordPaymentIn(ctx, id, dto);
   }
 
   @Post(':id/product-in')
+  @AllowedFor('OWNER')
   @ApiOperation({ summary: 'Record products received from external supplier (adds to inventory)' })
   @ApiResponse({ status: 201, description: 'Transaction recorded, inventory created' })
   recordProductIn(
-    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
     @Param('id') id: string,
     @Body() dto: RecordProductInDto,
   ) {
-    return this.service.recordProductIn(user.id, id, dto);
+    return this.service.recordProductIn(ctx, id, dto);
   }
 
   @Post(':id/payment-out')
   @ApiOperation({ summary: 'Record cash paid to external supplier' })
   @ApiResponse({ status: 201, description: 'Payment recorded, supplierBalance decreased' })
   recordPaymentOut(
-    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
     @Param('id') id: string,
     @Body() dto: RecordPaymentOutDto,
   ) {
-    return this.service.recordPaymentOut(user.id, id, dto);
+    return this.service.recordPaymentOut(ctx, id, dto);
   }
 
   @Delete(':id/transactions/:txId')
+  @AllowedFor('OWNER')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Delete a transaction and reverse its balance effect',
@@ -128,10 +132,10 @@ export class ExternalContactsController {
   })
   @ApiResponse({ status: 204, description: 'Transaction deleted, balance corrected' })
   deleteTransaction(
-    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
     @Param('id') id: string,
     @Param('txId') txId: string,
   ) {
-    return this.service.deleteTransaction(user.id, id, txId);
+    return this.service.deleteTransaction(ctx, id, txId);
   }
 }

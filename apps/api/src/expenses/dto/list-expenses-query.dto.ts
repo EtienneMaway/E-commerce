@@ -5,6 +5,7 @@ import {
   IsEnum,
   IsInt,
   IsOptional,
+  IsUUID,
   Min,
 } from 'class-validator';
 import { ExpenseCategory } from '../../entities';
@@ -44,4 +45,9 @@ export class ListExpensesQueryDto {
   @IsEnum(ExpenseCategory)
   @IsOptional()
   category?: ExpenseCategory;
+
+  @ApiPropertyOptional({ description: 'Filter by actor (employee). Omit for all actors.' })
+  @IsUUID()
+  @IsOptional()
+  actorId?: string;
 }

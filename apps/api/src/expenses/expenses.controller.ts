@@ -21,8 +21,9 @@ import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ListExpensesQueryDto } from './dto/list-expenses-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { User } from '../entities';
+import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
+import type { ActorContext } from '../common/types/actor-context';
 
 @ApiTags('expenses')
 @ApiBearerAuth('jwt')
@@ -34,8 +35,8 @@ export class ExpensesController {
   @Post()
   @ApiOperation({ summary: 'Record a new expense' })
   @ApiResponse({ status: 201, description: 'Expense created' })
-  create(@CurrentUser() user: User, @Body() dto: CreateExpenseDto) {
-    return this.service.create(user.id, dto);
+  create(@CurrentActorContext() ctx: ActorContext, @Body() dto: CreateExpenseDto) {
+    return this.service.create(ctx, dto);
   }
 
   @Get()
@@ -46,15 +47,15 @@ export class ExpensesController {
       'Category filter optional. Returns per-row USD equivalent and per-category totals.',
   })
   @ApiResponse({ status: 200, description: 'Expenses with totals breakdown' })
-  list(@CurrentUser() user: User, @Query() query: ListExpensesQueryDto) {
-    return this.service.list(user.id, query);
+  list(@CurrentActorContext() ctx: ActorContext, @Query() query: ListExpensesQueryDto) {
+    return this.service.list(ctx, query);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete an expense entry' })
   @ApiResponse({ status: 204, description: 'Expense deleted' })
-  remove(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.remove(user.id, id);
+  remove(@CurrentActorContext() ctx: ActorContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.remove(ctx, id);
   }
 }

@@ -17,6 +17,13 @@ import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useT } from '../../../lib/i18n';
 import { KpiCard } from '../../../components/ui/KpiCard';
+import { ActorPill } from '../../../components/ui/ActorPill';
+import {
+  ACTOR_FILTER_ALL,
+  ActorFilter,
+  resolveActorFilter,
+} from '../../../components/ui/ActorFilter';
+import { useAuthStore } from '../../../store/auth.store';
 
 interface CashPosition {
   totalExpenses: string;
@@ -33,6 +40,7 @@ export default function ExpensesPage() {
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
+  const { user } = useAuthStore();
   const today = todayISO();
 
   // ── Filters ───────────────────────────────────────────────────────────────
@@ -41,6 +49,7 @@ export default function ExpensesPage() {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | ''>('');
+  const [actorFilter, setActorFilter] = useState<string>(ACTOR_FILTER_ALL);
 
   // ── Form ──────────────────────────────────────────────────────────────────
   const [amount, setAmount] = useState('');
@@ -64,8 +73,10 @@ export default function ExpensesPage() {
     } else if (filter !== 'all') {
       p.period = filter as ExpensePeriod;
     }
+    const actorId = resolveActorFilter(actorFilter);
+    if (actorId) p.actorId = actorId;
     return p;
-  }, [filter, nDays, customFrom, customTo, categoryFilter]);
+  }, [filter, nDays, customFrom, customTo, categoryFilter, actorFilter]);
 
   const { data: listData, isLoading: listLoading } = useQuery({
     queryKey: QK.expenses(listParams),
@@ -379,6 +390,7 @@ export default function ExpensesPage() {
                   <option key={c} value={c}>{categoryLabel(c)}</option>
                 ))}
               </select>
+              <ActorFilter value={actorFilter} onChange={setActorFilter} />
             </div>
           </div>
 
@@ -392,6 +404,7 @@ export default function ExpensesPage() {
                     <th className="data-table-head-cell">{t.expenses.colCategory}</th>
                     <th className="data-table-head-cell">{t.expenses.colAmount}</th>
                     <th className="data-table-head-cell">{t.expenses.colDescription}</th>
+                    <th className="data-table-head-cell">By</th>
                     <th className="data-table-head-cell" />
                   </tr>
                 </thead>
@@ -433,6 +446,12 @@ export default function ExpensesPage() {
                       </td>
                       <td className="data-table-cell" style={{ color: 'var(--muted)' }}>
                         {row.description ?? '—'}
+                      </td>
+                      <td className="data-table-cell">
+                        <ActorPill
+                          actor={(row as unknown as { actor: { id: string; username: string } | null }).actor}
+                          viewerId={user?.id}
+                        />
                       </td>
                       <td className="data-table-cell text-right">
                         <button

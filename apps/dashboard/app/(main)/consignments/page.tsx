@@ -7,10 +7,12 @@ import { QK } from '../../../lib/query-keys';
 import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { Badge } from '../../../components/ui/Badge';
+import { ActorPill } from '../../../components/ui/ActorPill';
 import { SendConsignmentDialog } from '../../../components/forms/SendConsignmentDialog';
 import { useT } from '@/lib/i18n';
 import { consignmentHtml } from '../../../lib/print-templates';
 import { PrintDialog } from '../../../components/ui/PrintDialog';
+import { useAuthStore } from '../../../store/auth.store';
 
 type ConsignmentStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
 type Variant = 'pending' | 'accepted' | 'rejected' | 'cancelled';
@@ -20,6 +22,9 @@ interface ConsignmentItem {
   productName: string;
   quantity: number;
   agreedUnitPrice: string;
+  actor?: { id: string; username: string } | null;
+  originalUnitPrice?: string | null;
+  discountReason?: string | null;
 }
 
 interface ConsignmentRequest {
@@ -351,6 +356,7 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
 function ItemsDetail({ items, note }: { items: ConsignmentItem[]; note: string | null }) {
   const t = useT();
   const formatCurrency = useFormatCurrency();
+  const { user } = useAuthStore();
   return (
     <div>
       {note && <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>{t.consignments.noteLabel}: {note}</p>}
@@ -361,6 +367,7 @@ function ItemsDetail({ items, note }: { items: ConsignmentItem[]; note: string |
             <th className="text-left font-semibold pb-1" style={{ color: 'var(--muted)' }}>{t.consignments.colQty}</th>
             <th className="text-left font-semibold pb-1" style={{ color: 'var(--muted)' }}>{t.consignments.colUnitPrice}</th>
             <th className="text-left font-semibold pb-1" style={{ color: 'var(--muted)' }}>{t.consignments.colSubtotal}</th>
+            <th className="text-left font-semibold pb-1" style={{ color: 'var(--muted)' }}>By</th>
           </tr>
         </thead>
         <tbody>
@@ -369,8 +376,18 @@ function ItemsDetail({ items, note }: { items: ConsignmentItem[]; note: string |
               <td className="py-0.5 pr-4" style={{ color: 'var(--foreground)' }}>{it.productName}</td>
               <td className="py-0.5 pr-4" style={{ color: 'var(--foreground)' }}>{it.quantity}</td>
               <td className="py-0.5 pr-4" style={{ color: 'var(--foreground)' }}>{formatCurrency(it.agreedUnitPrice)}</td>
-              <td className="py-0.5" style={{ color: 'var(--foreground)' }}>
+              <td className="py-0.5 pr-4" style={{ color: 'var(--foreground)' }}>
                 {formatCurrency((parseFloat(it.agreedUnitPrice) * it.quantity).toFixed(2))}
+              </td>
+              <td className="py-0.5">
+                <ActorPill
+                  actor={it.actor ?? null}
+                  viewerId={user?.id}
+                  discount={{
+                    originalUnitPrice: it.originalUnitPrice ?? null,
+                    discountReason: it.discountReason ?? null,
+                  }}
+                />
               </td>
             </tr>
           ))}

@@ -19,8 +19,9 @@ import {
 import { WithdrawalsService } from './withdrawals.service';
 import { CreateWithdrawalDto } from './dto/create-withdrawal.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { User } from '../entities';
+import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
+import type { ActorContext } from '../common/types/actor-context';
 
 @ApiTags('withdrawals')
 @ApiBearerAuth('jwt')
@@ -36,39 +37,41 @@ export class WithdrawalsController {
       'Returns income − expenses since the last withdrawal, plus any leftover carried over.',
   })
   @ApiResponse({ status: 200, description: 'AvailableWithdrawal snapshot' })
-  getAvailable(@CurrentUser() user: User) {
-    return this.service.getAvailable(user.id);
+  getAvailable(@CurrentActorContext() ctx: ActorContext) {
+    return this.service.getAvailable(ctx.effectiveOwnerId);
   }
 
   @Get()
   @ApiOperation({ summary: 'List withdrawal history (most recent first)' })
   @ApiResponse({ status: 200, description: 'Array of withdrawals' })
-  list(@CurrentUser() user: User) {
-    return this.service.list(user.id);
+  list(@CurrentActorContext() ctx: ActorContext) {
+    return this.service.list(ctx.effectiveOwnerId);
   }
 
   @Post()
+  @AllowedFor('OWNER')
   @ApiOperation({
-    summary: 'Record a withdrawal',
+    summary: 'Record a withdrawal (owner only — moves business cash to the owner)',
     description:
       'Hard-blocks when amount exceeds available. Snapshots period income, expenses and leftover.',
   })
   @ApiResponse({ status: 201, description: 'Withdrawal recorded' })
   @ApiResponse({ status: 400, description: 'Amount exceeds available cash' })
-  create(@CurrentUser() user: User, @Body() dto: CreateWithdrawalDto) {
-    return this.service.create(user.id, dto);
+  create(@CurrentActorContext() ctx: ActorContext, @Body() dto: CreateWithdrawalDto) {
+    return this.service.create(ctx.effectiveOwnerId, dto);
   }
 
   @Delete(':id')
+  @AllowedFor('OWNER')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: 'Delete the most recent withdrawal',
+    summary: 'Delete the most recent withdrawal (owner only)',
     description:
       'Only the most recent withdrawal can be deleted to keep the leftover chain intact.',
   })
   @ApiResponse({ status: 204, description: 'Withdrawal deleted' })
   @ApiResponse({ status: 403, description: 'Not the most recent withdrawal' })
-  remove(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.remove(user.id, id);
+  remove(@CurrentActorContext() ctx: ActorContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.remove(ctx.effectiveOwnerId, id);
   }
 }

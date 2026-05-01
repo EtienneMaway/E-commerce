@@ -81,4 +81,12 @@ export class Payment {
   @ManyToOne(() => DebtorCredit, (credit) => credit.payments, { nullable: true })
   @JoinColumn({ name: 'debtor_credit_id' })
   debtorCredit: DebtorCredit | null;
+
+  @ApiPropertyOptional({ description: 'Employee who recorded this payment on owner\'s behalf' })
+  @Column({ name: 'actor_id', type: 'uuid', nullable: true })
+  actorId: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'actor_id' })
+  actor: User | null;
 }

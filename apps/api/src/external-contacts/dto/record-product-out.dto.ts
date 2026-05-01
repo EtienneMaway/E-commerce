@@ -27,4 +27,9 @@ export class RecordProductOutDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({ description: 'Required (employee only) when below owner\'s standard price' })
+  @IsString()
+  @IsOptional()
+  discountReason?: string;
 }

@@ -9,8 +9,9 @@ import { PaymentsService } from './payments.service';
 import { PaySupplierDto } from './dto/pay-supplier.dto';
 import { RecordDebtorPaymentDto } from './dto/record-debtor-payment.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { User } from '../entities';
+import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
+import type { ActorContext } from '../common/types/actor-context';
 
 @ApiTags('payments')
 @ApiBearerAuth('jwt')
@@ -27,8 +28,8 @@ export class PaymentsController {
   })
   @ApiResponse({ status: 201, description: 'Payment created as PENDING' })
   @ApiResponse({ status: 404, description: 'No debt record found for this supplier' })
-  paySupplier(@CurrentUser() user: User, @Body() dto: PaySupplierDto) {
-    return this.paymentsService.paySupplier(user.id, dto);
+  paySupplier(@CurrentActorContext() ctx: ActorContext, @Body() dto: PaySupplierDto) {
+    return this.paymentsService.paySupplier(ctx, dto);
   }
 
   @Get('pending-from-debtors')
@@ -37,8 +38,8 @@ export class PaymentsController {
     description: 'Returns all PENDING payments where the current user is the recipient.',
   })
   @ApiResponse({ status: 200, description: 'Array of pending payments' })
-  getPendingFromDebtors(@CurrentUser() user: User) {
-    return this.paymentsService.getPendingFromDebtors(user.id);
+  getPendingFromDebtors(@CurrentActorContext() ctx: ActorContext) {
+    return this.paymentsService.getPendingFromDebtors(ctx);
   }
 
   @Patch(':id/approve')
@@ -50,8 +51,8 @@ export class PaymentsController {
   })
   @ApiResponse({ status: 200, description: 'Payment approved, balances updated' })
   @ApiResponse({ status: 404, description: 'Pending payment not found' })
-  approvePayment(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.paymentsService.approvePayment(user.id, id);
+  approvePayment(@CurrentActorContext() ctx: ActorContext, @Param('id') id: string) {
+    return this.paymentsService.approvePayment(ctx, id);
   }
 
   @Patch(':id/reject')
@@ -61,8 +62,8 @@ export class PaymentsController {
   })
   @ApiResponse({ status: 200, description: 'Payment rejected' })
   @ApiResponse({ status: 404, description: 'Pending payment not found' })
-  rejectPayment(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.paymentsService.rejectPayment(user.id, id);
+  rejectPayment(@CurrentActorContext() ctx: ActorContext, @Param('id') id: string) {
+    return this.paymentsService.rejectPayment(ctx, id);
   }
 
   @Post('from-debtor')
@@ -74,7 +75,7 @@ export class PaymentsController {
   })
   @ApiResponse({ status: 201, description: 'Payment recorded, balance updated' })
   @ApiResponse({ status: 404, description: 'No credit record found for this debtor' })
-  recordDebtorPayment(@CurrentUser() user: User, @Body() dto: RecordDebtorPaymentDto) {
-    return this.paymentsService.recordDebtorPayment(user.id, dto);
+  recordDebtorPayment(@CurrentActorContext() ctx: ActorContext, @Body() dto: RecordDebtorPaymentDto) {
+    return this.paymentsService.recordDebtorPayment(ctx, dto);
   }
 }

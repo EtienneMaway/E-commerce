@@ -5,6 +5,7 @@ import Decimal from 'decimal.js';
 import { Expense, ExpenseCategory, ExpenseCurrency } from '../entities';
 import { CurrencyService } from '../currency/currency.service';
 import { DashboardService } from '../dashboard/dashboard.service';
+import { ActorContext } from '../common/types/actor-context';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ExpensePeriod, ListExpensesQueryDto } from './dto/list-expenses-query.dto';
 
@@ -26,7 +27,10 @@ export class ExpensesService {
     private readonly dashboardService: DashboardService,
   ) {}
 
-  async create(ownerId: string, dto: CreateExpenseDto): Promise<Expense> {
+  async create(ctx: ActorContext, dto: CreateExpenseDto): Promise<Expense> {
+    const ownerId = ctx.effectiveOwnerId;
+    const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
+
     const amountOriginal = new Decimal(dto.amount);
     if (amountOriginal.lte(0)) {
       throw new BadRequestException('Amount must be greater than zero');
@@ -67,6 +71,7 @@ export class ExpensesService {
 
     const expense = this.expenseRepo.create({
       ownerId,
+      actorId,
       amount: amountOriginal.toFixed(2),
       currency: dto.currency,
       category: dto.category,
@@ -77,7 +82,8 @@ export class ExpensesService {
     return this.expenseRepo.save(expense);
   }
 
-  async list(ownerId: string, query: ListExpensesQueryDto): Promise<ExpenseListResult> {
+  async list(ctx: ActorContext, query: ListExpensesQueryDto): Promise<ExpenseListResult> {
+    const ownerId = ctx.effectiveOwnerId;
     const where: FindOptionsWhere<Expense> = { ownerId };
 
     const range = this.resolveDateRange(query);
@@ -89,9 +95,11 @@ export class ExpensesService {
       where.date = LessThanOrEqual(range.to);
     }
     if (query.category) where.category = query.category;
+    if (query.actorId) where.actorId = query.actorId;
 
     const expenses = await this.expenseRepo.find({
       where,
+      relations: { actor: true },
       order: { date: 'DESC' },
     });
 
@@ -133,7 +141,8 @@ export class ExpensesService {
     };
   }
 
-  async remove(ownerId: string, id: string): Promise<void> {
+  async remove(ctx: ActorContext, id: string): Promise<void> {
+    const ownerId = ctx.effectiveOwnerId;
     const expense = await this.expenseRepo.findOne({ where: { id, ownerId } });
     if (!expense) throw new NotFoundException('Expense not found');
     await this.expenseRepo.remove(expense);

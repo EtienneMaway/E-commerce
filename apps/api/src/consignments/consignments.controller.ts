@@ -15,7 +15,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
+import type { ActorContext } from '../common/types/actor-context';
 import { ConsignmentsService } from './consignments.service';
 import { CreateConsignmentDto } from './dto/create-consignment.dto';
 import { ConsignmentRequest } from '../entities';
@@ -33,18 +34,19 @@ export class ConsignmentsController {
   @ApiOperation({ summary: 'Send a consignment request to a debtor (supplier action)' })
   @ApiResponse({ status: 201, type: ConsignmentRequest, description: 'Request created with PENDING status' })
   @ApiResponse({ status: 400, description: 'Insufficient stock or invalid debtor' })
+  @ApiResponse({ status: 422, description: 'DISCOUNT_REASON_REQUIRED — employee priced below owner\'s standard without a reason' })
   create(
-    @CurrentUser('id') supplierId: string,
+    @CurrentActorContext() ctx: ActorContext,
     @Body() dto: CreateConsignmentDto,
   ): Promise<ConsignmentRequest> {
-    return this.consignmentsService.create(supplierId, dto);
+    return this.consignmentsService.create(ctx, dto);
   }
 
   @Get('outgoing')
   @ApiOperation({ summary: 'List all consignment requests sent by the current user (as supplier)' })
   @ApiResponse({ status: 200, type: [ConsignmentRequest] })
-  findOutgoing(@CurrentUser('id') supplierId: string): Promise<ConsignmentRequest[]> {
-    return this.consignmentsService.findOutgoing(supplierId);
+  findOutgoing(@CurrentActorContext() ctx: ActorContext): Promise<ConsignmentRequest[]> {
+    return this.consignmentsService.findOutgoing(ctx);
   }
 
   @Patch(':id/cancel')
@@ -54,9 +56,9 @@ export class ConsignmentsController {
   @ApiResponse({ status: 403, description: 'Not your consignment request' })
   cancel(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('id') supplierId: string,
+    @CurrentActorContext() ctx: ActorContext,
   ): Promise<ConsignmentRequest> {
-    return this.consignmentsService.cancel(id, supplierId);
+    return this.consignmentsService.cancel(ctx, id);
   }
 
   // ─── Debtor actions ────────────────────────────────────────────────────────
@@ -64,8 +66,8 @@ export class ConsignmentsController {
   @Get('incoming')
   @ApiOperation({ summary: 'List all consignment requests sent to the current user (as debtor)' })
   @ApiResponse({ status: 200, type: [ConsignmentRequest] })
-  findIncoming(@CurrentUser('id') debtorId: string): Promise<ConsignmentRequest[]> {
-    return this.consignmentsService.findIncoming(debtorId);
+  findIncoming(@CurrentActorContext() ctx: ActorContext): Promise<ConsignmentRequest[]> {
+    return this.consignmentsService.findIncoming(ctx);
   }
 
   @Patch(':id/confirm')
@@ -79,9 +81,9 @@ export class ConsignmentsController {
   @ApiResponse({ status: 403, description: 'Consignment not addressed to you' })
   confirm(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('id') debtorId: string,
+    @CurrentActorContext() ctx: ActorContext,
   ): Promise<ConsignmentRequest> {
-    return this.consignmentsService.confirm(id, debtorId);
+    return this.consignmentsService.confirm(ctx, id);
   }
 
   @Patch(':id/reject')
@@ -91,8 +93,8 @@ export class ConsignmentsController {
   @ApiResponse({ status: 403, description: 'Consignment not addressed to you' })
   reject(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('id') debtorId: string,
+    @CurrentActorContext() ctx: ActorContext,
   ): Promise<ConsignmentRequest> {
-    return this.consignmentsService.reject(id, debtorId);
+    return this.consignmentsService.reject(ctx, id);
   }
 }
