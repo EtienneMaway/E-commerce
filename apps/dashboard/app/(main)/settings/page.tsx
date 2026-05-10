@@ -8,16 +8,19 @@ import { formatDate } from '../../../lib/utils';
 import { useT } from '../../../lib/i18n';
 import { useCurrencyStore } from '../../../store/currency.store';
 import { formatMoney } from '../../../lib/currency';
+import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
 
 export default function SettingsPage() {
   const t = useT();
   const qc = useQueryClient();
   const { displayCurrency, toggle } = useCurrencyStore();
+  const isOwner = useOwnerOnlyPage();
 
   const { data: rateData, isLoading } = useQuery({
     queryKey: QK.exchangeRate,
     queryFn: currencyApi.getRate,
     retry: false,
+    enabled: isOwner,
   });
 
   const [rateInput, setRateInput] = useState('');
@@ -74,6 +77,8 @@ export default function SettingsPage() {
   };
 
   const previewUsd = '100.00';
+
+  if (!isOwner) return null;
 
   return (
     <div>

@@ -14,6 +14,7 @@ import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useT } from '../../../lib/i18n';
 import { KpiCard } from '../../../components/ui/KpiCard';
+import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
 
 interface CashPosition {
   totalCashReceived: string;
@@ -25,6 +26,7 @@ export default function WithdrawalsPage() {
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
+  const isOwner = useOwnerOnlyPage();
 
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<WithdrawalCurrency>('USD');
@@ -34,14 +36,17 @@ export default function WithdrawalsPage() {
   const { data: availableData, isLoading: availableLoading } = useQuery({
     queryKey: QK.withdrawalAvailable,
     queryFn: () => withdrawalsApi.available(),
+    enabled: isOwner,
   });
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: QK.withdrawals,
     queryFn: () => withdrawalsApi.list(),
+    enabled: isOwner,
   });
   const { data: cashPositionData } = useQuery({
     queryKey: QK.cashPosition,
     queryFn: () => dashboardApi.cashPosition(),
+    enabled: isOwner,
   });
 
   const avail = availableData as AvailableWithdrawal | undefined;
@@ -95,6 +100,8 @@ export default function WithdrawalsPage() {
     borderColor: 'var(--border)',
     color: 'var(--foreground)',
   } as const;
+
+  if (!isOwner) return null;
 
   return (
     <div>

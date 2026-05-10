@@ -6,22 +6,20 @@ import { ProductPrice, pricingApi } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
-import { useAuthStore } from '../../../store/auth.store';
+import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
 
 export default function PricingPage() {
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
-  const { user } = useAuthStore();
+  const isOwner = useOwnerOnlyPage();
   const [productName, setProductName] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
-
-  const isEmployee = !!user?.activeEmployment;
 
   const { data, isLoading } = useQuery({
     queryKey: QK.pricing,
     queryFn: () => pricingApi.list(),
     staleTime: 30_000,
-    enabled: !isEmployee, // owner-only endpoint
+    enabled: isOwner,
   });
 
   const upsert = useMutation({
@@ -33,23 +31,7 @@ export default function PricingPage() {
     },
   });
 
-  // Pricing is owner-only — only the account owner can set the standard price.
-  if (isEmployee) {
-    return (
-      <div className="p-6 max-w-2xl mx-auto">
-        <h1 className="text-2xl font-bold">Pricing</h1>
-        <div
-          className="mt-6 p-6 rounded-xl border text-sm"
-          style={{ borderColor: 'rgba(127,127,127,0.2)', background: 'var(--card)' }}
-        >
-          Only the account owner can set or change standard prices. As an employee
-          you can record discounts on individual transactions with a reason —
-          ask <b>@{user!.activeEmployment!.employer.username}</b> to update standard
-          prices.
-        </div>
-      </div>
-    );
-  }
+  if (!isOwner) return null;
 
   const list = (data as ProductPrice[] | undefined) ?? [];
 

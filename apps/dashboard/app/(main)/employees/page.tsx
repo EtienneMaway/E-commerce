@@ -11,6 +11,7 @@ import {
 import { QK } from '../../../lib/query-keys';
 import { useAuthStore } from '../../../store/auth.store';
 import { formatDate, getErrorMessage } from '../../../lib/utils';
+import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
 
 type TabKey = 'active' | 'sent' | 'received' | 'archive';
 
@@ -38,6 +39,7 @@ const TIER_LABELS: Record<EmploymentTier, string> = {
 export default function EmployeesPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
+  const isOwner = useOwnerOnlyPage();
   const [tab, setTab] = useState<TabKey>('active');
   const [showHire, setShowHire] = useState(false);
   const [showMini, setShowMini] = useState(false);
@@ -47,6 +49,7 @@ export default function EmployeesPage() {
     queryKey: QK.employments(),
     queryFn: () => employmentsApi.list(),
     staleTime: 15_000,
+    enabled: isOwner,
   });
 
   const all = (data as Employment[] | undefined) ?? [];
@@ -66,6 +69,8 @@ export default function EmployeesPage() {
       return e.status === 'REJECTED' || e.status === 'TERMINATED';
     });
   }, [all, tab, myId]);
+
+  if (!isOwner) return null;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">

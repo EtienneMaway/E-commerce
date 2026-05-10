@@ -4,10 +4,13 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '../../store/auth.store';
+import { usePersonaStore } from '../../store/persona.store';
 import { authApi } from '../../lib/api';
 import { useT } from '../../lib/i18n';
 import { KmbLogo } from '../../components/ui/KmbLogo';
 import { UserMenu } from '../../components/ui/UserMenu';
+import { PersonaSwitcher } from '../../components/ui/PersonaSwitcher';
+import { PersonaBanner } from '../../components/ui/PersonaBanner';
 
 const NAV_ICONS = [
   <svg key="dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -89,6 +92,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const router = useRouter();
   const pathname = usePathname();
   const { token, user, hydrate, logout, setUser } = useAuthStore();
+  const persona = usePersonaStore();
   const t = useT();
   const [hydrated, setHydrated] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -106,11 +110,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     return () => mq.removeEventListener('change', handler as (e: MediaQueryListEvent) => void);
   }, []);
 
-  // When the current user is acting as an employee, hide owner-only nav entries:
-  // employee management, pricing, and withdrawals (personal cash flow). The
-  // employee still uses every other section against the *employer's* books — the
-  // backend resolves effectiveOwnerId on each request.
-  const isEmployee = !!user?.activeEmployment;
+  // The persona switcher decides which books the user is currently viewing.
+  // - Self: full owner nav, scoped to the user's own books.
+  // - Employer: hide owner-only entries (pricing, employees, withdrawals,
+  //   settings) since those don't apply when acting on someone else's books.
+  // The user only counts as an employee for the nav-gating purpose when (a)
+  // they have an active employment AND (b) they've explicitly switched to it.
+  const isEmployee = !!user?.activeEmployment && persona.kind === 'employer';
   const NAV = [
     { href: '/dashboard', label: t.nav.dashboard, icon: NAV_ICONS[0] },
     { href: '/inventory', label: t.nav.inventory, icon: NAV_ICONS[1] },
@@ -134,8 +140,19 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     hydrate();
+    persona.hydrate();
     setHydrated(true);
+    // hydrate refs are stable from zustand; safe to omit from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrate]);
+
+  // Auto-reset persona to self if the employment is no longer present (e.g.
+  // termination approved while the user had 'employer' persisted).
+  useEffect(() => {
+    if (persona.kind === 'employer' && !user?.activeEmployment) {
+      persona.setKind('self');
+    }
+  }, [persona, user?.activeEmployment]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -182,28 +199,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             <span className="text-sm font-bold" style={{ color: 'var(--sidebar-fg)' }}>KMB</span>
           </div>
         )}
-        {user?.activeEmployment && (
-          <div
-            className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium"
-            style={{
-              background: 'rgba(99,102,241,0.15)',
-              color: '#A5B4FC',
-              border: '1px solid rgba(99,102,241,0.35)',
-            }}
-            title={
-              user.activeEmployment.status === 'TERMINATION_REQUESTED'
-                ? 'Termination has been requested for this employment'
-                : 'You are signed in as an employee — actions affect your employer\'s books'
-            }
-          >
-            <span aria-hidden>🪪</span>
-            <span>
-              Acting on behalf of <b>@{user.activeEmployment.employer.username}</b>
-              {user.activeEmployment.status === 'TERMINATION_REQUESTED' ? ' · termination pending' : ''}
-            </span>
-          </div>
-        )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-3">
+          <PersonaSwitcher />
           <UserMenu />
         </div>
       </div>
@@ -327,6 +324,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         className="flex-1 overflow-auto pt-14"
         style={{ background: 'var(--background)' }}
       >
+        <PersonaBanner />
         <div className={!isMobile && !sidebarOpen ? 'max-w-7xl mx-auto' : ''}>
           {children}
         </div>

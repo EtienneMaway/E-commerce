@@ -11,9 +11,14 @@ export const api = axios.create({
 // Module-level token — updated by the auth store on login/logout/hydrate.
 // Avoids any circular imports or SSR/localStorage timing issues.
 let _token: string | null = null;
+let _actingAs: 'self' | 'employer' = 'self';
 
 export function setAuthToken(token: string | null) {
   _token = token;
+}
+
+export function setActingAs(kind: 'self' | 'employer') {
+  _actingAs = kind;
 }
 
 api.interceptors.request.use((config) => {
@@ -23,6 +28,15 @@ api.interceptors.request.use((config) => {
   // Send user's locale so the API can return translated error messages
   const locale = typeof window !== 'undefined' ? (localStorage.getItem('ta_locale') ?? 'en') : 'en';
   config.headers.set('Accept-Language', locale);
+  // Persona toggle — read localStorage on every request so a switch in one tab
+  // is honoured by axios calls in another. Fall back to the module-level
+  // _actingAs during SSR or before localStorage is populated on cold boot.
+  let persona: 'self' | 'employer' = _actingAs;
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('ta_persona');
+    if (stored === 'employer' || stored === 'self') persona = stored;
+  }
+  config.headers.set('X-Acting-As', persona);
   return config;
 });
 

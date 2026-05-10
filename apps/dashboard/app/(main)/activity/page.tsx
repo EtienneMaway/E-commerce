@@ -19,6 +19,7 @@ import {
   resolveActorFilter,
 } from '../../../components/ui/ActorFilter';
 import { useAuthStore } from '../../../store/auth.store';
+import { usePersonaStore } from '../../../store/persona.store';
 
 const PAGE_SIZE = 50;
 
@@ -79,6 +80,7 @@ export default function ActivityPage() {
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const { user } = useAuthStore();
+  const personaKind = usePersonaStore((s) => s.kind);
 
   const [selectedTypes, setSelectedTypes] = useState<Set<ActivityLogType>>(new Set());
   const [actorFilter, setActorFilter] = useState<string>(ACTOR_FILTER_ALL);
@@ -144,6 +146,19 @@ export default function ActivityPage() {
         <div>
           <h1 className="page-title">{t.activity.title}</h1>
           <p className="page-sub">{t.activity.sub}</p>
+          <p
+            className="text-[11px] mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full"
+            style={
+              personaKind === 'employer'
+                ? { background: 'rgba(99,102,241,0.15)', color: '#A5B4FC' }
+                : { background: 'rgba(127,127,127,0.12)', color: 'var(--muted)' }
+            }
+          >
+            <span aria-hidden>{personaKind === 'employer' ? '🪪' : '👤'}</span>
+            {personaKind === 'employer' && user?.activeEmployment
+              ? t.persona.scopeEmployer(user.activeEmployment.employer.username)
+              : t.persona.scopeOwn}
+          </p>
         </div>
       </div>
 

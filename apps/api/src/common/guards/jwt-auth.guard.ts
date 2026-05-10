@@ -34,10 +34,26 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const ok = (await super.canActivate(context)) as boolean;
     if (!ok) return false;
 
-    const req = context.switchToHttp().getRequest<{ user: User; actorContext?: ActorContext }>();
+    const req = context.switchToHttp().getRequest<{
+      user: User;
+      headers: Record<string, string | string[] | undefined>;
+      actorContext?: ActorContext;
+    }>();
     const user = req.user;
 
-    const employment = await this.employmentsService.findActiveAsEmployee(user.id);
+    // X-Acting-As: persona toggle from the dashboard.
+    //   'self'     → ignore any active employment, scope to user's own books.
+    //   'employer' → apply the active employment (legacy default when employed).
+    //   absent     → preserve legacy behaviour for clients that don't yet send
+    //                the header (mobile app, curl). Auto-employer when employed.
+    const rawHeader = req.headers['x-acting-as'];
+    const actingAs = (Array.isArray(rawHeader) ? rawHeader[0] : rawHeader)?.toLowerCase();
+
+    const employment =
+      actingAs === 'self'
+        ? null
+        : await this.employmentsService.findActiveAsEmployee(user.id);
+
     const ctx: ActorContext = employment
       ? {
           actorId: user.id,
