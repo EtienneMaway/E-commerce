@@ -128,8 +128,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           { href: '/withdrawals', label: t.nav.withdrawals, icon: NAV_ICONS[9] },
           { href: '/employees', label: t.nav.employees, icon: NAV_ICONS[11] },
           { href: '/pricing', label: t.nav.pricing, icon: NAV_ICONS[12] },
+          { href: '/settings', label: t.nav.settings, icon: NAV_ICONS[10] },
         ]),
-    { href: '/settings', label: t.nav.settings, icon: NAV_ICONS[10] },
   ];
 
   useEffect(() => {
