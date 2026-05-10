@@ -35,6 +35,7 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
 import { EmploymentsModule } from './employments/employments.module';
 import { PricingModule } from './pricing/pricing.module';
+import { ActivityLogsModule } from './activity-logs/activity-logs.module';
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { PricingModule } from './pricing/pricing.module';
     WithdrawalsModule,
     EmploymentsModule,
     PricingModule,
+    ActivityLogsModule,
   ],
   providers: [
     // Apply throttle guard globally

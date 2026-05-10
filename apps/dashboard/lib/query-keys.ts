@@ -28,4 +28,5 @@ export const QK = {
   employments: (filters?: object) => ['employments', filters] as const,
   employmentDetail: (id: string) => ['employments', id] as const,
   pricing: ['pricing'] as const,
+  activityLogs: (filters?: object) => ['activity-logs', filters] as const,
 } as const;

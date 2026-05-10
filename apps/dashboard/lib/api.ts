@@ -399,6 +399,65 @@ export const employmentsApi = {
     api.patch(`/employments/${id}/reject-termination`).then((r) => r.data),
 };
 
+// ─── Activity Logs ────────────────────────────────────────────────────────────
+
+export const ACTIVITY_LOG_TYPES = [
+  'SALE',
+  'CONSIGNMENT',
+  'EXTERNAL_PRODUCT_OUT',
+  'EXTERNAL_PAYMENT_IN',
+  'EXTERNAL_PRODUCT_IN',
+  'EXTERNAL_PAYMENT_OUT',
+  'PAYMENT_TO_SUPPLIER',
+  'PAYMENT_FROM_DEBTOR',
+  'EXPENSE',
+  'INVENTORY_PERSONAL_ADDED',
+  'INVENTORY_RECEIVED_FROM_SUPPLIER',
+] as const;
+export type ActivityLogType = (typeof ACTIVITY_LOG_TYPES)[number];
+
+export interface ActivityLogEntry {
+  id: string;
+  type: ActivityLogType;
+  timestamp: string;
+  actor: { id: string; username: string } | null;
+  summary: string;
+  amount: string | null;
+  productName: string | null;
+  resourceId: string;
+  resourceType: 'sale' | 'consignment_item' | 'external_transaction' | 'payment' | 'expense' | 'inventory_entry';
+}
+
+export interface ActivityLogsParams {
+  actionTypes?: ActivityLogType[];
+  actorId?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface ActivityLogsResponse {
+  data: ActivityLogEntry[];
+  total: number;
+  byType: Partial<Record<ActivityLogType, number>>;
+}
+
+export const activityLogsApi = {
+  list: (params?: ActivityLogsParams): Promise<ActivityLogsResponse> => {
+    const q: Record<string, string | number> = {};
+    if (params) {
+      if (params.actionTypes && params.actionTypes.length > 0) q.actionTypes = params.actionTypes.join(',');
+      if (params.actorId) q.actorId = params.actorId;
+      if (params.from) q.from = params.from;
+      if (params.to) q.to = params.to;
+      if (params.page) q.page = params.page;
+      if (params.limit) q.limit = params.limit;
+    }
+    return api.get('/activity-logs', { params: q }).then((r) => r.data);
+  },
+};
+
 // ─── Pricing ──────────────────────────────────────────────────────────────────
 
 export interface ProductPrice {

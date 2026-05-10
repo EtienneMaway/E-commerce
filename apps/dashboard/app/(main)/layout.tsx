@@ -64,6 +64,9 @@ const NAV_ICONS = [
     <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
     <line x1="7" y1="7" x2="7.01" y2="7"/>
   </svg>,
+  <svg key="activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+  </svg>,
 ];
 
 function UserAvatar({ username }: { username: string }) {
@@ -118,6 +121,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     { href: '/consignments', label: t.nav.consignments, icon: NAV_ICONS[6] },
     { href: '/external-contacts', label: t.nav.externalContacts, icon: NAV_ICONS[7] },
     { href: '/expenses', label: t.nav.expenses, icon: NAV_ICONS[8] },
+    { href: '/activity', label: t.nav.activity, icon: NAV_ICONS[13] },
     ...(isEmployee
       ? []
       : [

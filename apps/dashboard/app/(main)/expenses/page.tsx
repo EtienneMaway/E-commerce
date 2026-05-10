@@ -17,7 +17,6 @@ import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useT } from '../../../lib/i18n';
 import { KpiCard } from '../../../components/ui/KpiCard';
-import { ActorPill } from '../../../components/ui/ActorPill';
 import {
   ACTOR_FILTER_ALL,
   ActorFilter,
@@ -93,6 +92,13 @@ export default function ExpensesPage() {
     data: [],
     totals: { totalAmountUsd: '0.00', byCategory: [], count: 0 },
   };
+
+  // When `actor` is null on a row, the owner performed the action themselves —
+  // the effective owner is the employer when viewing as an employee, otherwise
+  // the viewer's own account.
+  const ownerUsername =
+    user?.activeEmployment?.employer.username ?? user?.username ?? '';
+  const ownerId = user?.activeEmployment?.employer.id ?? user?.id ?? '';
 
   const createMutation = useMutation({
     mutationFn: (override: boolean) =>
@@ -448,10 +454,24 @@ export default function ExpensesPage() {
                         {row.description ?? '—'}
                       </td>
                       <td className="data-table-cell">
-                        <ActorPill
-                          actor={(row as unknown as { actor: { id: string; username: string } | null }).actor}
-                          viewerId={user?.id}
-                        />
+                        {(() => {
+                          const rowActor = (row as unknown as { actor: { id: string; username: string } | null }).actor;
+                          const actorId = rowActor?.id ?? ownerId;
+                          const actorName = rowActor?.username ?? ownerUsername;
+                          const isViewer = actorId === user?.id;
+                          return (
+                            <span
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium"
+                              style={
+                                isViewer
+                                  ? { background: 'rgba(127,127,127,0.12)', color: 'var(--foreground)' }
+                                  : { background: 'rgba(99,102,241,0.15)', color: '#818CF8' }
+                              }
+                            >
+                              @{actorName || '—'}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="data-table-cell text-right">
                         <button
