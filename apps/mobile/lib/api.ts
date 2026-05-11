@@ -139,6 +139,59 @@ export const externalContactsApi = {
     api.delete(`/external-contacts/${contactId}/transactions/${txId}`),
 };
 
+// ─── Salary Payments ───────────────────────────────────────────────────────
+
+export type SalaryPaymentStatus =
+  | 'PENDING_CONFIRMATION'
+  | 'CONFIRMED'
+  | 'REJECTED'
+  | 'CANCELLED';
+
+export interface SalaryPaymentParty {
+  id: string;
+  username: string;
+}
+
+export interface SalaryEmployment {
+  id: string;
+  monthlyPay: string | null;
+  payrollActive: boolean;
+  status: string;
+  tier: string;
+}
+
+export interface SalaryPayment {
+  id: string;
+  employmentId: string;
+  employerId: string;
+  employer?: SalaryPaymentParty;
+  employeeId: string;
+  employee?: SalaryPaymentParty;
+  employment?: SalaryEmployment;
+  amount: string;
+  periodMonth: string;
+  status: SalaryPaymentStatus;
+  note: string | null;
+  rejectionReason: string | null;
+  paidAt: string;
+  confirmedAt: string | null;
+  rejectedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const salaryPaymentsApi = {
+  pending: (): Promise<SalaryPayment[]> =>
+    api.get('/salary-payments/pending').then((r) => r.data),
+  myHistory: (): Promise<SalaryPayment[]> =>
+    api.get('/salary-payments', { params: { role: 'employee' } }).then((r) => r.data),
+  confirm: (id: string): Promise<SalaryPayment> =>
+    api.patch(`/salary-payments/${id}/confirm`).then((r) => r.data),
+  reject: (id: string, reason?: string): Promise<SalaryPayment> =>
+    api.patch(`/salary-payments/${id}/reject`, { reason }).then((r) => r.data),
+};
+
 // ─── Dashboard ─────────────────────────────────────────────────────────────
 
 export const dashboardApi = {

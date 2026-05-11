@@ -70,6 +70,11 @@ const NAV_ICONS = [
   <svg key="activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
   </svg>,
+  <svg key="my-salary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <rect x="2" y="6" width="20" height="12" rx="2"/>
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M7 12h.01M17 12h.01"/>
+  </svg>,
 ];
 
 function UserAvatar({ username }: { username: string }) {
@@ -117,6 +122,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   // The user only counts as an employee for the nav-gating purpose when (a)
   // they have an active employment AND (b) they've explicitly switched to it.
   const isEmployee = !!user?.activeEmployment && persona.kind === 'employer';
+  const hasEmployment = !!user?.activeEmployment;
   const NAV = [
     { href: '/dashboard', label: t.nav.dashboard, icon: NAV_ICONS[0] },
     { href: '/inventory', label: t.nav.inventory, icon: NAV_ICONS[1] },
@@ -128,6 +134,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     { href: '/external-contacts', label: t.nav.externalContacts, icon: NAV_ICONS[7] },
     { href: '/expenses', label: t.nav.expenses, icon: NAV_ICONS[8] },
     { href: '/activity', label: t.nav.activity, icon: NAV_ICONS[13] },
+    ...(hasEmployment
+      ? [{ href: '/my-salary', label: t.nav.mySalary, icon: NAV_ICONS[14] }]
+      : []),
     ...(isEmployee
       ? []
       : [

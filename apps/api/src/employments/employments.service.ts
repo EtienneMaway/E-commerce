@@ -19,6 +19,8 @@ import { BCRYPT_SALT_ROUNDS } from '../common/constants';
 import { CreateEmploymentDto } from './dto/create-employment.dto';
 import { CreateMiniEmployeeDto } from './dto/create-mini-employee.dto';
 import { EmploymentFilterDto, EmploymentRoleFilter } from './dto/employment-filter.dto';
+import { SetSalaryDto } from './dto/set-salary.dto';
+import { SetPayrollActiveDto } from './dto/set-payroll-active.dto';
 
 const OPEN_STATUSES: EmploymentStatus[] = [
   EmploymentStatus.PENDING,
@@ -224,6 +226,37 @@ export class EmploymentsService {
     }
     employment.status = EmploymentStatus.ACTIVE;
     employment.terminationRequestedBy = null;
+    return this.employmentRepo.save(employment);
+  }
+
+  // ─── Payroll: monthly pay + payroll-active toggle ────────────────────────
+
+  async setSalary(userId: string, id: string, dto: SetSalaryDto): Promise<Employment> {
+    const employment = await this.findOne(userId, id);
+    if (employment.employerId !== userId) {
+      throw new ForbiddenException('Only the employer can set the salary');
+    }
+    if (employment.status === EmploymentStatus.REJECTED || employment.status === EmploymentStatus.TERMINATED) {
+      throw new BadRequestException('Cannot set salary on a closed employment');
+    }
+    if (dto.monthlyPay === null || dto.monthlyPay === undefined) {
+      employment.monthlyPay = null;
+    } else {
+      if (dto.monthlyPay < 0) throw new BadRequestException('Monthly pay must be non-negative');
+      employment.monthlyPay = dto.monthlyPay.toFixed(2);
+    }
+    return this.employmentRepo.save(employment);
+  }
+
+  async setPayrollActive(userId: string, id: string, dto: SetPayrollActiveDto): Promise<Employment> {
+    const employment = await this.findOne(userId, id);
+    if (employment.employerId !== userId) {
+      throw new ForbiddenException('Only the employer can change payroll status');
+    }
+    if (employment.status === EmploymentStatus.REJECTED || employment.status === EmploymentStatus.TERMINATED) {
+      throw new BadRequestException('Cannot change payroll status on a closed employment');
+    }
+    employment.payrollActive = dto.active;
     return this.employmentRepo.save(employment);
   }
 

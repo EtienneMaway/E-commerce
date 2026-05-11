@@ -17,4 +17,6 @@ export const QK = {
   exchangeRate: ['currency', 'rate'] as const,
   externalContacts: ['external-contacts'] as const,
   externalContactDetail: (id: string) => ['external-contacts', id] as const,
+  salaryPaymentsPending: ['salary-payments', 'pending'] as const,
+  salaryHistory: ['salary-payments', 'history'] as const,
 } as const;

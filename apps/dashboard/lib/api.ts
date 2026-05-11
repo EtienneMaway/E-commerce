@@ -378,10 +378,50 @@ export interface Employment {
   tier: EmploymentTier;
   status: EmploymentStatus;
   terminationRequestedBy: string | null;
+  monthlyPay: string | null;
+  payrollActive: boolean;
   acceptedAt: string | null;
   terminatedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type SalaryPaymentStatus =
+  | 'PENDING_CONFIRMATION'
+  | 'CONFIRMED'
+  | 'REJECTED'
+  | 'CANCELLED';
+
+export interface SalaryPayment {
+  id: string;
+  employmentId: string;
+  employerId: string;
+  employer?: EmploymentParty;
+  employeeId: string;
+  employee?: EmploymentParty;
+  employment?: Employment;
+  amount: string;
+  periodMonth: string;
+  status: SalaryPaymentStatus;
+  note: string | null;
+  rejectionReason: string | null;
+  paidAt: string;
+  confirmedAt: string | null;
+  rejectedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SalarySummary {
+  employmentId: string;
+  periodMonth: string;
+  monthlyPay: string | null;
+  paidConfirmed: string;
+  pendingConfirmation: string;
+  rejected: string;
+  balanceRemaining: string | null;
+  paymentCount: number;
 }
 
 export interface CreateMiniEmployeeResult {
@@ -411,6 +451,42 @@ export const employmentsApi = {
     api.patch(`/employments/${id}/cancel-termination`).then((r) => r.data),
   rejectTermination: (id: string): Promise<Employment> =>
     api.patch(`/employments/${id}/reject-termination`).then((r) => r.data),
+  setSalary: (id: string, monthlyPay: number | null): Promise<Employment> =>
+    api.patch(`/employments/${id}/salary`, { monthlyPay }).then((r) => r.data),
+  setPayrollActive: (id: string, active: boolean): Promise<Employment> =>
+    api.patch(`/employments/${id}/payroll-active`, { active }).then((r) => r.data),
+};
+
+// ─── Salary Payments ──────────────────────────────────────────────────────────
+
+export const salaryPaymentsApi = {
+  list: (params?: {
+    role?: 'employer' | 'employee';
+    employmentId?: string;
+    status?: SalaryPaymentStatus;
+    periodMonth?: string;
+  }): Promise<SalaryPayment[]> =>
+    api.get('/salary-payments', { params }).then((r) => r.data),
+  pending: (): Promise<SalaryPayment[]> =>
+    api.get('/salary-payments/pending').then((r) => r.data),
+  summary: (employmentId: string, periodMonth?: string): Promise<SalarySummary> =>
+    api
+      .get('/salary-payments/summary', { params: { employmentId, periodMonth } })
+      .then((r) => r.data),
+  create: (body: {
+    employmentId: string;
+    amount: number;
+    periodMonth?: string;
+    note?: string;
+    confirmedOverride?: boolean;
+  }): Promise<SalaryPayment> =>
+    api.post('/salary-payments', body).then((r) => r.data),
+  confirm: (id: string): Promise<SalaryPayment> =>
+    api.patch(`/salary-payments/${id}/confirm`).then((r) => r.data),
+  reject: (id: string, reason?: string): Promise<SalaryPayment> =>
+    api.patch(`/salary-payments/${id}/reject`, { reason }).then((r) => r.data),
+  cancel: (id: string): Promise<SalaryPayment> =>
+    api.delete(`/salary-payments/${id}`).then((r) => r.data),
 };
 
 // ─── Activity Logs ────────────────────────────────────────────────────────────

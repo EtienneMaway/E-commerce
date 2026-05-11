@@ -1,0 +1,571 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Employment,
+  SalaryPayment,
+  SalaryPaymentStatus,
+  employmentsApi,
+  salaryPaymentsApi,
+} from '../../../../lib/api';
+import { QK } from '../../../../lib/query-keys';
+import { useOwnerOnlyPage } from '../../../../hooks/use-owner-only';
+import { formatCurrency, formatDate, getErrorMessage } from '../../../../lib/utils';
+
+const STATUS_LABELS: Record<SalaryPaymentStatus, string> = {
+  PENDING_CONFIRMATION: 'Awaiting confirmation',
+  CONFIRMED: 'Confirmed',
+  REJECTED: 'Rejected',
+  CANCELLED: 'Cancelled',
+};
+
+const STATUS_COLORS: Record<SalaryPaymentStatus, { bg: string; fg: string }> = {
+  PENDING_CONFIRMATION: { bg: 'rgba(245,158,11,0.15)', fg: '#F59E0B' },
+  CONFIRMED: { bg: 'rgba(16,185,129,0.15)', fg: '#10B981' },
+  REJECTED: { bg: 'rgba(239,68,68,0.15)', fg: '#EF4444' },
+  CANCELLED: { bg: 'rgba(107,114,128,0.15)', fg: '#9CA3AF' },
+};
+
+function currentPeriodMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatPeriodMonth(period: string): string {
+  const [y, m] = period.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
+    new Date(y, m - 1, 1),
+  );
+}
+
+export default function EmployeePayrollPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const qc = useQueryClient();
+  const isOwner = useOwnerOnlyPage();
+  const employmentId = params?.id ?? '';
+
+  const [period, setPeriod] = useState<string>(currentPeriodMonth());
+  const [periodFilter, setPeriodFilter] = useState<'current' | 'all'>('current');
+  const [showRecord, setShowRecord] = useState(false);
+
+  const { data: employment, isLoading: loadingEmp } = useQuery({
+    queryKey: QK.employmentDetail(employmentId),
+    queryFn: () => employmentsApi.get(employmentId),
+    enabled: isOwner && !!employmentId,
+  });
+
+  const { data: summary } = useQuery({
+    queryKey: QK.salarySummary(employmentId, period),
+    queryFn: () => salaryPaymentsApi.summary(employmentId, period),
+    enabled: isOwner && !!employmentId,
+  });
+
+  const { data: payments, isLoading: loadingPayments } = useQuery({
+    queryKey: QK.salaryPayments({ employmentId, period: periodFilter === 'current' ? period : 'all' }),
+    queryFn: () =>
+      salaryPaymentsApi.list({
+        role: 'employer',
+        employmentId,
+        periodMonth: periodFilter === 'current' ? period : undefined,
+      }),
+    enabled: isOwner && !!employmentId,
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['salary-payments'] });
+    qc.invalidateQueries({ queryKey: QK.employmentDetail(employmentId) });
+    qc.invalidateQueries({ queryKey: QK.employments() });
+  };
+
+  if (!isOwner) return null;
+
+  if (loadingEmp) {
+    return <div className="p-8 text-sm opacity-60">Loading…</div>;
+  }
+  if (!employment) {
+    return (
+      <div className="p-8">
+        <p className="text-sm opacity-70">Employment not found.</p>
+        <Link href="/employees" className="text-sm" style={{ color: '#818CF8' }}>← Back to employees</Link>
+      </div>
+    );
+  }
+
+  const employee = employment.employee;
+  const isClosed =
+    employment.status === 'TERMINATED' || employment.status === 'REJECTED';
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto">
+      <div className="mb-4">
+        <button
+          onClick={() => router.push('/employees')}
+          className="text-sm opacity-70 hover:opacity-100"
+          style={{ color: '#818CF8' }}
+        >
+          ← Back to employees
+        </button>
+      </div>
+
+      <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">{employee?.username ?? 'Employee'}</h1>
+          <p className="text-sm opacity-70 mt-1">
+            {employment.tier === 'FULL' ? 'Full employee' : 'Mini employee (sales-only)'} ·{' '}
+            <span className="capitalize">{employment.status.replace('_', ' ').toLowerCase()}</span>
+            {employment.acceptedAt && ` · since ${formatDate(employment.acceptedAt)}`}
+          </p>
+        </div>
+        {!isClosed && (
+          <div className="flex items-center gap-2">
+            <PayrollActiveToggle employment={employment} onChange={invalidate} />
+          </div>
+        )}
+      </div>
+
+      <SalaryPanel employment={employment} onChange={invalidate} disabled={isClosed} />
+
+      <div className="mt-6 p-5 rounded-xl border" style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+          <div>
+            <h2 className="font-semibold">Payroll · {formatPeriodMonth(period)}</h2>
+            <p className="text-xs opacity-60 mt-1">
+              You decide manually when to start a new month — change the period above to view past or future months.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="month"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value || currentPeriodMonth())}
+              className="px-3 py-1.5 rounded-md border bg-transparent text-sm"
+              style={{ borderColor: 'rgba(127,127,127,0.3)', colorScheme: 'dark' }}
+            />
+            <button
+              onClick={() => setShowRecord(true)}
+              disabled={isClosed || !employment.payrollActive || !employment.monthlyPay}
+              className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
+              style={{ background: '#6366F1' }}
+            >
+              + Record payment
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <SummaryCard label="Monthly target" value={summary?.monthlyPay ? formatCurrency(summary.monthlyPay) : '—'} />
+          <SummaryCard label="Paid (confirmed)" value={formatCurrency(summary?.paidConfirmed ?? '0')} accent="#10B981" />
+          <SummaryCard label="Pending confirmation" value={formatCurrency(summary?.pendingConfirmation ?? '0')} accent="#F59E0B" />
+          <SummaryCard
+            label="Balance remaining"
+            value={summary?.balanceRemaining ? formatCurrency(summary.balanceRemaining) : '—'}
+            accent="#818CF8"
+          />
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold">Payment history</h2>
+          <div className="flex gap-1 text-xs">
+            <FilterPill active={periodFilter === 'current'} onClick={() => setPeriodFilter('current')}>
+              {formatPeriodMonth(period)}
+            </FilterPill>
+            <FilterPill active={periodFilter === 'all'} onClick={() => setPeriodFilter('all')}>
+              All time
+            </FilterPill>
+          </div>
+        </div>
+
+        {loadingPayments ? (
+          <div className="text-sm opacity-60 p-6 text-center">Loading…</div>
+        ) : !payments?.length ? (
+          <div className="text-sm opacity-60 p-6 text-center rounded-xl border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+            No salary payments {periodFilter === 'current' ? `for ${formatPeriodMonth(period)}` : 'yet'}.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {payments.map((p) => (
+              <PaymentRow key={p.id} payment={p} onChange={invalidate} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showRecord && (
+        <RecordPaymentModal
+          employment={employment}
+          period={period}
+          onClose={() => setShowRecord(false)}
+          onSuccess={invalidate}
+        />
+      )}
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div className="p-3 rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+      <div className="text-xs opacity-60 mb-1">{label}</div>
+      <div className="text-lg font-semibold" style={{ color: accent }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function FilterPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-2.5 py-1 rounded-md font-medium transition-colors"
+      style={{
+        background: active ? 'rgba(99,102,241,0.15)' : 'transparent',
+        color: active ? '#818CF8' : 'rgba(127,127,127,0.8)',
+        border: '1px solid',
+        borderColor: active ? 'rgba(99,102,241,0.3)' : 'rgba(127,127,127,0.2)',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SalaryPanel({
+  employment,
+  onChange,
+  disabled,
+}: {
+  employment: Employment;
+  onChange: () => void;
+  disabled: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState<string>(employment.monthlyPay ?? '');
+  const m = useMutation({
+    mutationFn: (raw: string) =>
+      employmentsApi.setSalary(employment.id, raw === '' ? null : Number(raw)),
+    onSuccess: () => {
+      onChange();
+      setEditing(false);
+    },
+  });
+
+  return (
+    <div className="p-5 rounded-xl border flex items-center justify-between gap-4 flex-wrap" style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}>
+      <div>
+        <div className="text-xs opacity-70 mb-1">Monthly pay target</div>
+        {editing ? (
+          <div className="flex items-center gap-2">
+            <span className="text-sm opacity-70">USD</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              autoFocus
+              className="px-3 py-1.5 rounded-md border bg-transparent text-base font-semibold w-40"
+              style={{ borderColor: 'rgba(127,127,127,0.3)' }}
+              placeholder="0.00"
+            />
+            <button
+              onClick={() => m.mutate(value)}
+              disabled={m.isPending}
+              className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
+              style={{ background: '#6366F1' }}
+            >
+              Save
+            </button>
+            <button
+              onClick={() => { setEditing(false); setValue(employment.monthlyPay ?? ''); }}
+              className="px-3 py-1.5 rounded-md text-sm"
+              style={{ border: '1px solid rgba(127,127,127,0.3)' }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="text-2xl font-bold">
+              {employment.monthlyPay ? formatCurrency(employment.monthlyPay) : 'Not set'}
+            </span>
+            {!disabled && (
+              <button
+                onClick={() => setEditing(true)}
+                className="px-2.5 py-1 rounded-md text-xs"
+                style={{ border: '1px solid rgba(127,127,127,0.3)' }}
+              >
+                {employment.monthlyPay ? 'Edit' : 'Set'}
+              </button>
+            )}
+          </div>
+        )}
+        {!!m.error && (
+          <div className="text-xs mt-2" style={{ color: '#EF4444' }}>{getErrorMessage(m.error)}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PayrollActiveToggle({
+  employment,
+  onChange,
+}: {
+  employment: Employment;
+  onChange: () => void;
+}) {
+  const m = useMutation({
+    mutationFn: (next: boolean) => employmentsApi.setPayrollActive(employment.id, next),
+    onSuccess: onChange,
+  });
+  const next = !employment.payrollActive;
+  return (
+    <button
+      onClick={() => m.mutate(next)}
+      disabled={m.isPending}
+      className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50"
+      style={{
+        background: employment.payrollActive ? 'rgba(16,185,129,0.15)' : 'rgba(107,114,128,0.15)',
+        color: employment.payrollActive ? '#10B981' : '#9CA3AF',
+        border: '1px solid',
+        borderColor: employment.payrollActive ? 'rgba(16,185,129,0.3)' : 'rgba(127,127,127,0.3)',
+      }}
+      title={employment.payrollActive ? 'Click to pause payroll' : 'Click to resume payroll'}
+    >
+      {employment.payrollActive ? '● Payroll active' : '⏸ Payroll paused'}
+    </button>
+  );
+}
+
+function PaymentRow({ payment, onChange }: { payment: SalaryPayment; onChange: () => void }) {
+  const cancelM = useMutation({
+    mutationFn: () => salaryPaymentsApi.cancel(payment.id),
+    onSuccess: onChange,
+  });
+  const color = STATUS_COLORS[payment.status];
+  return (
+    <div className="p-3 rounded-lg border flex items-center justify-between gap-3" style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold">{formatCurrency(payment.amount)}</span>
+          <span className="text-xs opacity-60">· {formatPeriodMonth(payment.periodMonth)}</span>
+          <span
+            className="px-2 py-0.5 text-xs rounded-md font-medium"
+            style={{ background: color.bg, color: color.fg }}
+          >
+            {STATUS_LABELS[payment.status]}
+          </span>
+        </div>
+        <div className="text-xs opacity-60 mt-1">
+          Recorded {formatDate(payment.paidAt)}
+          {payment.confirmedAt && ` · Confirmed ${formatDate(payment.confirmedAt)}`}
+          {payment.rejectedAt && ` · Rejected ${formatDate(payment.rejectedAt)}`}
+          {payment.cancelledAt && ` · Cancelled ${formatDate(payment.cancelledAt)}`}
+        </div>
+        {payment.note && <div className="text-xs opacity-80 mt-1 italic">{payment.note}</div>}
+        {payment.rejectionReason && (
+          <div className="text-xs mt-1" style={{ color: '#EF4444' }}>
+            Reason: {payment.rejectionReason}
+          </div>
+        )}
+      </div>
+      {payment.status === 'PENDING_CONFIRMATION' && (
+        <button
+          onClick={() => cancelM.mutate()}
+          disabled={cancelM.isPending}
+          className="px-2.5 py-1 rounded-md text-xs disabled:opacity-50"
+          style={{ border: '1px solid rgba(239,68,68,0.4)', color: '#F87171' }}
+        >
+          Cancel
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface SalaryOverflowError {
+  warning: true;
+  code: 'SALARY_OVERFLOW';
+  monthlyPay: string;
+  alreadyPlanned: string;
+  attemptedAmount: string;
+  projected: string;
+  message: string;
+}
+
+function isSalaryOverflow(err: unknown): SalaryOverflowError | null {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const data = (err as { response?: { status?: number; data?: unknown } }).response?.data;
+    if (data && typeof data === 'object' && 'warning' in data && (data as { code?: string }).code === 'SALARY_OVERFLOW') {
+      return data as SalaryOverflowError;
+    }
+  }
+  return null;
+}
+
+function RecordPaymentModal({
+  employment,
+  period,
+  onClose,
+  onSuccess,
+}: {
+  employment: Employment;
+  period: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [amount, setAmount] = useState<string>('');
+  const [note, setNote] = useState<string>('');
+  const [overflow, setOverflow] = useState<SalaryOverflowError | null>(null);
+  const [confirmedOverride, setConfirmedOverride] = useState(false);
+
+  const m = useMutation({
+    mutationFn: () =>
+      salaryPaymentsApi.create({
+        employmentId: employment.id,
+        amount: Number(amount),
+        periodMonth: period,
+        note: note || undefined,
+        confirmedOverride: confirmedOverride || undefined,
+      }),
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+    },
+    onError: (err) => {
+      const ovf = isSalaryOverflow(err);
+      if (ovf) setOverflow(ovf);
+    },
+  });
+
+  const monthlyPay = employment.monthlyPay ? formatCurrency(employment.monthlyPay) : 'not set';
+  const validAmount = !!amount && Number(amount) > 0;
+
+  const handleSubmit = () => {
+    setOverflow(null);
+    setConfirmedOverride(false);
+    m.mutate();
+  };
+
+  const handleOverride = () => {
+    setConfirmedOverride(true);
+    setOverflow(null);
+    m.mutate();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+    >
+      <div
+        className="w-full max-w-md p-5 rounded-xl border"
+        style={{ background: 'var(--card)', borderColor: 'rgba(127,127,127,0.2)' }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold">Record salary payment</h2>
+          <button onClick={onClose} className="text-xl leading-none opacity-60 hover:opacity-100">
+            ×
+          </button>
+        </div>
+        <p className="text-xs opacity-70 mb-4">
+          Period: <strong>{formatPeriodMonth(period)}</strong> · Monthly target: <strong>{monthlyPay}</strong>
+          <br />
+          The employee must confirm receipt before this counts as paid.
+        </p>
+
+        <div className="space-y-3">
+          <label className="block">
+            <span className="block text-xs font-medium mb-1 opacity-80">Amount (USD)</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border bg-transparent"
+              style={{ borderColor: 'rgba(127,127,127,0.3)' }}
+              placeholder="0.00"
+              autoFocus
+            />
+          </label>
+          <label className="block">
+            <span className="block text-xs font-medium mb-1 opacity-80">Note (optional)</span>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border bg-transparent"
+              style={{ borderColor: 'rgba(127,127,127,0.3)' }}
+              placeholder="e.g. installment #1"
+            />
+          </label>
+        </div>
+
+        {overflow && (
+          <div
+            className="mt-4 p-3 rounded-lg text-xs"
+            style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}
+          >
+            <div className="font-semibold mb-1" style={{ color: '#F59E0B' }}>
+              Exceeds monthly target
+            </div>
+            <div className="opacity-80">{overflow.message}</div>
+            <div className="mt-2 flex gap-2">
+              <button
+                onClick={handleOverride}
+                disabled={m.isPending}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-white disabled:opacity-50"
+                style={{ background: '#F59E0B' }}
+              >
+                Override and record
+              </button>
+              <button
+                onClick={() => setOverflow(null)}
+                className="px-3 py-1.5 rounded-md text-xs"
+                style={{ border: '1px solid rgba(127,127,127,0.3)' }}
+              >
+                Adjust
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!!m.error && !overflow && (
+          <div className="mt-3 text-xs" style={{ color: '#EF4444' }}>
+            {getErrorMessage(m.error)}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-4">
+          <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm" style={{ border: '1px solid rgba(127,127,127,0.3)' }}>
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!validAmount || m.isPending}
+            className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
+            style={{ background: '#6366F1' }}
+          >
+            {m.isPending ? 'Recording…' : 'Record payment'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

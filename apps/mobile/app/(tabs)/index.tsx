@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ScrollView, View, Text, RefreshControl, TouchableOpacity, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { dashboardApi, inventoryApi } from '../../lib/api';
+import { dashboardApi, inventoryApi, salaryPaymentsApi, type SalaryPayment } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -67,6 +67,15 @@ export default function DashboardScreen() {
     staleTime: 5 * 60_000,
     enabled: !isOffline,
   });
+
+  const { data: pendingSalaryData } = useQuery({
+    queryKey: QK.salaryPaymentsPending,
+    queryFn: salaryPaymentsApi.pending,
+    staleTime: 30_000,
+    enabled: !isOffline,
+  });
+  const pendingSalary = (pendingSalaryData as SalaryPayment[] | undefined) ?? [];
+  const pendingSalaryTotal = pendingSalary.reduce((sum, p) => sum + parseFloat(p.amount), 0);
 
   const alerts = (alertsData as AlertItem[] | undefined) ?? [];
   const overdueDebtors = alerts.filter((a) => a.type === 'overdue_debtor');
@@ -262,6 +271,28 @@ export default function DashboardScreen() {
             </View>
           )}
         </View>
+      )}
+
+      {/* Pending salary confirmations — only in online mode */}
+      {!isOffline && pendingSalary.length > 0 && (
+        <Pressable
+          onPress={() => router.push('/salary')}
+          className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-xl px-4 py-3 mb-4 flex-row items-start gap-3"
+          style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
+        >
+          <Text className="text-lg">💵</Text>
+          <View className="flex-1">
+            <Text className="text-amber-700 dark:text-amber-300 font-semibold text-sm">
+              {pendingSalary.length === 1
+                ? '1 salary payment to confirm'
+                : `${pendingSalary.length} salary payments to confirm`}
+            </Text>
+            <Text className="text-amber-600 dark:text-amber-400 text-sm mt-0.5">
+              {formatCurrency(pendingSalaryTotal.toFixed(2))} total · tap to review
+            </Text>
+          </View>
+          <Text className="text-amber-700 dark:text-amber-300 text-sm font-medium">›</Text>
+        </Pressable>
       )}
 
       {/* Alerts banner — only in online mode */}

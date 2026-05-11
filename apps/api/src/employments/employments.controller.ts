@@ -19,6 +19,8 @@ import { EmploymentsService } from './employments.service';
 import { CreateEmploymentDto } from './dto/create-employment.dto';
 import { CreateMiniEmployeeDto } from './dto/create-mini-employee.dto';
 import { EmploymentFilterDto } from './dto/employment-filter.dto';
+import { SetSalaryDto } from './dto/set-salary.dto';
+import { SetPayrollActiveDto } from './dto/set-payroll-active.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -96,5 +98,25 @@ export class EmploymentsController {
   @ApiOperation({ summary: 'Counterparty refuses the pending termination request' })
   rejectTermination(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.rejectTermination(user.id, id);
+  }
+
+  @Patch(':id/salary')
+  @ApiOperation({ summary: 'Employer sets or clears the monthly pay target' })
+  setSalary(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetSalaryDto,
+  ) {
+    return this.service.setSalary(user.id, id, dto);
+  }
+
+  @Patch(':id/payroll-active')
+  @ApiOperation({ summary: 'Employer pauses or resumes payroll for this employee' })
+  setPayrollActive(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetPayrollActiveDto,
+  ) {
+    return this.service.setPayrollActive(user.id, id, dto);
   }
 }

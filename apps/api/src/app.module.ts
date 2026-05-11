@@ -20,6 +20,7 @@ import {
   Withdrawal,
   Employment,
   ProductPrice,
+  SalaryPayment,
 } from './entities';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -34,6 +35,7 @@ import { StockMovementsModule } from './stock-movements/stock-movements.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
 import { EmploymentsModule } from './employments/employments.module';
+import { SalaryPaymentsModule } from './salary-payments/salary-payments.module';
 import { PricingModule } from './pricing/pricing.module';
 import { ActivityLogsModule } from './activity-logs/activity-logs.module';
 
@@ -65,6 +67,7 @@ import { ActivityLogsModule } from './activity-logs/activity-logs.module';
           Withdrawal,
           Employment,
           ProductPrice,
+          SalaryPayment,
         ],
         synchronize: config.get<string>('NODE_ENV') !== 'production',
         migrations: [__dirname + '/database/migrations/*.{ts,js}'],
@@ -89,6 +92,7 @@ import { ActivityLogsModule } from './activity-logs/activity-logs.module';
     ExpensesModule,
     WithdrawalsModule,
     EmploymentsModule,
+    SalaryPaymentsModule,
     PricingModule,
     ActivityLogsModule,
   ],

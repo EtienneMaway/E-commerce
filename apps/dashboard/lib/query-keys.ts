@@ -27,6 +27,10 @@ export const QK = {
     ['inventory', 'entries', entryId, 'movements'] as const,
   employments: (filters?: object) => ['employments', filters] as const,
   employmentDetail: (id: string) => ['employments', id] as const,
+  salaryPayments: (filters?: object) => ['salary-payments', filters] as const,
+  salaryPaymentsPending: ['salary-payments', 'pending'] as const,
+  salarySummary: (employmentId: string, periodMonth?: string) =>
+    ['salary-payments', 'summary', employmentId, periodMonth ?? 'current'] as const,
   pricing: ['pricing'] as const,
   activityLogs: (filters?: object) => ['activity-logs', filters] as const,
 } as const;

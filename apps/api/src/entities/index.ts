@@ -20,3 +20,4 @@ export {
 } from './stock-movement.entity';
 export { Employment, EmploymentTier, EmploymentStatus } from './employment.entity';
 export { ProductPrice } from './product-price.entity';
+export { SalaryPayment, SalaryPaymentStatus } from './salary-payment.entity';

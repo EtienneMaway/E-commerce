@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Employment,
@@ -10,7 +11,7 @@ import {
 } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { useAuthStore } from '../../../store/auth.store';
-import { formatDate, getErrorMessage } from '../../../lib/utils';
+import { formatCurrency, formatDate, getErrorMessage } from '../../../lib/utils';
 import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
 
 type TabKey = 'active' | 'sent' | 'received' | 'archive';
@@ -198,6 +199,23 @@ function EmploymentRow({
                 : 'The other party has requested termination — approve to end, or refuse to keep going.'}
             </div>
           )}
+          {isEmployer && (e.status === 'ACTIVE' || e.status === 'TERMINATION_REQUESTED') && (
+            <div className="text-xs mt-2 flex items-center gap-3 flex-wrap">
+              <span className="opacity-70">
+                Monthly pay:{' '}
+                <strong>{e.monthlyPay ? formatCurrency(e.monthlyPay) : 'not set'}</strong>
+              </span>
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px]"
+                style={{
+                  background: e.payrollActive ? 'rgba(16,185,129,0.15)' : 'rgba(107,114,128,0.15)',
+                  color: e.payrollActive ? '#10B981' : '#9CA3AF',
+                }}
+              >
+                {e.payrollActive ? 'Payroll active' : 'Payroll paused'}
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex gap-2 flex-wrap">
           {e.status === 'PENDING' && !isEmployer && (
@@ -205,6 +223,15 @@ function EmploymentRow({
               <ActionBtn label="Accept" onClick={() => acceptM.mutate()} disabled={inFlight} primary />
               <ActionBtn label="Reject" onClick={() => rejectM.mutate()} disabled={inFlight} />
             </>
+          )}
+          {isEmployer && (e.status === 'ACTIVE' || e.status === 'TERMINATION_REQUESTED') && (
+            <Link
+              href={`/employees/${e.id}`}
+              className="px-3 py-1.5 rounded-md text-xs font-medium text-white"
+              style={{ background: '#6366F1' }}
+            >
+              Manage payroll
+            </Link>
           )}
           {e.status === 'ACTIVE' && (
             <ActionBtn label="Request termination" onClick={() => reqTerm.mutate()} disabled={inFlight} />

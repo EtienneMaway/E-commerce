@@ -62,6 +62,17 @@ export class Employment {
   @Column({ name: 'termination_requested_by', type: 'uuid', nullable: true })
   terminationRequestedBy: string | null;
 
+  @ApiPropertyOptional({ example: '300.00', description: 'Target monthly pay in USD — null until set by the employer' })
+  @Column({ name: 'monthly_pay', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  monthlyPay: string | null;
+
+  @ApiProperty({
+    example: true,
+    description: 'When false, the employer cannot record new salary payments (used to pause payroll without terminating)',
+  })
+  @Column({ name: 'payroll_active', type: 'boolean', default: true })
+  payrollActive: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
