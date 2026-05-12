@@ -50,4 +50,18 @@ export class ListExpensesQueryDto {
   @IsUUID()
   @IsOptional()
   actorId?: string;
+
+  @ApiPropertyOptional({ example: 1, default: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  page?: number = 1;
+
+  @ApiPropertyOptional({ example: 20, default: 20 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  limit?: number = 10;
 }

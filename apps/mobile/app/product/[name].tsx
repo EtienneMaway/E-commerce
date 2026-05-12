@@ -104,12 +104,13 @@ export default function ProductDetailScreen() {
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: QK.inventory({ productName }),
-    queryFn: () => inventoryApi.list({ productName }),
+    queryFn: () => inventoryApi.list({ productName, page: 1, limit: 500 }),
     staleTime: 30_000,
     enabled: !!productName,
   });
 
-  const entries = (data as InventoryEntry[] | undefined) ?? [];
+  const entries = ((data as { data?: InventoryEntry[] } | InventoryEntry[] | undefined) as { data?: InventoryEntry[] } | undefined)?.data
+    ?? ((data as InventoryEntry[] | undefined) ?? []);
 
   // Aggregate available (PERSONAL + SUPPLIER + CONSIGNED_IN)
   const totalAvailable = entries

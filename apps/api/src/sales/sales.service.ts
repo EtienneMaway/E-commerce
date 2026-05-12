@@ -172,7 +172,7 @@ export class SalesService {
   ): Promise<{ data: SaleTransaction[]; total: number }> {
     const ownerId = ctx.effectiveOwnerId;
     const page = filter.page ?? 1;
-    const limit = filter.limit ?? 20;
+    const limit = filter.limit ?? 10;
 
     const qb = this.saleRepo
       .createQueryBuilder('sale')

@@ -17,6 +17,7 @@ import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useT } from '../../../lib/i18n';
 import { KpiCard } from '../../../components/ui/KpiCard';
+import { Pagination } from '../../../components/ui/Pagination';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import {
   ACTOR_FILTER_ALL,
@@ -51,6 +52,8 @@ export default function ExpensesPage() {
   const [customTo, setCustomTo] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | ''>('');
   const [actorFilter, setActorFilter] = useState<string>(ACTOR_FILTER_ALL);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   // ── Form ──────────────────────────────────────────────────────────────────
   const [amount, setAmount] = useState('');
@@ -63,7 +66,7 @@ export default function ExpensesPage() {
   const [overBudgetProjection, setOverBudgetProjection] = useState('0');
 
   const listParams = useMemo<ExpenseListParams>(() => {
-    const p: ExpenseListParams = {};
+    const p: ExpenseListParams = { page, limit: PAGE_SIZE };
     if (categoryFilter) p.category = categoryFilter;
     if (filter === 'custom') {
       if (customFrom) p.from = customFrom;
@@ -77,6 +80,11 @@ export default function ExpensesPage() {
     const actorId = resolveActorFilter(actorFilter);
     if (actorId) p.actorId = actorId;
     return p;
+  }, [filter, nDays, customFrom, customTo, categoryFilter, actorFilter, page]);
+
+  // Reset to first page whenever filters change (otherwise narrowing might land on an empty page).
+  useMemo(() => {
+    setPage(1);
   }, [filter, nDays, customFrom, customTo, categoryFilter, actorFilter]);
 
   const { data: listData, isLoading: listLoading } = useQuery({
@@ -93,6 +101,7 @@ export default function ExpensesPage() {
   const list = (listData as ExpenseListResponse | undefined) ?? {
     data: [],
     totals: { totalAmountUsd: '0.00', byCategory: [], count: 0 },
+    pagination: { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 },
   };
 
   // When `actor` is null on a row, the owner performed the action themselves —
@@ -497,6 +506,13 @@ export default function ExpensesPage() {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                page={list.pagination.page}
+                totalPages={list.pagination.totalPages}
+                total={list.pagination.total}
+                pageSize={PAGE_SIZE}
+                onChange={setPage}
+              />
             </div>
           </div>
         </div>

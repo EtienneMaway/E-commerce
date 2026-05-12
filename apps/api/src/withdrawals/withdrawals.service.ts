@@ -145,11 +145,29 @@ export class WithdrawalsService {
     return this.withdrawalRepo.save(withdrawal);
   }
 
-  async list(ownerId: string): Promise<Withdrawal[]> {
-    return this.withdrawalRepo.find({
+  async list(
+    ownerId: string,
+    page = 1,
+    limit = 10,
+  ): Promise<{
+    data: Withdrawal[];
+    pagination: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const [data, total] = await this.withdrawalRepo.findAndCount({
       where: { ownerId },
       order: { withdrawnAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
   }
 
   async remove(ownerId: string, id: string): Promise<void> {

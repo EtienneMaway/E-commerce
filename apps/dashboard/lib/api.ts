@@ -62,7 +62,13 @@ export const usersApi = {
 export const inventoryApi = {
   listProducts: () => api.get('/inventory/products').then((r) => r.data),
 
-  list: (params?: { source?: string; category?: string; productName?: string }) =>
+  list: (params?: {
+    source?: string;
+    category?: string;
+    productName?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: unknown[]; pagination: PaginationMeta }> =>
     api.get('/inventory', { params }).then((r) => r.data),
   addPersonal: (body: { productName: string; unitCost: string; sellingPrice: string; quantity: number; category?: string; cartonPrice?: string; piecesPerCarton?: number }) =>
     api.post('/inventory/personal', body).then((r) => r.data),
@@ -253,6 +259,11 @@ export const externalContactsApi = {
     api.post(`/external-contacts/${id}/payment-out`, body).then((r) => r.data),
   deleteTransaction: (contactId: string, txId: string) =>
     api.delete(`/external-contacts/${contactId}/transactions/${txId}`),
+  listTransactions: (
+    contactId: string,
+    params?: { page?: number; limit?: number },
+  ): Promise<{ data: unknown[]; pagination: PaginationMeta }> =>
+    api.get(`/external-contacts/${contactId}/transactions`, { params }).then((r) => r.data),
 };
 
 // ─── Expenses ─────────────────────────────────────────────────────────────────
@@ -288,6 +299,13 @@ export interface Expense {
   amountUsd: string;
 }
 
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 export interface ExpenseListResponse {
   data: Expense[];
   totals: {
@@ -295,6 +313,7 @@ export interface ExpenseListResponse {
     byCategory: { category: ExpenseCategory; totalUsd: string; count: number }[];
     count: number;
   };
+  pagination: PaginationMeta;
 }
 
 export interface ExpenseListParams {
@@ -304,6 +323,8 @@ export interface ExpenseListParams {
   to?: string;
   category?: ExpenseCategory;
   actorId?: string;
+  page?: number;
+  limit?: number;
 }
 
 export const expensesApi = {
@@ -353,10 +374,16 @@ export interface AvailableWithdrawal {
   };
 }
 
+export interface WithdrawalListResponse {
+  data: Withdrawal[];
+  pagination: PaginationMeta;
+}
+
 export const withdrawalsApi = {
   available: (): Promise<AvailableWithdrawal> =>
     api.get('/withdrawals/available').then((r) => r.data),
-  list: (): Promise<Withdrawal[]> => api.get('/withdrawals').then((r) => r.data),
+  list: (params?: { page?: number; limit?: number }): Promise<WithdrawalListResponse> =>
+    api.get('/withdrawals', { params }).then((r) => r.data),
   create: (body: {
     amount: string;
     currency: WithdrawalCurrency;

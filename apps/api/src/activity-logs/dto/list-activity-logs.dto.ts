@@ -61,5 +61,5 @@ export class ListActivityLogsDto {
   @Type(() => Number)
   @IsInt()
   @IsPositive()
-  limit?: number = 50;
+  limit?: number = 10;
 }

@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -25,6 +26,7 @@ import { RecordProductInDto } from './dto/record-product-in.dto';
 import { RecordPaymentOutDto } from './dto/record-payment-out.dto';
 import { RecordProductOutBatchDto } from './dto/record-product-out-batch.dto';
 import { RecordProductInBatchDto } from './dto/record-product-in-batch.dto';
+import { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
@@ -54,11 +56,24 @@ export class ExternalContactsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get one external contact with full transaction history' })
-  @ApiResponse({ status: 200, description: 'Contact with transactions' })
+  @ApiOperation({
+    summary: 'Get one external contact (balances + metadata only — fetch transactions via the dedicated endpoint)',
+  })
+  @ApiResponse({ status: 200, description: 'Contact without transactions' })
   @ApiResponse({ status: 404, description: 'Contact not found' })
   findOne(@CurrentActorContext() ctx: ActorContext, @Param('id') id: string) {
     return this.service.findOne(ctx, id);
+  }
+
+  @Get(':id/transactions')
+  @ApiOperation({ summary: 'List a contact\'s transactions (paginated, newest first)' })
+  @ApiResponse({ status: 200, description: '{ data, pagination }' })
+  listTransactions(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('id') id: string,
+    @Query() query: ListTransactionsQueryDto,
+  ) {
+    return this.service.listTransactions(ctx, id, query.page, query.limit);
   }
 
   @Patch(':id')

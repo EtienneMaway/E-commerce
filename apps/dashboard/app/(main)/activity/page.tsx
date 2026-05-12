@@ -21,7 +21,7 @@ import {
 import { useAuthStore } from '../../../store/auth.store';
 import { usePersonaStore } from '../../../store/persona.store';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10;
 
 type ResourceType = ActivityLogEntry['resourceType'];
 

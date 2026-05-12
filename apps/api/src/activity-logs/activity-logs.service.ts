@@ -81,7 +81,7 @@ export class ActivityLogsService {
 
     const total = merged.length;
     const page = query.page ?? 1;
-    const limit = query.limit ?? 50;
+    const limit = query.limit ?? 10;
     const data = merged.slice((page - 1) * limit, page * limit);
 
     return { data, total, byType };

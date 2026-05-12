@@ -52,6 +52,9 @@ const en = {
     live: 'Live',
     note: 'Note',
     viewArrow: 'View →',
+    pageNofM: (n: number, total: number) => `Page ${n} of ${total}`,
+    prevPage: 'Previous page',
+    nextPage: 'Next page',
   },
   auth: {
     title: 'KMB',
@@ -958,6 +961,9 @@ const fr: Translations = {
     live: 'En direct',
     note: 'Note',
     viewArrow: 'Voir →',
+    pageNofM: (n: number, total: number) => `Page ${n} sur ${total}`,
+    prevPage: 'Page précédente',
+    nextPage: 'Page suivante',
   },
   auth: {
     title: 'KMB',

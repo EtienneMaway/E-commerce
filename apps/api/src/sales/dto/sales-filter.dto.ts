@@ -63,7 +63,7 @@ export class SalesFilterDto {
   @IsInt()
   @IsPositive()
   @IsOptional()
-  limit?: number = 20;
+  limit?: number = 10;
 
   @ApiPropertyOptional({ description: 'Filter by actor (employee). Omit for all actors.' })
   @IsUUID()

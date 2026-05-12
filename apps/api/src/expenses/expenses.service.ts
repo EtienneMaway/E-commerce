@@ -16,6 +16,12 @@ export interface ExpenseListResult {
     byCategory: Array<{ category: ExpenseCategory; totalUsd: string; count: number }>;
     count: number;
   };
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 @Injectable()
@@ -97,10 +103,22 @@ export class ExpensesService {
     if (query.category) where.category = query.category;
     if (query.actorId) where.actorId = query.actorId;
 
-    const expenses = await this.expenseRepo.find({
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+
+    // Totals run against the full filter window — independent of the current page.
+    const allMatching = await this.expenseRepo.find({
+      where,
+      order: { date: 'DESC' },
+    });
+
+    // Page slice loaded with the actor relation (UI shows actor name on rows).
+    const pageRows = await this.expenseRepo.find({
       where,
       relations: { actor: true },
       order: { date: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
     // Fallback rate for FC rows missing a snapshot — uses System Rate.
@@ -109,21 +127,24 @@ export class ExpensesService {
       ? new Decimal(currentRate.usdToFcRate)
       : null;
 
-    const data = expenses.map((e) => ({
+    const data = pageRows.map((e) => ({
       ...e,
       amountUsd: this.toUsd(e, fallbackRate).toFixed(2),
     }));
 
     const categoryMap = new Map<ExpenseCategory, { total: Decimal; count: number }>();
     let grandTotal = new Decimal(0);
-    for (const row of data) {
-      const usd = new Decimal(row.amountUsd);
+    for (const row of allMatching) {
+      const usd = this.toUsd(row, fallbackRate);
       grandTotal = grandTotal.plus(usd);
       const stats = categoryMap.get(row.category) ?? { total: new Decimal(0), count: 0 };
       stats.total = stats.total.plus(usd);
       stats.count += 1;
       categoryMap.set(row.category, stats);
     }
+
+    const total = allMatching.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
 
     return {
       data,
@@ -136,8 +157,9 @@ export class ExpensesService {
             count,
           }))
           .sort((a, b) => new Decimal(b.totalUsd).minus(a.totalUsd).toNumber()),
-        count: data.length,
+        count: total,
       },
+      pagination: { page, limit, total, totalPages },
     };
   }
 

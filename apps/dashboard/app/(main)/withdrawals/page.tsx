@@ -14,6 +14,7 @@ import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useT } from '../../../lib/i18n';
 import { KpiCard } from '../../../components/ui/KpiCard';
+import { Pagination } from '../../../components/ui/Pagination';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
 
@@ -34,6 +35,8 @@ export default function WithdrawalsPage() {
   const [currency, setCurrency] = useState<WithdrawalCurrency>('USD');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const { data: availableData, isLoading: availableLoading } = useQuery({
     queryKey: QK.withdrawalAvailable,
@@ -41,8 +44,8 @@ export default function WithdrawalsPage() {
     enabled: isOwner,
   });
   const { data: historyData, isLoading: historyLoading } = useQuery({
-    queryKey: QK.withdrawals,
-    queryFn: () => withdrawalsApi.list(),
+    queryKey: [...QK.withdrawals, page, PAGE_SIZE],
+    queryFn: () => withdrawalsApi.list({ page, limit: PAGE_SIZE }),
     enabled: isOwner,
   });
   const { data: cashPositionData } = useQuery({
@@ -53,8 +56,10 @@ export default function WithdrawalsPage() {
 
   const avail = availableData as AvailableWithdrawal | undefined;
   const cp = cashPositionData as CashPosition | undefined;
-  const history = (historyData as Withdrawal[] | undefined) ?? [];
-  const latestId = history[0]?.id;
+  const historyResp = historyData as { data: Withdrawal[]; pagination: { page: number; total: number; totalPages: number } } | undefined;
+  const history = historyResp?.data ?? [];
+  // The "latest" deletable row is only meaningful on page 1 (where the most recent rows live).
+  const latestId = page === 1 ? history[0]?.id : undefined;
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -313,6 +318,13 @@ export default function WithdrawalsPage() {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                page={historyResp?.pagination.page ?? 1}
+                totalPages={historyResp?.pagination.totalPages ?? 1}
+                total={historyResp?.pagination.total ?? 0}
+                pageSize={PAGE_SIZE}
+                onChange={setPage}
+              />
             </div>
           </div>
         </div>

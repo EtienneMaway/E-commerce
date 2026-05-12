@@ -45,7 +45,7 @@ export default function StockMovementsPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
-  const limit = 25;
+  const limit = 10;
 
   const filters = {
     reason: reason || undefined,

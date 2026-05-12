@@ -77,7 +77,7 @@ export class StockMovementsService {
     };
   }> {
     const page = filter.page ?? 1;
-    const limit = filter.limit ?? 20;
+    const limit = filter.limit ?? 10;
 
     const applyFilters = (
       qb: ReturnType<typeof this.repo.createQueryBuilder>,

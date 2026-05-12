@@ -12,6 +12,7 @@ import { singleExternalTxHtml, externalBatchHtml } from '../../../../lib/print-t
 import { PrintDialog } from '../../../../components/ui/PrintDialog';
 import { ActorPill } from '../../../../components/ui/ActorPill';
 import { useConfirm } from '../../../../components/ui/ConfirmDialog';
+import { Pagination } from '../../../../components/ui/Pagination';
 import { useAuthStore } from '../../../../store/auth.store';
 
 type TxType = 'PRODUCT_OUT' | 'PAYMENT_IN' | 'PRODUCT_IN' | 'PAYMENT_OUT';
@@ -109,7 +110,6 @@ interface Contact {
   role: Role;
   debtorBalance: string;
   supplierBalance: string;
-  transactions: ExternalTransaction[];
 }
 
 function txBadgeColor(type: TxType): string {
@@ -662,6 +662,8 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
   const [openModal, setOpenModal] = useState<Modal>(null);
   const [printTx, setPrintTx] = useState<ExternalTransaction | null>(null);
   const [printBatch, setPrintBatch] = useState<BatchGroup | null>(null);
+  const [txPage, setTxPage] = useState(1);
+  const TX_PAGE_SIZE = 10;
   const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
     queryKey: QK.inventoryProducts,
     queryFn: () => inventoryApi.listProducts(),
@@ -675,12 +677,24 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
     enabled: !!id,
   });
 
+  const { data: txData } = useQuery({
+    queryKey: QK.externalContactTransactions(id, txPage, TX_PAGE_SIZE),
+    queryFn: () => externalContactsApi.listTransactions(id, { page: txPage, limit: TX_PAGE_SIZE }),
+    enabled: !!id,
+  });
+
   const contact = data as Contact | undefined;
+  const txResp = txData as
+    | { data: ExternalTransaction[]; pagination: { page: number; total: number; totalPages: number } }
+    | undefined;
+  const transactions = txResp?.data ?? [];
+  const txTotal = txResp?.pagination.total ?? 0;
+  const txTotalPages = txResp?.pagination.totalPages ?? 1;
 
   const deleteTxMutation = useMutation({
     mutationFn: (txId: string) => externalContactsApi.deleteTransaction(id, txId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QK.externalContactDetail(id) });
+      qc.invalidateQueries({ queryKey: ['external-contacts', id] });
       qc.invalidateQueries({ queryKey: QK.externalContacts });
     },
   });
@@ -778,9 +792,9 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
 
       {/* Transaction history */}
       <h2 className="text-base font-semibold mb-3" style={{ color: 'var(--foreground)' }}>
-        {t.externalContacts.txHistoryWithCount(contact.transactions.length)}
+        {t.externalContacts.txHistoryWithCount(txTotal)}
       </h2>
-      {contact.transactions.length === 0 ? (
+      {transactions.length === 0 ? (
         <div className="text-center py-12 rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
           <div className="text-4xl mb-2">📋</div>
           <p className="font-medium" style={{ color: 'var(--foreground)' }}>{t.externalContacts.noTransactionsTitle}</p>
@@ -788,7 +802,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
         </div>
       ) : (
         <div className="space-y-2">
-          {buildHistory(contact.transactions).map((node) => {
+          {buildHistory(transactions).map((node) => {
             if (node.kind === 'batch') {
               const b = node.batch;
               const direction = b.type === 'PRODUCT_OUT' ? 'out' : 'in';
@@ -931,6 +945,13 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
               </div>
             );
           })}
+          <Pagination
+            page={txPage}
+            totalPages={txTotalPages}
+            total={txTotal}
+            pageSize={TX_PAGE_SIZE}
+            onChange={setTxPage}
+          />
         </div>
       )}
 

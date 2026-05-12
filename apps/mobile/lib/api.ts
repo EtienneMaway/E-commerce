@@ -42,7 +42,7 @@ export const usersApi = {
 export const inventoryApi = {
   listProducts: () => api.get('/inventory/products').then((r) => r.data),
 
-  list: (params?: { source?: string; supplierUserId?: string; category?: string; productName?: string }) =>
+  list: (params?: { source?: string; supplierUserId?: string; category?: string; productName?: string; page?: number; limit?: number }) =>
     api.get('/inventory', { params }).then((r) => r.data),
 
   addPersonal: (body: {

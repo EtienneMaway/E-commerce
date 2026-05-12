@@ -53,13 +53,46 @@ export class ExternalContactsService {
   }
 
   async findOne(ctx: ActorContext, id: string): Promise<ExternalContact> {
+    // Transactions are paginated through listTransactions() to avoid loading
+    // arbitrarily many rows in one request.
     const contact = await this.contactRepo.findOne({
       where: { id, ownerId: ctx.effectiveOwnerId },
-      relations: { transactions: { actor: true } },
-      order: { transactions: { createdAt: 'DESC' } },
     });
     if (!contact) throw new NotFoundException('External contact not found');
     return contact;
+  }
+
+  async listTransactions(
+    ctx: ActorContext,
+    id: string,
+    page = 1,
+    limit = 10,
+  ): Promise<{
+    data: ExternalTransaction[];
+    pagination: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const contact = await this.contactRepo.findOne({
+      where: { id, ownerId: ctx.effectiveOwnerId },
+    });
+    if (!contact) throw new NotFoundException('External contact not found');
+
+    const [data, total] = await this.txRepo.findAndCount({
+      where: { ownerId: ctx.effectiveOwnerId, contactId: id },
+      relations: { actor: true },
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
   }
 
   async create(ctx: ActorContext, dto: CreateExternalContactDto): Promise<ExternalContact> {

@@ -19,6 +19,8 @@ export const QK = {
   pendingPayments: ['payments', 'pending-from-debtors'] as const,
   externalContacts: ['external-contacts'] as const,
   externalContactDetail: (id: string) => ['external-contacts', id] as const,
+  externalContactTransactions: (id: string, page?: number, limit?: number) =>
+    ['external-contacts', id, 'transactions', page ?? 1, limit ?? 20] as const,
   expenses: (filters?: object) => ['expenses', filters] as const,
   withdrawals: ['withdrawals'] as const,
   withdrawalAvailable: ['withdrawals', 'available'] as const,

@@ -62,12 +62,12 @@ export default function ProductDetailPage({
 
   const { data, isLoading } = useQuery({
     queryKey: QK.inventory({ productName }),
-    queryFn: () => inventoryApi.list({ productName }),
+    queryFn: () => inventoryApi.list({ productName, page: 1, limit: 500 }),
     staleTime: 30_000,
     enabled: !!productName,
   });
 
-  const entries = (data as InventoryEntry[] | undefined) ?? [];
+  const entries = ((data as { data?: InventoryEntry[] } | undefined)?.data ?? []) as InventoryEntry[];
 
   const activeEntries = entries.filter((e) => e.source !== 'CONSIGNED_OUT');
 

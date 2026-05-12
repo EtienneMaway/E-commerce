@@ -59,18 +59,39 @@ export class InventoryService {
     private readonly stockMovements: StockMovementsService,
   ) {}
 
-  async findAll(ownerId: string, filter: InventoryFilterDto): Promise<InventoryEntry[]> {
+  async findAll(
+    ownerId: string,
+    filter: InventoryFilterDto,
+  ): Promise<{
+    data: InventoryEntry[];
+    pagination: { page: number; limit: number; total: number; totalPages: number };
+  }> {
     const where: Record<string, unknown> = { ownerId };
     if (filter.source) where.source = filter.source;
     if (filter.supplierUserId) where.supplierUserId = filter.supplierUserId;
     if (filter.category) where.category = ILike(`%${filter.category}%`);
     if (filter.productName) where.productName = ILike(filter.productName.trim().toLowerCase());
 
-    return this.entryRepo.find({
+    const page = filter.page ?? 1;
+    const limit = filter.limit ?? 10;
+
+    const [data, total] = await this.entryRepo.findAndCount({
       where,
       relations: { supplierUser: true, debtorUser: true },
       order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
   }
 
   async getProductList(ownerId: string): Promise<ProductSummary[]> {

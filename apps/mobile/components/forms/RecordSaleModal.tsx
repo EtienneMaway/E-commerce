@@ -123,12 +123,12 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
   const { data: rawEntries, isLoading: inventoryLoading } = useQuery({
     queryKey: QK.inventory(),
-    queryFn: () => inventoryApi.list(),
+    queryFn: () => inventoryApi.list({ page: 1, limit: 1000 }),
     staleTime: 30_000,
     enabled: visible && !isOffline,
   });
 
-  const entries = (rawEntries as InventoryEntry[] | undefined) ?? [];
+  const entries = ((rawEntries as { data?: InventoryEntry[] } | undefined)?.data ?? []) as InventoryEntry[];
   const onlineProducts = useMemo(() => buildProductOptions(entries), [entries]);
 
   // In offline mode use the snapshotted product cache

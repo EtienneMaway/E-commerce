@@ -8,6 +8,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -17,6 +18,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { WithdrawalsService } from './withdrawals.service';
+import { ListWithdrawalsQueryDto } from './dto/list-withdrawals-query.dto';
 import { CreateWithdrawalDto } from './dto/create-withdrawal.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
@@ -42,10 +44,10 @@ export class WithdrawalsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List withdrawal history (most recent first)' })
-  @ApiResponse({ status: 200, description: 'Array of withdrawals' })
-  list(@CurrentActorContext() ctx: ActorContext) {
-    return this.service.list(ctx.effectiveOwnerId);
+  @ApiOperation({ summary: 'List withdrawal history (most recent first, paginated)' })
+  @ApiResponse({ status: 200, description: '{ data, pagination }' })
+  list(@CurrentActorContext() ctx: ActorContext, @Query() query: ListWithdrawalsQueryDto) {
+    return this.service.list(ctx.effectiveOwnerId, query.page, query.limit);
   }
 
   @Post()
