@@ -474,6 +474,9 @@ const en = {
     noSellingRate: 'Set a selling rate in Settings before entering prices in FC.',
     submit: 'Add Product',
     submitting: 'Adding...',
+    inputModeLabel: 'Input mode',
+    inputModeDrag: 'Drag',
+    inputModeManual: 'Type',
   },
   userSearch: {
     placeholder: 'Search by username...',
@@ -1375,6 +1378,9 @@ const fr: Translations = {
     noSellingRate: 'Définissez un taux de vente dans les Paramètres avant de saisir des prix en FC.',
     submit: 'Ajouter le produit',
     submitting: 'Ajout en cours...',
+    inputModeLabel: 'Mode de saisie',
+    inputModeDrag: 'Glisser',
+    inputModeManual: 'Saisir',
   },
   userSearch: {
     placeholder: 'Rechercher par nom d\'utilisateur...',

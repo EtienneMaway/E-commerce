@@ -68,6 +68,7 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
   const [taxPercent, setTaxPercent] = useState(0);
   const [transportEnabled, setTransportEnabled] = useState(false);
   const [transportPercent, setTransportPercent] = useState(0);
+  const [inputMode, setInputMode] = useState<'drag' | 'manual'>('drag');
   const [error, setError] = useState('');
   const [selectedExisting, setSelectedExisting] = useState<ExistingProduct | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -370,11 +371,48 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
             </Field>
           </div>
 
-          {/* Markup slider */}
-          <PercentSlider label={t.addProduct.markup} value={markup} onChange={setMarkup} />
+          {/* Input mode switch — flips all three percentage rows between drag and manual entry */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
+              {t.addProduct.inputModeLabel}
+            </span>
+            <div
+              className="flex rounded-lg overflow-hidden border text-xs font-medium"
+              style={{ borderColor: 'var(--border)' }}
+              role="tablist"
+            >
+              {(['drag', 'manual'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={inputMode === m}
+                  onClick={() => {
+                    if (m === inputMode) return;
+                    setInputMode(m);
+                    // Reset all three to 0 when flipping mode, per the requested behaviour.
+                    setMarkup(0);
+                    setTaxPercent(0);
+                    setTransportPercent(0);
+                  }}
+                  className="px-3 py-1.5 transition-colors"
+                  style={{
+                    background: inputMode === m ? 'var(--primary)' : 'var(--surface)',
+                    color: inputMode === m ? '#fff' : 'var(--foreground)',
+                  }}
+                >
+                  {m === 'drag' ? t.addProduct.inputModeDrag : t.addProduct.inputModeManual}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Markup */}
+          <PercentSlider mode={inputMode} label={t.addProduct.markup} value={markup} onChange={setMarkup} />
 
           {/* Tax toggle + slider */}
           <ToggleSlider
+            mode={inputMode}
             label={t.addProduct.tax}
             toggleLabel={t.addProduct.includeTax}
             enabled={taxEnabled}
@@ -385,6 +423,7 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
 
           {/* Transport toggle + slider */}
           <ToggleSlider
+            mode={inputMode}
             label={t.addProduct.transport}
             toggleLabel={t.addProduct.includeTransport}
             enabled={transportEnabled}
@@ -431,21 +470,68 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
 
 /* ─── Percent slider ──────────────────────────────────────────────────────── */
 
-function PercentSlider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function PercentSlider({
+  label,
+  value,
+  onChange,
+  mode = 'drag',
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  mode?: 'drag' | 'manual';
+}) {
+  const handleManualChange = (raw: string) => {
+    if (raw === '') {
+      onChange(0);
+      return;
+    }
+    const n = Math.max(0, Math.min(100, Number(raw)));
+    if (!Number.isNaN(n)) onChange(n);
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>{label}</span>
-        <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--primary)' }}>{value}%</span>
+        {mode === 'drag' && (
+          <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--primary)' }}>{value}%</span>
+        )}
       </div>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="percent-slider"
-      />
+      {mode === 'drag' ? (
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="percent-slider"
+        />
+      ) : (
+        <div className="relative">
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step="0.01"
+            value={value === 0 ? '' : value}
+            placeholder="0"
+            onChange={(e) => handleManualChange(e.target.value)}
+            className="w-full px-3 py-2 pr-8 rounded-lg text-sm border outline-none tabular-nums"
+            style={{
+              background: 'var(--input)',
+              borderColor: 'var(--border)',
+              color: 'var(--foreground)',
+            }}
+          />
+          <span
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold pointer-events-none"
+            style={{ color: 'var(--muted)' }}
+          >
+            %
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -459,9 +545,10 @@ interface ToggleSliderProps {
   onToggle: (v: boolean) => void;
   value: number;
   onChange: (v: number) => void;
+  mode?: 'drag' | 'manual';
 }
 
-function ToggleSlider({ label, toggleLabel, enabled, onToggle, value, onChange }: ToggleSliderProps) {
+function ToggleSlider({ label, toggleLabel, enabled, onToggle, value, onChange, mode = 'drag' }: ToggleSliderProps) {
   return (
     <div
       className="rounded-xl p-3 border transition-colors"
@@ -485,7 +572,7 @@ function ToggleSlider({ label, toggleLabel, enabled, onToggle, value, onChange }
       </label>
       {enabled && (
         <div className="mt-3">
-          <PercentSlider label={label} value={value} onChange={onChange} />
+          <PercentSlider label={label} value={value} onChange={onChange} mode={mode} />
         </div>
       )}
     </div>
