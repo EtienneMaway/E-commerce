@@ -14,6 +14,7 @@ import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useT } from '../../../lib/i18n';
 import { KpiCard } from '../../../components/ui/KpiCard';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
 
 interface CashPosition {
@@ -24,6 +25,7 @@ interface CashPosition {
 
 export default function WithdrawalsPage() {
   const t = useT();
+  const confirmDialog = useConfirm();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
   const isOwner = useOwnerOnlyPage();
@@ -290,8 +292,14 @@ export default function WithdrawalsPage() {
                       <td className="data-table-cell text-right">
                         {row.id === latestId && (
                           <button
-                            onClick={() => {
-                              if (confirm(t.withdrawals.deleteConfirm)) deleteMutation.mutate(row.id);
+                            onClick={async () => {
+                              const ok = await confirmDialog({
+                                title: t.withdrawals.delete,
+                                description: t.withdrawals.deleteConfirm,
+                                confirmLabel: t.withdrawals.delete,
+                                variant: 'danger',
+                              });
+                              if (ok) deleteMutation.mutate(row.id);
                             }}
                             className="text-xs font-semibold"
                             style={{ color: 'var(--danger)' }}

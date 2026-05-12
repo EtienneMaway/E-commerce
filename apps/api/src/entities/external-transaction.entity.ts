@@ -73,6 +73,13 @@ export class ExternalTransaction {
   @Column({ type: 'varchar', nullable: true })
   notes: string | null;
 
+  @ApiPropertyOptional({
+    example: 'uuid-v4',
+    description: 'Groups multiple PRODUCT_OUT or PRODUCT_IN rows recorded together as one order. Null for single-item transactions and payments.',
+  })
+  @Column({ name: 'batch_id', type: 'uuid', nullable: true })
+  batchId: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

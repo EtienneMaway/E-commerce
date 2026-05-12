@@ -30,8 +30,20 @@ export class UserPublicDto {
   @ApiProperty({ example: '+1234567890', nullable: true })
   phone: string | null;
 
+  @ApiPropertyOptional({ example: 'Alice K.', nullable: true })
+  name: string | null;
+
+  @ApiPropertyOptional({ example: '1995-08-12', nullable: true })
+  dateOfBirth: string | null;
+
+  @ApiPropertyOptional({ example: 'Sales associate', nullable: true })
+  role: string | null;
+
   @ApiProperty({ example: false })
   isMiniEmployee: boolean;
+
+  @ApiProperty({ example: false })
+  isExternalEmployee: boolean;
 
   @ApiProperty()
   createdAt: Date;

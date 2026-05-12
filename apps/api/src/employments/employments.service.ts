@@ -21,6 +21,8 @@ import { CreateMiniEmployeeDto } from './dto/create-mini-employee.dto';
 import { EmploymentFilterDto, EmploymentRoleFilter } from './dto/employment-filter.dto';
 import { SetSalaryDto } from './dto/set-salary.dto';
 import { SetPayrollActiveDto } from './dto/set-payroll-active.dto';
+import { CreateExternalEmployeeDto } from './dto/create-external-employee.dto';
+import { UpdateEmployeeProfileDto } from './dto/update-employee-profile.dto';
 
 const OPEN_STATUSES: EmploymentStatus[] = [
   EmploymentStatus.PENDING,
@@ -32,6 +34,11 @@ export interface CreateMiniEmployeeResult {
   employment: Employment;
   employee: { id: string; username: string; name: string };
   pairingCode: string;
+}
+
+export interface CreateExternalEmployeeResult {
+  employment: Employment;
+  employee: { id: string; username: string; name: string };
 }
 
 @Injectable()
@@ -86,6 +93,7 @@ export class EmploymentsService {
       email: null,
       phone: dto.phone ?? null,
       passwordHash,
+      name: dto.name,
       isMiniEmployee: true,
     });
     const savedUser = await this.userRepo.save(user);
@@ -104,6 +112,98 @@ export class EmploymentsService {
       employee: { id: savedUser.id, username: savedUser.username, name: dto.name },
       pairingCode,
     };
+  }
+
+  // ─── Employer: create an external employee (payroll-only, no login) ──────
+
+  async createExternalEmployee(
+    employerId: string,
+    dto: CreateExternalEmployeeDto,
+  ): Promise<CreateExternalEmployeeResult> {
+    const username = await this.generateUniqueUsername(dto.name);
+
+    // External employees can't log in. We still need a password_hash for the
+    // NOT NULL column — set it to a random unguessable value that's never shared.
+    const passwordHash = await bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_SALT_ROUNDS);
+
+    const user = this.userRepo.create({
+      username,
+      email: null,
+      phone: null,
+      passwordHash,
+      name: dto.name,
+      dateOfBirth: dto.dateOfBirth ?? null,
+      role: dto.role ?? null,
+      isMiniEmployee: false,
+      isExternalEmployee: true,
+    });
+    const savedUser = await this.userRepo.save(user);
+
+    const employment = this.employmentRepo.create({
+      employerId,
+      employeeId: savedUser.id,
+      tier: EmploymentTier.SALES_ONLY,
+      status: EmploymentStatus.ACTIVE,
+      acceptedAt: new Date(),
+      monthlyPay: dto.monthlyPay !== undefined ? dto.monthlyPay.toFixed(2) : null,
+      payrollActive: true,
+    });
+    const savedEmployment = await this.employmentRepo.save(employment);
+
+    return {
+      employment: savedEmployment,
+      employee: { id: savedUser.id, username: savedUser.username, name: dto.name },
+    };
+  }
+
+  // ─── Employer: remove an external employee (one-step termination) ───────
+
+  async removeExternalEmployee(employerId: string, employmentId: string): Promise<Employment> {
+    const employment = await this.employmentRepo.findOne({
+      where: { id: employmentId },
+      relations: { employee: true },
+    });
+    if (!employment) throw new NotFoundException('Employment not found');
+    if (employment.employerId !== employerId) {
+      throw new ForbiddenException('Only the employer can remove this employee');
+    }
+    if (!employment.employee?.isExternalEmployee) {
+      throw new BadRequestException('This endpoint is for external employees only — use the termination flow for internal employees');
+    }
+    if (employment.status === EmploymentStatus.TERMINATED) {
+      throw new BadRequestException('Employee is already removed');
+    }
+    employment.status = EmploymentStatus.TERMINATED;
+    employment.terminatedAt = new Date();
+    employment.payrollActive = false;
+    return this.employmentRepo.save(employment);
+  }
+
+  // ─── Employer: edit the employee's profile (name, dob, role) ─────────────
+
+  async updateEmployeeProfile(
+    employerId: string,
+    employmentId: string,
+    dto: UpdateEmployeeProfileDto,
+  ): Promise<User> {
+    const employment = await this.employmentRepo.findOne({
+      where: { id: employmentId },
+      relations: { employee: true },
+    });
+    if (!employment) throw new NotFoundException('Employment not found');
+    if (employment.employerId !== employerId) {
+      throw new ForbiddenException('Only the employer can edit this profile');
+    }
+    const user = employment.employee;
+    if (!user) throw new NotFoundException('Employee not found');
+
+    if (dto.name !== undefined) user.name = dto.name;
+    if (dto.dateOfBirth !== undefined) {
+      user.dateOfBirth = dto.dateOfBirth === '' ? null : dto.dateOfBirth;
+    }
+    if (dto.role !== undefined) user.role = dto.role === '' ? null : dto.role;
+
+    return this.userRepo.save(user);
   }
 
   // ─── List with filters ───────────────────────────────────────────────────

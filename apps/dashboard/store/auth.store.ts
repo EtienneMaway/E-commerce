@@ -16,7 +16,11 @@ interface User {
   username: string;
   email: string | null;
   phone: string | null;
+  name?: string | null;
+  dateOfBirth?: string | null;
+  role?: string | null;
   isMiniEmployee?: boolean;
+  isExternalEmployee?: boolean;
   activeEmployment?: ActiveEmployment | null;
 }
 

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Employment,
+  EmploymentParty,
   SalaryPayment,
   SalaryPaymentStatus,
   employmentsApi,
@@ -13,6 +14,7 @@ import {
 } from '../../../../lib/api';
 import { QK } from '../../../../lib/query-keys';
 import { useOwnerOnlyPage } from '../../../../hooks/use-owner-only';
+import { useConfirm } from '../../../../components/ui/ConfirmDialog';
 import { formatCurrency, formatDate, getErrorMessage } from '../../../../lib/utils';
 
 const STATUS_LABELS: Record<SalaryPaymentStatus, string> = {
@@ -98,6 +100,8 @@ export default function EmployeePayrollPage() {
   const employee = employment.employee;
   const isClosed =
     employment.status === 'TERMINATED' || employment.status === 'REJECTED';
+  const isExternal = !!employee?.isExternalEmployee;
+  const displayName = employee?.name?.trim() || employee?.username || 'Employee';
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -113,21 +117,43 @@ export default function EmployeePayrollPage() {
 
       <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
         <div>
-          <h1 className="text-2xl font-bold">{employee?.username ?? 'Employee'}</h1>
+          <h1 className="text-2xl font-bold">{displayName}</h1>
           <p className="text-sm opacity-70 mt-1">
-            {employment.tier === 'FULL' ? 'Full employee' : 'Mini employee (sales-only)'} ·{' '}
+            {isExternal ? (
+              <span className="font-medium" style={{ color: '#C084FC' }}>External employee</span>
+            ) : (
+              <>{employment.tier === 'FULL' ? 'Full employee' : 'Mini employee (sales-only)'}</>
+            )}
+            {' · '}
             <span className="capitalize">{employment.status.replace('_', ' ').toLowerCase()}</span>
             {employment.acceptedAt && ` · since ${formatDate(employment.acceptedAt)}`}
           </p>
         </div>
         {!isClosed && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <PayrollActiveToggle employment={employment} onChange={invalidate} />
+            {isExternal && (
+              <RemoveExternalButton
+                employmentId={employment.id}
+                displayName={displayName}
+                onRemoved={() => router.push('/employees')}
+              />
+            )}
           </div>
         )}
       </div>
 
-      <SalaryPanel employment={employment} onChange={invalidate} disabled={isClosed} />
+      <ProfilePanel
+        employmentId={employment.id}
+        employee={employee}
+        isExternal={isExternal}
+        disabled={isClosed}
+        onChange={invalidate}
+      />
+
+      <div className="mt-6">
+        <SalaryPanel employment={employment} onChange={invalidate} disabled={isClosed} />
+      </div>
 
       <div className="mt-6 p-5 rounded-xl border" style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}>
         <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
@@ -204,6 +230,202 @@ export default function EmployeePayrollPage() {
           onSuccess={invalidate}
         />
       )}
+    </div>
+  );
+}
+
+function ProfilePanel({
+  employmentId,
+  employee,
+  isExternal,
+  disabled,
+  onChange,
+}: {
+  employmentId: string;
+  employee: EmploymentParty | undefined;
+  isExternal: boolean;
+  disabled: boolean;
+  onChange: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  if (!employee) return null;
+
+  return (
+    <div
+      className="p-5 rounded-xl border"
+      style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-semibold">Profile</h2>
+        {!disabled && (
+          <button
+            onClick={() => setEditing(true)}
+            className="px-2.5 py-1 rounded-md text-xs"
+            style={{ border: '1px solid rgba(127,127,127,0.3)' }}
+          >
+            Edit
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+        <ProfileField label="Name" value={employee.name || '—'} />
+        <ProfileField
+          label="System username"
+          value={`@${employee.username}`}
+          hint="Cannot be changed"
+        />
+        {isExternal && (
+          <>
+            <ProfileField
+              label="Date of birth"
+              value={employee.dateOfBirth ? formatDate(employee.dateOfBirth) : '—'}
+            />
+            <ProfileField label="Role" value={employee.role || '—'} />
+          </>
+        )}
+        {!isExternal && (
+          <>
+            {employee.email && <ProfileField label="Email" value={employee.email} />}
+            {employee.phone && <ProfileField label="Phone" value={employee.phone} />}
+          </>
+        )}
+      </div>
+
+      {editing && (
+        <EditProfileModal
+          employmentId={employmentId}
+          employee={employee}
+          showExternalFields={isExternal}
+          onClose={() => setEditing(false)}
+          onSuccess={() => {
+            onChange();
+            setEditing(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProfileField({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div>
+      <div className="text-xs opacity-60 mb-0.5">
+        {label}
+        {hint && <span className="ml-1 italic opacity-70">({hint})</span>}
+      </div>
+      <div className="font-medium">{value}</div>
+    </div>
+  );
+}
+
+function EditProfileModal({
+  employmentId,
+  employee,
+  showExternalFields,
+  onClose,
+  onSuccess,
+}: {
+  employmentId: string;
+  employee: EmploymentParty;
+  showExternalFields: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [name, setName] = useState(employee.name ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState(employee.dateOfBirth ?? '');
+  const [role, setRole] = useState(employee.role ?? '');
+
+  const m = useMutation({
+    mutationFn: () => {
+      const body: { name?: string; dateOfBirth?: string; role?: string } = { name };
+      if (showExternalFields) {
+        body.dateOfBirth = dateOfBirth || '';
+        body.role = role || '';
+      }
+      return employmentsApi.updateEmployeeProfile(employmentId, body);
+    },
+    onSuccess,
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+    >
+      <div
+        className="w-full max-w-md p-5 rounded-xl border"
+        style={{ background: 'var(--card)', borderColor: 'rgba(127,127,127,0.2)' }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold">Edit profile</h2>
+          <button onClick={onClose} className="text-xl leading-none opacity-60 hover:opacity-100">
+            ×
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <label className="block">
+            <span className="block text-xs font-medium mb-1 opacity-80">Full name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border bg-transparent"
+              style={{ borderColor: 'rgba(127,127,127,0.3)' }}
+              autoFocus
+            />
+          </label>
+          {showExternalFields && (
+            <>
+              <label className="block">
+                <span className="block text-xs font-medium mb-1 opacity-80">Date of birth</span>
+                <input
+                  type="date"
+                  value={dateOfBirth}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  className="w-full px-3 py-2 rounded-md border bg-transparent"
+                  style={{ borderColor: 'rgba(127,127,127,0.3)', colorScheme: 'dark' }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-xs font-medium mb-1 opacity-80">Role</span>
+                <input
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full px-3 py-2 rounded-md border bg-transparent"
+                  style={{ borderColor: 'rgba(127,127,127,0.3)' }}
+                  placeholder="e.g. Driver, Cleaner"
+                />
+              </label>
+            </>
+          )}
+          <div className="text-xs opacity-60">
+            System username <strong>@{employee.username}</strong> can't be changed.
+          </div>
+          {!!m.error && (
+            <div className="text-xs" style={{ color: '#EF4444' }}>{getErrorMessage(m.error)}</div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-md text-sm"
+              style={{ border: '1px solid rgba(127,127,127,0.3)' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => m.mutate()}
+              disabled={!name || m.isPending}
+              className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
+              style={{ background: '#6366F1' }}
+            >
+              {m.isPending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -319,6 +541,41 @@ function SalaryPanel({
         )}
       </div>
     </div>
+  );
+}
+
+function RemoveExternalButton({
+  employmentId,
+  displayName,
+  onRemoved,
+}: {
+  employmentId: string;
+  displayName: string;
+  onRemoved: () => void;
+}) {
+  const confirm = useConfirm();
+  const m = useMutation({
+    mutationFn: () => employmentsApi.removeExternalEmployee(employmentId),
+    onSuccess: onRemoved,
+  });
+  const handleClick = async () => {
+    const ok = await confirm({
+      title: `Remove ${displayName}?`,
+      description: 'Salary history is preserved — the row moves to your Archive tab.',
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (ok) m.mutate();
+  };
+  return (
+    <button
+      onClick={handleClick}
+      disabled={m.isPending}
+      className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50"
+      style={{ border: '1px solid rgba(239,68,68,0.4)', color: '#F87171' }}
+    >
+      {m.isPending ? 'Removing…' : 'Remove employee'}
+    </button>
   );
 }
 
@@ -455,6 +712,7 @@ function RecordPaymentModal({
 
   const monthlyPay = employment.monthlyPay ? formatCurrency(employment.monthlyPay) : 'not set';
   const validAmount = !!amount && Number(amount) > 0;
+  const isExternal = !!employment.employee?.isExternalEmployee;
 
   const handleSubmit = () => {
     setOverflow(null);
@@ -486,7 +744,9 @@ function RecordPaymentModal({
         <p className="text-xs opacity-70 mb-4">
           Period: <strong>{formatPeriodMonth(period)}</strong> · Monthly target: <strong>{monthlyPay}</strong>
           <br />
-          The employee must confirm receipt before this counts as paid.
+          {isExternal
+            ? 'External employees do not confirm — the payment is recorded as paid immediately.'
+            : 'The employee must confirm receipt before this counts as paid.'}
         </p>
 
         <div className="space-y-3">

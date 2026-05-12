@@ -219,6 +219,101 @@ export function externalProductHtml(data: ExternalProductPrintData): string {
   });
 }
 
+/* ── 2b. External Contact — Batch (multi-product) note ─────────────────── */
+
+export interface ExternalBatchPrintData {
+  contactName: string;
+  contactPhone: string | null;
+  direction: 'out' | 'in';
+  /** First batch row's createdAt — used as the batch date. */
+  createdAt: string;
+  items: {
+    productName: string;
+    quantity: number;
+    unitPrice: string;
+    amount: string;
+    piecesPerCarton?: number | null;
+  }[];
+  /** Optional shared note attached to the batch. */
+  note: string | null;
+  /** Resulting contact balance after the batch is applied. */
+  balance: string;
+  formatCurrency: (v: string | number) => string;
+  t: {
+    title: string;
+    contact: string;
+    phone: string;
+    date: string;
+    note: string;
+    product: string;
+    qty: string;
+    unitPrice: string;
+    total: string;
+    grandTotal: string;
+    balance: string;
+    cartonPrice: string;
+    pcsPerCarton: string;
+  };
+}
+
+export function externalBatchHtml(data: ExternalBatchPrintData): string {
+  const total = data.items.reduce(
+    (s, it) => s + parseFloat(it.amount),
+    0,
+  );
+
+  const rows = data.items
+    .map((it) => {
+      const ppc = it.piecesPerCarton;
+      const cartonPrice = ppc
+        ? data.formatCurrency((parseFloat(it.unitPrice) * ppc).toFixed(2))
+        : null;
+      const ppcLine = ppc
+        ? `<span style="font-size:10px;color:#777">1 ctn = ${ppc} ${data.t.pcsPerCarton}</span>`
+        : '';
+      const cartonLine = cartonPrice
+        ? `<span style="font-size:10px;color:#777">${data.t.cartonPrice}: ${cartonPrice}</span>`
+        : '';
+      const sub = [ppcLine, cartonLine].filter(Boolean).join(' &middot; ');
+      return `<tr>
+        <td class="cap">${esc(it.productName)}${sub ? `<br>${sub}` : ''}</td>
+        <td class="center">${it.quantity}</td>
+        <td class="right">${data.formatCurrency(it.unitPrice)}</td>
+        <td class="right bold">${data.formatCurrency(it.amount)}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const bodyHtml = `
+    <div class="summary-row"><span class="label">${data.t.contact}:</span><span class="value">${esc(data.contactName)}</span></div>
+    ${data.contactPhone ? `<div class="summary-row"><span class="label">${data.t.phone}:</span><span class="value">${esc(data.contactPhone)}</span></div>` : ''}
+    <div class="summary-row"><span class="label">${data.t.date}:</span><span class="value">${fmtDate(data.createdAt)}</span></div>
+    ${data.note ? `<div class="summary-row"><span class="label">${data.t.note}:</span><span class="value">${esc(data.note)}</span></div>` : ''}
+    <hr class="divider" />
+    <table>
+      <thead><tr>
+        <th>${data.t.product}</th>
+        <th class="center">${data.t.qty}</th>
+        <th class="right">${data.t.unitPrice}</th>
+        <th class="right">${data.t.total}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <hr class="divider-solid" />
+    <table><tr class="total-row">
+      <td colspan="3">${data.t.grandTotal}</td>
+      <td class="right">${data.formatCurrency(total.toFixed(2))}</td>
+    </tr></table>
+    <hr class="divider" />
+    <div class="summary-row"><span class="label">${data.t.balance}:</span><span class="value">${data.formatCurrency(data.balance)}</span></div>`;
+
+  return buildDocumentHtml({
+    title: data.t.title,
+    subtitle: fmtDate(data.createdAt),
+    bodyHtml,
+  });
+}
+
 /* ── 3. Single external transaction print ──────────────────────────────── */
 
 export interface SingleExternalTxPrintData {

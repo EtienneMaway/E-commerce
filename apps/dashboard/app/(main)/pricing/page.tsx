@@ -7,6 +7,7 @@ import { QK } from '../../../lib/query-keys';
 import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
 
 export default function PricingPage() {
   const qc = useQueryClient();
@@ -126,6 +127,7 @@ function PricingRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(row.unitPrice);
+  const confirm = useConfirm();
 
   const update = useMutation({
     mutationFn: () => pricingApi.update(row.id, draft),
@@ -186,8 +188,14 @@ function PricingRow({
               Edit
             </button>
             <button
-              onClick={() => {
-                if (confirm(`Delete standard price for "${row.productName}"?`)) del.mutate();
+              onClick={async () => {
+                const ok = await confirm({
+                  title: `Delete standard price?`,
+                  description: `The standard unit price for "${row.productName}" will be removed.`,
+                  confirmLabel: 'Delete',
+                  variant: 'danger',
+                });
+                if (ok) del.mutate();
               }}
               disabled={del.isPending}
               className="px-2 py-1 rounded-md text-xs disabled:opacity-50"

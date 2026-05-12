@@ -17,6 +17,7 @@ import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useT } from '../../../lib/i18n';
 import { KpiCard } from '../../../components/ui/KpiCard';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import {
   ACTOR_FILTER_ALL,
   ActorFilter,
@@ -37,6 +38,7 @@ function todayISO(): string {
 
 export default function ExpensesPage() {
   const t = useT();
+  const confirmDialog = useConfirm();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
   const { user } = useAuthStore();
@@ -475,8 +477,14 @@ export default function ExpensesPage() {
                       </td>
                       <td className="data-table-cell text-right">
                         <button
-                          onClick={() => {
-                            if (confirm(t.expenses.deleteConfirm)) deleteMutation.mutate(row.id);
+                          onClick={async () => {
+                            const ok = await confirmDialog({
+                              title: t.expenses.delete,
+                              description: t.expenses.deleteConfirm,
+                              confirmLabel: t.expenses.delete,
+                              variant: 'danger',
+                            });
+                            if (ok) deleteMutation.mutate(row.id);
                           }}
                           className="text-xs font-semibold"
                           style={{ color: 'var(--danger)' }}

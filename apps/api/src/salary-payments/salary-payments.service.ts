@@ -43,7 +43,10 @@ export class SalaryPaymentsService {
   // ─── Employer: record a new payment (PENDING_CONFIRMATION) ───────────────
 
   async create(actorId: string, dto: CreateSalaryPaymentDto): Promise<SalaryPayment> {
-    const employment = await this.employmentRepo.findOne({ where: { id: dto.employmentId } });
+    const employment = await this.employmentRepo.findOne({
+      where: { id: dto.employmentId },
+      relations: { employee: true },
+    });
     if (!employment) throw new NotFoundException('Employment not found');
     if (employment.employerId !== actorId) {
       throw new ForbiddenException('Only the employer can record a salary payment');
@@ -57,6 +60,7 @@ export class SalaryPaymentsService {
     if (!employment.monthlyPay) {
       throw new BadRequestException('Set a monthly pay before recording a payment');
     }
+    const isExternal = !!employment.employee?.isExternalEmployee;
 
     const periodMonth = dto.periodMonth ?? currentPeriodMonth();
     const amount = new Decimal(dto.amount);
@@ -80,15 +84,18 @@ export class SalaryPaymentsService {
       }
     }
 
+    const now = new Date();
     const payment = this.paymentRepo.create({
       employmentId: employment.id,
       employerId: employment.employerId,
       employeeId: employment.employeeId,
       amount: amount.toFixed(2),
       periodMonth,
-      status: SalaryPaymentStatus.PENDING_CONFIRMATION,
+      // External employees can't log in to confirm — payment is settled immediately.
+      status: isExternal ? SalaryPaymentStatus.CONFIRMED : SalaryPaymentStatus.PENDING_CONFIRMATION,
       note: dto.note ?? null,
-      paidAt: new Date(),
+      paidAt: now,
+      confirmedAt: isExternal ? now : null,
     });
     return this.paymentRepo.save(payment);
   }

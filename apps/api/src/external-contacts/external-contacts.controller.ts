@@ -23,6 +23,8 @@ import { RecordProductOutDto } from './dto/record-product-out.dto';
 import { RecordPaymentInDto } from './dto/record-payment-in.dto';
 import { RecordProductInDto } from './dto/record-product-in.dto';
 import { RecordPaymentOutDto } from './dto/record-payment-out.dto';
+import { RecordProductOutBatchDto } from './dto/record-product-out-batch.dto';
+import { RecordProductInBatchDto } from './dto/record-product-in-batch.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
@@ -89,6 +91,22 @@ export class ExternalContactsController {
     return this.service.recordProductOut(ctx, id, dto);
   }
 
+  @Post(':id/product-out-batch')
+  @ApiOperation({
+    summary: 'Give multiple products in one order (atomic; shared batch_id)',
+    description:
+      'Creates one ExternalTransaction row per item with a shared batch_id, so they can be printed together as a single delivery note.',
+  })
+  @ApiResponse({ status: 201, description: 'Transactions recorded, inventory deducted, balance updated' })
+  @ApiResponse({ status: 400, description: 'Insufficient stock on one or more items' })
+  recordProductOutBatch(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('id') id: string,
+    @Body() dto: RecordProductOutBatchDto,
+  ) {
+    return this.service.recordProductOutBatch(ctx, id, dto);
+  }
+
   @Post(':id/payment-in')
   @ApiOperation({ summary: 'Record cash received from external debtor' })
   @ApiResponse({ status: 201, description: 'Payment recorded, debtorBalance decreased' })
@@ -110,6 +128,22 @@ export class ExternalContactsController {
     @Body() dto: RecordProductInDto,
   ) {
     return this.service.recordProductIn(ctx, id, dto);
+  }
+
+  @Post(':id/product-in-batch')
+  @AllowedFor('OWNER')
+  @ApiOperation({
+    summary: 'Receive multiple products in one delivery (atomic; shared batch_id)',
+    description:
+      'Creates one ExternalTransaction row per item with a shared batch_id, so they can be printed together as a single goods-received note.',
+  })
+  @ApiResponse({ status: 201, description: 'Transactions recorded, inventory created, balance updated' })
+  recordProductInBatch(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('id') id: string,
+    @Body() dto: RecordProductInBatchDto,
+  ) {
+    return this.service.recordProductInBatch(ctx, id, dto);
   }
 
   @Post(':id/payment-out')

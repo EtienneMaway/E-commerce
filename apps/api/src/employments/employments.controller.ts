@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -21,6 +22,8 @@ import { CreateMiniEmployeeDto } from './dto/create-mini-employee.dto';
 import { EmploymentFilterDto } from './dto/employment-filter.dto';
 import { SetSalaryDto } from './dto/set-salary.dto';
 import { SetPayrollActiveDto } from './dto/set-payroll-active.dto';
+import { CreateExternalEmployeeDto } from './dto/create-external-employee.dto';
+import { UpdateEmployeeProfileDto } from './dto/update-employee-profile.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -50,6 +53,17 @@ export class EmploymentsController {
   @ApiResponse({ status: 201, description: 'Mini employee created and immediately ACTIVE' })
   createMiniEmployee(@CurrentUser() user: User, @Body() dto: CreateMiniEmployeeDto) {
     return this.service.createMiniEmployee(user.id, dto);
+  }
+
+  @Post('external-employee')
+  @ApiOperation({
+    summary: 'Create an external employee — payroll-only, no login',
+    description:
+      'Creates a User row that cannot authenticate, plus an immediately ACTIVE employment. Used to track salary for people who do not use the system.',
+  })
+  @ApiResponse({ status: 201, description: 'External employee created and immediately ACTIVE' })
+  createExternalEmployee(@CurrentUser() user: User, @Body() dto: CreateExternalEmployeeDto) {
+    return this.service.createExternalEmployee(user.id, dto);
   }
 
   @Get()
@@ -118,5 +132,28 @@ export class EmploymentsController {
     @Body() dto: SetPayrollActiveDto,
   ) {
     return this.service.setPayrollActive(user.id, id, dto);
+  }
+
+  @Delete(':id/external')
+  @ApiOperation({
+    summary: 'Employer removes an external employee (one-step termination)',
+    description:
+      'Marks the employment as TERMINATED immediately. The user row and salary payment history are preserved for record-keeping. Allowed only when the employee is an external employee.',
+  })
+  removeExternalEmployee(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.service.removeExternalEmployee(user.id, id);
+  }
+
+  @Patch(':id/profile')
+  @ApiOperation({ summary: 'Employer edits the employee profile (name, date of birth, role)' })
+  updateEmployeeProfile(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateEmployeeProfileDto,
+  ) {
+    return this.service.updateEmployeeProfile(user.id, id, dto);
   }
 }

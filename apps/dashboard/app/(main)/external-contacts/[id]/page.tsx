@@ -8,9 +8,10 @@ import { externalContactsApi, inventoryApi } from '../../../../lib/api';
 import { QK } from '../../../../lib/query-keys';
 import { useFormatCurrency } from '../../../../lib/currency';
 import { useT } from '../../../../lib/i18n';
-import { singleExternalTxHtml } from '../../../../lib/print-templates';
+import { singleExternalTxHtml, externalBatchHtml } from '../../../../lib/print-templates';
 import { PrintDialog } from '../../../../components/ui/PrintDialog';
 import { ActorPill } from '../../../../components/ui/ActorPill';
+import { useConfirm } from '../../../../components/ui/ConfirmDialog';
 import { useAuthStore } from '../../../../store/auth.store';
 
 type TxType = 'PRODUCT_OUT' | 'PAYMENT_IN' | 'PRODUCT_IN' | 'PAYMENT_OUT';
@@ -32,6 +33,72 @@ interface ExternalTransaction {
   actor?: { id: string; username: string } | null;
   originalUnitPrice?: string | null;
   discountReason?: string | null;
+  batchId?: string | null;
+}
+
+interface BatchGroup {
+  batchId: string;
+  type: 'PRODUCT_OUT' | 'PRODUCT_IN';
+  items: ExternalTransaction[];
+  /** Earliest createdAt across the batch's items — used as the batch date for display + print. */
+  createdAt: string;
+  totalAmount: number;
+  note: string | null;
+  actor: { id: string; username: string } | null;
+}
+
+type HistoryNode =
+  | { kind: 'single'; tx: ExternalTransaction }
+  | { kind: 'batch'; batch: BatchGroup };
+
+/**
+ * Groups consecutive PRODUCT_OUT / PRODUCT_IN rows that share a batch_id into
+ * one node. Single rows (no batch_id, payments) become 'single' nodes. Ordering
+ * is preserved by the most recent timestamp in each node.
+ */
+function buildHistory(transactions: ExternalTransaction[]): HistoryNode[] {
+  const batchMap = new Map<string, BatchGroup>();
+  const singles: ExternalTransaction[] = [];
+
+  for (const tx of transactions) {
+    if (
+      tx.batchId &&
+      (tx.type === 'PRODUCT_OUT' || tx.type === 'PRODUCT_IN')
+    ) {
+      const group = batchMap.get(tx.batchId);
+      if (group) {
+        group.items.push(tx);
+        group.totalAmount += parseFloat(tx.amount);
+        if (new Date(tx.createdAt) < new Date(group.createdAt)) {
+          group.createdAt = tx.createdAt;
+        }
+      } else {
+        batchMap.set(tx.batchId, {
+          batchId: tx.batchId,
+          type: tx.type,
+          items: [tx],
+          createdAt: tx.createdAt,
+          totalAmount: parseFloat(tx.amount),
+          note: tx.notes,
+          actor: tx.actor ?? null,
+        });
+      }
+    } else {
+      singles.push(tx);
+    }
+  }
+
+  const nodes: HistoryNode[] = [
+    ...singles.map((tx): HistoryNode => ({ kind: 'single', tx })),
+    ...Array.from(batchMap.values()).map((batch): HistoryNode => ({ kind: 'batch', batch })),
+  ];
+
+  // Sort newest first by the node's representative timestamp.
+  return nodes.sort((a, b) => {
+    const ta = a.kind === 'single' ? a.tx.createdAt : a.batch.createdAt;
+    const tb = b.kind === 'single' ? b.tx.createdAt : b.batch.createdAt;
+    return new Date(tb).getTime() - new Date(ta).getTime();
+  });
 }
 
 interface Contact {
@@ -208,14 +275,15 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
   const mut = useMutation({
     mutationFn: async () => {
       if (modal === 'product-out') {
-        for (const item of poItems) {
-          const totalPieces = getPoTotalPieces(parseInt(item.quantity, 10), item.piecesPerCarton, item.extraPieces);
-          await externalContactsApi.recordProductOut(contactId, {
-            productName: item.productName, quantity: totalPieces,
-            unitPrice: item.unitPrice, notes: form.notes || undefined,
-          });
-        }
-        return;
+        const items = poItems.map((item) => ({
+          productName: item.productName,
+          quantity: getPoTotalPieces(parseInt(item.quantity, 10), item.piecesPerCarton, item.extraPieces),
+          unitPrice: item.unitPrice,
+        }));
+        return externalContactsApi.recordProductOutBatch(contactId, {
+          items,
+          notes: form.notes || undefined,
+        });
       }
       if (modal === 'payment-in') {
         return externalContactsApi.recordPaymentIn(contactId, { amount: form.amount, notes: form.notes || undefined });
@@ -584,8 +652,10 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
   const formatCurrency = useFormatCurrency();
   const t = useT();
   const { user } = useAuthStore();
+  const confirm = useConfirm();
   const [openModal, setOpenModal] = useState<Modal>(null);
   const [printTx, setPrintTx] = useState<ExternalTransaction | null>(null);
+  const [printBatch, setPrintBatch] = useState<BatchGroup | null>(null);
   const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
     queryKey: QK.inventoryProducts,
     queryFn: () => inventoryApi.listProducts(),
@@ -643,7 +713,15 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
             {contact.notes && <p className="text-xs mt-1 italic" style={{ color: 'var(--muted-foreground)' }}>{contact.notes}</p>}
           </div>
           <button
-            onClick={() => { if (confirm('Delete this contact and all transactions?')) deleteContactMutation.mutate(); }}
+            onClick={async () => {
+              const ok = await confirm({
+                title: `Delete ${contact.name}?`,
+                description: 'All transactions for this contact will be removed. Inventory changes already made are not reversed.',
+                confirmLabel: 'Delete',
+                variant: 'danger',
+              });
+              if (ok) deleteContactMutation.mutate();
+            }}
             className="text-xs px-3 py-1.5 rounded-lg border"
             style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
           >
@@ -704,68 +782,197 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
         </div>
       ) : (
         <div className="space-y-2">
-          {contact.transactions.map((tx) => (
-            <div key={tx.id} className="rounded-xl px-4 py-3 border" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
-                    {txLabel(tx.type, tx.productName, tx.quantity)}
-                  </p>
-                  {tx.type === 'PRODUCT_OUT' && tx.unitPrice && tx.unitCostUsed && (
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-                      Cost {formatCurrency(tx.unitCostUsed)} · Sell {formatCurrency(tx.unitPrice)} per unit
-                    </p>
-                  )}
-                  {tx.notes && <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{tx.notes}</p>}
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-                    {new Date(tx.createdAt).toLocaleDateString()}
-                  </p>
-                  <div className="mt-1">
-                    <ActorPill
-                      actor={tx.actor ?? null}
-                      viewerId={user?.id}
-                      discount={{
-                        originalUnitPrice: tx.originalUnitPrice ?? null,
-                        discountReason: tx.discountReason ?? null,
-                      }}
-                    />
+          {buildHistory(contact.transactions).map((node) => {
+            if (node.kind === 'batch') {
+              const b = node.batch;
+              const direction = b.type === 'PRODUCT_OUT' ? 'out' : 'in';
+              const label = direction === 'out'
+                ? `Gave ${b.items.length} products`
+                : `Received ${b.items.length} products`;
+              return (
+                <div key={b.batchId} className="rounded-xl border" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+                  <div className="flex items-start justify-between p-4 border-b" style={{ borderColor: 'var(--border)' }}>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
+                        {label}
+                      </p>
+                      {b.note && <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{b.note}</p>}
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                        {new Date(b.createdAt).toLocaleDateString()}
+                      </p>
+                      <div className="mt-1">
+                        <ActorPill actor={b.actor} viewerId={user?.id} />
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 ml-4">
+                      <div className="text-right">
+                        <p className="font-bold text-sm" style={{ color: txBadgeColor(b.type) }}>
+                          {formatCurrency(b.totalAmount.toFixed(2))}
+                        </p>
+                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                          {b.items.length} items
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setPrintBatch(b)}
+                        className="text-xs px-2 py-1 rounded border mt-0.5"
+                        style={{ color: 'var(--primary)', borderColor: 'var(--primary)' }}
+                        title={t.print.printBtn}
+                      >
+                        🖨️
+                      </button>
+                    </div>
+                  </div>
+                  <div className="px-4 py-2">
+                    {b.items.map((it) => (
+                      <div key={it.id} className="flex items-center justify-between py-1 text-xs">
+                        <span style={{ color: 'var(--foreground)' }} className="capitalize">
+                          {it.productName} ×{it.quantity}
+                          {it.unitPrice && (
+                            <span className="ml-2" style={{ color: 'var(--muted-foreground)' }}>
+                              @ {formatCurrency(it.unitPrice)}
+                            </span>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span style={{ color: 'var(--muted-foreground)' }}>{formatCurrency(it.amount)}</span>
+                          <button
+                            onClick={async () => {
+                              const ok = await confirm({
+                                title: 'Delete this line item?',
+                                description: 'Balance will be corrected. Inventory changes already made are not reversed.',
+                                confirmLabel: 'Delete',
+                                variant: 'danger',
+                              });
+                              if (ok) deleteTxMutation.mutate(it.id);
+                            }}
+                            className="text-[10px] px-1.5 py-0.5 rounded border"
+                            style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div className="flex items-start gap-3 ml-4">
-                  <div className="text-right">
-                    <p className="font-bold text-sm" style={{ color: txBadgeColor(tx.type) }}>
-                      {formatCurrency(tx.amount)}
+              );
+            }
+            const tx = node.tx;
+            return (
+              <div key={tx.id} className="rounded-xl px-4 py-3 border" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
+                      {txLabel(tx.type, tx.productName, tx.quantity)}
                     </p>
-                    {tx.profit != null && (
-                      <p className="text-xs font-medium mt-0.5" style={{ color: tx.isLoss ? 'var(--danger)' : 'var(--success)' }}>
-                        {tx.isLoss ? '▼' : '▲'} {formatCurrency(Math.abs(parseFloat(tx.profit)).toFixed(2))} profit
+                    {tx.type === 'PRODUCT_OUT' && tx.unitPrice && tx.unitCostUsed && (
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                        Cost {formatCurrency(tx.unitCostUsed)} · Sell {formatCurrency(tx.unitPrice)} per unit
                       </p>
                     )}
+                    {tx.notes && <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{tx.notes}</p>}
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                      {new Date(tx.createdAt).toLocaleDateString()}
+                    </p>
+                    <div className="mt-1">
+                      <ActorPill
+                        actor={tx.actor ?? null}
+                        viewerId={user?.id}
+                        discount={{
+                          originalUnitPrice: tx.originalUnitPrice ?? null,
+                          discountReason: tx.discountReason ?? null,
+                        }}
+                      />
+                    </div>
                   </div>
-                  <button
-                    onClick={() => setPrintTx(tx)}
-                    className="text-xs px-2 py-1 rounded border mt-0.5"
-                    style={{ color: 'var(--primary)', borderColor: 'var(--primary)' }}
-                    title={t.print.printBtn}
-                  >
-                    🖨️
-                  </button>
-                  <button
-                    onClick={() => { if (confirm('Delete this transaction? Balance will be corrected but inventory changes are not reversed.')) deleteTxMutation.mutate(tx.id); }}
-                    className="text-xs px-2 py-1 rounded border mt-0.5"
-                    style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-start gap-3 ml-4">
+                    <div className="text-right">
+                      <p className="font-bold text-sm" style={{ color: txBadgeColor(tx.type) }}>
+                        {formatCurrency(tx.amount)}
+                      </p>
+                      {tx.profit != null && (
+                        <p className="text-xs font-medium mt-0.5" style={{ color: tx.isLoss ? 'var(--danger)' : 'var(--success)' }}>
+                          {tx.isLoss ? '▼' : '▲'} {formatCurrency(Math.abs(parseFloat(tx.profit)).toFixed(2))} profit
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setPrintTx(tx)}
+                      className="text-xs px-2 py-1 rounded border mt-0.5"
+                      style={{ color: 'var(--primary)', borderColor: 'var(--primary)' }}
+                      title={t.print.printBtn}
+                    >
+                      🖨️
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: 'Delete this transaction?',
+                          description: 'Balance will be corrected. Inventory changes already made are not reversed.',
+                          confirmLabel: 'Delete',
+                          variant: 'danger',
+                        });
+                        if (ok) deleteTxMutation.mutate(tx.id);
+                      }}
+                      className="text-xs px-2 py-1 rounded border mt-0.5"
+                      style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* Action modals */}
       <ActionModal modal={openModal} contactId={id} onClose={() => setOpenModal(null)} />
+      {contact && (
+        <PrintDialog
+          open={!!printBatch}
+          onClose={() => setPrintBatch(null)}
+          buildHtml={(fmt) => {
+            const b = printBatch!;
+            const direction: 'out' | 'in' = b.type === 'PRODUCT_OUT' ? 'out' : 'in';
+            const title = direction === 'out' ? t.print.deliveryNote : t.print.goodsReceivedNote;
+            const balance = direction === 'out' ? contact.debtorBalance : contact.supplierBalance;
+            return externalBatchHtml({
+              contactName: contact.name,
+              contactPhone: contact.phone,
+              direction,
+              createdAt: b.createdAt,
+              items: b.items.map((it) => ({
+                productName: it.productName ?? '—',
+                quantity: it.quantity ?? 0,
+                unitPrice: it.unitPrice ?? '0',
+                amount: it.amount,
+                piecesPerCarton: it.productName ? ppcMap.get(it.productName) ?? null : null,
+              })),
+              note: b.note,
+              balance,
+              formatCurrency: fmt,
+              t: {
+                title,
+                contact: t.print.contact,
+                phone: t.print.phone,
+                date: t.print.date,
+                note: t.print.note,
+                product: t.print.product,
+                qty: t.print.qty,
+                unitPrice: t.print.unitPrice,
+                total: t.print.total,
+                grandTotal: t.print.grandTotal,
+                balance: t.print.balance,
+                cartonPrice: t.print.cartonPrice,
+                pcsPerCarton: t.print.pcsPerCarton,
+              },
+            });
+          }}
+        />
+      )}
       {contact && (
         <PrintDialog
           open={!!printTx}

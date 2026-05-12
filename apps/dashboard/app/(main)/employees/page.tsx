@@ -13,6 +13,7 @@ import { QK } from '../../../lib/query-keys';
 import { useAuthStore } from '../../../store/auth.store';
 import { formatCurrency, formatDate, getErrorMessage } from '../../../lib/utils';
 import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
 
 type TabKey = 'active' | 'sent' | 'received' | 'archive';
 
@@ -44,6 +45,7 @@ export default function EmployeesPage() {
   const [tab, setTab] = useState<TabKey>('active');
   const [showHire, setShowHire] = useState(false);
   const [showMini, setShowMini] = useState(false);
+  const [showExternal, setShowExternal] = useState(false);
   const isCurrentlyEmployee = !!user?.activeEmployment;
 
   const { data, isLoading } = useQuery({
@@ -85,7 +87,14 @@ export default function EmployeesPage() {
           </p>
         </div>
         {!isCurrentlyEmployee && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setShowExternal(true)}
+              className="px-4 py-2 rounded-lg text-sm font-medium border"
+              style={{ borderColor: 'rgba(168,85,247,0.4)', color: '#C084FC' }}
+            >
+              + External Employee
+            </button>
             <button
               onClick={() => setShowMini(true)}
               className="px-4 py-2 rounded-lg text-sm font-medium border"
@@ -134,6 +143,7 @@ export default function EmployeesPage() {
 
       {showHire && <HireModal onClose={() => setShowHire(false)} qc={qc} />}
       {showMini && <MiniEmployeeModal onClose={() => setShowMini(false)} qc={qc} />}
+      {showExternal && <ExternalEmployeeModal onClose={() => setShowExternal(false)} qc={qc} />}
     </div>
   );
 }
@@ -149,8 +159,11 @@ function EmploymentRow({
 }) {
   const isEmployer = e.employerId === myId;
   const counterparty = isEmployer ? e.employee : e.employer;
-  const counterpartyLabel = counterparty?.username ?? (isEmployer ? 'employee' : 'employer');
+  const counterpartyName = counterparty?.name?.trim();
+  const counterpartyUsername = counterparty?.username ?? (isEmployer ? 'employee' : 'employer');
+  const isExternal = !!counterparty?.isExternalEmployee;
   const statusColor = STATUS_COLORS[e.status];
+  const confirm = useConfirm();
 
   const onSuccess = () => qc.invalidateQueries({ queryKey: QK.employments() });
   const acceptM = useMutation({ mutationFn: () => employmentsApi.accept(e.id), onSuccess });
@@ -159,13 +172,27 @@ function EmploymentRow({
   const apprTerm = useMutation({ mutationFn: () => employmentsApi.approveTermination(e.id), onSuccess });
   const cancelTerm = useMutation({ mutationFn: () => employmentsApi.cancelTermination(e.id), onSuccess });
   const rejectTerm = useMutation({ mutationFn: () => employmentsApi.rejectTermination(e.id), onSuccess });
+  const removeExternalM = useMutation({ mutationFn: () => employmentsApi.removeExternalEmployee(e.id), onSuccess });
 
   const inFlight =
     acceptM.isPending || rejectM.isPending || reqTerm.isPending ||
-    apprTerm.isPending || cancelTerm.isPending || rejectTerm.isPending;
+    apprTerm.isPending || cancelTerm.isPending || rejectTerm.isPending ||
+    removeExternalM.isPending;
 
   const error =
-    acceptM.error || rejectM.error || reqTerm.error || apprTerm.error || cancelTerm.error || rejectTerm.error;
+    acceptM.error || rejectM.error || reqTerm.error || apprTerm.error || cancelTerm.error || rejectTerm.error ||
+    removeExternalM.error;
+
+  const handleRemoveExternal = async () => {
+    const who = counterpartyName || `@${counterpartyUsername}`;
+    const ok = await confirm({
+      title: `Remove ${who}?`,
+      description: 'Salary history is preserved — the row moves to your Archive tab.',
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (ok) removeExternalM.mutate();
+  };
 
   return (
     <div
@@ -175,7 +202,14 @@ function EmploymentRow({
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold">{counterpartyLabel}</span>
+            {counterpartyName ? (
+              <>
+                <span className="font-semibold">{counterpartyName}</span>
+                <span className="text-xs opacity-60">@{counterpartyUsername}</span>
+              </>
+            ) : (
+              <span className="font-semibold">@{counterpartyUsername}</span>
+            )}
             <span className="text-xs opacity-60">({isEmployer ? 'I am the employer' : 'I am the employee'})</span>
             <span
               className="px-2 py-0.5 text-xs rounded-md font-medium"
@@ -183,9 +217,18 @@ function EmploymentRow({
             >
               {STATUS_LABELS[e.status]}
             </span>
-            <span className="px-2 py-0.5 text-xs rounded-md border opacity-80" style={{ borderColor: 'rgba(127,127,127,0.3)' }}>
-              {TIER_LABELS[e.tier]}
-            </span>
+            {isExternal ? (
+              <span
+                className="px-2 py-0.5 text-xs rounded-md border opacity-90"
+                style={{ borderColor: 'rgba(168,85,247,0.4)', color: '#C084FC' }}
+              >
+                External
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 text-xs rounded-md border opacity-80" style={{ borderColor: 'rgba(127,127,127,0.3)' }}>
+                {TIER_LABELS[e.tier]}
+              </span>
+            )}
           </div>
           <div className="text-xs opacity-60 mt-1">
             Created {formatDate(e.createdAt)}
@@ -233,7 +276,10 @@ function EmploymentRow({
               Manage payroll
             </Link>
           )}
-          {e.status === 'ACTIVE' && (
+          {isEmployer && isExternal && e.status === 'ACTIVE' && (
+            <ActionBtn label="Remove" onClick={handleRemoveExternal} disabled={inFlight} />
+          )}
+          {!isExternal && e.status === 'ACTIVE' && (
             <ActionBtn label="Request termination" onClick={() => reqTerm.mutate()} disabled={inFlight} />
           )}
           {e.status === 'TERMINATION_REQUESTED' && e.terminationRequestedBy === myId && (
@@ -395,6 +441,111 @@ function MiniEmployeeModal({ onClose, qc }: { onClose: () => void; qc: ReturnTyp
               style={{ background: '#6366F1' }}
             >
               Create
+            </button>
+          </div>
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+function ExternalEmployeeModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof useQueryClient> }) {
+  const [name, setName] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [role, setRole] = useState('');
+  const [monthlyPay, setMonthlyPay] = useState('');
+  const [result, setResult] = useState<{ username: string; name: string } | null>(null);
+
+  const create = useMutation({
+    mutationFn: () =>
+      employmentsApi.createExternalEmployee({
+        name,
+        dateOfBirth: dateOfBirth || undefined,
+        role: role || undefined,
+        monthlyPay: monthlyPay ? Number(monthlyPay) : undefined,
+      }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: QK.employments() });
+      setResult({ username: res.employee.username, name: res.employee.name });
+    },
+  });
+
+  return (
+    <ModalShell onClose={onClose} title="Add external employee">
+      {result ? (
+        <div className="space-y-3">
+          <p className="text-sm">
+            External employee created. They don't log in — you'll manage their salary directly.
+          </p>
+          <div className="p-3 rounded-md" style={{ background: 'rgba(168,85,247,0.1)' }}>
+            <Row label="Name" value={result.name} />
+            <Row label="System username" value={result.username} mono />
+          </div>
+          <div className="flex justify-end pt-2">
+            <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm text-white" style={{ background: '#A855F7' }}>
+              Done
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs opacity-70">
+            For people who don't use the system but get a salary from you. Records-only — no login.
+          </p>
+          <Field label="Full name *">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border bg-transparent"
+              style={{ borderColor: 'rgba(127,127,127,0.3)' }}
+              placeholder="Alice K."
+              autoFocus
+            />
+          </Field>
+          <Field label="Date of birth (optional)">
+            <input
+              type="date"
+              value={dateOfBirth}
+              onChange={(e) => setDateOfBirth(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border bg-transparent"
+              style={{ borderColor: 'rgba(127,127,127,0.3)', colorScheme: 'dark' }}
+            />
+          </Field>
+          <Field label="Role (optional)">
+            <input
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border bg-transparent"
+              style={{ borderColor: 'rgba(127,127,127,0.3)' }}
+              placeholder="e.g. Driver, Cleaner, Sales associate"
+            />
+          </Field>
+          <Field label="Monthly pay (USD, optional)">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={monthlyPay}
+              onChange={(e) => setMonthlyPay(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border bg-transparent"
+              style={{ borderColor: 'rgba(127,127,127,0.3)' }}
+              placeholder="0.00 — can be set later"
+            />
+          </Field>
+          {!!create.error && (
+            <div className="text-xs" style={{ color: '#EF4444' }}>{getErrorMessage(create.error)}</div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm" style={{ border: '1px solid rgba(127,127,127,0.3)' }}>
+              Cancel
+            </button>
+            <button
+              onClick={() => create.mutate()}
+              disabled={!name || create.isPending}
+              className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
+              style={{ background: '#A855F7' }}
+            >
+              {create.isPending ? 'Creating…' : 'Create'}
             </button>
           </div>
         </div>

@@ -106,7 +106,11 @@ export class AuthService {
       username: user.username,
       email: user.email,
       phone: user.phone,
+      name: user.name,
+      dateOfBirth: user.dateOfBirth,
+      role: user.role,
       isMiniEmployee: user.isMiniEmployee,
+      isExternalEmployee: user.isExternalEmployee,
       createdAt: user.createdAt,
       activeEmployment: employment
         ? {

@@ -231,10 +231,24 @@ export const externalContactsApi = {
   delete: (id: string) => api.delete(`/external-contacts/${id}`),
   recordProductOut: (id: string, body: { productName: string; quantity: number; unitPrice: string; notes?: string }) =>
     api.post(`/external-contacts/${id}/product-out`, body).then((r) => r.data),
+  recordProductOutBatch: (
+    id: string,
+    body: {
+      items: Array<{ productName: string; quantity: number; unitPrice: string; discountReason?: string }>;
+      notes?: string;
+    },
+  ) => api.post(`/external-contacts/${id}/product-out-batch`, body).then((r) => r.data),
   recordPaymentIn: (id: string, body: { amount: string; notes?: string }) =>
     api.post(`/external-contacts/${id}/payment-in`, body).then((r) => r.data),
   recordProductIn: (id: string, body: { productName: string; quantity: number; unitCost: string; sellingPrice: string; category?: string; notes?: string }) =>
     api.post(`/external-contacts/${id}/product-in`, body).then((r) => r.data),
+  recordProductInBatch: (
+    id: string,
+    body: {
+      items: Array<{ productName: string; quantity: number; unitCost: string; sellingPrice: string; category?: string }>;
+      notes?: string;
+    },
+  ) => api.post(`/external-contacts/${id}/product-in-batch`, body).then((r) => r.data),
   recordPaymentOut: (id: string, body: { amount: string; notes?: string }) =>
     api.post(`/external-contacts/${id}/payment-out`, body).then((r) => r.data),
   deleteTransaction: (contactId: string, txId: string) =>
@@ -366,7 +380,11 @@ export interface EmploymentParty {
   username: string;
   email?: string | null;
   phone?: string | null;
+  name?: string | null;
+  dateOfBirth?: string | null;
+  role?: string | null;
   isMiniEmployee?: boolean;
+  isExternalEmployee?: boolean;
 }
 
 export interface Employment {
@@ -455,6 +473,22 @@ export const employmentsApi = {
     api.patch(`/employments/${id}/salary`, { monthlyPay }).then((r) => r.data),
   setPayrollActive: (id: string, active: boolean): Promise<Employment> =>
     api.patch(`/employments/${id}/payroll-active`, { active }).then((r) => r.data),
+  createExternalEmployee: (body: {
+    name: string;
+    dateOfBirth?: string;
+    role?: string;
+    monthlyPay?: number;
+  }): Promise<{
+    employment: Employment;
+    employee: { id: string; username: string; name: string };
+  }> => api.post('/employments/external-employee', body).then((r) => r.data),
+  removeExternalEmployee: (id: string): Promise<Employment> =>
+    api.delete(`/employments/${id}/external`).then((r) => r.data),
+  updateEmployeeProfile: (
+    id: string,
+    body: { name?: string; dateOfBirth?: string; role?: string },
+  ): Promise<EmploymentParty> =>
+    api.patch(`/employments/${id}/profile`, body).then((r) => r.data),
 };
 
 // ─── Salary Payments ──────────────────────────────────────────────────────────

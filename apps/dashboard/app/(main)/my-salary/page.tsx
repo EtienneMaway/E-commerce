@@ -32,10 +32,48 @@ function formatPeriodMonth(period: string): string {
   );
 }
 
+function currentPeriodMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function SummaryCard({
+  label,
+  value,
+  accent,
+  hint,
+}: {
+  label: string;
+  value: string;
+  accent?: string;
+  hint?: string;
+}) {
+  return (
+    <div className="p-3 rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+      <div className="text-xs opacity-60 mb-1">{label}</div>
+      <div className="text-lg font-semibold" style={{ color: accent }}>
+        {value}
+      </div>
+      {hint && (
+        <div className="text-[10px] mt-0.5 opacity-70">{hint}</div>
+      )}
+    </div>
+  );
+}
+
 export default function MySalaryPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
+  const [period, setPeriod] = useState<string>(currentPeriodMonth());
+  const employmentId = user?.activeEmployment?.id;
+
+  const { data: summary } = useQuery({
+    queryKey: QK.salarySummary(employmentId ?? '', period),
+    queryFn: () => salaryPaymentsApi.summary(employmentId!, period),
+    enabled: !!employmentId,
+    staleTime: 15_000,
+  });
 
   const { data: pending, isLoading: loadingPending } = useQuery({
     queryKey: QK.salaryPaymentsPending,
@@ -89,6 +127,61 @@ export default function MySalaryPage() {
         <p className="text-sm opacity-70 mt-1">
           Employer: <strong>@{user.activeEmployment.employer.username}</strong>
         </p>
+      </div>
+
+      {/* Current-month summary */}
+      <div
+        className="p-5 rounded-xl border mb-5"
+        style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}
+      >
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <div>
+            <h2 className="font-semibold">{formatPeriodMonth(period)}</h2>
+            <p className="text-xs opacity-60 mt-0.5">
+              {summary?.monthlyPay
+                ? `Monthly target set by your employer`
+                : `Your employer hasn't set a monthly pay target yet.`}
+            </p>
+          </div>
+          <input
+            type="month"
+            value={period}
+            onChange={(e) => setPeriod(e.target.value || currentPeriodMonth())}
+            className="px-3 py-1.5 rounded-md border bg-transparent text-sm"
+            style={{ borderColor: 'rgba(127,127,127,0.3)', colorScheme: 'dark' }}
+          />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <SummaryCard
+            label="Monthly pay"
+            value={summary?.monthlyPay ? formatCurrency(summary.monthlyPay) : '—'}
+          />
+          <SummaryCard
+            label="Collected so far"
+            value={formatCurrency(summary?.paidConfirmed ?? '0')}
+            accent="#10B981"
+          />
+          <SummaryCard
+            label="Pending"
+            value={formatCurrency(summary?.pendingConfirmation ?? '0')}
+            accent={summary && parseFloat(summary.pendingConfirmation) > 0 ? '#F59E0B' : undefined}
+            hint={
+              summary && parseFloat(summary.pendingConfirmation) > 0
+                ? 'Confirm below to add to Collected'
+                : undefined
+            }
+          />
+          <SummaryCard
+            label="Remaining"
+            value={summary?.balanceRemaining ? formatCurrency(summary.balanceRemaining) : '—'}
+            accent="#818CF8"
+            hint={
+              summary?.balanceRemaining && parseFloat(summary.balanceRemaining) === 0
+                ? 'Fully paid for this month'
+                : undefined
+            }
+          />
+        </div>
       </div>
 
       <div className="flex gap-1 mb-4 border-b" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>

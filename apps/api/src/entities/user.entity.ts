@@ -33,9 +33,25 @@ export class User {
   @Column({ name: 'password_hash' })
   passwordHash: string;
 
+  @ApiPropertyOptional({ example: 'Alice K.', description: 'Display name. Nullable for legacy rows; required when creating new employee profiles.' })
+  @Column({ type: 'varchar', nullable: true })
+  name: string | null;
+
+  @ApiPropertyOptional({ example: '1995-08-12', description: 'Date of birth (YYYY-MM-DD). Mainly used for external employees.' })
+  @Column({ name: 'date_of_birth', type: 'date', nullable: true })
+  dateOfBirth: string | null;
+
+  @ApiPropertyOptional({ example: 'Sales associate', description: 'Job role / title for display only. Used mainly for external employees.' })
+  @Column({ type: 'varchar', nullable: true })
+  role: string | null;
+
   @ApiProperty({ example: false, description: 'Mini employee — mobile-only, no dashboard login' })
   @Column({ name: 'is_mini_employee', type: 'boolean', default: false })
   isMiniEmployee: boolean;
+
+  @ApiProperty({ example: false, description: 'External employee — does not log in; payroll-only record managed by the employer.' })
+  @Column({ name: 'is_external_employee', type: 'boolean', default: false })
+  isExternalEmployee: boolean;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
