@@ -8,6 +8,7 @@ import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { useT } from '../../../lib/i18n';
 
 export default function PricingPage() {
   const qc = useQueryClient();
@@ -128,6 +129,7 @@ function PricingRow({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(row.unitPrice);
   const confirm = useConfirm();
+  const t = useT();
 
   const update = useMutation({
     mutationFn: () => pricingApi.update(row.id, draft),
@@ -190,9 +192,9 @@ function PricingRow({
             <button
               onClick={async () => {
                 const ok = await confirm({
-                  title: `Delete standard price?`,
-                  description: `The standard unit price for "${row.productName}" will be removed.`,
-                  confirmLabel: 'Delete',
+                  title: t.confirm.deleteStandardPriceTitle,
+                  description: t.confirm.deleteStandardPriceDesc(row.productName),
+                  confirmLabel: t.confirm.delete,
                   variant: 'danger',
                 });
                 if (ok) del.mutate();

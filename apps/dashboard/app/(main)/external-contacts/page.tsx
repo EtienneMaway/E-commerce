@@ -65,15 +65,15 @@ export default function ExternalContactsPage() {
   });
 
   const roleLabel: Record<Role, string> = {
-    DEBTOR: t.nav.debtors,
-    SUPPLIER: t.nav.suppliers,
-    BOTH: 'Both',
+    DEBTOR: t.externalContacts.roleDebtor,
+    SUPPLIER: t.externalContacts.roleSupplier,
+    BOTH: t.externalContacts.roleBoth,
   };
 
   const filterTabs: { key: RoleFilter; label: string }[] = [
-    { key: 'ALL', label: 'All' },
-    { key: 'DEBTOR', label: t.nav.debtors },
-    { key: 'SUPPLIER', label: t.nav.suppliers },
+    { key: 'ALL', label: t.externalContacts.filterAll },
+    { key: 'DEBTOR', label: t.externalContacts.roleDebtor },
+    { key: 'SUPPLIER', label: t.externalContacts.roleSupplier },
   ];
 
   return (
@@ -85,7 +85,7 @@ export default function ExternalContactsPage() {
             {t.nav.externalContacts}
           </h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-            People you trade with who are not on the app
+            {t.externalContacts.sub}
           </p>
         </div>
         <button
@@ -93,7 +93,7 @@ export default function ExternalContactsPage() {
           className="px-4 py-2 rounded-lg text-sm font-medium text-white"
           style={{ background: 'var(--primary)' }}
         >
-          + Add Contact
+          {t.externalContacts.addContact}
         </button>
       </div>
 
@@ -116,23 +116,23 @@ export default function ExternalContactsPage() {
 
       {/* Table */}
       {isLoading ? (
-        <div className="text-center py-16" style={{ color: 'var(--muted-foreground)' }}>Loading...</div>
+        <div className="text-center py-16" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.loading}</div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-4xl mb-3">👤</div>
-          <p className="font-semibold" style={{ color: 'var(--foreground)' }}>No external contacts yet</p>
-          <p className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>Add people you trade with who are not on the app.</p>
+          <p className="font-semibold" style={{ color: 'var(--foreground)' }}>{t.externalContacts.emptyTitle}</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.emptyDesc}</p>
         </div>
       ) : (
         <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>
-                <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--muted-foreground)' }}>Name</th>
-                <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--muted-foreground)' }}>Phone</th>
-                <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--muted-foreground)' }}>Role</th>
-                <th className="text-right px-4 py-3 font-medium" style={{ color: 'var(--muted-foreground)' }}>Owes You</th>
-                <th className="text-right px-4 py-3 font-medium" style={{ color: 'var(--muted-foreground)' }}>You Owe</th>
+                <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.colName}</th>
+                <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.colPhone}</th>
+                <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.colRole}</th>
+                <th className="text-right px-4 py-3 font-medium" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.colOwesYou}</th>
+                <th className="text-right px-4 py-3 font-medium" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.colYouOwe}</th>
               </tr>
             </thead>
             <tbody>
@@ -173,41 +173,41 @@ export default function ExternalContactsPage() {
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}>
           <div className="rounded-2xl p-6 w-full max-w-md" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--foreground)' }}>New External Contact</h2>
+            <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--foreground)' }}>{t.externalContacts.newContactTitle}</h2>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>Name *</label>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.fieldNameRequired}</label>
                 <input
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Jean Dupont"
+                  placeholder={t.externalContacts.placeholderName}
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
                   style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>Phone (optional)</label>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.fieldPhoneOptional}</label>
                 <input
                   value={form.phone}
                   onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                  placeholder="+243812345678"
+                  placeholder={t.externalContacts.placeholderPhone}
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
                   style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>Notes (optional)</label>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.fieldNotesOptional}</label>
                 <textarea
                   value={form.notes}
                   onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                  placeholder="Market vendor, pays on Fridays"
+                  placeholder={t.externalContacts.placeholderNotes}
                   rows={2}
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none resize-none"
                   style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>Role</label>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.fieldRole}</label>
                 <div className="flex gap-2">
                   {(['DEBTOR', 'SUPPLIER', 'BOTH'] as Role[]).map((r) => (
                     <button
@@ -232,7 +232,7 @@ export default function ExternalContactsPage() {
                 className="flex-1 py-2 rounded-lg text-sm font-medium border"
                 style={{ color: 'var(--muted-foreground)', borderColor: 'var(--border)' }}
               >
-                Cancel
+                {t.externalContacts.cancel}
               </button>
               <button
                 onClick={() => createMutation.mutate()}
@@ -240,7 +240,7 @@ export default function ExternalContactsPage() {
                 className="flex-1 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
                 style={{ background: 'var(--primary)' }}
               >
-                {createMutation.isPending ? 'Creating...' : 'Create'}
+                {createMutation.isPending ? t.externalContacts.creating : t.externalContacts.create}
               </button>
             </div>
           </div>

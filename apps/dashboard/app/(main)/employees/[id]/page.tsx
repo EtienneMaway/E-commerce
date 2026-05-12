@@ -15,14 +15,9 @@ import {
 import { QK } from '../../../../lib/query-keys';
 import { useOwnerOnlyPage } from '../../../../hooks/use-owner-only';
 import { useConfirm } from '../../../../components/ui/ConfirmDialog';
+import { useT, type Translations } from '../../../../lib/i18n';
+import { useLocaleStore } from '../../../../store/locale.store';
 import { formatCurrency, formatDate, getErrorMessage } from '../../../../lib/utils';
-
-const STATUS_LABELS: Record<SalaryPaymentStatus, string> = {
-  PENDING_CONFIRMATION: 'Awaiting confirmation',
-  CONFIRMED: 'Confirmed',
-  REJECTED: 'Rejected',
-  CANCELLED: 'Cancelled',
-};
 
 const STATUS_COLORS: Record<SalaryPaymentStatus, { bg: string; fg: string }> = {
   PENDING_CONFIRMATION: { bg: 'rgba(245,158,11,0.15)', fg: '#F59E0B' },
@@ -31,16 +26,29 @@ const STATUS_COLORS: Record<SalaryPaymentStatus, { bg: string; fg: string }> = {
   CANCELLED: { bg: 'rgba(107,114,128,0.15)', fg: '#9CA3AF' },
 };
 
+function statusLabel(t: Translations, s: SalaryPaymentStatus): string {
+  switch (s) {
+    case 'PENDING_CONFIRMATION': return t.employees.awaitingConfirmation;
+    case 'CONFIRMED': return t.employees.confirmed;
+    case 'REJECTED': return t.employees.rejected;
+    case 'CANCELLED': return t.employees.cancelled;
+  }
+}
+
 function currentPeriodMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function formatPeriodMonth(period: string): string {
-  const [y, m] = period.split('-').map(Number);
-  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
-    new Date(y, m - 1, 1),
-  );
+function useFormatPeriodMonth(): (period: string) => string {
+  const locale = useLocaleStore((s) => s.locale);
+  return (period: string) => {
+    const [y, m] = period.split('-').map(Number);
+    return new Intl.DateTimeFormat(locale === 'fr' ? 'fr-FR' : 'en-US', {
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date(y, m - 1, 1));
+  };
 }
 
 export default function EmployeePayrollPage() {
@@ -48,6 +56,8 @@ export default function EmployeePayrollPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const isOwner = useOwnerOnlyPage();
+  const t = useT();
+  const formatPeriodMonth = useFormatPeriodMonth();
   const employmentId = params?.id ?? '';
 
   const [period, setPeriod] = useState<string>(currentPeriodMonth());
@@ -86,13 +96,13 @@ export default function EmployeePayrollPage() {
   if (!isOwner) return null;
 
   if (loadingEmp) {
-    return <div className="p-8 text-sm opacity-60">Loading…</div>;
+    return <div className="p-8 text-sm opacity-60">{t.employees.loading}</div>;
   }
   if (!employment) {
     return (
       <div className="p-8">
-        <p className="text-sm opacity-70">Employment not found.</p>
-        <Link href="/employees" className="text-sm" style={{ color: '#818CF8' }}>← Back to employees</Link>
+        <p className="text-sm opacity-70">{t.employees.notFound}</p>
+        <Link href="/employees" className="text-sm" style={{ color: '#818CF8' }}>{t.employees.backToEmployees}</Link>
       </div>
     );
   }
@@ -101,7 +111,7 @@ export default function EmployeePayrollPage() {
   const isClosed =
     employment.status === 'TERMINATED' || employment.status === 'REJECTED';
   const isExternal = !!employee?.isExternalEmployee;
-  const displayName = employee?.name?.trim() || employee?.username || 'Employee';
+  const displayName = employee?.name?.trim() || employee?.username || t.employees.title.slice(0, -1);
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -111,7 +121,7 @@ export default function EmployeePayrollPage() {
           className="text-sm opacity-70 hover:opacity-100"
           style={{ color: '#818CF8' }}
         >
-          ← Back to employees
+          {t.employees.backToEmployees}
         </button>
       </div>
 
@@ -120,13 +130,19 @@ export default function EmployeePayrollPage() {
           <h1 className="text-2xl font-bold">{displayName}</h1>
           <p className="text-sm opacity-70 mt-1">
             {isExternal ? (
-              <span className="font-medium" style={{ color: '#C084FC' }}>External employee</span>
+              <span className="font-medium" style={{ color: '#C084FC' }}>{t.employees.externalEmployeeLabel}</span>
             ) : (
-              <>{employment.tier === 'FULL' ? 'Full employee' : 'Mini employee (sales-only)'}</>
+              <>{employment.tier === 'FULL' ? t.employees.tierFULL : t.employees.miniDescription}</>
             )}
             {' · '}
-            <span className="capitalize">{employment.status.replace('_', ' ').toLowerCase()}</span>
-            {employment.acceptedAt && ` · since ${formatDate(employment.acceptedAt)}`}
+            <span>
+              {employment.status === 'PENDING' && t.employees.statusPENDING}
+              {employment.status === 'ACTIVE' && t.employees.statusACTIVE}
+              {employment.status === 'REJECTED' && t.employees.statusREJECTED}
+              {employment.status === 'TERMINATION_REQUESTED' && t.employees.statusTERMINATION_REQUESTED}
+              {employment.status === 'TERMINATED' && t.employees.statusTERMINATED}
+            </span>
+            {employment.acceptedAt && ` · ${t.employees.since} ${formatDate(employment.acceptedAt)}`}
           </p>
         </div>
         {!isClosed && (
@@ -158,10 +174,8 @@ export default function EmployeePayrollPage() {
       <div className="mt-6 p-5 rounded-xl border" style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}>
         <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
           <div>
-            <h2 className="font-semibold">Payroll · {formatPeriodMonth(period)}</h2>
-            <p className="text-xs opacity-60 mt-1">
-              You decide manually when to start a new month — change the period above to view past or future months.
-            </p>
+            <h2 className="font-semibold">{t.employees.payrollSection} · {formatPeriodMonth(period)}</h2>
+            <p className="text-xs opacity-60 mt-1">{t.employees.payrollHint}</p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -177,17 +191,17 @@ export default function EmployeePayrollPage() {
               className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
               style={{ background: '#6366F1' }}
             >
-              + Record payment
+              {t.employees.recordPayment}
             </button>
           </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <SummaryCard label="Monthly target" value={summary?.monthlyPay ? formatCurrency(summary.monthlyPay) : '—'} />
-          <SummaryCard label="Paid (confirmed)" value={formatCurrency(summary?.paidConfirmed ?? '0')} accent="#10B981" />
-          <SummaryCard label="Pending confirmation" value={formatCurrency(summary?.pendingConfirmation ?? '0')} accent="#F59E0B" />
+          <SummaryCard label={t.employees.monthlyTarget} value={summary?.monthlyPay ? formatCurrency(summary.monthlyPay) : '—'} />
+          <SummaryCard label={t.employees.paidConfirmed} value={formatCurrency(summary?.paidConfirmed ?? '0')} accent="#10B981" />
+          <SummaryCard label={t.employees.pendingConfirmation} value={formatCurrency(summary?.pendingConfirmation ?? '0')} accent="#F59E0B" />
           <SummaryCard
-            label="Balance remaining"
+            label={t.employees.balanceRemaining}
             value={summary?.balanceRemaining ? formatCurrency(summary.balanceRemaining) : '—'}
             accent="#818CF8"
           />
@@ -196,22 +210,24 @@ export default function EmployeePayrollPage() {
 
       <div className="mt-6">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Payment history</h2>
+          <h2 className="font-semibold">{t.employees.paymentHistory}</h2>
           <div className="flex gap-1 text-xs">
             <FilterPill active={periodFilter === 'current'} onClick={() => setPeriodFilter('current')}>
               {formatPeriodMonth(period)}
             </FilterPill>
             <FilterPill active={periodFilter === 'all'} onClick={() => setPeriodFilter('all')}>
-              All time
+              {t.employees.allTime}
             </FilterPill>
           </div>
         </div>
 
         {loadingPayments ? (
-          <div className="text-sm opacity-60 p-6 text-center">Loading…</div>
+          <div className="text-sm opacity-60 p-6 text-center">{t.employees.loading}</div>
         ) : !payments?.length ? (
           <div className="text-sm opacity-60 p-6 text-center rounded-xl border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
-            No salary payments {periodFilter === 'current' ? `for ${formatPeriodMonth(period)}` : 'yet'}.
+            {periodFilter === 'current'
+              ? t.employees.noPaymentsForPeriod(formatPeriodMonth(period))
+              : t.employees.noPaymentsYet}
           </div>
         ) : (
           <div className="space-y-2">
@@ -247,6 +263,7 @@ function ProfilePanel({
   disabled: boolean;
   onChange: () => void;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
 
   if (!employee) return null;
@@ -257,38 +274,36 @@ function ProfilePanel({
       style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}
     >
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold">Profile</h2>
+        <h2 className="font-semibold">{t.employees.profile}</h2>
         {!disabled && (
           <button
             onClick={() => setEditing(true)}
             className="px-2.5 py-1 rounded-md text-xs"
             style={{ border: '1px solid rgba(127,127,127,0.3)' }}
           >
-            Edit
+            {t.employees.edit}
           </button>
         )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-        <ProfileField label="Name" value={employee.name || '—'} />
+        <ProfileField label={t.employees.fieldName} value={employee.name || '—'} />
         <ProfileField
-          label="System username"
+          label={t.employees.fieldSystemUsername}
           value={`@${employee.username}`}
-          hint="Cannot be changed"
+          hint={t.employees.cannotBeChanged}
         />
+        <ProfileField label={t.employees.fieldRole} value={employee.role || '—'} />
         {isExternal && (
-          <>
-            <ProfileField
-              label="Date of birth"
-              value={employee.dateOfBirth ? formatDate(employee.dateOfBirth) : '—'}
-            />
-            <ProfileField label="Role" value={employee.role || '—'} />
-          </>
+          <ProfileField
+            label={t.employees.fieldDateOfBirth}
+            value={employee.dateOfBirth ? formatDate(employee.dateOfBirth) : '—'}
+          />
         )}
         {!isExternal && (
           <>
-            {employee.email && <ProfileField label="Email" value={employee.email} />}
-            {employee.phone && <ProfileField label="Phone" value={employee.phone} />}
+            {employee.email && <ProfileField label={t.employees.fieldEmail} value={employee.email} />}
+            {employee.phone && <ProfileField label={t.employees.fieldPhone} value={employee.phone} />}
           </>
         )}
       </div>
@@ -297,7 +312,7 @@ function ProfilePanel({
         <EditProfileModal
           employmentId={employmentId}
           employee={employee}
-          showExternalFields={isExternal}
+          showDobField={isExternal}
           onClose={() => setEditing(false)}
           onSuccess={() => {
             onChange();
@@ -324,26 +339,29 @@ function ProfileField({ label, value, hint }: { label: string; value: string; hi
 function EditProfileModal({
   employmentId,
   employee,
-  showExternalFields,
+  showDobField,
   onClose,
   onSuccess,
 }: {
   employmentId: string;
   employee: EmploymentParty;
-  showExternalFields: boolean;
+  showDobField: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(employee.name ?? '');
   const [dateOfBirth, setDateOfBirth] = useState(employee.dateOfBirth ?? '');
   const [role, setRole] = useState(employee.role ?? '');
 
   const m = useMutation({
     mutationFn: () => {
-      const body: { name?: string; dateOfBirth?: string; role?: string } = { name };
-      if (showExternalFields) {
+      const body: { name?: string; dateOfBirth?: string; role?: string } = {
+        name,
+        role: role || '',
+      };
+      if (showDobField) {
         body.dateOfBirth = dateOfBirth || '';
-        body.role = role || '';
       }
       return employmentsApi.updateEmployeeProfile(employmentId, body);
     },
@@ -360,7 +378,7 @@ function EditProfileModal({
         style={{ background: 'var(--card)', borderColor: 'rgba(127,127,127,0.2)' }}
       >
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Edit profile</h2>
+          <h2 className="font-semibold">{t.employees.editProfileTitle}</h2>
           <button onClick={onClose} className="text-xl leading-none opacity-60 hover:opacity-100">
             ×
           </button>
@@ -368,7 +386,7 @@ function EditProfileModal({
 
         <div className="space-y-3">
           <label className="block">
-            <span className="block text-xs font-medium mb-1 opacity-80">Full name</span>
+            <span className="block text-xs font-medium mb-1 opacity-80">{t.employees.fieldFullName}</span>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -377,32 +395,30 @@ function EditProfileModal({
               autoFocus
             />
           </label>
-          {showExternalFields && (
-            <>
-              <label className="block">
-                <span className="block text-xs font-medium mb-1 opacity-80">Date of birth</span>
-                <input
-                  type="date"
-                  value={dateOfBirth}
-                  onChange={(e) => setDateOfBirth(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border bg-transparent"
-                  style={{ borderColor: 'rgba(127,127,127,0.3)', colorScheme: 'dark' }}
-                />
-              </label>
-              <label className="block">
-                <span className="block text-xs font-medium mb-1 opacity-80">Role</span>
-                <input
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border bg-transparent"
-                  style={{ borderColor: 'rgba(127,127,127,0.3)' }}
-                  placeholder="e.g. Driver, Cleaner"
-                />
-              </label>
-            </>
+          {showDobField && (
+            <label className="block">
+              <span className="block text-xs font-medium mb-1 opacity-80">{t.employees.fieldDateOfBirth}</span>
+              <input
+                type="date"
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
+                className="w-full px-3 py-2 rounded-md border bg-transparent"
+                style={{ borderColor: 'rgba(127,127,127,0.3)', colorScheme: 'dark' }}
+              />
+            </label>
           )}
+          <label className="block">
+            <span className="block text-xs font-medium mb-1 opacity-80">{t.employees.fieldRole}</span>
+            <input
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border bg-transparent"
+              style={{ borderColor: 'rgba(127,127,127,0.3)' }}
+              placeholder={t.employees.rolePlaceholderShort}
+            />
+          </label>
           <div className="text-xs opacity-60">
-            System username <strong>@{employee.username}</strong> can't be changed.
+            {t.employees.usernameCantChange(employee.username)}
           </div>
           {!!m.error && (
             <div className="text-xs" style={{ color: '#EF4444' }}>{getErrorMessage(m.error)}</div>
@@ -413,7 +429,7 @@ function EditProfileModal({
               className="px-3 py-1.5 rounded-md text-sm"
               style={{ border: '1px solid rgba(127,127,127,0.3)' }}
             >
-              Cancel
+              {t.employees.cancel}
             </button>
             <button
               onClick={() => m.mutate()}
@@ -421,7 +437,7 @@ function EditProfileModal({
               className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
               style={{ background: '#6366F1' }}
             >
-              {m.isPending ? 'Saving…' : 'Save'}
+              {m.isPending ? t.employees.saving : t.employees.save}
             </button>
           </div>
         </div>
@@ -475,6 +491,7 @@ function SalaryPanel({
   onChange: () => void;
   disabled: boolean;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState<string>(employment.monthlyPay ?? '');
   const m = useMutation({
@@ -489,7 +506,7 @@ function SalaryPanel({
   return (
     <div className="p-5 rounded-xl border flex items-center justify-between gap-4 flex-wrap" style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}>
       <div>
-        <div className="text-xs opacity-70 mb-1">Monthly pay target</div>
+        <div className="text-xs opacity-70 mb-1">{t.employees.monthlyPayTarget}</div>
         {editing ? (
           <div className="flex items-center gap-2">
             <span className="text-sm opacity-70">USD</span>
@@ -510,20 +527,20 @@ function SalaryPanel({
               className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
               style={{ background: '#6366F1' }}
             >
-              Save
+              {t.employees.save}
             </button>
             <button
               onClick={() => { setEditing(false); setValue(employment.monthlyPay ?? ''); }}
               className="px-3 py-1.5 rounded-md text-sm"
               style={{ border: '1px solid rgba(127,127,127,0.3)' }}
             >
-              Cancel
+              {t.employees.cancel}
             </button>
           </div>
         ) : (
           <div className="flex items-center gap-3">
             <span className="text-2xl font-bold">
-              {employment.monthlyPay ? formatCurrency(employment.monthlyPay) : 'Not set'}
+              {employment.monthlyPay ? formatCurrency(employment.monthlyPay) : t.employees.notSet}
             </span>
             {!disabled && (
               <button
@@ -531,7 +548,7 @@ function SalaryPanel({
                 className="px-2.5 py-1 rounded-md text-xs"
                 style={{ border: '1px solid rgba(127,127,127,0.3)' }}
               >
-                {employment.monthlyPay ? 'Edit' : 'Set'}
+                {employment.monthlyPay ? t.employees.editBtn : t.employees.setBtn}
               </button>
             )}
           </div>
@@ -554,15 +571,16 @@ function RemoveExternalButton({
   onRemoved: () => void;
 }) {
   const confirm = useConfirm();
+  const t = useT();
   const m = useMutation({
     mutationFn: () => employmentsApi.removeExternalEmployee(employmentId),
     onSuccess: onRemoved,
   });
   const handleClick = async () => {
     const ok = await confirm({
-      title: `Remove ${displayName}?`,
-      description: 'Salary history is preserved — the row moves to your Archive tab.',
-      confirmLabel: 'Remove',
+      title: t.employees.removeConfirmTitle(displayName),
+      description: t.employees.removeConfirmDescription,
+      confirmLabel: t.employees.remove,
       variant: 'danger',
     });
     if (ok) m.mutate();
@@ -574,7 +592,7 @@ function RemoveExternalButton({
       className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50"
       style={{ border: '1px solid rgba(239,68,68,0.4)', color: '#F87171' }}
     >
-      {m.isPending ? 'Removing…' : 'Remove employee'}
+      {m.isPending ? t.employees.removing : t.employees.removeEmployee}
     </button>
   );
 }
@@ -586,6 +604,7 @@ function PayrollActiveToggle({
   employment: Employment;
   onChange: () => void;
 }) {
+  const t = useT();
   const m = useMutation({
     mutationFn: (next: boolean) => employmentsApi.setPayrollActive(employment.id, next),
     onSuccess: onChange,
@@ -602,14 +621,16 @@ function PayrollActiveToggle({
         border: '1px solid',
         borderColor: employment.payrollActive ? 'rgba(16,185,129,0.3)' : 'rgba(127,127,127,0.3)',
       }}
-      title={employment.payrollActive ? 'Click to pause payroll' : 'Click to resume payroll'}
+      title={employment.payrollActive ? t.employees.pauseTooltip : t.employees.resumeTooltip}
     >
-      {employment.payrollActive ? '● Payroll active' : '⏸ Payroll paused'}
+      {employment.payrollActive ? `● ${t.employees.payrollActive}` : `⏸ ${t.employees.payrollPaused}`}
     </button>
   );
 }
 
 function PaymentRow({ payment, onChange }: { payment: SalaryPayment; onChange: () => void }) {
+  const t = useT();
+  const formatPeriodMonth = useFormatPeriodMonth();
   const cancelM = useMutation({
     mutationFn: () => salaryPaymentsApi.cancel(payment.id),
     onSuccess: onChange,
@@ -625,19 +646,19 @@ function PaymentRow({ payment, onChange }: { payment: SalaryPayment; onChange: (
             className="px-2 py-0.5 text-xs rounded-md font-medium"
             style={{ background: color.bg, color: color.fg }}
           >
-            {STATUS_LABELS[payment.status]}
+            {statusLabel(t, payment.status)}
           </span>
         </div>
         <div className="text-xs opacity-60 mt-1">
-          Recorded {formatDate(payment.paidAt)}
-          {payment.confirmedAt && ` · Confirmed ${formatDate(payment.confirmedAt)}`}
-          {payment.rejectedAt && ` · Rejected ${formatDate(payment.rejectedAt)}`}
-          {payment.cancelledAt && ` · Cancelled ${formatDate(payment.cancelledAt)}`}
+          {t.employees.recordedLabel} {formatDate(payment.paidAt)}
+          {payment.confirmedAt && ` · ${t.employees.confirmed} ${formatDate(payment.confirmedAt)}`}
+          {payment.rejectedAt && ` · ${t.employees.rejected} ${formatDate(payment.rejectedAt)}`}
+          {payment.cancelledAt && ` · ${t.employees.cancelled} ${formatDate(payment.cancelledAt)}`}
         </div>
         {payment.note && <div className="text-xs opacity-80 mt-1 italic">{payment.note}</div>}
         {payment.rejectionReason && (
           <div className="text-xs mt-1" style={{ color: '#EF4444' }}>
-            Reason: {payment.rejectionReason}
+            {payment.rejectionReason}
           </div>
         )}
       </div>
@@ -648,7 +669,7 @@ function PaymentRow({ payment, onChange }: { payment: SalaryPayment; onChange: (
           className="px-2.5 py-1 rounded-md text-xs disabled:opacity-50"
           style={{ border: '1px solid rgba(239,68,68,0.4)', color: '#F87171' }}
         >
-          Cancel
+          {t.employees.cancelBtn}
         </button>
       )}
     </div>
@@ -686,6 +707,8 @@ function RecordPaymentModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const t = useT();
+  const formatPeriodMonth = useFormatPeriodMonth();
   const [amount, setAmount] = useState<string>('');
   const [note, setNote] = useState<string>('');
   const [overflow, setOverflow] = useState<SalaryOverflowError | null>(null);
@@ -710,7 +733,7 @@ function RecordPaymentModal({
     },
   });
 
-  const monthlyPay = employment.monthlyPay ? formatCurrency(employment.monthlyPay) : 'not set';
+  const monthlyPay = employment.monthlyPay ? formatCurrency(employment.monthlyPay) : t.employees.notSet;
   const validAmount = !!amount && Number(amount) > 0;
   const isExternal = !!employment.employee?.isExternalEmployee;
 
@@ -736,22 +759,22 @@ function RecordPaymentModal({
         style={{ background: 'var(--card)', borderColor: 'rgba(127,127,127,0.2)' }}
       >
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Record salary payment</h2>
+          <h2 className="font-semibold">{t.employees.recordSalaryPaymentTitle}</h2>
           <button onClick={onClose} className="text-xl leading-none opacity-60 hover:opacity-100">
             ×
           </button>
         </div>
         <p className="text-xs opacity-70 mb-4">
-          Period: <strong>{formatPeriodMonth(period)}</strong> · Monthly target: <strong>{monthlyPay}</strong>
+          {t.employees.periodLabel}: <strong>{formatPeriodMonth(period)}</strong> · {t.employees.monthlyTargetLabel}: <strong>{monthlyPay}</strong>
           <br />
           {isExternal
-            ? 'External employees do not confirm — the payment is recorded as paid immediately.'
-            : 'The employee must confirm receipt before this counts as paid.'}
+            ? t.employees.recordPaymentDescExternal
+            : t.employees.recordPaymentDescConfirm}
         </p>
 
         <div className="space-y-3">
           <label className="block">
-            <span className="block text-xs font-medium mb-1 opacity-80">Amount (USD)</span>
+            <span className="block text-xs font-medium mb-1 opacity-80">{t.employees.fieldAmount}</span>
             <input
               type="number"
               step="0.01"
@@ -765,14 +788,14 @@ function RecordPaymentModal({
             />
           </label>
           <label className="block">
-            <span className="block text-xs font-medium mb-1 opacity-80">Note (optional)</span>
+            <span className="block text-xs font-medium mb-1 opacity-80">{t.employees.fieldNoteOptional}</span>
             <input
               type="text"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               className="w-full px-3 py-2 rounded-md border bg-transparent"
               style={{ borderColor: 'rgba(127,127,127,0.3)' }}
-              placeholder="e.g. installment #1"
+              placeholder={t.employees.notePlaceholder}
             />
           </label>
         </div>
@@ -783,7 +806,7 @@ function RecordPaymentModal({
             style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}
           >
             <div className="font-semibold mb-1" style={{ color: '#F59E0B' }}>
-              Exceeds monthly target
+              {t.employees.exceedsMonthlyTarget}
             </div>
             <div className="opacity-80">{overflow.message}</div>
             <div className="mt-2 flex gap-2">
@@ -793,14 +816,14 @@ function RecordPaymentModal({
                 className="px-3 py-1.5 rounded-md text-xs font-medium text-white disabled:opacity-50"
                 style={{ background: '#F59E0B' }}
               >
-                Override and record
+                {t.employees.overrideAndRecord}
               </button>
               <button
                 onClick={() => setOverflow(null)}
                 className="px-3 py-1.5 rounded-md text-xs"
                 style={{ border: '1px solid rgba(127,127,127,0.3)' }}
               >
-                Adjust
+                {t.employees.adjust}
               </button>
             </div>
           </div>
@@ -814,7 +837,7 @@ function RecordPaymentModal({
 
         <div className="flex justify-end gap-2 pt-4">
           <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm" style={{ border: '1px solid rgba(127,127,127,0.3)' }}>
-            Cancel
+            {t.employees.cancel}
           </button>
           <button
             onClick={handleSubmit}
@@ -822,7 +845,7 @@ function RecordPaymentModal({
             className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
             style={{ background: '#6366F1' }}
           >
-            {m.isPending ? 'Recording…' : 'Record payment'}
+            {m.isPending ? t.employees.recording : t.employees.recordPayment.replace('+ ', '')}
           </button>
         </div>
       </div>

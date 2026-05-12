@@ -9,14 +9,18 @@ import {
 } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { useAuthStore } from '../../../store/auth.store';
+import { useLocaleStore } from '../../../store/locale.store';
+import { useT, type Translations } from '../../../lib/i18n';
 import { formatCurrency, formatDate, getErrorMessage } from '../../../lib/utils';
 
-const STATUS_LABELS: Record<SalaryPaymentStatus, string> = {
-  PENDING_CONFIRMATION: 'Awaiting your confirmation',
-  CONFIRMED: 'Confirmed',
-  REJECTED: 'Rejected',
-  CANCELLED: 'Cancelled by employer',
-};
+function statusLabel(t: Translations, s: SalaryPaymentStatus): string {
+  switch (s) {
+    case 'PENDING_CONFIRMATION': return t.salary.statusAwaiting;
+    case 'CONFIRMED': return t.salary.statusConfirmed;
+    case 'REJECTED': return t.salary.statusRejected;
+    case 'CANCELLED': return t.salary.statusCancelled;
+  }
+}
 
 const STATUS_COLORS: Record<SalaryPaymentStatus, { bg: string; fg: string }> = {
   PENDING_CONFIRMATION: { bg: 'rgba(245,158,11,0.15)', fg: '#F59E0B' },
@@ -25,11 +29,15 @@ const STATUS_COLORS: Record<SalaryPaymentStatus, { bg: string; fg: string }> = {
   CANCELLED: { bg: 'rgba(107,114,128,0.15)', fg: '#9CA3AF' },
 };
 
-function formatPeriodMonth(period: string): string {
-  const [y, m] = period.split('-').map(Number);
-  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
-    new Date(y, m - 1, 1),
-  );
+function useFormatPeriodMonth(): (period: string) => string {
+  const locale = useLocaleStore((s) => s.locale);
+  return (period: string) => {
+    const [y, m] = period.split('-').map(Number);
+    return new Intl.DateTimeFormat(locale === 'fr' ? 'fr-FR' : 'en-US', {
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date(y, m - 1, 1));
+  };
 }
 
 function currentPeriodMonth(): string {
@@ -64,6 +72,8 @@ function SummaryCard({
 export default function MySalaryPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
+  const t = useT();
+  const formatPeriodMonth = useFormatPeriodMonth();
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
   const [period, setPeriod] = useState<string>(currentPeriodMonth());
   const employmentId = user?.activeEmployment?.id;
@@ -112,10 +122,8 @@ export default function MySalaryPage() {
   if (!user.activeEmployment) {
     return (
       <div className="p-8 max-w-3xl mx-auto">
-        <h1 className="text-2xl font-bold mb-2">My salary</h1>
-        <p className="text-sm opacity-70">
-          You're not currently employed by anyone — this page shows pending salary payments and your payment history once you have an active employment.
-        </p>
+        <h1 className="text-2xl font-bold mb-2">{t.salary.title}</h1>
+        <p className="text-sm opacity-70">{t.salary.noEmployment}</p>
       </div>
     );
   }
@@ -123,9 +131,9 @@ export default function MySalaryPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">My salary</h1>
+        <h1 className="text-2xl font-bold">{t.salary.title}</h1>
         <p className="text-sm opacity-70 mt-1">
-          Employer: <strong>@{user.activeEmployment.employer.username}</strong>
+          {t.salary.employerLabel}: <strong>@{user.activeEmployment.employer.username}</strong>
         </p>
       </div>
 
@@ -138,9 +146,7 @@ export default function MySalaryPage() {
           <div>
             <h2 className="font-semibold">{formatPeriodMonth(period)}</h2>
             <p className="text-xs opacity-60 mt-0.5">
-              {summary?.monthlyPay
-                ? `Monthly target set by your employer`
-                : `Your employer hasn't set a monthly pay target yet.`}
+              {summary?.monthlyPay ? t.salary.monthlyTarget : t.salary.monthlyTargetNotSet}
             </p>
           </div>
           <input
@@ -153,31 +159,31 @@ export default function MySalaryPage() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <SummaryCard
-            label="Monthly pay"
+            label={t.salary.monthlyPay}
             value={summary?.monthlyPay ? formatCurrency(summary.monthlyPay) : '—'}
           />
           <SummaryCard
-            label="Collected so far"
+            label={t.salary.collectedSoFar}
             value={formatCurrency(summary?.paidConfirmed ?? '0')}
             accent="#10B981"
           />
           <SummaryCard
-            label="Pending"
+            label={t.salary.pending}
             value={formatCurrency(summary?.pendingConfirmation ?? '0')}
             accent={summary && parseFloat(summary.pendingConfirmation) > 0 ? '#F59E0B' : undefined}
             hint={
               summary && parseFloat(summary.pendingConfirmation) > 0
-                ? 'Confirm below to add to Collected'
+                ? t.salary.pendingHint
                 : undefined
             }
           />
           <SummaryCard
-            label="Remaining"
+            label={t.salary.remaining}
             value={summary?.balanceRemaining ? formatCurrency(summary.balanceRemaining) : '—'}
             accent="#818CF8"
             hint={
               summary?.balanceRemaining && parseFloat(summary.balanceRemaining) === 0
-                ? 'Fully paid for this month'
+                ? t.salary.fullyPaid
                 : undefined
             }
           />
@@ -195,9 +201,7 @@ export default function MySalaryPage() {
               borderBottom: tab === k ? '2px solid #818CF8' : '2px solid transparent',
             }}
           >
-            {k === 'pending'
-              ? `Pending${pending?.length ? ` (${pending.length})` : ''}`
-              : 'History'}
+            {k === 'pending' ? t.salary.tabPending(pending?.length ?? 0) : t.salary.tabHistory}
           </button>
         ))}
       </div>
@@ -216,7 +220,7 @@ export default function MySalaryPage() {
               </div>
               {totals.pending > 0 && (
                 <div className="text-[11px] mt-0.5" style={{ color: '#F59E0B' }}>
-                  + {formatCurrency(totals.pending.toFixed(2))} pending
+                  + {formatCurrency(totals.pending.toFixed(2))} {t.salary.pending.toLowerCase()}
                 </div>
               )}
             </div>
@@ -225,15 +229,13 @@ export default function MySalaryPage() {
       )}
 
       {loading ? (
-        <div className="text-sm opacity-60 p-8 text-center">Loading…</div>
+        <div className="text-sm opacity-60 p-8 text-center">{t.employees.loading}</div>
       ) : list.length === 0 ? (
         <div
           className="text-sm opacity-60 p-8 text-center rounded-xl border"
           style={{ borderColor: 'rgba(127,127,127,0.15)' }}
         >
-          {tab === 'pending'
-            ? "Nothing to confirm right now. When your employer records a salary payment, it'll appear here."
-            : 'No salary payments yet.'}
+          {tab === 'pending' ? t.salary.nothingToConfirm : t.salary.noPaymentsYet}
         </div>
       ) : (
         <div className="space-y-2">
@@ -253,6 +255,8 @@ function EmployeePaymentRow({
   payment: SalaryPayment;
   onChange: () => void;
 }) {
+  const t = useT();
+  const formatPeriodMonth = useFormatPeriodMonth();
   const [showReject, setShowReject] = useState(false);
   const color = STATUS_COLORS[payment.status];
   const isPending = payment.status === 'PENDING_CONFIRMATION';
@@ -276,22 +280,22 @@ function EmployeePaymentRow({
               className="px-2 py-0.5 text-xs rounded-md font-medium"
               style={{ background: color.bg, color: color.fg }}
             >
-              {STATUS_LABELS[payment.status]}
+              {statusLabel(t, payment.status)}
             </span>
           </div>
           <div className="text-xs opacity-60 mt-1">
-            From <strong>@{payment.employer?.username ?? '—'}</strong> · Recorded{' '}
+            {t.salary.from} <strong>@{payment.employer?.username ?? '—'}</strong> · {t.salary.recorded}{' '}
             {formatDate(payment.paidAt)}
-            {payment.confirmedAt && ` · Confirmed ${formatDate(payment.confirmedAt)}`}
-            {payment.rejectedAt && ` · Rejected ${formatDate(payment.rejectedAt)}`}
-            {payment.cancelledAt && ` · Cancelled ${formatDate(payment.cancelledAt)}`}
+            {payment.confirmedAt && ` · ${t.salary.confirmedOn} ${formatDate(payment.confirmedAt)}`}
+            {payment.rejectedAt && ` · ${t.salary.rejectedOn} ${formatDate(payment.rejectedAt)}`}
+            {payment.cancelledAt && ` · ${t.salary.cancelledOn} ${formatDate(payment.cancelledAt)}`}
           </div>
           {payment.note && (
             <div className="text-xs opacity-80 mt-1 italic">"{payment.note}"</div>
           )}
           {payment.rejectionReason && (
             <div className="text-xs mt-1" style={{ color: '#EF4444' }}>
-              Reason: {payment.rejectionReason}
+              {t.salary.reasonLabel} {payment.rejectionReason}
             </div>
           )}
         </div>
@@ -303,14 +307,14 @@ function EmployeePaymentRow({
               className="px-3 py-1.5 rounded-md text-sm font-medium text-white disabled:opacity-50"
               style={{ background: '#10B981' }}
             >
-              {confirmM.isPending ? 'Confirming…' : '✓ Confirm receipt'}
+              {confirmM.isPending ? t.salary.confirming : t.salary.confirmReceipt}
             </button>
             <button
               onClick={() => setShowReject(true)}
               className="px-3 py-1.5 rounded-md text-sm font-medium"
               style={{ border: '1px solid rgba(239,68,68,0.4)', color: '#F87171' }}
             >
-              Dispute
+              {t.salary.dispute}
             </button>
           </div>
         )}
@@ -345,6 +349,7 @@ function RejectModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const t = useT();
   const [reason, setReason] = useState('');
   const m = useMutation({
     mutationFn: () => salaryPaymentsApi.reject(paymentId, reason || undefined),
@@ -361,19 +366,17 @@ function RejectModal({
         style={{ background: 'var(--card)', borderColor: 'rgba(127,127,127,0.2)' }}
       >
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Dispute payment</h2>
+          <h2 className="font-semibold">{t.salary.disputePaymentTitle}</h2>
           <button onClick={onClose} className="text-xl leading-none opacity-60 hover:opacity-100">
             ×
           </button>
         </div>
-        <p className="text-xs opacity-70 mb-3">
-          Only use this if the cash was never received. Your employer will see the dispute.
-        </p>
+        <p className="text-xs opacity-70 mb-3">{t.salary.disputeDescription}</p>
         <textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           rows={3}
-          placeholder="Reason (optional)"
+          placeholder={t.salary.reasonOptional}
           className="w-full px-3 py-2 rounded-md border bg-transparent text-sm"
           style={{ borderColor: 'rgba(127,127,127,0.3)' }}
         />
@@ -388,7 +391,7 @@ function RejectModal({
             className="px-3 py-1.5 rounded-md text-sm"
             style={{ border: '1px solid rgba(127,127,127,0.3)' }}
           >
-            Cancel
+            {t.salary.cancel}
           </button>
           <button
             onClick={() => m.mutate()}
@@ -396,7 +399,7 @@ function RejectModal({
             className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
             style={{ background: '#EF4444' }}
           >
-            {m.isPending ? 'Submitting…' : 'Submit dispute'}
+            {m.isPending ? t.salary.submitting : t.salary.submitDispute}
           </button>
         </div>
       </div>

@@ -14,16 +14,9 @@ import { useAuthStore } from '../../../store/auth.store';
 import { formatCurrency, formatDate, getErrorMessage } from '../../../lib/utils';
 import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { useT, type Translations } from '../../../lib/i18n';
 
 type TabKey = 'active' | 'sent' | 'received' | 'archive';
-
-const STATUS_LABELS: Record<EmploymentStatus, string> = {
-  PENDING: 'Pending',
-  ACTIVE: 'Active',
-  REJECTED: 'Rejected',
-  TERMINATION_REQUESTED: 'Termination requested',
-  TERMINATED: 'Terminated',
-};
 
 const STATUS_COLORS: Record<EmploymentStatus, { bg: string; fg: string }> = {
   PENDING: { bg: 'rgba(245,158,11,0.15)', fg: '#F59E0B' },
@@ -33,15 +26,52 @@ const STATUS_COLORS: Record<EmploymentStatus, { bg: string; fg: string }> = {
   TERMINATED: { bg: 'rgba(107,114,128,0.15)', fg: '#9CA3AF' },
 };
 
-const TIER_LABELS: Record<EmploymentTier, string> = {
-  FULL: 'Full employee',
-  SALES_ONLY: 'Mini (sales only)',
-};
+function statusLabel(t: Translations, s: EmploymentStatus): string {
+  switch (s) {
+    case 'PENDING': return t.employees.statusPENDING;
+    case 'ACTIVE': return t.employees.statusACTIVE;
+    case 'REJECTED': return t.employees.statusREJECTED;
+    case 'TERMINATION_REQUESTED': return t.employees.statusTERMINATION_REQUESTED;
+    case 'TERMINATED': return t.employees.statusTERMINATED;
+  }
+}
+
+function tierLabel(t: Translations, tier: EmploymentTier): string {
+  return tier === 'FULL' ? t.employees.tierFULL : t.employees.tierSALES_ONLY;
+}
+
+const ROLE_PALETTE: Array<{ bg: string; fg: string }> = [
+  { bg: 'rgba(56,189,248,0.15)', fg: '#38BDF8' },   // sky
+  { bg: 'rgba(45,212,191,0.15)', fg: '#2DD4BF' },   // teal
+  { bg: 'rgba(34,211,238,0.15)', fg: '#22D3EE' },   // cyan
+  { bg: 'rgba(251,113,133,0.15)', fg: '#FB7185' },  // rose
+  { bg: 'rgba(244,114,182,0.15)', fg: '#F472B6' },  // pink
+  { bg: 'rgba(163,230,53,0.15)', fg: '#A3E635' },   // lime
+];
+
+function roleColor(role: string): { bg: string; fg: string } {
+  let hash = 0;
+  const key = role.trim().toLowerCase();
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  }
+  return ROLE_PALETTE[Math.abs(hash) % ROLE_PALETTE.length];
+}
+
+function tabLabel(t: Translations, k: TabKey): string {
+  switch (k) {
+    case 'active': return t.employees.tabActive;
+    case 'sent': return t.employees.tabSent;
+    case 'received': return t.employees.tabReceived;
+    case 'archive': return t.employees.tabArchive;
+  }
+}
 
 export default function EmployeesPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const isOwner = useOwnerOnlyPage();
+  const t = useT();
   const [tab, setTab] = useState<TabKey>('active');
   const [showHire, setShowHire] = useState(false);
   const [showMini, setShowMini] = useState(false);
@@ -79,11 +109,9 @@ export default function EmployeesPage() {
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">{isCurrentlyEmployee ? 'My employment' : 'Employees'}</h1>
+          <h1 className="text-2xl font-bold">{isCurrentlyEmployee ? t.employees.myEmploymentTitle : t.employees.title}</h1>
           <p className="text-sm opacity-70 mt-1">
-            {isCurrentlyEmployee
-              ? 'You are currently employed by another user. Hiring is disabled while you have an active employment.'
-              : 'Hire users to act on your books or create mini employees for direct sales only.'}
+            {isCurrentlyEmployee ? t.employees.subEmployee : t.employees.subOwner}
           </p>
         </div>
         {!isCurrentlyEmployee && (
@@ -93,21 +121,21 @@ export default function EmployeesPage() {
               className="px-4 py-2 rounded-lg text-sm font-medium border"
               style={{ borderColor: 'rgba(168,85,247,0.4)', color: '#C084FC' }}
             >
-              + External Employee
+              {t.employees.externalEmployee}
             </button>
             <button
               onClick={() => setShowMini(true)}
               className="px-4 py-2 rounded-lg text-sm font-medium border"
               style={{ borderColor: 'rgba(99,102,241,0.4)', color: '#818CF8' }}
             >
-              + Mini Employee
+              {t.employees.miniEmployee}
             </button>
             <button
               onClick={() => setShowHire(true)}
               className="px-4 py-2 rounded-lg text-sm font-medium text-white"
               style={{ background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)' }}
             >
-              + Hire User
+              {t.employees.hireUser}
             </button>
           </div>
         )}
@@ -124,15 +152,15 @@ export default function EmployeesPage() {
               borderBottom: tab === k ? '2px solid #818CF8' : '2px solid transparent',
             }}
           >
-            {k === 'active' ? 'My Employees' : k === 'sent' ? 'Pending Sent' : k === 'received' ? 'Pending Received' : 'Archive'}
+            {tabLabel(t, k)}
           </button>
         ))}
       </div>
 
       {isLoading ? (
-        <div className="text-sm opacity-60 p-8 text-center">Loading…</div>
+        <div className="text-sm opacity-60 p-8 text-center">{t.employees.loading}</div>
       ) : filtered.length === 0 ? (
-        <div className="text-sm opacity-60 p-8 text-center">No employments to show.</div>
+        <div className="text-sm opacity-60 p-8 text-center">{t.employees.empty}</div>
       ) : (
         <div className="space-y-2">
           {filtered.map((e) => (
@@ -164,6 +192,7 @@ function EmploymentRow({
   const isExternal = !!counterparty?.isExternalEmployee;
   const statusColor = STATUS_COLORS[e.status];
   const confirm = useConfirm();
+  const t = useT();
 
   const onSuccess = () => qc.invalidateQueries({ queryKey: QK.employments() });
   const acceptM = useMutation({ mutationFn: () => employmentsApi.accept(e.id), onSuccess });
@@ -186,9 +215,9 @@ function EmploymentRow({
   const handleRemoveExternal = async () => {
     const who = counterpartyName || `@${counterpartyUsername}`;
     const ok = await confirm({
-      title: `Remove ${who}?`,
-      description: 'Salary history is preserved — the row moves to your Archive tab.',
-      confirmLabel: 'Remove',
+      title: t.employees.removeConfirmTitle(who),
+      description: t.employees.removeConfirmDescription,
+      confirmLabel: t.employees.remove,
       variant: 'danger',
     });
     if (ok) removeExternalM.mutate();
@@ -210,43 +239,55 @@ function EmploymentRow({
             ) : (
               <span className="font-semibold">@{counterpartyUsername}</span>
             )}
-            <span className="text-xs opacity-60">({isEmployer ? 'I am the employer' : 'I am the employee'})</span>
+            <span className="text-xs opacity-60">({isEmployer ? t.employees.amTheEmployer : t.employees.amTheEmployee})</span>
             <span
               className="px-2 py-0.5 text-xs rounded-md font-medium"
               style={{ background: statusColor.bg, color: statusColor.fg }}
             >
-              {STATUS_LABELS[e.status]}
+              {statusLabel(t, e.status)}
             </span>
             {isExternal ? (
               <span
                 className="px-2 py-0.5 text-xs rounded-md border opacity-90"
                 style={{ borderColor: 'rgba(168,85,247,0.4)', color: '#C084FC' }}
               >
-                External
+                {t.employees.externalLabel}
               </span>
             ) : (
               <span className="px-2 py-0.5 text-xs rounded-md border opacity-80" style={{ borderColor: 'rgba(127,127,127,0.3)' }}>
-                {TIER_LABELS[e.tier]}
+                {tierLabel(t, e.tier)}
               </span>
             )}
+            {counterparty?.role && (() => {
+              const rc = roleColor(counterparty.role);
+              return (
+                <span
+                  className="px-2 py-0.5 text-xs rounded-md font-medium"
+                  style={{ background: rc.bg, color: rc.fg }}
+                  title={t.employees.fieldRole}
+                >
+                  {counterparty.role}
+                </span>
+              );
+            })()}
           </div>
           <div className="text-xs opacity-60 mt-1">
-            Created {formatDate(e.createdAt)}
-            {e.acceptedAt && ` · Accepted ${formatDate(e.acceptedAt)}`}
-            {e.terminatedAt && ` · Terminated ${formatDate(e.terminatedAt)}`}
+            {t.employees.createdLabel} {formatDate(e.createdAt)}
+            {e.acceptedAt && ` · ${t.employees.acceptedLabel} ${formatDate(e.acceptedAt)}`}
+            {e.terminatedAt && ` · ${t.employees.terminatedLabel} ${formatDate(e.terminatedAt)}`}
           </div>
           {e.status === 'TERMINATION_REQUESTED' && (
             <div className="text-xs mt-2 opacity-80">
               {e.terminationRequestedBy === myId
-                ? 'Awaiting counterparty approval to terminate.'
-                : 'The other party has requested termination — approve to end, or refuse to keep going.'}
+                ? t.employees.awaitingApproval
+                : t.employees.otherPartyRequested}
             </div>
           )}
           {isEmployer && (e.status === 'ACTIVE' || e.status === 'TERMINATION_REQUESTED') && (
             <div className="text-xs mt-2 flex items-center gap-3 flex-wrap">
               <span className="opacity-70">
-                Monthly pay:{' '}
-                <strong>{e.monthlyPay ? formatCurrency(e.monthlyPay) : 'not set'}</strong>
+                {t.employees.monthlyPay}:{' '}
+                <strong>{e.monthlyPay ? formatCurrency(e.monthlyPay) : t.employees.notSet}</strong>
               </span>
               <span
                 className="px-1.5 py-0.5 rounded text-[10px]"
@@ -255,7 +296,7 @@ function EmploymentRow({
                   color: e.payrollActive ? '#10B981' : '#9CA3AF',
                 }}
               >
-                {e.payrollActive ? 'Payroll active' : 'Payroll paused'}
+                {e.payrollActive ? t.employees.payrollActive : t.employees.payrollPaused}
               </span>
             </div>
           )}
@@ -263,8 +304,8 @@ function EmploymentRow({
         <div className="flex gap-2 flex-wrap">
           {e.status === 'PENDING' && !isEmployer && (
             <>
-              <ActionBtn label="Accept" onClick={() => acceptM.mutate()} disabled={inFlight} primary />
-              <ActionBtn label="Reject" onClick={() => rejectM.mutate()} disabled={inFlight} />
+              <ActionBtn label={t.employees.accept} onClick={() => acceptM.mutate()} disabled={inFlight} primary />
+              <ActionBtn label={t.employees.reject} onClick={() => rejectM.mutate()} disabled={inFlight} />
             </>
           )}
           {isEmployer && (e.status === 'ACTIVE' || e.status === 'TERMINATION_REQUESTED') && (
@@ -273,22 +314,22 @@ function EmploymentRow({
               className="px-3 py-1.5 rounded-md text-xs font-medium text-white"
               style={{ background: '#6366F1' }}
             >
-              Manage payroll
+              {t.employees.managePayroll}
             </Link>
           )}
           {isEmployer && isExternal && e.status === 'ACTIVE' && (
-            <ActionBtn label="Remove" onClick={handleRemoveExternal} disabled={inFlight} />
+            <ActionBtn label={t.employees.remove} onClick={handleRemoveExternal} disabled={inFlight} />
           )}
           {!isExternal && e.status === 'ACTIVE' && (
-            <ActionBtn label="Request termination" onClick={() => reqTerm.mutate()} disabled={inFlight} />
+            <ActionBtn label={t.employees.requestTermination} onClick={() => reqTerm.mutate()} disabled={inFlight} />
           )}
           {e.status === 'TERMINATION_REQUESTED' && e.terminationRequestedBy === myId && (
-            <ActionBtn label="Cancel my request" onClick={() => cancelTerm.mutate()} disabled={inFlight} />
+            <ActionBtn label={t.employees.cancelMyRequest} onClick={() => cancelTerm.mutate()} disabled={inFlight} />
           )}
           {e.status === 'TERMINATION_REQUESTED' && e.terminationRequestedBy !== myId && (
             <>
-              <ActionBtn label="Approve termination" onClick={() => apprTerm.mutate()} disabled={inFlight} primary />
-              <ActionBtn label="Refuse" onClick={() => rejectTerm.mutate()} disabled={inFlight} />
+              <ActionBtn label={t.employees.approveTermination} onClick={() => apprTerm.mutate()} disabled={inFlight} primary />
+              <ActionBtn label={t.employees.refuse} onClick={() => rejectTerm.mutate()} disabled={inFlight} />
             </>
           )}
         </div>
@@ -318,6 +359,7 @@ function ActionBtn({ label, onClick, disabled, primary }: { label: string; onCli
 }
 
 function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof useQueryClient> }) {
+  const t = useT();
   const [emailOrPhone, setEmailOrPhone] = useState('');
   const [tier, setTier] = useState<EmploymentTier>('FULL');
 
@@ -330,9 +372,9 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
   });
 
   return (
-    <ModalShell onClose={onClose} title="Hire user">
+    <ModalShell onClose={onClose} title={t.employees.hireTitle}>
       <div className="space-y-3">
-        <Field label="Email or phone">
+        <Field label={t.employees.fieldEmailOrPhone}>
           <input
             value={emailOrPhone}
             onChange={(e) => setEmailOrPhone(e.target.value)}
@@ -341,15 +383,15 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
             placeholder="alice@example.com or +24399…"
           />
         </Field>
-        <Field label="Tier">
+        <Field label={t.employees.fieldTier}>
           <select
             value={tier}
             onChange={(e) => setTier(e.target.value as EmploymentTier)}
             className="w-full px-3 py-2 rounded-md border bg-transparent"
             style={{ borderColor: 'rgba(127,127,127,0.3)' }}
           >
-            <option value="FULL">Full employee (dashboard + mobile)</option>
-            <option value="SALES_ONLY">Sales-only (mobile only — usually use Mini Employee instead)</option>
+            <option value="FULL">{t.employees.tierFullDescription}</option>
+            <option value="SALES_ONLY">{t.employees.tierMiniDescription}</option>
           </select>
         </Field>
         {!!create.error && (
@@ -357,7 +399,7 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
         )}
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm" style={{ border: '1px solid rgba(127,127,127,0.3)' }}>
-            Cancel
+            {t.employees.cancel}
           </button>
           <button
             onClick={() => create.mutate()}
@@ -365,7 +407,7 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
             className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
             style={{ background: '#6366F1' }}
           >
-            Send request
+            {t.employees.sendRequest}
           </button>
         </div>
       </div>
@@ -374,6 +416,7 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
 }
 
 function MiniEmployeeModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof useQueryClient> }) {
+  const t = useT();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [result, setResult] = useState<{ username: string; pairingCode: string } | null>(null);
@@ -387,29 +430,24 @@ function MiniEmployeeModal({ onClose, qc }: { onClose: () => void; qc: ReturnTyp
   });
 
   return (
-    <ModalShell onClose={onClose} title="Add mini employee">
+    <ModalShell onClose={onClose} title={t.employees.miniTitle}>
       {result ? (
         <div className="space-y-3">
-          <p className="text-sm">
-            Mini-employee created. Share these credentials with them — the pairing code is shown
-            only once.
-          </p>
+          <p className="text-sm">{t.employees.miniCreatedMessage}</p>
           <div className="p-3 rounded-md" style={{ background: 'rgba(99,102,241,0.1)' }}>
-            <Row label="Username" value={result.username} mono />
-            <Row label="Pairing code" value={result.pairingCode} mono />
+            <Row label={t.employees.fieldUsername} value={result.username} mono />
+            <Row label={t.employees.fieldPairingCode} value={result.pairingCode} mono />
           </div>
-          <p className="text-xs opacity-70">
-            They sign in via the mobile app's "I have a pairing code" flow.
-          </p>
+          <p className="text-xs opacity-70">{t.employees.miniPairingHint}</p>
           <div className="flex justify-end pt-2">
             <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm text-white" style={{ background: '#6366F1' }}>
-              Done
+              {t.employees.done}
             </button>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
-          <Field label="Display name">
+          <Field label={t.employees.fieldDisplayName}>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -418,7 +456,7 @@ function MiniEmployeeModal({ onClose, qc }: { onClose: () => void; qc: ReturnTyp
               placeholder="Alice K."
             />
           </Field>
-          <Field label="Phone (optional)">
+          <Field label={t.employees.fieldPhoneOptional}>
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
@@ -432,7 +470,7 @@ function MiniEmployeeModal({ onClose, qc }: { onClose: () => void; qc: ReturnTyp
           )}
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm" style={{ border: '1px solid rgba(127,127,127,0.3)' }}>
-              Cancel
+              {t.employees.cancel}
             </button>
             <button
               onClick={() => create.mutate()}
@@ -440,7 +478,7 @@ function MiniEmployeeModal({ onClose, qc }: { onClose: () => void; qc: ReturnTyp
               className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
               style={{ background: '#6366F1' }}
             >
-              Create
+              {t.employees.create}
             </button>
           </div>
         </div>
@@ -450,6 +488,7 @@ function MiniEmployeeModal({ onClose, qc }: { onClose: () => void; qc: ReturnTyp
 }
 
 function ExternalEmployeeModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof useQueryClient> }) {
+  const t = useT();
   const [name, setName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [role, setRole] = useState('');
@@ -471,28 +510,24 @@ function ExternalEmployeeModal({ onClose, qc }: { onClose: () => void; qc: Retur
   });
 
   return (
-    <ModalShell onClose={onClose} title="Add external employee">
+    <ModalShell onClose={onClose} title={t.employees.externalTitle}>
       {result ? (
         <div className="space-y-3">
-          <p className="text-sm">
-            External employee created. They don't log in — you'll manage their salary directly.
-          </p>
+          <p className="text-sm">{t.employees.externalCreatedMessage}</p>
           <div className="p-3 rounded-md" style={{ background: 'rgba(168,85,247,0.1)' }}>
-            <Row label="Name" value={result.name} />
-            <Row label="System username" value={result.username} mono />
+            <Row label={t.employees.fieldName} value={result.name} />
+            <Row label={t.employees.fieldSystemUsername} value={result.username} mono />
           </div>
           <div className="flex justify-end pt-2">
             <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm text-white" style={{ background: '#A855F7' }}>
-              Done
+              {t.employees.done}
             </button>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-xs opacity-70">
-            For people who don't use the system but get a salary from you. Records-only — no login.
-          </p>
-          <Field label="Full name *">
+          <p className="text-xs opacity-70">{t.employees.externalDescription}</p>
+          <Field label={t.employees.fieldFullNameRequired}>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -502,7 +537,7 @@ function ExternalEmployeeModal({ onClose, qc }: { onClose: () => void; qc: Retur
               autoFocus
             />
           </Field>
-          <Field label="Date of birth (optional)">
+          <Field label={t.employees.fieldDateOfBirthOptional}>
             <input
               type="date"
               value={dateOfBirth}
@@ -511,16 +546,16 @@ function ExternalEmployeeModal({ onClose, qc }: { onClose: () => void; qc: Retur
               style={{ borderColor: 'rgba(127,127,127,0.3)', colorScheme: 'dark' }}
             />
           </Field>
-          <Field label="Role (optional)">
+          <Field label={t.employees.fieldRoleOptional}>
             <input
               value={role}
               onChange={(e) => setRole(e.target.value)}
               className="w-full px-3 py-2 rounded-md border bg-transparent"
               style={{ borderColor: 'rgba(127,127,127,0.3)' }}
-              placeholder="e.g. Driver, Cleaner, Sales associate"
+              placeholder={t.employees.rolePlaceholder}
             />
           </Field>
-          <Field label="Monthly pay (USD, optional)">
+          <Field label={t.employees.fieldMonthlyPayOptional}>
             <input
               type="number"
               step="0.01"
@@ -529,7 +564,7 @@ function ExternalEmployeeModal({ onClose, qc }: { onClose: () => void; qc: Retur
               onChange={(e) => setMonthlyPay(e.target.value)}
               className="w-full px-3 py-2 rounded-md border bg-transparent"
               style={{ borderColor: 'rgba(127,127,127,0.3)' }}
-              placeholder="0.00 — can be set later"
+              placeholder={t.employees.monthlyPayPlaceholder}
             />
           </Field>
           {!!create.error && (
@@ -537,7 +572,7 @@ function ExternalEmployeeModal({ onClose, qc }: { onClose: () => void; qc: Retur
           )}
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm" style={{ border: '1px solid rgba(127,127,127,0.3)' }}>
-              Cancel
+              {t.employees.cancel}
             </button>
             <button
               onClick={() => create.mutate()}
@@ -545,7 +580,7 @@ function ExternalEmployeeModal({ onClose, qc }: { onClose: () => void; qc: Retur
               className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
               style={{ background: '#A855F7' }}
             >
-              {create.isPending ? 'Creating…' : 'Create'}
+              {create.isPending ? t.employees.creating : t.employees.create}
             </button>
           </div>
         </div>

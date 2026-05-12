@@ -121,12 +121,17 @@ function txBadgeColor(type: TxType): string {
   }
 }
 
-function txLabel(type: TxType, productName: string | null, quantity: number | null): string {
+function txLabel(
+  t: ReturnType<typeof useT>,
+  type: TxType,
+  productName: string | null,
+  quantity: number | null,
+): string {
   switch (type) {
-    case 'PRODUCT_OUT': return `Gave ${quantity}× ${productName}`;
-    case 'PAYMENT_IN': return 'Payment received';
-    case 'PRODUCT_IN': return `Received ${quantity}× ${productName}`;
-    case 'PAYMENT_OUT': return 'Payment made';
+    case 'PRODUCT_OUT': return t.externalContacts.gave(quantity, productName);
+    case 'PAYMENT_IN': return t.externalContacts.paymentReceived;
+    case 'PRODUCT_IN': return t.externalContacts.received(quantity, productName);
+    case 'PAYMENT_OUT': return t.externalContacts.paymentMade;
   }
 }
 
@@ -171,6 +176,7 @@ function getPoTotalPieces(cartonQty: number, ppc: number | null, extraPieces: st
 
 function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: string; onClose: () => void }) {
   const qc = useQueryClient();
+  const t = useT();
   const formatCurrency = useFormatCurrency();
   const [form, setForm] = useState({ productName: '', quantity: '', unitPrice: '', unitCost: '', sellingPrice: '', category: '', amount: '', notes: '' });
   const [poItems, setPoItems] = useState<ProductOutItem[]>([{ ...EMPTY_PO_ITEM }]);
@@ -301,10 +307,10 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
   });
 
   const titles: Record<NonNullable<Modal>, string> = {
-    'product-out': 'Give Products',
-    'payment-in': 'Receive Payment',
-    'product-in': 'Receive Products',
-    'payment-out': 'Make Payment',
+    'product-out': t.externalContacts.titleGiveProducts,
+    'payment-in': t.externalContacts.titleReceivePayment,
+    'product-in': t.externalContacts.titleReceiveProducts,
+    'payment-out': t.externalContacts.titleMakePayment,
   };
 
   if (!modal) return null;
@@ -333,7 +339,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
           <h2 className="text-lg font-bold" style={{ color: 'var(--foreground)' }}>{titles[modal]}</h2>
           {modal === 'product-out' && (
             <button type="button" onClick={addPoItem} className="text-xs font-medium" style={{ color: 'var(--primary)' }}>
-              + Add item
+              {t.externalContacts.addItem}
             </button>
           )}
         </div>
@@ -362,7 +368,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                           onChange={(e) => { setPoProductName(i, e.target.value); setFocusedItemIndex(i); }}
                           onFocus={() => setFocusedItemIndex(i)}
                           onBlur={() => setTimeout(() => setFocusedItemIndex(null), 150)}
-                          placeholder="Product name..."
+                          placeholder={t.externalContacts.placeholderProductName}
                           className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
                           style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
                         />
@@ -410,7 +416,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                         <input
                           value={item.quantity}
                           onChange={setPoQuantity(i)}
-                          placeholder={ppc ? 'Cartons' : 'Qty'}
+                          placeholder={ppc ? t.externalContacts.cartons : t.externalContacts.qty}
                           type="number"
                           min={ppc && item.showExtraPieces ? '0' : '1'}
                           className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
@@ -420,7 +426,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                           <div className="mt-0.5">
                             {!item.showExtraPieces ? (
                               <button type="button" onClick={() => togglePoExtraPieces(i)} className="text-xs" style={{ color: 'var(--primary)' }}>
-                                + loose pieces
+                                {t.externalContacts.addLoosePieces}
                               </button>
                             ) : (
                               <div className="flex items-center gap-1">
@@ -428,25 +434,25 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                                 <input
                                   value={item.extraPieces}
                                   onChange={setPoExtraPieces(i)}
-                                  placeholder="pcs"
+                                  placeholder={t.externalContacts.pcs}
                                   type="number"
                                   min="0"
                                   max={ppc - 1}
                                   className="w-16 px-2 py-0.5 rounded-lg text-xs border outline-none"
                                   style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
                                 />
-                                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>pcs</span>
+                                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.pcs}</span>
                                 <button type="button" onClick={() => togglePoExtraPieces(i)} className="text-xs ml-1" style={{ color: 'var(--danger)' }}>✕</button>
                               </div>
                             )}
                             {extraPiecesInvalid && (
                               <p className="text-xs mt-0.5" style={{ color: 'var(--danger)' }}>
-                                Max {ppc - 1} loose pcs (a full carton is {ppc})
+                                {t.externalContacts.maxLoosePcs(ppc - 1, ppc)}
                               </p>
                             )}
                             {!isNaN(totalPieces) && totalPieces > 0 && (
                               <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-                                = {totalPieces} pcs total
+                                {t.externalContacts.pcsTotal(totalPieces)}
                               </p>
                             )}
                           </div>
@@ -462,12 +468,12 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                     {/* Stock info */}
                     {item.selectedStock != null && (
                       <p className="text-xs mb-2" style={{ color: 'var(--muted-foreground)' }}>
-                        Available: {stockInCartons != null ? (
-                          <><span className="font-semibold" style={{ color: 'var(--foreground)' }}>{stockInCartons} cartons</span> ({item.selectedStock} pcs)</>
+                        {t.externalContacts.availableLabel}: {stockInCartons != null ? (
+                          <><span className="font-semibold" style={{ color: 'var(--foreground)' }}>{t.externalContacts.cartonsCount(stockInCartons)}</span> ({t.externalContacts.piecesOnly(item.selectedStock)})</>
                         ) : (
-                          <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{item.selectedStock} pcs</span>
+                          <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{t.externalContacts.piecesOnly(item.selectedStock)}</span>
                         )}
-                        {overStock && <span style={{ color: 'var(--danger)' }}> — exceeds stock</span>}
+                        {overStock && <span style={{ color: 'var(--danger)' }}>{t.externalContacts.exceedsStock}</span>}
                       </p>
                     )}
 
@@ -476,23 +482,23 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                       <div className="space-y-2">
                         <div>
                           <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>
-                            Carton price ({ppc} pcs)
+                            {t.externalContacts.cartonPriceWithPpc(ppc)}
                           </label>
                           <input
                             value={item.cartonPrice}
                             onChange={handlePoCartonPriceChange(i)}
-                            placeholder="Carton price"
+                            placeholder={t.externalContacts.cartonPricePlaceholder}
                             type="number" min="0" step="0.01"
                             className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
                             style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>Unit price per piece</label>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.unitPricePerPiece}</label>
                           <input
                             value={item.unitPrice}
                             onChange={handlePoUnitPriceChange(i)}
-                            placeholder="28.00"
+                            placeholder={t.externalContacts.placeholderUnitPrice}
                             type="number" min="0" step="0.01"
                             className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
                             style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
@@ -501,11 +507,11 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                       </div>
                     ) : (
                       <div>
-                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>Unit Price</label>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.unitPrice}</label>
                         <input
                           value={item.unitPrice}
                           onChange={handlePoUnitPriceChange(i)}
-                          placeholder="28.00"
+                          placeholder={t.externalContacts.placeholderUnitPrice}
                           type="number" min="0" step="0.01"
                           className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
                           style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
@@ -516,7 +522,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                     {/* Below-cost warning */}
                     {belowCost && (
                       <div className="rounded-lg px-3 py-2 mt-2 text-xs font-medium" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)' }}>
-                        Selling price ({formatCurrency(item.unitPrice)}/pc) is at or below cost ({formatCurrency(item.unitCost)}/pc). You will make a loss.
+                        {t.externalContacts.belowCostWarning(formatCurrency(item.unitPrice), formatCurrency(item.unitCost))}
                       </div>
                     )}
 
@@ -525,7 +531,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                       <div className="rounded-lg px-3 py-2 mt-2 text-xs" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
                         <div className="flex justify-between">
                           <span style={{ color: 'var(--muted-foreground)' }}>
-                            Total ({ppc ? <>{cartonQty > 0 ? `${cartonQty} carton${cartonQty > 1 ? 's' : ''}` : ''}{extraPcs > 0 ? `${cartonQty > 0 ? ' + ' : ''}${extraPcs} pcs` : ''} · {totalPieces} pcs</> : <>{totalPieces} pcs</>})
+                            {t.externalContacts.totalLabel} ({ppc ? <>{cartonQty > 0 ? t.externalContacts.cartonsCount(cartonQty) : ''}{extraPcs > 0 ? `${cartonQty > 0 ? ' + ' : ''}${t.externalContacts.piecesOnly(extraPcs)}` : ''} · {t.externalContacts.piecesOnly(totalPieces)}</> : <>{t.externalContacts.piecesOnly(totalPieces)}</>})
                           </span>
                           <span className="font-bold" style={{ color: belowCost ? 'var(--danger)' : 'var(--success)' }}>
                             {formatCurrency((parseFloat(item.unitPrice) * totalPieces).toFixed(2))}
@@ -540,7 +546,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
               {/* Grand total for multi-item */}
               {poItems.length > 1 && poItems.some((it) => parseFloat(it.unitPrice) > 0 && getPoTotalPieces(parseInt(it.quantity, 10), it.piecesPerCarton, it.extraPieces) > 0) && (
                 <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
-                  <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--muted-foreground)' }}>Summary</div>
+                  <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.summary}</div>
                   {poItems.map((it, i) => {
                     const q = parseInt(it.quantity, 10);
                     const price = parseFloat(it.unitPrice);
@@ -553,7 +559,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                         <span style={{ color: 'var(--foreground)' }}>
                           <span className="capitalize">{it.productName}</span>{' '}
                           <span style={{ color: 'var(--muted-foreground)' }}>
-                            {ppc ? <>{q > 0 ? `${q} carton${q > 1 ? 's' : ''}` : ''}{extra > 0 ? `${q > 0 ? ' + ' : ''}${extra} pcs` : ''} ({pieces} pcs)</> : <>{pieces} pcs</>}
+                            {ppc ? <>{q > 0 ? t.externalContacts.cartonsCount(q) : ''}{extra > 0 ? `${q > 0 ? ' + ' : ''}${t.externalContacts.piecesOnly(extra)}` : ''} ({t.externalContacts.piecesOnly(pieces)})</> : <>{t.externalContacts.piecesOnly(pieces)}</>}
                           </span>
                         </span>
                         <span className="font-medium" style={{ color: 'var(--foreground)' }}>{formatCurrency((price * pieces).toFixed(2))}</span>
@@ -561,7 +567,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                     );
                   })}
                   <div className="flex justify-between text-sm font-bold pt-1.5 mt-1.5 border-t" style={{ borderColor: 'var(--border)' }}>
-                    <span style={{ color: 'var(--foreground)' }}>Grand Total</span>
+                    <span style={{ color: 'var(--foreground)' }}>{t.externalContacts.grandTotal}</span>
                     <span style={{ color: hasPoItemBelowCost ? 'var(--danger)' : 'var(--success)' }}>
                       {formatCurrency(
                         poItems.reduce((s, it) => {
@@ -580,18 +586,18 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
           )}
           {modal === 'product-in' && (
             <>
-              <Field label="Product Name" value={form.productName} onChange={set('productName')} placeholder="e.g. Rice 50kg" />
-              <Field label="Quantity" value={form.quantity} onChange={set('quantity')} placeholder="10" type="number" />
-              <Field label="Unit Cost (you owe per unit)" value={form.unitCost} onChange={set('unitCost')} placeholder="22.00" type="number" />
-              <Field label="Your Selling Price" value={form.sellingPrice} onChange={set('sellingPrice')} placeholder="30.00" type="number" />
-              <Field label="Category (optional)" value={form.category} onChange={set('category')} placeholder="Grains" />
+              <Field label={t.externalContacts.fieldProductName} value={form.productName} onChange={set('productName')} placeholder={t.externalContacts.placeholderProductName2} />
+              <Field label={t.externalContacts.fieldQuantity} value={form.quantity} onChange={set('quantity')} placeholder={t.externalContacts.placeholderQuantity} type="number" />
+              <Field label={t.externalContacts.fieldUnitCost} value={form.unitCost} onChange={set('unitCost')} placeholder={t.externalContacts.placeholderUnitCost} type="number" />
+              <Field label={t.externalContacts.fieldSellingPrice} value={form.sellingPrice} onChange={set('sellingPrice')} placeholder={t.externalContacts.placeholderSellingPrice} type="number" />
+              <Field label={t.externalContacts.fieldCategoryOptional} value={form.category} onChange={set('category')} placeholder={t.externalContacts.placeholderCategory} />
             </>
           )}
           {(modal === 'payment-in' || modal === 'payment-out') && (
-            <Field label="Amount" value={form.amount} onChange={set('amount')} placeholder="0.00" type="number" />
+            <Field label={t.externalContacts.fieldAmount} value={form.amount} onChange={set('amount')} placeholder={t.externalContacts.placeholderAmount} type="number" />
           )}
           <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>Notes (optional)</label>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.notesOptional}</label>
             <textarea
               value={form.notes}
               onChange={set('notes')}
@@ -607,7 +613,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
             className="flex-1 py-2 rounded-lg text-sm font-medium border"
             style={{ color: 'var(--muted-foreground)', borderColor: 'var(--border)' }}
           >
-            Cancel
+            {t.externalContacts.cancel}
           </button>
           <button
             onClick={() => mut.mutate()}
@@ -615,12 +621,12 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
             className="flex-1 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
             style={{ background: modal === 'product-out' && !canSubmitProductOut ? 'var(--muted-foreground)' : 'var(--primary)' }}
           >
-            {mut.isPending ? 'Saving...' : 'Save'}
+            {mut.isPending ? t.externalContacts.saving : t.externalContacts.save}
           </button>
         </div>
         {mut.isError && (
           <p className="text-xs mt-2 text-center" style={{ color: 'var(--danger)' }}>
-            {(mut.error as Error)?.message ?? 'An error occurred'}
+            {(mut.error as Error)?.message ?? t.externalContacts.anErrorOccurred}
           </p>
         )}
       </div>
@@ -688,7 +694,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
   });
 
   if (isLoading || !contact) {
-    return <div className="p-6 text-center" style={{ color: 'var(--muted-foreground)' }}>Loading...</div>;
+    return <div className="p-6 text-center" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.loading}</div>;
   }
 
   const isDebtor = contact.role === 'DEBTOR' || contact.role === 'BOTH';
@@ -715,9 +721,9 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
           <button
             onClick={async () => {
               const ok = await confirm({
-                title: `Delete ${contact.name}?`,
-                description: 'All transactions for this contact will be removed. Inventory changes already made are not reversed.',
-                confirmLabel: 'Delete',
+                title: t.confirm.deleteContactTitle(contact.name),
+                description: t.confirm.deleteContactDesc,
+                confirmLabel: t.confirm.delete,
                 variant: 'danger',
               });
               if (ok) deleteContactMutation.mutate();
@@ -725,7 +731,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
             className="text-xs px-3 py-1.5 rounded-lg border"
             style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
           >
-            Delete
+            {t.externalContacts.deleteBtn}
           </button>
         </div>
 
@@ -733,13 +739,13 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
         <div className="flex gap-6 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
           {isDebtor && (
             <div>
-              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Owes You</p>
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.colOwesYou}</p>
               <p className="text-xl font-bold" style={{ color: 'var(--success)' }}>{formatCurrency(contact.debtorBalance)}</p>
             </div>
           )}
           {isSupplier && (
             <div>
-              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>You Owe</p>
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.colYouOwe}</p>
               <p className="text-xl font-bold" style={{ color: 'var(--danger)' }}>{formatCurrency(contact.supplierBalance)}</p>
             </div>
           )}
@@ -751,20 +757,20 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
         {isDebtor && (
           <>
             <button onClick={() => setOpenModal('product-out')} className="px-4 py-2 rounded-xl text-sm font-medium border transition-all" style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
-              📦 Give Products
+              {t.externalContacts.giveProducts}
             </button>
             <button onClick={() => setOpenModal('payment-in')} className="px-4 py-2 rounded-xl text-sm font-medium border transition-all" style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
-              💵 Receive Payment
+              {t.externalContacts.receivePayment}
             </button>
           </>
         )}
         {isSupplier && (
           <>
             <button onClick={() => setOpenModal('product-in')} className="px-4 py-2 rounded-xl text-sm font-medium border transition-all" style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
-              📥 Receive Products
+              {t.externalContacts.receiveProducts}
             </button>
             <button onClick={() => setOpenModal('payment-out')} className="px-4 py-2 rounded-xl text-sm font-medium border transition-all" style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
-              💸 Make Payment
+              {t.externalContacts.makePayment}
             </button>
           </>
         )}
@@ -772,13 +778,13 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
 
       {/* Transaction history */}
       <h2 className="text-base font-semibold mb-3" style={{ color: 'var(--foreground)' }}>
-        Transaction History ({contact.transactions.length})
+        {t.externalContacts.txHistoryWithCount(contact.transactions.length)}
       </h2>
       {contact.transactions.length === 0 ? (
         <div className="text-center py-12 rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
           <div className="text-4xl mb-2">📋</div>
-          <p className="font-medium" style={{ color: 'var(--foreground)' }}>No transactions yet</p>
-          <p className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>Use the buttons above to record a transaction.</p>
+          <p className="font-medium" style={{ color: 'var(--foreground)' }}>{t.externalContacts.noTransactionsTitle}</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>{t.externalContacts.noTransactionsDesc}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -787,8 +793,8 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
               const b = node.batch;
               const direction = b.type === 'PRODUCT_OUT' ? 'out' : 'in';
               const label = direction === 'out'
-                ? `Gave ${b.items.length} products`
-                : `Received ${b.items.length} products`;
+                ? t.externalContacts.gaveNProducts(b.items.length)
+                : t.externalContacts.receivedNProducts(b.items.length);
               return (
                 <div key={b.batchId} className="rounded-xl border" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                   <div className="flex items-start justify-between p-4 border-b" style={{ borderColor: 'var(--border)' }}>
@@ -810,7 +816,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                           {formatCurrency(b.totalAmount.toFixed(2))}
                         </p>
                         <p className="text-[10px] mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-                          {b.items.length} items
+                          {t.externalContacts.itemsCount(b.items.length)}
                         </p>
                       </div>
                       <button
@@ -839,9 +845,9 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                           <button
                             onClick={async () => {
                               const ok = await confirm({
-                                title: 'Delete this line item?',
-                                description: 'Balance will be corrected. Inventory changes already made are not reversed.',
-                                confirmLabel: 'Delete',
+                                title: t.confirm.deleteLineItemTitle,
+                                description: t.confirm.deleteLineItemDesc,
+                                confirmLabel: t.confirm.delete,
                                 variant: 'danger',
                               });
                               if (ok) deleteTxMutation.mutate(it.id);
@@ -864,11 +870,11 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <p className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
-                      {txLabel(tx.type, tx.productName, tx.quantity)}
+                      {txLabel(t, tx.type, tx.productName, tx.quantity)}
                     </p>
                     {tx.type === 'PRODUCT_OUT' && tx.unitPrice && tx.unitCostUsed && (
                       <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-                        Cost {formatCurrency(tx.unitCostUsed)} · Sell {formatCurrency(tx.unitPrice)} per unit
+                        {t.externalContacts.costSellPerUnit(formatCurrency(tx.unitCostUsed), formatCurrency(tx.unitPrice))}
                       </p>
                     )}
                     {tx.notes && <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{tx.notes}</p>}
@@ -893,7 +899,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                       </p>
                       {tx.profit != null && (
                         <p className="text-xs font-medium mt-0.5" style={{ color: tx.isLoss ? 'var(--danger)' : 'var(--success)' }}>
-                          {tx.isLoss ? '▼' : '▲'} {formatCurrency(Math.abs(parseFloat(tx.profit)).toFixed(2))} profit
+                          {tx.isLoss ? '▼' : '▲'} {formatCurrency(Math.abs(parseFloat(tx.profit)).toFixed(2))} {t.externalContacts.profit}
                         </p>
                       )}
                     </div>
@@ -908,9 +914,9 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                     <button
                       onClick={async () => {
                         const ok = await confirm({
-                          title: 'Delete this transaction?',
-                          description: 'Balance will be corrected. Inventory changes already made are not reversed.',
-                          confirmLabel: 'Delete',
+                          title: t.confirm.deleteTxTitle,
+                          description: t.confirm.deleteTxDesc,
+                          confirmLabel: t.confirm.delete,
                           variant: 'danger',
                         });
                         if (ok) deleteTxMutation.mutate(tx.id);
@@ -918,7 +924,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                       className="text-xs px-2 py-1 rounded border mt-0.5"
                       style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
                     >
-                      Delete
+                      {t.externalContacts.deleteBtn}
                     </button>
                   </div>
                 </div>
