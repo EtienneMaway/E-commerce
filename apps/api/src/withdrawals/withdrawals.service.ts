@@ -74,14 +74,14 @@ export class WithdrawalsService {
     return {
       lastWithdrawalAt: last?.withdrawnAt ?? null,
       periodStartAt,
-      periodIncome: totalIncome.toFixed(2),
-      periodExpenses: expenses.toFixed(2),
-      leftoverCarried: leftoverCarried.toFixed(2),
-      available: available.toFixed(2),
+      periodIncome: totalIncome.toFixed(4),
+      periodExpenses: expenses.toFixed(4),
+      leftoverCarried: leftoverCarried.toFixed(4),
+      available: available.toFixed(4),
       incomeBreakdown: {
-        directSales: income.directSales.toFixed(2),
-        debtorPayments: income.debtorPayments.toFixed(2),
-        externalPaymentIn: income.externalPaymentIn.toFixed(2),
+        directSales: income.directSales.toFixed(4),
+        debtorPayments: income.debtorPayments.toFixed(4),
+        externalPaymentIn: income.externalPaymentIn.toFixed(4),
       },
     };
   }
@@ -118,12 +118,12 @@ export class WithdrawalsService {
 
     if (amountUsd.gt(availableProfit)) {
       throw new BadRequestException(
-        `Cannot spend more than current profit — available profit is ${availableProfit.toFixed(2)} USD`,
+        `Cannot spend more than current profit — available profit is ${availableProfit.toFixed(4)} USD`,
       );
     }
     if (amountUsd.gt(availableBusinessCash)) {
       throw new BadRequestException(
-        `Cannot spend more than available business cash (${availableBusinessCash.toFixed(2)} USD)`,
+        `Cannot spend more than available business cash (${availableBusinessCash.toFixed(4)} USD)`,
       );
     }
 
@@ -131,15 +131,15 @@ export class WithdrawalsService {
 
     const withdrawal = this.withdrawalRepo.create({
       ownerId,
-      amount: amountOriginal.toFixed(2),
+      amount: amountOriginal.toFixed(4),
       currency: dto.currency,
       usdToFcRateSnapshot: rateSnapshot,
-      amountUsd: amountUsd.toFixed(2),
+      amountUsd: amountUsd.toFixed(4),
       periodStartAt: snapshot.periodStartAt,
       periodIncome: snapshot.periodIncome,
       periodExpenses: snapshot.periodExpenses,
       leftoverCarried: snapshot.leftoverCarried,
-      leftoverOut: leftoverOut.toFixed(2),
+      leftoverOut: leftoverOut.toFixed(4),
       note: dto.note ?? null,
     });
     return this.withdrawalRepo.save(withdrawal);

@@ -48,7 +48,7 @@ const STATUS_VARIANT: Record<ConsignmentStatus, Variant> = {
 
 function totalValue(items: ConsignmentItem[]): string {
   const sum = items.reduce((acc, it) => acc + parseFloat(it.agreedUnitPrice) * it.quantity, 0);
-  return sum.toFixed(2);
+  return sum.toFixed(4);
 }
 
 type Tab = 'outgoing' | 'incoming';
@@ -377,7 +377,7 @@ function ItemsDetail({ items, note }: { items: ConsignmentItem[]; note: string |
               <td className="py-0.5 pr-4" style={{ color: 'var(--foreground)' }}>{it.quantity}</td>
               <td className="py-0.5 pr-4" style={{ color: 'var(--foreground)' }}>{formatCurrency(it.agreedUnitPrice)}</td>
               <td className="py-0.5 pr-4" style={{ color: 'var(--foreground)' }}>
-                {formatCurrency((parseFloat(it.agreedUnitPrice) * it.quantity).toFixed(2))}
+                {formatCurrency((parseFloat(it.agreedUnitPrice) * it.quantity).toFixed(4))}
               </td>
               <td className="py-0.5">
                 <ActorPill

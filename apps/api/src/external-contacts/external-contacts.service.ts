@@ -102,8 +102,8 @@ export class ExternalContactsService {
       phone: dto.phone?.trim() ?? null,
       notes: dto.notes?.trim() ?? null,
       role: dto.role,
-      debtorBalance: '0.00',
-      supplierBalance: '0.00',
+      debtorBalance: '0.0000',
+      supplierBalance: '0.0000',
     });
     return this.contactRepo.save(contact);
   }
@@ -197,9 +197,9 @@ export class ExternalContactsService {
         ? totalCostDeducted.div(totalQtyDeducted).toFixed(4)
         : priceCheck.effectiveUnitPrice;
 
-      const amount = new Decimal(priceCheck.effectiveUnitPrice).mul(dto.quantity).toFixed(2);
+      const amount = new Decimal(priceCheck.effectiveUnitPrice).mul(dto.quantity).toFixed(4);
 
-      contact.debtorBalance = new Decimal(contact.debtorBalance).plus(amount).toFixed(2);
+      contact.debtorBalance = new Decimal(contact.debtorBalance).plus(amount).toFixed(4);
       await manager.save(ExternalContact, contact);
 
       const tx = manager.create(ExternalTransaction, {
@@ -308,7 +308,7 @@ export class ExternalContactsService {
           ? totalCostDeducted.div(totalQtyDeducted).toFixed(4)
           : priceCheck.effectiveUnitPrice;
 
-        const amount = new Decimal(priceCheck.effectiveUnitPrice).mul(item.quantity).toFixed(2);
+        const amount = new Decimal(priceCheck.effectiveUnitPrice).mul(item.quantity).toFixed(4);
         batchTotal = batchTotal.plus(amount);
 
         const tx = manager.create(ExternalTransaction, {
@@ -332,7 +332,7 @@ export class ExternalContactsService {
         created.push(saved);
       }
 
-      contact.debtorBalance = new Decimal(contact.debtorBalance).plus(batchTotal).toFixed(2);
+      contact.debtorBalance = new Decimal(contact.debtorBalance).plus(batchTotal).toFixed(4);
       await manager.save(ExternalContact, contact);
 
       return created;
@@ -357,7 +357,7 @@ export class ExternalContactsService {
     if (amount.lte(0)) throw new BadRequestException('Amount must be greater than zero');
 
     return this.dataSource.transaction(async (manager) => {
-      contact.debtorBalance = new Decimal(contact.debtorBalance).minus(amount).toFixed(2);
+      contact.debtorBalance = new Decimal(contact.debtorBalance).minus(amount).toFixed(4);
       await manager.save(ExternalContact, contact);
 
       const productOuts = await manager.find(ExternalTransaction, {
@@ -382,7 +382,7 @@ export class ExternalContactsService {
       let isLoss: boolean | null = null;
       if (totalSelling.gt(0)) {
         const marginRatio = totalSelling.minus(totalCost).div(totalSelling);
-        profit = amount.mul(marginRatio).toFixed(2);
+        profit = amount.mul(marginRatio).toFixed(4);
         isLoss = new Decimal(profit).lt(0);
       }
 
@@ -394,7 +394,7 @@ export class ExternalContactsService {
         productName: null,
         quantity: null,
         unitPrice: null,
-        amount: amount.toFixed(2),
+        amount: amount.toFixed(4),
         unitCostUsed: null,
         profit,
         isLoss,
@@ -441,9 +441,9 @@ export class ExternalContactsService {
         notes: dto.notes ?? null,
       });
 
-      const amount = new Decimal(dto.unitCost).mul(dto.quantity).toFixed(2);
+      const amount = new Decimal(dto.unitCost).mul(dto.quantity).toFixed(4);
 
-      contact.supplierBalance = new Decimal(contact.supplierBalance).plus(amount).toFixed(2);
+      contact.supplierBalance = new Decimal(contact.supplierBalance).plus(amount).toFixed(4);
       await manager.save(ExternalContact, contact);
 
       const tx = manager.create(ExternalTransaction, {
@@ -509,7 +509,7 @@ export class ExternalContactsService {
           notes: dto.notes ?? null,
         });
 
-        const amount = new Decimal(item.unitCost).mul(item.quantity).toFixed(2);
+        const amount = new Decimal(item.unitCost).mul(item.quantity).toFixed(4);
         batchTotal = batchTotal.plus(amount);
 
         const tx = manager.create(ExternalTransaction, {
@@ -531,7 +531,7 @@ export class ExternalContactsService {
         created.push(saved);
       }
 
-      contact.supplierBalance = new Decimal(contact.supplierBalance).plus(batchTotal).toFixed(2);
+      contact.supplierBalance = new Decimal(contact.supplierBalance).plus(batchTotal).toFixed(4);
       await manager.save(ExternalContact, contact);
 
       return created;
@@ -556,7 +556,7 @@ export class ExternalContactsService {
     if (amount.lte(0)) throw new BadRequestException('Amount must be greater than zero');
 
     return this.dataSource.transaction(async (manager) => {
-      contact.supplierBalance = new Decimal(contact.supplierBalance).minus(amount).toFixed(2);
+      contact.supplierBalance = new Decimal(contact.supplierBalance).minus(amount).toFixed(4);
       await manager.save(ExternalContact, contact);
 
       const tx = manager.create(ExternalTransaction, {
@@ -567,7 +567,7 @@ export class ExternalContactsService {
         productName: null,
         quantity: null,
         unitPrice: null,
-        amount: amount.toFixed(2),
+        amount: amount.toFixed(4),
         unitCostUsed: null,
         profit: null,
         isLoss: null,
@@ -594,17 +594,17 @@ export class ExternalContactsService {
         case ExternalTransactionType.PRODUCT_OUT:
         case ExternalTransactionType.PAYMENT_IN:
           if (tx.type === ExternalTransactionType.PRODUCT_OUT) {
-            contact.debtorBalance = new Decimal(contact.debtorBalance).minus(amount).toFixed(2);
+            contact.debtorBalance = new Decimal(contact.debtorBalance).minus(amount).toFixed(4);
           } else {
-            contact.debtorBalance = new Decimal(contact.debtorBalance).plus(amount).toFixed(2);
+            contact.debtorBalance = new Decimal(contact.debtorBalance).plus(amount).toFixed(4);
           }
           break;
         case ExternalTransactionType.PRODUCT_IN:
         case ExternalTransactionType.PAYMENT_OUT:
           if (tx.type === ExternalTransactionType.PRODUCT_IN) {
-            contact.supplierBalance = new Decimal(contact.supplierBalance).minus(amount).toFixed(2);
+            contact.supplierBalance = new Decimal(contact.supplierBalance).minus(amount).toFixed(4);
           } else {
-            contact.supplierBalance = new Decimal(contact.supplierBalance).plus(amount).toFixed(2);
+            contact.supplierBalance = new Decimal(contact.supplierBalance).plus(amount).toFixed(4);
           }
           break;
       }

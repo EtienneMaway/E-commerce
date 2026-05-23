@@ -41,11 +41,11 @@ export class ExternalContact {
   role: ExternalContactRole;
 
   @ApiProperty({ example: '150.00', description: 'Amount this contact owes you (debtor side)' })
-  @Column({ name: 'debtor_balance', type: 'decimal', precision: 12, scale: 2, default: '0.00' })
+  @Column({ name: 'debtor_balance', type: 'decimal', precision: 14, scale: 4, default: '0.0000' })
   debtorBalance: string;
 
   @ApiProperty({ example: '75.00', description: 'Amount you owe this contact (supplier side)' })
-  @Column({ name: 'supplier_balance', type: 'decimal', precision: 12, scale: 2, default: '0.00' })
+  @Column({ name: 'supplier_balance', type: 'decimal', precision: 14, scale: 4, default: '0.0000' })
   supplierBalance: string;
 
   @Column({ name: 'owner_id' })

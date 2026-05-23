@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi, currencyApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
@@ -13,14 +13,6 @@ interface Props {
   open: boolean;
   onClose: () => void;
 }
-
-const EMPTY = {
-  productName: '',
-  numberOfCartons: '',
-  cartonPrice: '',
-  piecesPerCarton: '',
-  category: '',
-};
 
 const CATEGORIES = [
   'Food & Beverages',
@@ -58,23 +50,80 @@ interface ExistingProduct {
   latestSellingPrice: string;
 }
 
+interface ItemForm {
+  productName: string;
+  numberOfCartons: string;
+  cartonPrice: string;
+  piecesPerCarton: string;
+  category: string;
+  markup: number;
+  taxEnabled: boolean;
+  taxPercent: number;
+  transportEnabled: boolean;
+  transportPercent: number;
+  inputMode: 'drag' | 'manual';
+  selectedExisting: ExistingProduct | null;
+}
+
+const EMPTY_ITEM: ItemForm = {
+  productName: '',
+  numberOfCartons: '',
+  cartonPrice: '',
+  piecesPerCarton: '',
+  category: '',
+  markup: 0,
+  taxEnabled: false,
+  taxPercent: 0,
+  transportEnabled: false,
+  transportPercent: 0,
+  inputMode: 'drag',
+  selectedExisting: null,
+};
+
+interface ComputedItem {
+  unitCost: string;
+  cartonSelling: string;
+  unitSelling: string;
+  totalPieces: number | null;
+  totalCost: number;
+  totalPercent: number;
+}
+
+function computeItem(item: ItemForm): ComputedItem | null {
+  const cpRaw = parseFloat(item.cartonPrice);
+  const ppc = parseInt(item.piecesPerCarton, 10);
+  const cartons = parseInt(item.numberOfCartons, 10);
+  if (!cpRaw || cpRaw <= 0 || !ppc || ppc <= 0) return null;
+
+  const totalPercent =
+    item.markup +
+    (item.taxEnabled ? item.taxPercent : 0) +
+    (item.transportEnabled ? item.transportPercent : 0);
+
+  const unitCost = cpRaw / ppc;
+  const cartonSelling = cpRaw * (1 + totalPercent / 100);
+  const unitSelling = cartonSelling / ppc;
+  const totalPieces = cartons > 0 ? cartons * ppc : null;
+  const totalCost = cartons > 0 ? cpRaw * cartons : 0;
+
+  return {
+    unitCost: unitCost.toFixed(4),
+    cartonSelling: cartonSelling.toFixed(4),
+    unitSelling: unitSelling.toFixed(4),
+    totalPieces,
+    totalCost,
+    totalPercent,
+  };
+}
+
 export function AddPersonalProductDialog({ open, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
-  const [form, setForm] = useState(EMPTY);
+  const [items, setItems] = useState<ItemForm[]>([{ ...EMPTY_ITEM }]);
   const [entryCurrency, setEntryCurrency] = useState<EntryCurrency>('USD');
-  const [markup, setMarkup] = useState(0);
-  const [taxEnabled, setTaxEnabled] = useState(false);
-  const [taxPercent, setTaxPercent] = useState(0);
-  const [transportEnabled, setTransportEnabled] = useState(false);
-  const [transportPercent, setTransportPercent] = useState(0);
-  const [inputMode, setInputMode] = useState<'drag' | 'manual'>('drag');
+  const [focusedItemIndex, setFocusedItemIndex] = useState<number | null>(null);
   const [error, setError] = useState('');
-  const [selectedExisting, setSelectedExisting] = useState<ExistingProduct | null>(null);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
 
-  // Fetch selling rate for FC conversion
   const { data: rateData } = useQuery({
     queryKey: QK.exchangeRate,
     queryFn: currencyApi.getRate,
@@ -82,48 +131,12 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
     retry: false,
   });
 
-  // Fetch existing products for autocomplete
   const { data: existingProducts } = useQuery<ExistingProduct[]>({
     queryKey: QK.inventoryProducts,
     queryFn: () => inventoryApi.listProducts(),
     staleTime: 30_000,
     enabled: open,
   });
-
-  const matchingProducts = useMemo(() => {
-    const q = form.productName.trim().toLowerCase();
-    if (!q || !existingProducts) return [];
-    return existingProducts
-      .filter((p) => p.productName.toLowerCase().includes(q))
-      .slice(0, 6);
-  }, [form.productName, existingProducts]);
-
-  // Close suggestions when clicking outside
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
-    }
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
-
-  function pickExisting(p: ExistingProduct) {
-    setSelectedExisting(p);
-    setForm((f) => ({
-      ...f,
-      productName: p.productName,
-      cartonPrice: p.latestCartonPrice
-        ? p.latestCartonPrice
-        : p.piecesPerCarton
-        ? (parseFloat(p.latestUnitCost) * p.piecesPerCarton).toFixed(2)
-        : '',
-      piecesPerCarton: p.piecesPerCarton ? String(p.piecesPerCarton) : '',
-      category: p.category ?? '',
-    }));
-    setShowSuggestions(false);
-  }
 
   const sellingRate = rateData?.sellingRate ? parseFloat(rateData.sellingRate) : null;
   const isFC = entryCurrency === 'FC';
@@ -132,66 +145,99 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
   const fmtPrice = useCallback(
     (value: string) => {
       const n = parseFloat(value);
-      if (isNaN(n)) return isFC ? '0fc' : '$0.00';
-      if (isFC) return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(n) + 'fc';
-      return '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+      if (isNaN(n)) return isFC ? '0.0000fc' : '$0.0000';
+      if (isFC) return new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(n) + 'fc';
+      return '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(n);
     },
     [isFC],
   );
 
-  const totalPercent = markup + (taxEnabled ? taxPercent : 0) + (transportEnabled ? transportPercent : 0);
-
-  const computed = useMemo(() => {
-    const cpRaw = parseFloat(form.cartonPrice);
-    const ppc = parseInt(form.piecesPerCarton, 10);
-    const cartons = parseInt(form.numberOfCartons, 10);
-
-    if (!cpRaw || cpRaw <= 0 || !ppc || ppc <= 0) return null;
-
-    // All display values stay in the entry currency
-    const unitCost = cpRaw / ppc;
-    const cartonSelling = cpRaw * (1 + totalPercent / 100);
-    const unitSelling = cartonSelling / ppc;
-    const totalPieces = cartons > 0 ? cartons * ppc : null;
-
-    return {
-      unitCost: unitCost.toFixed(2),
-      cartonSelling: cartonSelling.toFixed(2),
-      unitSelling: unitSelling.toFixed(2),
-      totalPieces,
-    };
-  }, [form.cartonPrice, form.piecesPerCarton, form.numberOfCartons, totalPercent]);
-
-  // Convert a value from entry currency to USD for the backend
   const toUsd = useCallback(
     (value: string): string => {
       if (!isFC || !sellingRate) return value;
-      return (parseFloat(value) / sellingRate).toFixed(2);
+      return (parseFloat(value) / sellingRate).toFixed(4);
     },
     [isFC, sellingRate],
   );
 
+  const updateItem = useCallback((i: number, patch: Partial<ItemForm>) => {
+    setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+  }, []);
+
+  const addItem = useCallback(() => {
+    setItems((prev) => [...prev, { ...EMPTY_ITEM }]);
+  }, []);
+
+  const removeItem = useCallback((i: number) => {
+    setItems((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+  }, []);
+
+  const pickExisting = useCallback((i: number, p: ExistingProduct) => {
+    setItems((prev) =>
+      prev.map((it, idx) => {
+        if (idx !== i) return it;
+        return {
+          ...it,
+          selectedExisting: p,
+          productName: p.productName,
+          cartonPrice: p.latestCartonPrice
+            ? p.latestCartonPrice
+            : p.piecesPerCarton
+            ? (parseFloat(p.latestUnitCost) * p.piecesPerCarton).toFixed(4)
+            : '',
+          piecesPerCarton: p.piecesPerCarton ? String(p.piecesPerCarton) : '',
+          category: p.category ?? '',
+        };
+      }),
+    );
+    setFocusedItemIndex(null);
+  }, []);
+
+  const grandTotal = useMemo(() => {
+    let cost = 0;
+    let pieces = 0;
+    let anyValid = false;
+    for (const item of items) {
+      const c = computeItem(item);
+      if (!c) continue;
+      anyValid = true;
+      cost += c.totalCost;
+      pieces += c.totalPieces ?? 0;
+    }
+    return anyValid ? { cost: cost.toFixed(4), pieces } : null;
+  }, [items]);
+
   const canSubmit =
-    form.productName.trim() &&
-    form.numberOfCartons &&
-    parseInt(form.numberOfCartons, 10) > 0 &&
-    computed?.unitCost &&
-    computed?.unitSelling &&
-    (!isFC || canUseFC);
+    (!isFC || canUseFC) &&
+    items.every((item) => {
+      const c = computeItem(item);
+      return (
+        item.productName.trim().length > 0 &&
+        item.numberOfCartons.trim().length > 0 &&
+        parseInt(item.numberOfCartons, 10) > 0 &&
+        c !== null &&
+        c.unitCost &&
+        c.unitSelling
+      );
+    });
 
   const mutation = useMutation({
     mutationFn: () => {
-      const ppc = Number(form.piecesPerCarton);
-      const cartons = Number(form.numberOfCartons);
-      return inventoryApi.addPersonal({
-        productName: form.productName.trim(),
-        unitCost: toUsd(computed!.unitCost),
-        sellingPrice: toUsd(computed!.unitSelling),
-        cartonPrice: toUsd(form.cartonPrice),
-        quantity: cartons * ppc,
-        piecesPerCarton: ppc,
-        ...(form.category.trim() ? { category: form.category.trim() } : {}),
+      const payload = items.map((item) => {
+        const c = computeItem(item)!;
+        const ppc = Number(item.piecesPerCarton);
+        const cartons = Number(item.numberOfCartons);
+        return {
+          productName: item.productName.trim(),
+          unitCost: toUsd(c.unitCost),
+          sellingPrice: toUsd(c.unitSelling),
+          cartonPrice: toUsd(item.cartonPrice),
+          quantity: cartons * ppc,
+          piecesPerCarton: ppc,
+          ...(item.category.trim() ? { category: item.category.trim() } : {}),
+        };
       });
+      return inventoryApi.addPersonalBulk({ items: payload });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
@@ -203,36 +249,27 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
   });
 
   const resetForm = useCallback(() => {
-    setForm(EMPTY);
+    setItems([{ ...EMPTY_ITEM }]);
     setEntryCurrency('USD');
-    setMarkup(0);
-    setTaxEnabled(false);
-    setTaxPercent(0);
-    setTransportEnabled(false);
-    setTransportPercent(0);
     setError('');
-    setSelectedExisting(null);
-    setShowSuggestions(false);
+    setFocusedItemIndex(null);
   }, []);
-
-  const set =
-    (k: keyof typeof EMPTY) =>
-    (e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<HTMLSelectElement>) =>
-      setForm((f) => ({ ...f, [k]: e.target.value }));
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)' }}>
-      <div className="w-full max-w-md rounded-2xl p-6 shadow-xl overflow-y-auto" style={{ background: 'var(--card)', maxHeight: '90vh' }}>
-        <div className="flex items-center justify-between mb-5">
+      <div className="w-full max-w-lg rounded-2xl shadow-xl flex flex-col" style={{ background: 'var(--card)', maxHeight: '90vh' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
           <h2 className="text-lg font-bold" style={{ color: 'var(--foreground)' }}>{t.addProduct.title}</h2>
           <button onClick={() => { resetForm(); onClose(); }} style={{ color: 'var(--muted)' }}>✕</button>
         </div>
 
-        <div className="space-y-4">
-          {/* Currency toggle */}
-          <div className="flex items-center gap-3">
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-6 py-4">
+          {/* Currency toggle (global) */}
+          <div className="flex items-center gap-3 mb-4">
             <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
               {t.addProduct.enterIn}
             </span>
@@ -265,204 +302,338 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
           </div>
 
           {!canUseFC && entryCurrency === 'USD' && !sellingRate && rateData && (
-            <p className="text-xs" style={{ color: 'var(--warning)' }}>{t.addProduct.noSellingRate}</p>
+            <p className="text-xs mb-3" style={{ color: 'var(--warning)' }}>{t.addProduct.noSellingRate}</p>
           )}
 
-          {/* Product name with autocomplete */}
-          <Field label={t.addProduct.productName}>
-            <div className="relative" ref={suggestionsRef}>
-              <input
-                value={form.productName}
-                onChange={(e) => {
-                  setForm((f) => ({ ...f, productName: e.target.value }));
-                  setSelectedExisting(null);
-                  setShowSuggestions(true);
-                }}
-                onFocus={() => setShowSuggestions(true)}
-                placeholder={t.addProduct.productNamePlaceholder}
-                className="input"
-                autoComplete="off"
+          {/* Items */}
+          <div className="space-y-4">
+            {items.map((item, i) => (
+              <ItemCard
+                key={i}
+                index={i}
+                item={item}
+                isFC={isFC}
+                showRemove={items.length > 1}
+                onUpdate={(patch) => updateItem(i, patch)}
+                onRemove={() => removeItem(i)}
+                existingProducts={existingProducts ?? []}
+                focused={focusedItemIndex === i}
+                onFocus={() => setFocusedItemIndex(i)}
+                onBlur={() => setTimeout(() => {
+                  setFocusedItemIndex((cur) => (cur === i ? null : cur));
+                }, 150)}
+                onPickExisting={(p) => pickExisting(i, p)}
+                fmtPrice={fmtPrice}
+                t={t}
               />
-              {showSuggestions && matchingProducts.length > 0 && (
-                <div
-                  className="absolute z-10 left-0 right-0 mt-1 rounded-lg border shadow-lg overflow-hidden"
-                  style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-                >
-                  <div
-                    className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide"
-                    style={{ color: 'var(--muted)', background: 'var(--surface)' }}
-                  >
-                    {t.addProduct.suggestionsTitle}
-                  </div>
-                  {matchingProducts.map((p) => (
-                    <button
-                      type="button"
-                      key={p.productName}
-                      onClick={() => pickExisting(p)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--surface)] transition-colors"
-                      style={{ color: 'var(--foreground)' }}
-                    >
-                      <div className="font-medium">
-                        {p.productName.charAt(0).toUpperCase() + p.productName.slice(1)}
-                      </div>
-                      <div className="text-xs" style={{ color: 'var(--muted)' }}>
-                        {p.category ?? '—'}
-                        {p.piecesPerCarton ? ` · ${p.piecesPerCarton} pcs/ctn` : ''}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {selectedExisting && (
-              <p
-                className="text-xs mt-1.5"
-                style={{ color: 'var(--primary)' }}
-              >
-                ✓ {t.addProduct.existingProductHint}
-              </p>
-            )}
-          </Field>
+            ))}
+          </div>
 
-          {/* Number of cartons + Purchase price */}
-          <div className="grid grid-cols-2 gap-4">
-            <Field label={t.addProduct.numberOfCartons}>
-              <input value={form.numberOfCartons} onChange={set('numberOfCartons')} placeholder={t.addProduct.cartonsPlaceholder} type="number" min="1" className="input" />
-            </Field>
-            <Field label={t.addProduct.cartonPrice}>
-              <div className="relative">
-                <input
-                  value={form.cartonPrice}
-                  onChange={set('cartonPrice')}
-                  placeholder={t.addProduct.pricePlaceholder}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="input"
-                  style={{ paddingRight: '36px' }}
-                />
-                <span
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold"
-                  style={{ color: isFC ? 'var(--warning)' : 'var(--primary)' }}
-                >
-                  {isFC ? 'fc' : '$'}
-                </span>
+          {/* Add another product */}
+          <button
+            type="button"
+            onClick={addItem}
+            className="mt-3 text-sm font-medium"
+            style={{ color: 'var(--primary)' }}
+          >
+            {t.addProduct.addAnother}
+          </button>
+
+          {/* Grand total */}
+          {grandTotal && items.length > 1 && (
+            <div className="rounded-xl border p-3 mt-4 space-y-1.5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+              <div className="flex justify-between text-sm">
+                <span style={{ color: 'var(--muted)' }}>{t.addProduct.grandTotalPieces}</span>
+                <span className="font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{grandTotal.pieces}</span>
               </div>
-            </Field>
-          </div>
-
-          {/* Pieces per carton + Category */}
-          <div className="grid grid-cols-2 gap-4">
-            <Field label={t.addProduct.piecesPerCarton}>
-              <input value={form.piecesPerCarton} onChange={set('piecesPerCarton')} placeholder={t.addProduct.piecesPerCartonPlaceholder} type="number" min="1" className="input" />
-            </Field>
-            <Field label={t.addProduct.category}>
-              <select value={form.category} onChange={set('category')} className="input">
-                <option value="">{t.addProduct.categorySelect}</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-                {form.category && !CATEGORIES.includes(form.category as typeof CATEGORIES[number]) && (
-                  <option value={form.category}>{form.category}</option>
-                )}
-              </select>
-            </Field>
-          </div>
-
-          {/* Input mode switch — flips all three percentage rows between drag and manual entry */}
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
-              {t.addProduct.inputModeLabel}
-            </span>
-            <div
-              className="flex rounded-lg overflow-hidden border text-xs font-medium"
-              style={{ borderColor: 'var(--border)' }}
-              role="tablist"
-            >
-              {(['drag', 'manual'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="tab"
-                  aria-selected={inputMode === m}
-                  onClick={() => {
-                    if (m === inputMode) return;
-                    setInputMode(m);
-                    // Reset all three to 0 when flipping mode, per the requested behaviour.
-                    setMarkup(0);
-                    setTaxPercent(0);
-                    setTransportPercent(0);
-                  }}
-                  className="px-3 py-1.5 transition-colors"
-                  style={{
-                    background: inputMode === m ? 'var(--primary)' : 'var(--surface)',
-                    color: inputMode === m ? '#fff' : 'var(--foreground)',
-                  }}
-                >
-                  {m === 'drag' ? t.addProduct.inputModeDrag : t.addProduct.inputModeManual}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Markup */}
-          <PercentSlider mode={inputMode} label={t.addProduct.markup} value={markup} onChange={setMarkup} />
-
-          {/* Tax toggle + slider */}
-          <ToggleSlider
-            mode={inputMode}
-            label={t.addProduct.tax}
-            toggleLabel={t.addProduct.includeTax}
-            enabled={taxEnabled}
-            onToggle={setTaxEnabled}
-            value={taxPercent}
-            onChange={setTaxPercent}
-          />
-
-          {/* Transport toggle + slider */}
-          <ToggleSlider
-            mode={inputMode}
-            label={t.addProduct.transport}
-            toggleLabel={t.addProduct.includeTransport}
-            enabled={transportEnabled}
-            onToggle={setTransportEnabled}
-            value={transportPercent}
-            onChange={setTransportPercent}
-          />
-
-          {/* Computed price breakdown */}
-          {computed && (
-            <div
-              className="rounded-xl p-3 space-y-1.5 border"
-              style={{
-                background: isFC ? 'var(--warning-light)' : 'var(--surface)',
-                borderColor: isFC ? 'rgba(var(--warning-rgb), 0.25)' : 'var(--border)',
-              }}
-            >
-              {computed.totalPieces && (
-                <ComputedRow label={t.addProduct.totalPieces} value={`${computed.totalPieces}`} />
-              )}
-              <ComputedRow label={t.addProduct.computedUnitCost} value={fmtPrice(computed.unitCost)} />
-              <ComputedRow label={t.addProduct.computedCartonSelling} value={fmtPrice(computed.cartonSelling)} />
-              <ComputedRow label={t.addProduct.computedUnitSelling} value={fmtPrice(computed.unitSelling)} highlight />
+              <div className="flex justify-between text-sm pt-1.5 border-t" style={{ borderColor: 'var(--border)' }}>
+                <span style={{ color: 'var(--muted)' }}>{t.addProduct.grandTotalCost}</span>
+                <span className="font-bold tabular-nums" style={{ color: 'var(--foreground)' }}>{fmtPrice(grandTotal.cost)}</span>
+              </div>
             </div>
           )}
+
+          {error && <p className="mt-3 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
         </div>
 
-        {error && <p className="mt-3 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-
-        <div className="flex gap-2 mt-5">
+        {/* Footer */}
+        <div className="px-6 py-4 border-t flex gap-2" style={{ borderColor: 'var(--border)' }}>
           <button onClick={() => { resetForm(); onClose(); }} className="btn btn-secondary flex-1">{t.common.cancel}</button>
           <button
             onClick={() => mutation.mutate()}
             disabled={mutation.isPending || !canSubmit}
             className="btn btn-primary flex-1"
           >
-            {mutation.isPending ? t.addProduct.submitting : t.addProduct.submit}
+            {mutation.isPending ? t.addProduct.submitting : t.addProduct.submit(items.length)}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Per-item card ────────────────────────────────────────────────────────── */
+
+interface ItemCardProps {
+  index: number;
+  item: ItemForm;
+  isFC: boolean;
+  showRemove: boolean;
+  onUpdate: (patch: Partial<ItemForm>) => void;
+  onRemove: () => void;
+  existingProducts: ExistingProduct[];
+  focused: boolean;
+  onFocus: () => void;
+  onBlur: () => void;
+  onPickExisting: (p: ExistingProduct) => void;
+  fmtPrice: (value: string) => string;
+  t: ReturnType<typeof useT>;
+}
+
+function ItemCard({
+  index,
+  item,
+  isFC,
+  showRemove,
+  onUpdate,
+  onRemove,
+  existingProducts,
+  focused,
+  onFocus,
+  onBlur,
+  onPickExisting,
+  fmtPrice,
+  t,
+}: ItemCardProps) {
+  const matchingProducts = useMemo(() => {
+    const q = item.productName.trim().toLowerCase();
+    if (!q) return [];
+    return existingProducts
+      .filter((p) => p.productName.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [item.productName, existingProducts]);
+
+  const computed = useMemo(() => computeItem(item), [item]);
+
+  const showSuggestions = focused && matchingProducts.length > 0;
+
+  return (
+    <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+      {/* Card header */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
+          {t.addProduct.itemLabel(index + 1)}
+        </span>
+        {showRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-xs font-medium"
+            style={{ color: 'var(--danger)' }}
+            aria-label={t.addProduct.removeItem}
+          >
+            ✕ {t.addProduct.removeItem}
+          </button>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        {/* Product name with autocomplete */}
+        <Field label={t.addProduct.productName}>
+          <div className="relative">
+            <input
+              value={item.productName}
+              onChange={(e) => {
+                onUpdate({ productName: e.target.value, selectedExisting: null });
+                onFocus();
+              }}
+              onFocus={onFocus}
+              onBlur={onBlur}
+              placeholder={t.addProduct.productNamePlaceholder}
+              className="input"
+              autoComplete="off"
+            />
+            {showSuggestions && (
+              <div
+                className="absolute z-10 left-0 right-0 mt-1 rounded-lg border shadow-lg overflow-hidden"
+                style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+              >
+                <div
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide"
+                  style={{ color: 'var(--muted)', background: 'var(--surface)' }}
+                >
+                  {t.addProduct.suggestionsTitle}
+                </div>
+                {matchingProducts.map((p) => (
+                  <button
+                    type="button"
+                    key={p.productName}
+                    onMouseDown={(e) => { e.preventDefault(); onPickExisting(p); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--surface)] transition-colors"
+                    style={{ color: 'var(--foreground)' }}
+                  >
+                    <div className="font-medium">
+                      {p.productName.charAt(0).toUpperCase() + p.productName.slice(1)}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                      {p.category ?? '—'}
+                      {p.piecesPerCarton ? ` · ${p.piecesPerCarton} pcs/ctn` : ''}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {item.selectedExisting && (
+            <p className="text-xs mt-1.5" style={{ color: 'var(--primary)' }}>
+              ✓ {t.addProduct.existingProductHint}
+            </p>
+          )}
+        </Field>
+
+        {/* Number of cartons + Purchase price */}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t.addProduct.numberOfCartons}>
+            <input
+              value={item.numberOfCartons}
+              onChange={(e) => onUpdate({ numberOfCartons: e.target.value })}
+              placeholder={t.addProduct.cartonsPlaceholder}
+              type="number"
+              min="1"
+              className="input"
+            />
+          </Field>
+          <Field label={t.addProduct.cartonPrice}>
+            <div className="relative">
+              <input
+                value={item.cartonPrice}
+                onChange={(e) => onUpdate({ cartonPrice: e.target.value })}
+                placeholder={t.addProduct.pricePlaceholder}
+                type="number"
+                min="0"
+                step="0.01"
+                className="input"
+                style={{ paddingRight: '36px' }}
+              />
+              <span
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold"
+                style={{ color: isFC ? 'var(--warning)' : 'var(--primary)' }}
+              >
+                {isFC ? 'fc' : '$'}
+              </span>
+            </div>
+          </Field>
+        </div>
+
+        {/* Pieces per carton + Category */}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t.addProduct.piecesPerCarton}>
+            <input
+              value={item.piecesPerCarton}
+              onChange={(e) => onUpdate({ piecesPerCarton: e.target.value })}
+              placeholder={t.addProduct.piecesPerCartonPlaceholder}
+              type="number"
+              min="1"
+              className="input"
+            />
+          </Field>
+          <Field label={t.addProduct.category}>
+            <select
+              value={item.category}
+              onChange={(e) => onUpdate({ category: e.target.value })}
+              className="input"
+            >
+              <option value="">{t.addProduct.categorySelect}</option>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+              {item.category && !CATEGORIES.includes(item.category as typeof CATEGORIES[number]) && (
+                <option value={item.category}>{item.category}</option>
+              )}
+            </select>
+          </Field>
+        </div>
+
+        {/* Input mode switch */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
+            {t.addProduct.inputModeLabel}
+          </span>
+          <div
+            className="flex rounded-lg overflow-hidden border text-xs font-medium"
+            style={{ borderColor: 'var(--border)' }}
+            role="tablist"
+          >
+            {(['drag', 'manual'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={item.inputMode === m}
+                onClick={() => {
+                  if (m === item.inputMode) return;
+                  // Reset percentages when flipping mode (matches original behaviour).
+                  onUpdate({ inputMode: m, markup: 0, taxPercent: 0, transportPercent: 0 });
+                }}
+                className="px-3 py-1.5 transition-colors"
+                style={{
+                  background: item.inputMode === m ? 'var(--primary)' : 'var(--surface)',
+                  color: item.inputMode === m ? '#fff' : 'var(--foreground)',
+                }}
+              >
+                {m === 'drag' ? t.addProduct.inputModeDrag : t.addProduct.inputModeManual}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Markup */}
+        <PercentSlider
+          mode={item.inputMode}
+          label={t.addProduct.markup}
+          value={item.markup}
+          onChange={(v) => onUpdate({ markup: v })}
+        />
+
+        {/* Tax toggle + slider */}
+        <ToggleSlider
+          mode={item.inputMode}
+          label={t.addProduct.tax}
+          toggleLabel={t.addProduct.includeTax}
+          enabled={item.taxEnabled}
+          onToggle={(v) => onUpdate({ taxEnabled: v })}
+          value={item.taxPercent}
+          onChange={(v) => onUpdate({ taxPercent: v })}
+        />
+
+        {/* Transport toggle + slider */}
+        <ToggleSlider
+          mode={item.inputMode}
+          label={t.addProduct.transport}
+          toggleLabel={t.addProduct.includeTransport}
+          enabled={item.transportEnabled}
+          onToggle={(v) => onUpdate({ transportEnabled: v })}
+          value={item.transportPercent}
+          onChange={(v) => onUpdate({ transportPercent: v })}
+        />
+
+        {/* Computed price breakdown */}
+        {computed && (
+          <div
+            className="rounded-xl p-3 space-y-1.5 border"
+            style={{
+              background: isFC ? 'var(--warning-light)' : 'var(--card)',
+              borderColor: isFC ? 'rgba(var(--warning-rgb), 0.25)' : 'var(--border)',
+            }}
+          >
+            {computed.totalPieces && (
+              <ComputedRow label={t.addProduct.totalPieces} value={`${computed.totalPieces}`} />
+            )}
+            <ComputedRow label={t.addProduct.computedUnitCost} value={fmtPrice(computed.unitCost)} />
+            <ComputedRow label={t.addProduct.computedCartonSelling} value={fmtPrice(computed.cartonSelling)} />
+            <ComputedRow label={t.addProduct.computedUnitSelling} value={fmtPrice(computed.unitSelling)} highlight />
+          </div>
+        )}
       </div>
     </div>
   );

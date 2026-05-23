@@ -189,7 +189,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   ): Promise<PriceGuardPending[]> => {
     const pending: PriceGuardPending[] = [];
     for (const item of items) {
-      const salePrice = (parseFloat(item.unitCost) * (1 + markupPct / 100)).toFixed(2);
+      const salePrice = (parseFloat(item.unitCost) * (1 + markupPct / 100)).toFixed(4);
       try {
         await salesApi.record({
           productName: item.productName,
@@ -255,7 +255,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     if (isOffline) {
       const soldItems = cartArray;
       for (const item of soldItems) {
-        const salePrice = (parseFloat(item.unitCost) * (1 + markupPct / 100)).toFixed(2);
+        const salePrice = (parseFloat(item.unitCost) * (1 + markupPct / 100)).toFixed(4);
         recordOfflineSale(item.productName, item.qty, salePrice);
       }
       handleClose();
@@ -474,14 +474,14 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                           {t.recordSaleModal.baseTotal(
                             cartItem.qty,
                             unitCostFc,
-                            formatCurrency((parseFloat(product.unitCost) * cartItem.qty).toFixed(2)),
+                            formatCurrency((parseFloat(product.unitCost) * cartItem.qty).toFixed(4)),
                           )}
                         </Text>
                         <Text className="text-primary font-semibold text-sm mt-1">
                           {t.recordSaleModal.markupLine(
                             markupPct,
                             formatCurrency(
-                              (parseFloat(product.unitCost) * (1 + markupPct / 100) * cartItem.qty).toFixed(2),
+                              (parseFloat(product.unitCost) * (1 + markupPct / 100) * cartItem.qty).toFixed(4),
                             ),
                           )}
                         </Text>
@@ -554,7 +554,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                 {t.recordSaleModal.productsSelected(cart.size)}
               </Text>
               <Text className="text-text dark:text-slate-100 font-bold text-lg">
-                {t.recordSaleModal.total(formatCurrency(grandTotal.toFixed(2)))}
+                {t.recordSaleModal.total(formatCurrency(grandTotal.toFixed(4)))}
               </Text>
             </View>
           )}

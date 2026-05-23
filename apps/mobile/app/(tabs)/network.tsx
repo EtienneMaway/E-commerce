@@ -151,7 +151,7 @@ export default function NetworkScreen() {
             {t.network.totalOwedToSuppliers}{' '}
             <Text className="font-bold">
               {formatCurrency(
-                supplierList.reduce((s, x) => s + parseFloat(x.outstandingBalance), 0).toFixed(2),
+                supplierList.reduce((s, x) => s + parseFloat(x.outstandingBalance), 0).toFixed(4),
               )}
             </Text>
           </Text>
@@ -163,7 +163,7 @@ export default function NetworkScreen() {
             {t.network.totalOwedToYou}{' '}
             <Text className="font-bold">
               {formatCurrency(
-                debtorList.reduce((s, x) => s + parseFloat(x.outstandingBalance), 0).toFixed(2),
+                debtorList.reduce((s, x) => s + parseFloat(x.outstandingBalance), 0).toFixed(4),
               )}
             </Text>
           </Text>

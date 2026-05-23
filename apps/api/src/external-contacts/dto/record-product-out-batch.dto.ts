@@ -24,7 +24,7 @@ export class ProductOutBatchItemDto {
   quantity: number;
 
   @ApiProperty({ example: '28.00' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   unitPrice: string;
 
   @ApiPropertyOptional({ description: 'Required (employee only) when below owner\'s standard price' })

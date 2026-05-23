@@ -110,7 +110,7 @@ export class StockMovement {
   qtyAfter: number;
 
   @ApiProperty({ example: '25.00', description: 'Unit cost at the time of the movement (snapshot)' })
-  @Column({ name: 'unit_cost_snapshot', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'unit_cost_snapshot', type: 'decimal', precision: 14, scale: 4 })
   unitCostSnapshot: string;
 
   @ApiPropertyOptional()

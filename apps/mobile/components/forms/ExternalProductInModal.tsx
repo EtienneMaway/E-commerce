@@ -47,7 +47,7 @@ export function ExternalProductInModal({ visible, onClose, contactId }: Props) {
   };
 
   const debtHint = form.unitCost && form.quantity
-    ? formatCurrency((parseFloat(form.unitCost || '0') * parseInt(form.quantity || '0', 10)).toFixed(2))
+    ? formatCurrency((parseFloat(form.unitCost || '0') * parseInt(form.quantity || '0', 10)).toFixed(4))
     : '...';
 
   return (

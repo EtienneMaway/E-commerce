@@ -147,7 +147,7 @@ export default function StockMovementsPage() {
       render: (m) => {
         const value = (
           Math.abs(m.qtyDelta) * parseFloat(m.unitCostSnapshot)
-        ).toFixed(2);
+        ).toFixed(4);
         return (
           <span style={{ color: 'var(--muted)' }}>{formatCurrency(value)}</span>
         );

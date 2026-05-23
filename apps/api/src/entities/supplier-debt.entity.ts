@@ -22,15 +22,15 @@ export class SupplierDebt {
   id: string;
 
   @ApiProperty({ example: '500.00', description: 'Total credit ever received from this supplier' })
-  @Column({ name: 'total_credit_received', type: 'decimal', precision: 12, scale: 2, default: '0.00' })
+  @Column({ name: 'total_credit_received', type: 'decimal', precision: 14, scale: 4, default: '0.0000' })
   totalCreditReceived: string;
 
   @ApiProperty({ example: '200.00', description: 'Total amount paid back to this supplier' })
-  @Column({ name: 'total_paid', type: 'decimal', precision: 12, scale: 2, default: '0.00' })
+  @Column({ name: 'total_paid', type: 'decimal', precision: 14, scale: 4, default: '0.0000' })
   totalPaid: string;
 
   @ApiProperty({ example: '300.00', description: 'Current outstanding balance owed to supplier' })
-  @Column({ name: 'outstanding_balance', type: 'decimal', precision: 12, scale: 2, default: '0.00' })
+  @Column({ name: 'outstanding_balance', type: 'decimal', precision: 14, scale: 4, default: '0.0000' })
   outstandingBalance: string;
 
   @CreateDateColumn({ name: 'created_at' })

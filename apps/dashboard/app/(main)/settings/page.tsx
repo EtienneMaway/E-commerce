@@ -78,6 +78,16 @@ export default function SettingsPage() {
 
   const previewUsd = '100.00';
 
+  // Inverted-rate detection: warn when Buying Rate > System Selling Rate.
+  // Compare against typed inputs (so the warning reacts live) but only when
+  // both are valid positive numbers.
+  const sysNum = parseFloat(rateInput);
+  const buyNum = parseFloat(sellingRateInput);
+  const ratesInverted =
+    !isNaN(sysNum) && sysNum > 0 &&
+    !isNaN(buyNum) && buyNum > 0 &&
+    sysNum < buyNum;
+
   if (!isOwner) return null;
 
   return (
@@ -90,6 +100,34 @@ export default function SettingsPage() {
       </div>
 
       <div className="page-content space-y-6" style={{ maxWidth: '560px' }}>
+
+        {/* ── Inverted-rate warning ───────────────────────────────────── */}
+        {ratesInverted && (
+          <div
+            className="rounded-2xl flex gap-3 items-start anim-fade-up"
+            style={{
+              padding: '16px 20px',
+              background: 'var(--danger-light)',
+              border: '1px solid rgba(var(--danger-rgb), 0.35)',
+            }}
+          >
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-base"
+              style={{ background: 'rgba(var(--danger-rgb), 0.18)' }}
+              aria-hidden
+            >
+              ⚠️
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm" style={{ color: 'var(--danger)' }}>
+                {t.settings.invertedTitle}
+              </p>
+              <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--danger)', opacity: 0.85 }}>
+                {t.settings.invertedBody(sysNum.toString(), buyNum.toString())}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── Currency display toggle ─────────────────────────────────── */}
         <div className="card" style={{ padding: '24px' }}>

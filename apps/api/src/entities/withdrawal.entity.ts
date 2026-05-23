@@ -28,7 +28,7 @@ export class Withdrawal {
   owner: User;
 
   @ApiProperty({ example: '150.00', description: 'Amount withdrawn in the chosen currency' })
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 14, scale: 4 })
   amount: string;
 
   @ApiProperty({ enum: WithdrawalCurrency, example: WithdrawalCurrency.USD })
@@ -43,7 +43,7 @@ export class Withdrawal {
   usdToFcRateSnapshot: string | null;
 
   @ApiProperty({ example: '150.00', description: 'Canonical USD equivalent at withdrawal time' })
-  @Column({ name: 'amount_usd', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'amount_usd', type: 'decimal', precision: 14, scale: 4 })
   amountUsd: string;
 
   @ApiProperty({ description: 'When the withdrawal was recorded' })
@@ -57,22 +57,22 @@ export class Withdrawal {
   periodStartAt: Date;
 
   @ApiProperty({ example: '500.00', description: 'Cash income in window (USD)' })
-  @Column({ name: 'period_income', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'period_income', type: 'decimal', precision: 14, scale: 4 })
   periodIncome: string;
 
   @ApiProperty({ example: '75.00', description: 'Expenses in window (USD)' })
-  @Column({ name: 'period_expenses', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'period_expenses', type: 'decimal', precision: 14, scale: 4 })
   periodExpenses: string;
 
   @ApiProperty({ example: '25.00', description: 'Carried from previous withdrawal leftover (USD)' })
-  @Column({ name: 'leftover_carried', type: 'decimal', precision: 12, scale: 2, default: '0.00' })
+  @Column({ name: 'leftover_carried', type: 'decimal', precision: 14, scale: 4, default: '0.0000' })
   leftoverCarried: string;
 
   @ApiProperty({
     example: '300.00',
     description: 'Remaining after withdrawal: periodIncome − periodExpenses + leftoverCarried − amountUsd',
   })
-  @Column({ name: 'leftover_out', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'leftover_out', type: 'decimal', precision: 14, scale: 4 })
   leftoverOut: string;
 
   @ApiPropertyOptional({ example: 'Taking cash for new stock' })

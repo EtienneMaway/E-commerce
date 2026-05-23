@@ -145,7 +145,7 @@ export default function DebtorDetailPage({ params }: { params: Promise<{ id: str
                       <td className="px-4 py-3" style={{ color: 'var(--muted)' }}>{formatCurrency(row.sellingPrice)}</td>
                       <td className="px-4 py-3" style={{ color: 'var(--muted)' }}>{row.quantityOriginal}</td>
                       <td className="px-4 py-3 font-semibold" style={{ color: 'var(--success)' }}>
-                        {formatCurrency((parseFloat(row.sellingPrice) * row.quantityOriginal).toFixed(2))}
+                        {formatCurrency((parseFloat(row.sellingPrice) * row.quantityOriginal).toFixed(4))}
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--muted)' }}>{formatDate(row.createdAt)}</td>
                     </tr>

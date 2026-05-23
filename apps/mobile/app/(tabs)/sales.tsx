@@ -56,7 +56,7 @@ function SaleCard({ item }: { item: SaleRow }) {
           <Text className="text-muted dark:text-slate-500 text-sm">{formatDate(item.date)}</Text>
         </View>
         <Badge
-          label={item.isLoss ? t.sales.loss(formatCurrency(Math.abs(profitNum).toFixed(2))) : `+${formatCurrency(item.profit)}`}
+          label={item.isLoss ? t.sales.loss(formatCurrency(Math.abs(profitNum).toFixed(4))) : `+${formatCurrency(item.profit)}`}
           variant={item.isLoss ? 'loss' : 'profit'}
         />
       </View>
@@ -217,11 +217,11 @@ export default function SalesScreen() {
         <View className="mx-4 mb-3 flex-row gap-3">
           <View className="flex-1 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-900 rounded-xl px-3 py-2.5">
             <Text className="text-success text-sm">{t.sales.profitLabel}</Text>
-            <Text className="text-success font-bold text-base">{formatCurrency(totalProfit.toFixed(2))}</Text>
+            <Text className="text-success font-bold text-base">{formatCurrency(totalProfit.toFixed(4))}</Text>
           </View>
           <View className="flex-1 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 rounded-xl px-3 py-2.5">
             <Text className="text-primary text-sm">{t.sales.revenueLabel}</Text>
-            <Text className="text-primary font-bold text-base">{formatCurrency(totalRevenue.toFixed(2))}</Text>
+            <Text className="text-primary font-bold text-base">{formatCurrency(totalRevenue.toFixed(4))}</Text>
           </View>
         </View>
       )}

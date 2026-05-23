@@ -43,7 +43,7 @@ export class Expense {
   owner: User;
 
   @ApiProperty({ example: '25.00', description: 'Amount in the original currency' })
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 14, scale: 4 })
   amount: string;
 
   @ApiProperty({ enum: ExpenseCurrency, example: ExpenseCurrency.USD })

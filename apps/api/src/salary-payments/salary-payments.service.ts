@@ -75,11 +75,11 @@ export class SalaryPaymentsService {
         throw new UnprocessableEntityException({
           warning: true,
           code: 'SALARY_OVERFLOW',
-          monthlyPay: monthly.toFixed(2),
-          alreadyPlanned: planned.toFixed(2),
-          attemptedAmount: amount.toFixed(2),
-          projected: projected.toFixed(2),
-          message: `This payment would put ${projected.toFixed(2)} USD against a ${monthly.toFixed(2)} USD monthly target — confirm to override.`,
+          monthlyPay: monthly.toFixed(4),
+          alreadyPlanned: planned.toFixed(4),
+          attemptedAmount: amount.toFixed(4),
+          projected: projected.toFixed(4),
+          message: `This payment would put ${projected.toFixed(4)} USD against a ${monthly.toFixed(4)} USD monthly target — confirm to override.`,
         });
       }
     }
@@ -89,7 +89,7 @@ export class SalaryPaymentsService {
       employmentId: employment.id,
       employerId: employment.employerId,
       employeeId: employment.employeeId,
-      amount: amount.toFixed(2),
+      amount: amount.toFixed(4),
       periodMonth,
       // External employees can't log in to confirm — payment is settled immediately.
       status: isExternal ? SalaryPaymentStatus.CONFIRMED : SalaryPaymentStatus.PENDING_CONFIRMATION,
@@ -153,16 +153,16 @@ export class SalaryPaymentsService {
 
     const monthlyPay = employment.monthlyPay;
     const balanceRemaining = monthlyPay
-      ? Decimal.max(new Decimal(monthlyPay).minus(totals.confirmed), new Decimal(0)).toFixed(2)
+      ? Decimal.max(new Decimal(monthlyPay).minus(totals.confirmed), new Decimal(0)).toFixed(4)
       : null;
 
     return {
       employmentId: employment.id,
       periodMonth,
-      monthlyPay: monthlyPay ? new Decimal(monthlyPay).toFixed(2) : null,
-      paidConfirmed: totals.confirmed.toFixed(2),
-      pendingConfirmation: totals.pending.toFixed(2),
-      rejected: totals.rejected.toFixed(2),
+      monthlyPay: monthlyPay ? new Decimal(monthlyPay).toFixed(4) : null,
+      paidConfirmed: totals.confirmed.toFixed(4),
+      pendingConfirmation: totals.pending.toFixed(4),
+      rejected: totals.rejected.toFixed(4),
       balanceRemaining,
       paymentCount: totals.count,
     };

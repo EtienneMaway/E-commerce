@@ -24,11 +24,11 @@ export class ConsignmentItem {
   quantity: number;
 
   @ApiProperty({ example: '32.00', description: 'What debtor will owe per unit' })
-  @Column({ name: 'agreed_unit_price', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'agreed_unit_price', type: 'decimal', precision: 14, scale: 4 })
   agreedUnitPrice: string;
 
   @ApiProperty({ example: '25.00', description: "Supplier's cost per unit at time of request" })
-  @Column({ name: 'unit_cost', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'unit_cost', type: 'decimal', precision: 14, scale: 4 })
   unitCost: string;
 
   @Column({ name: 'consignment_request_id' })
@@ -47,7 +47,7 @@ export class ConsignmentItem {
   actor: User | null;
 
   @ApiPropertyOptional({ example: '35.00', description: 'Owner\'s standard unit price at action time; set only when employee discounted' })
-  @Column({ name: 'original_unit_price', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ name: 'original_unit_price', type: 'decimal', precision: 14, scale: 4, nullable: true })
   originalUnitPrice: string | null;
 
   @ApiPropertyOptional({ example: 'Bulk discount agreed by employer' })

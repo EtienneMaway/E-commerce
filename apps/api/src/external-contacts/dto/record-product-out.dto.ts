@@ -20,7 +20,7 @@ export class RecordProductOutDto {
   quantity: number;
 
   @ApiProperty({ example: '28.00', description: 'Price per unit the debtor owes you' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   unitPrice: string;
 
   @ApiPropertyOptional({ example: 'First batch given on credit' })

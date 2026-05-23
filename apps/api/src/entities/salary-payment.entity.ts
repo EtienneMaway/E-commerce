@@ -54,7 +54,7 @@ export class SalaryPayment {
   employee: User;
 
   @ApiProperty({ example: '50.00', description: 'Payment amount in USD' })
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 14, scale: 4 })
   amount: string;
 
   @ApiProperty({

@@ -67,7 +67,7 @@ export function ReceiveFromSupplierModal({ visible, onClose }: Props) {
         <Input label={t.receiveSupplierModal.category} value={form.category} onChangeText={set('category')} placeholder={t.receiveSupplierModal.categoryPlaceholder} />
         <Input label={t.receiveSupplierModal.piecesPerCarton} value={form.piecesPerCarton} onChangeText={set('piecesPerCarton')} placeholder="e.g. 20" keyboardType="number-pad" />
         <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
-          <Text className="text-blue-700 text-xs">{t.receiveSupplierModal.debtHint(form.unitCost && form.quantity ? formatCurrency((parseFloat(form.unitCost || '0') * parseInt(form.quantity || '0', 10)).toFixed(2)) : '...')}</Text>
+          <Text className="text-blue-700 text-xs">{t.receiveSupplierModal.debtHint(form.unitCost && form.quantity ? formatCurrency((parseFloat(form.unitCost || '0') * parseInt(form.quantity || '0', 10)).toFixed(4)) : '...')}</Text>
         </View>
         <Button label={t.receiveSupplierModal.submit} onPress={handleSubmit} loading={isPending} />
       </ScrollView>

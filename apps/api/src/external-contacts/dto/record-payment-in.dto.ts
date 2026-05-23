@@ -3,7 +3,7 @@ import { IsDecimal, IsOptional, IsString } from 'class-validator';
 
 export class RecordPaymentInDto {
   @ApiProperty({ example: '100.00', description: 'Cash amount received from external debtor' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   amount: string;
 
   @ApiPropertyOptional({ example: 'Partial payment in cash' })

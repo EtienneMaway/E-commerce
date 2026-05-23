@@ -288,7 +288,7 @@ export default function DashboardScreen() {
                 : `${pendingSalary.length} salary payments to confirm`}
             </Text>
             <Text className="text-amber-600 dark:text-amber-400 text-sm mt-0.5">
-              {formatCurrency(pendingSalaryTotal.toFixed(2))} total · tap to review
+              {formatCurrency(pendingSalaryTotal.toFixed(4))} total · tap to review
             </Text>
           </View>
           <Text className="text-amber-700 dark:text-amber-300 text-sm font-medium">›</Text>

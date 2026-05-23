@@ -109,7 +109,7 @@ export default function SuppliersPage() {
         <div>
           <h1 className="page-title">{t.suppliers.title}</h1>
           <p className="page-sub">
-            {t.suppliers.sub(rows.length, formatCurrency(totalOwed.toFixed(2)))}
+            {t.suppliers.sub(rows.length, formatCurrency(totalOwed.toFixed(4)))}
           </p>
         </div>
       </div>
@@ -125,20 +125,20 @@ export default function SuppliersPage() {
           />
           <KpiCard
             label={t.suppliers.kpiTotalOwed}
-            value={formatCurrency(totalOwed.toFixed(2))}
+            value={formatCurrency(totalOwed.toFixed(4))}
             icon="💸"
             color="danger"
             loading={isLoading}
           />
           <KpiCard
             label={t.suppliers.kpiTotalReceived}
-            value={formatCurrency(totalReceived.toFixed(2))}
+            value={formatCurrency(totalReceived.toFixed(4))}
             icon="📦"
             loading={isLoading}
           />
           <KpiCard
             label={t.suppliers.kpiTotalPaid}
-            value={formatCurrency(totalPaid.toFixed(2))}
+            value={formatCurrency(totalPaid.toFixed(4))}
             icon="✅"
             color="success"
             loading={isLoading}

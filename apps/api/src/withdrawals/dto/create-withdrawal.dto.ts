@@ -10,7 +10,7 @@ import { WithdrawalCurrency } from '../../entities';
 
 export class CreateWithdrawalDto {
   @ApiProperty({ example: '100.00', description: 'Amount to withdraw in the chosen currency' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   amount: string;
 
   @ApiProperty({ enum: WithdrawalCurrency, example: WithdrawalCurrency.USD })

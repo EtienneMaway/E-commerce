@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { consignmentsApi, inventoryApi } from '../../lib/api';
+import { consignmentsApi, currencyApi, inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { getErrorMessage } from '../../lib/utils';
 import { UserSearchInput } from '../ui/UserSearchInput';
 import { useT } from '../../lib/i18n';
-import { useFormatCurrency } from '../../lib/currency';
+
+type EntryCurrency = 'USD' | 'FC';
 
 interface UserOption {
   id: string;
@@ -64,12 +65,12 @@ function getTotalPieces(cartonQty: number, ppc: number | null, extraPieces: stri
 export function SendConsignmentDialog({ open, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
-  const formatCurrency = useFormatCurrency();
   const [debtor, setDebtor] = useState<UserOption | null>(null);
   const [note, setNote] = useState('');
   const [items, setItems] = useState<ItemRow[]>([{ ...EMPTY_ITEM }]);
   const [error, setError] = useState('');
   const [focusedItemIndex, setFocusedItemIndex] = useState<number | null>(null);
+  const [entryCurrency, setEntryCurrency] = useState<EntryCurrency>('USD');
 
   const { data: products } = useQuery({
     queryKey: QK.inventoryProducts,
@@ -78,6 +79,81 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
     enabled: open,
   });
 
+  const { data: rateData } = useQuery({
+    queryKey: QK.exchangeRate,
+    queryFn: currencyApi.getRate,
+    staleTime: 5 * 60_000,
+    retry: false,
+    enabled: open,
+  });
+
+  // Outgoing prices use the System Selling Rate (usdToFcRate) so that FC values
+  // typed here render back identically through useFormatCurrency later.
+  const systemRate = rateData?.usdToFcRate ? parseFloat(rateData.usdToFcRate) : null;
+  const isFC = entryCurrency === 'FC';
+  const canUseFC = systemRate !== null && systemRate > 0;
+
+  const toUsd = useCallback(
+    (value: string): string => {
+      if (!value) return value;
+      if (!isFC || !systemRate) return value;
+      const n = parseFloat(value);
+      if (isNaN(n) || n <= 0) return value;
+      return (n / systemRate).toFixed(4);
+    },
+    [isFC, systemRate],
+  );
+
+  const fromUsd = useCallback(
+    (usdValue: string): string => {
+      if (!usdValue) return usdValue;
+      if (!isFC || !systemRate) return usdValue;
+      const n = parseFloat(usdValue);
+      if (isNaN(n) || n <= 0) return usdValue;
+      return (n * systemRate).toFixed(4);
+    },
+    [isFC, systemRate],
+  );
+
+  const fmtPrice = useCallback(
+    (value: string | number) => {
+      const n = typeof value === 'string' ? parseFloat(value) : value;
+      if (isNaN(n)) return isFC ? '0.0000 FC' : '$0.0000';
+      // Truncate to 4dp (don't round) so the displayed figure never overstates the stored amount.
+      const truncated = Math.trunc(n * 10000) / 10000;
+      if (isFC) return new Intl.NumberFormat('fr-CD', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(truncated) + ' FC';
+      return '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(truncated);
+    },
+    [isFC],
+  );
+
+  const switchCurrency = (next: EntryCurrency) => {
+    if (next === entryCurrency) return;
+    if (next === 'FC' && !canUseFC) return;
+    if (!systemRate) {
+      setEntryCurrency(next);
+      return;
+    }
+    const factor = next === 'FC' ? systemRate : 1 / systemRate;
+    setItems((prev) =>
+      prev.map((row) => {
+        const convert = (s: string) => {
+          if (!s) return s;
+          const n = parseFloat(s);
+          if (isNaN(n) || n <= 0) return s;
+          return (n * factor).toFixed(4);
+        };
+        return {
+          ...row,
+          agreedUnitPrice: convert(row.agreedUnitPrice),
+          cartonPrice: convert(row.cartonPrice),
+          unitCost: convert(row.unitCost),
+        };
+      }),
+    );
+    setEntryCurrency(next);
+  };
+
   const getFilteredProducts = (query: string): ProductSummary[] =>
     (products as ProductSummary[] | undefined)?.filter((p) =>
       p.productName.includes(query.toLowerCase().trim())
@@ -85,18 +161,19 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
 
   const deriveCartonPrice = (unitPrice: string, ppc: number | null): string => {
     const up = parseFloat(unitPrice);
-    return !isNaN(up) && up > 0 && ppc ? (up * ppc).toFixed(2) : '';
+    return !isNaN(up) && up > 0 && ppc ? (up * ppc).toFixed(4) : '';
   };
 
   const selectProduct = (i: number, p: ProductSummary) => {
     setItems((prev) =>
       prev.map((row, idx) => {
         if (idx !== i) return row;
-        const unitCost = p.latestUnitCost;
+        // Backend values are USD; convert to active currency for editing.
+        const unitCost = fromUsd(p.latestUnitCost);
         const agreedUnitPrice =
           row.priceMode === 'pct' && parseFloat(unitCost) > 0
-            ? (parseFloat(unitCost) * (1 + row.markupPct / 100)).toFixed(2)
-            : p.latestSellingPrice;
+            ? (parseFloat(unitCost) * (1 + row.markupPct / 100)).toFixed(4)
+            : fromUsd(p.latestSellingPrice);
         const ppc = p.piecesPerCarton;
         const cartonPrice = deriveCartonPrice(agreedUnitPrice, ppc);
         return { ...row, productName: p.productName, unitCost, agreedUnitPrice, cartonPrice, piecesPerCarton: ppc };
@@ -136,7 +213,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
       prev.map((row, idx) => {
         if (idx !== i || !row.piecesPerCarton) return row;
         const cp = parseFloat(value);
-        const agreedUnitPrice = !isNaN(cp) ? (cp / row.piecesPerCarton).toFixed(2) : row.agreedUnitPrice;
+        const agreedUnitPrice = !isNaN(cp) ? (cp / row.piecesPerCarton).toFixed(4) : row.agreedUnitPrice;
         return { ...row, cartonPrice: value, agreedUnitPrice };
       })
     );
@@ -149,7 +226,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
         const cost = parseFloat(value);
         const agreedUnitPrice =
           row.priceMode === 'pct' && !isNaN(cost) && cost > 0
-            ? (cost * (1 + row.markupPct / 100)).toFixed(2)
+            ? (cost * (1 + row.markupPct / 100)).toFixed(4)
             : row.agreedUnitPrice;
         return { ...row, unitCost: value, agreedUnitPrice, cartonPrice: deriveCartonPrice(agreedUnitPrice, row.piecesPerCarton) };
       })
@@ -163,7 +240,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
         const cost = parseFloat(row.unitCost);
         const agreedUnitPrice =
           mode === 'pct' && !isNaN(cost) && cost > 0
-            ? (cost * (1 + row.markupPct / 100)).toFixed(2)
+            ? (cost * (1 + row.markupPct / 100)).toFixed(4)
             : row.agreedUnitPrice;
         return { ...row, priceMode: mode, agreedUnitPrice, cartonPrice: deriveCartonPrice(agreedUnitPrice, row.piecesPerCarton) };
       })
@@ -176,7 +253,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
         const cost = parseFloat(row.unitCost);
         const agreedUnitPrice =
           !isNaN(cost) && cost > 0
-            ? (cost * (1 + pct / 100)).toFixed(2)
+            ? (cost * (1 + pct / 100)).toFixed(4)
             : row.agreedUnitPrice;
         return { ...row, markupPct: pct, agreedUnitPrice, cartonPrice: deriveCartonPrice(agreedUnitPrice, row.piecesPerCarton) };
       })
@@ -195,7 +272,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
         items: items.map((it) => ({
           productName: it.productName.trim(),
           quantity: getTotalPieces(Number(it.quantity), it.piecesPerCarton, it.extraPieces),
-          agreedUnitPrice: it.agreedUnitPrice,
+          agreedUnitPrice: toUsd(it.agreedUnitPrice),
         })),
       }),
     onSuccess: () => {
@@ -204,6 +281,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
       setNote('');
       setItems([{ ...EMPTY_ITEM }]);
       setError('');
+      setEntryCurrency('USD');
       onClose();
     },
     onError: (err) => setError(getErrorMessage(err)),
@@ -227,6 +305,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
     items.length > 0 &&
     !hasBelowCost &&
     !hasInvalidExtraPieces &&
+    (!isFC || canUseFC) &&
     items.every((it) => {
       const totalPcs = getTotalPieces(parseInt(it.quantity, 10), it.piecesPerCarton, it.extraPieces);
       return it.productName.trim() &&
@@ -246,6 +325,40 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
         </div>
 
         <div className="space-y-4">
+          {/* Currency toggle (global to the dialog) */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
+              {t.sendConsignment.enterIn}
+            </span>
+            <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
+              {(['USD', 'FC'] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => switchCurrency(c)}
+                  className="px-3 py-1.5 text-xs font-semibold transition-colors"
+                  style={{
+                    background: entryCurrency === c ? (c === 'FC' ? 'var(--warning)' : 'var(--primary)') : 'var(--surface)',
+                    color: entryCurrency === c ? '#fff' : 'var(--foreground)',
+                    opacity: c === 'FC' && !canUseFC ? 0.4 : 1,
+                    cursor: c === 'FC' && !canUseFC ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {c === 'USD' ? '$ USD' : 'FC'}
+                </button>
+              ))}
+            </div>
+            {isFC && systemRate && (
+              <span className="text-xs tabular-nums" style={{ color: 'var(--warning)' }}>
+                1$ = {new Intl.NumberFormat('en-US').format(systemRate)} FC
+              </span>
+            )}
+          </div>
+
+          {!canUseFC && isFC && (
+            <p className="text-xs" style={{ color: 'var(--warning)' }}>{t.sendConsignment.noSystemRate}</p>
+          )}
+
           <UserSearchInput label={t.sendConsignment.debtor} value={debtor} onChange={setDebtor} placeholder={t.userSearch.placeholder} />
 
           <div>
@@ -316,8 +429,8 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                                   </div>
                                   <div className="flex justify-between text-xs" style={{ color: 'var(--muted)' }}>
                                     <span>
-                                      {formatCurrency(p.latestUnitCost)} cost
-                                      {sPpc ? <> · {formatCurrency((parseFloat(p.latestSellingPrice) * sPpc).toFixed(2))}/carton</> : null}
+                                      {fmtPrice(fromUsd(p.latestUnitCost))} cost
+                                      {sPpc ? <> · {fmtPrice(fromUsd((parseFloat(p.latestSellingPrice) * sPpc).toFixed(4)))}/carton</> : null}
                                     </span>
                                     <span>
                                       {sCartons != null
@@ -529,7 +642,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                     {/* Below-cost warning */}
                     {isBelowCost(item) && (
                       <div className="rounded-lg px-3 py-2 mt-2 text-xs font-medium" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)' }}>
-                        Selling price ({formatCurrency(item.agreedUnitPrice)}/pc) is at or below cost ({formatCurrency(item.unitCost)}/pc). You will make a loss on this item.
+                        Selling price ({fmtPrice(item.agreedUnitPrice)}/pc) is at or below cost ({fmtPrice(item.unitCost)}/pc). You will make a loss on this item.
                       </div>
                     )}
 
@@ -538,12 +651,12 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                       <div className="rounded-lg px-3 py-2 mt-2 text-xs" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
                         <div className="flex justify-between">
                           <span style={{ color: 'var(--muted)' }}>Per piece</span>
-                          <span className="font-medium" style={{ color: 'var(--foreground)' }}>{formatCurrency(item.agreedUnitPrice)}</span>
+                          <span className="font-medium" style={{ color: 'var(--foreground)' }}>{fmtPrice(item.agreedUnitPrice)}</span>
                         </div>
                         {ppc && (
                           <div className="flex justify-between mt-1">
                             <span style={{ color: 'var(--muted)' }}>Per carton ({ppc} pcs)</span>
-                            <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{formatCurrency((parseFloat(item.agreedUnitPrice) * ppc).toFixed(2))}</span>
+                            <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{fmtPrice((parseFloat(item.agreedUnitPrice) * ppc).toFixed(4))}</span>
                           </div>
                         )}
                         {!isNaN(totalPieces) && totalPieces > 0 && (
@@ -555,7 +668,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                               })
                             </span>
                             <span className="font-bold" style={{ color: isBelowCost(item) ? 'var(--danger)' : 'var(--success)' }}>
-                              {formatCurrency((parseFloat(item.agreedUnitPrice) * totalPieces).toFixed(2))}
+                              {fmtPrice((parseFloat(item.agreedUnitPrice) * totalPieces).toFixed(4))}
                             </span>
                           </div>
                         )}
@@ -590,7 +703,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                       {ppc ? <>{q > 0 ? `${q} carton${q > 1 ? 's' : ''}` : ''}{extra > 0 ? `${q > 0 ? ' + ' : ''}${extra} pcs` : ''} ({pieces} pcs)</> : <>{pieces} pcs</>}
                     </span>
                   </span>
-                  <span className="font-medium" style={{ color: 'var(--foreground)' }}>{formatCurrency(lineTotal.toFixed(2))}</span>
+                  <span className="font-medium" style={{ color: 'var(--foreground)' }}>{fmtPrice(lineTotal.toFixed(4))}</span>
                 </div>
               );
             })}
@@ -605,14 +718,14 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                 </span>
               </span>
               <span style={{ color: 'var(--success)' }}>
-                {formatCurrency(
+                {fmtPrice(
                   items.reduce((s, it) => {
                     const q = parseInt(it.quantity, 10);
                     const price = parseFloat(it.agreedUnitPrice);
                     const pieces = getTotalPieces(q, it.piecesPerCarton, it.extraPieces);
                     if (isNaN(pieces) || pieces <= 0 || isNaN(price) || price <= 0) return s;
                     return s + price * pieces;
-                  }, 0).toFixed(2)
+                  }, 0).toFixed(4)
                 )}
               </span>
             </div>

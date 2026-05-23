@@ -30,7 +30,7 @@ interface Props {
 }
 
 function totalValue(items: ConsignmentItem[]): string {
-  return items.reduce((acc, it) => acc + parseFloat(it.agreedUnitPrice) * it.quantity, 0).toFixed(2);
+  return items.reduce((acc, it) => acc + parseFloat(it.agreedUnitPrice) * it.quantity, 0).toFixed(4);
 }
 
 export function ReceiveFromSupplierDialog({ open, onClose }: Props) {
@@ -170,7 +170,7 @@ function ConsignmentCard({
               <td className="py-1 text-right pr-2" style={{ color: 'var(--foreground)' }}>{it.quantity}</td>
               <td className="py-1 text-right pr-2" style={{ color: 'var(--foreground)' }}>{formatCurrency(it.agreedUnitPrice)}</td>
               <td className="py-1 text-right" style={{ color: 'var(--foreground)' }}>
-                {formatCurrency((parseFloat(it.agreedUnitPrice) * it.quantity).toFixed(2))}
+                {formatCurrency((parseFloat(it.agreedUnitPrice) * it.quantity).toFixed(4))}
               </td>
             </tr>
           ))}

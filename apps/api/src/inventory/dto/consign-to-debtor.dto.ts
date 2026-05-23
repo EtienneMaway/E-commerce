@@ -28,7 +28,7 @@ export class ConsignToDebtorDto {
   quantity: number;
 
   @ApiProperty({ example: '28.00', description: 'Agreed price debtor will pay per unit' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   agreedUnitPrice: string;
 
   @ApiPropertyOptional({ example: 'Grains' })

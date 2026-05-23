@@ -105,13 +105,13 @@ export class SalesService {
     const unitCost = new Decimal(firstEntry.unitCost);
 
     if (effectiveSalePrice.lte(unitCost) && !dto.confirmedOverride) {
-      const potentialLoss = unitCost.minus(effectiveSalePrice).mul(dto.qtySold).toFixed(2);
+      const potentialLoss = unitCost.minus(effectiveSalePrice).mul(dto.qtySold).toFixed(4);
       const warning: PriceGuardWarningDto = {
         warning: true,
-        costPrice: unitCost.toFixed(2),
+        costPrice: unitCost.toFixed(4),
         potentialLoss,
         message:
-          `Selling at ${effectiveSalePrice.toFixed(2)} is at or below cost price of ${unitCost.toFixed(2)}. ` +
+          `Selling at ${effectiveSalePrice.toFixed(4)} is at or below cost price of ${unitCost.toFixed(4)}. ` +
           `You will lose ${potentialLoss} total. ` +
           `Send confirmedOverride: true to proceed.`,
       };
@@ -141,9 +141,9 @@ export class SalesService {
           source: entry.source,
           supplierUserId: entry.supplierUserId,
           qtySold: deduct,
-          unitCost: entryCost.toFixed(2),
-          salePrice: effectiveSalePrice.toFixed(2),
-          profit: entryProfit.toFixed(2),
+          unitCost: entryCost.toFixed(4),
+          salePrice: effectiveSalePrice.toFixed(4),
+          profit: entryProfit.toFixed(4),
           isLoss: entryProfit.lt(0),
           inventoryEntryId: entry.id,
           originalUnitPrice: priceCheck.originalUnitPrice,
@@ -236,8 +236,8 @@ export class SalesService {
     const mapped = rows.map((r) => ({
       productName: r.productName,
       totalQtySold: Number(r.totalQtySold),
-      totalRevenue: new Decimal(r.totalRevenue ?? 0).toFixed(2),
-      totalProfit: new Decimal(r.totalProfit ?? 0).toFixed(2),
+      totalRevenue: new Decimal(r.totalRevenue ?? 0).toFixed(4),
+      totalProfit: new Decimal(r.totalProfit ?? 0).toFixed(4),
       isLossProduct: new Decimal(r.totalProfit ?? 0).lt(0),
     }));
 

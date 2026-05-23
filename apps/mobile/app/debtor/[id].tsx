@@ -176,7 +176,7 @@ export default function DebtorDetailScreen() {
                 <View className="items-end">
                   <Text className="text-muted dark:text-slate-500 text-xs">{t.debtorDetail.value}</Text>
                   <Text className="text-success text-sm font-bold">
-                    {formatCurrency((parseFloat(item.sellingPrice) * item.quantityOriginal).toFixed(2))}
+                    {formatCurrency((parseFloat(item.sellingPrice) * item.quantityOriginal).toFixed(4))}
                   </Text>
                 </View>
               </View>

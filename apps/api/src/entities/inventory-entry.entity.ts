@@ -36,11 +36,11 @@ export class InventoryEntry {
   productName: string;
 
   @ApiProperty({ example: '25.00' })
-  @Column({ name: 'unit_cost', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'unit_cost', type: 'decimal', precision: 14, scale: 4 })
   unitCost: string;
 
   @ApiProperty({ example: '30.00' })
-  @Column({ name: 'selling_price', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'selling_price', type: 'decimal', precision: 14, scale: 4 })
   sellingPrice: string;
 
   @ApiPropertyOptional({ example: 'Grains' })
@@ -56,7 +56,7 @@ export class InventoryEntry {
   quantityRemaining: number;
 
   @ApiPropertyOptional({ example: '240.00', description: 'Purchase price for one full carton (null if not set)' })
-  @Column({ name: 'carton_price', type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
+  @Column({ name: 'carton_price', type: 'decimal', precision: 14, scale: 4, nullable: true, default: null })
   cartonPrice: string | null;
 
   @ApiPropertyOptional({ example: 20, description: 'How many pieces make one carton (null if not set)' })

@@ -216,11 +216,11 @@ export default function MySalaryPage() {
             >
               <div className="text-xs opacity-60 mb-0.5">{formatPeriodMonth(period)}</div>
               <div className="text-base font-semibold" style={{ color: '#10B981' }}>
-                {formatCurrency(totals.confirmed.toFixed(2))}
+                {formatCurrency(totals.confirmed.toFixed(4))}
               </div>
               {totals.pending > 0 && (
                 <div className="text-[11px] mt-0.5" style={{ color: '#F59E0B' }}>
-                  + {formatCurrency(totals.pending.toFixed(2))} {t.salary.pending.toLowerCase()}
+                  + {formatCurrency(totals.pending.toFixed(4))} {t.salary.pending.toLowerCase()}
                 </div>
               )}
             </div>

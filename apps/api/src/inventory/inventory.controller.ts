@@ -7,11 +7,13 @@ import {
 } from '@nestjs/swagger';
 import { InventoryService } from './inventory.service';
 import { AddPersonalDto } from './dto/add-personal.dto';
+import { AddPersonalBulkDto } from './dto/add-personal-bulk.dto';
 import { ReceiveFromSupplierDto } from './dto/receive-from-supplier.dto';
 import { ConsignToDebtorDto } from './dto/consign-to-debtor.dto';
 import { InventoryFilterDto } from './dto/inventory-filter.dto';
 import { UpdateSellingPriceDto } from './dto/update-selling-price.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
+import { RenameProductDto } from './dto/rename-product.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
@@ -46,6 +48,22 @@ export class InventoryController {
     return this.inventoryService.addPersonal(ctx.effectiveOwnerId, dto);
   }
 
+  @Post('personal/bulk')
+  @AllowedFor('OWNER')
+  @ApiOperation({
+    summary: 'Add multiple personal products in one atomic transaction (owner only)',
+    description:
+      'Creates or upserts inventory entries for each item in a single DB transaction. ' +
+      'If any item fails validation or persistence, the whole batch is rolled back.',
+  })
+  @ApiResponse({ status: 201, description: 'Array of inventory entries created/updated' })
+  addPersonalBulk(
+    @CurrentActorContext() ctx: ActorContext,
+    @Body() dto: AddPersonalBulkDto,
+  ) {
+    return this.inventoryService.addPersonalBulk(ctx.effectiveOwnerId, dto);
+  }
+
   @Post('receive')
   @AllowedFor('OWNER')
   @ApiOperation({
@@ -60,6 +78,28 @@ export class InventoryController {
     @Body() dto: ReceiveFromSupplierDto,
   ) {
     return this.inventoryService.receiveFromSupplier(ctx.effectiveOwnerId, dto);
+  }
+
+  @Patch('products/:name/rename')
+  @AllowedFor('OWNER')
+  @ApiOperation({
+    summary: 'Rename a product, cascading the new name across all owner-scoped tables (owner only)',
+    description:
+      'Atomically renames a product across inventory_entries (PERSONAL+SUPPLIER only), sale_transactions, ' +
+      'external_transactions, and product_prices. Blocked when the product has CONSIGNED_IN or ' +
+      'CONSIGNED_OUT stock (names must stay in sync with the counterparty). Blocked when another ' +
+      'product already uses the new name on this owner\'s books.',
+  })
+  @ApiResponse({ status: 200, description: 'Rename summary with per-table update counts' })
+  @ApiResponse({ status: 400, description: 'Product has consignment-linked stock' })
+  @ApiResponse({ status: 404, description: 'No owner-controlled stock for that product name' })
+  @ApiResponse({ status: 409, description: 'Another product already uses the new name' })
+  renameProduct(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('name') name: string,
+    @Body() dto: RenameProductDto,
+  ) {
+    return this.inventoryService.renameProduct(ctx.effectiveOwnerId, name, dto);
   }
 
   @Patch(':id/selling-price')

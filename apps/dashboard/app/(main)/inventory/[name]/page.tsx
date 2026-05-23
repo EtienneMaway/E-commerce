@@ -2,6 +2,7 @@
 
 import { use, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { inventoryApi } from '../../../../lib/api';
 import { QK } from '../../../../lib/query-keys';
@@ -12,6 +13,7 @@ import { DataTable, type Column } from '../../../../components/ui/DataTable';
 import { EditSellingPriceDialog } from '../../../../components/forms/EditSellingPriceDialog';
 import { AdjustStockDialog } from '../../../../components/forms/AdjustStockDialog';
 import { EditProductSellingPriceDialog } from '../../../../components/forms/EditProductSellingPriceDialog';
+import { RenameProductDialog } from '../../../../components/forms/RenameProductDialog';
 import { useT } from '../../../../lib/i18n';
 
 interface InventoryEntry {
@@ -54,11 +56,13 @@ export default function ProductDetailPage({
   const { name } = use(params);
   const productName = decodeURIComponent(name);
   const t = useT();
+  const router = useRouter();
   const formatCurrency = useFormatCurrency();
   const [editPriceTarget, setEditPriceTarget] = useState<EditPriceTarget | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<AdjustTarget | null>(null);
   const [adjustPickerOpen, setAdjustPickerOpen] = useState(false);
   const [bulkPriceOpen, setBulkPriceOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: QK.inventory({ productName }),
@@ -152,7 +156,7 @@ export default function ProductDetailPage({
       render: (r) => {
         if (r.cartonPrice) return formatCurrency(r.cartonPrice);
         if (r.piecesPerCarton) {
-          const computed = (parseFloat(r.unitCost) * r.piecesPerCarton).toFixed(2);
+          const computed = (parseFloat(r.unitCost) * r.piecesPerCarton).toFixed(4);
           return <span style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{formatCurrency(computed)}</span>;
         }
         return <span style={{ color: 'var(--muted)' }}>—</span>;
@@ -165,7 +169,7 @@ export default function ProductDetailPage({
       getValue: (r) => r.piecesPerCarton ? parseFloat(r.sellingPrice) * r.piecesPerCarton : 0,
       render: (r) => {
         if (!r.piecesPerCarton) return <span style={{ color: 'var(--muted)' }}>—</span>;
-        const computed = (parseFloat(r.sellingPrice) * r.piecesPerCarton).toFixed(2);
+        const computed = (parseFloat(r.sellingPrice) * r.piecesPerCarton).toFixed(4);
         return <span style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{formatCurrency(computed)}</span>;
       },
     },
@@ -225,6 +229,15 @@ export default function ProductDetailPage({
         productName={productName}
         entries={entries}
         onClose={() => setBulkPriceOpen(false)}
+      />
+      <RenameProductDialog
+        open={renameOpen}
+        currentName={productName}
+        onClose={() => setRenameOpen(false)}
+        onRenamed={(newName) => {
+          setRenameOpen(false);
+          router.replace(`/inventory/${encodeURIComponent(newName)}`);
+        }}
       />
       {adjustPickerOpen && (
         <div
@@ -294,9 +307,41 @@ export default function ProductDetailPage({
               ← {t.inventory.title}
             </Link>
           </div>
-          <h1 className="page-title">
-            {productName.charAt(0).toUpperCase() + productName.slice(1)}
-          </h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="page-title">
+              {productName.charAt(0).toUpperCase() + productName.slice(1)}
+            </h1>
+            {(() => {
+              const hasActiveConsigned = entries.some(
+                (e) =>
+                  (e.source === 'CONSIGNED_IN' || e.source === 'CONSIGNED_OUT') &&
+                  e.quantityRemaining > 0,
+              );
+              const hasOwned = entries.some(
+                (e) => e.source === 'PERSONAL' || e.source === 'SUPPLIER',
+              );
+              if (!hasOwned) return null;
+              return (
+                <button
+                  type="button"
+                  onClick={() => setRenameOpen(true)}
+                  disabled={hasActiveConsigned}
+                  title={hasActiveConsigned ? t.inventory.renameConsignedBlocked : t.inventory.renameProduct}
+                  className="text-sm px-2 py-1 rounded-lg transition-colors"
+                  style={{
+                    color: hasActiveConsigned ? 'var(--muted)' : 'var(--primary)',
+                    background: 'transparent',
+                    border: '1px solid var(--border)',
+                    cursor: hasActiveConsigned ? 'not-allowed' : 'pointer',
+                    opacity: hasActiveConsigned ? 0.5 : 1,
+                  }}
+                  aria-label={t.inventory.renameProduct}
+                >
+                  ✏️ {t.inventory.renameProduct}
+                </button>
+              );
+            })()}
+          </div>
 
           {/* Available summary */}
           <div
@@ -365,13 +410,13 @@ export default function ProductDetailPage({
                 <div className="flex justify-between items-center">
                   <span className="text-xs" style={{ color: 'var(--muted)' }}>{t.inventory.totalPurchaseValue}</span>
                   <span className="text-sm font-bold" style={{ color: 'var(--warning)' }}>
-                    {formatCurrency(activePurchaseValue.toFixed(2))}
+                    {formatCurrency(activePurchaseValue.toFixed(4))}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs" style={{ color: 'var(--muted)' }}>{t.inventory.totalSellingValue}</span>
                   <span className="text-sm font-bold" style={{ color: 'var(--success)' }}>
-                    {formatCurrency(activeSellingValue.toFixed(2))}
+                    {formatCurrency(activeSellingValue.toFixed(4))}
                   </span>
                 </div>
               </div>
@@ -395,13 +440,13 @@ export default function ProductDetailPage({
                 <div className="flex justify-between items-center">
                   <span className="text-xs" style={{ color: 'var(--muted)' }}>{t.inventory.totalPurchaseValue}</span>
                   <span className="text-sm font-bold" style={{ color: 'var(--warning)' }}>
-                    {formatCurrency(allTimePurchaseValue.toFixed(2))}
+                    {formatCurrency(allTimePurchaseValue.toFixed(4))}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs" style={{ color: 'var(--muted)' }}>{t.inventory.totalSellingValue}</span>
                   <span className="text-sm font-bold" style={{ color: 'var(--success)' }}>
-                    {formatCurrency(allTimeSellingValue.toFixed(2))}
+                    {formatCurrency(allTimeSellingValue.toFixed(4))}
                   </span>
                 </div>
               </div>

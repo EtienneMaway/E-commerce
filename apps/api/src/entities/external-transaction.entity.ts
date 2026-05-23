@@ -50,19 +50,19 @@ export class ExternalTransaction {
   quantity: number | null;
 
   @ApiPropertyOptional({ example: '22.00', description: 'Price per unit (for PRODUCT_* types)' })
-  @Column({ name: 'unit_price', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ name: 'unit_price', type: 'decimal', precision: 14, scale: 4, nullable: true })
   unitPrice: string | null;
 
   @ApiProperty({ example: '220.00', description: 'Total transaction value' })
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 14, scale: 4 })
   amount: string;
 
   @ApiPropertyOptional({ example: '18.00', description: 'Unit cost of goods deducted (PRODUCT_OUT only)' })
-  @Column({ name: 'unit_cost_used', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ name: 'unit_cost_used', type: 'decimal', precision: 14, scale: 4, nullable: true })
   unitCostUsed: string | null;
 
   @ApiPropertyOptional({ example: '100.00', description: 'Realized profit on this handoff (PRODUCT_OUT only; negative = loss)' })
-  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ type: 'decimal', precision: 14, scale: 4, nullable: true })
   profit: string | null;
 
   @ApiPropertyOptional({ example: false })
@@ -92,7 +92,7 @@ export class ExternalTransaction {
   actor: User | null;
 
   @ApiPropertyOptional({ example: '25.00', description: 'Owner\'s standard unit price at action time; set only when employee discounted (PRODUCT_OUT only)' })
-  @Column({ name: 'original_unit_price', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ name: 'original_unit_price', type: 'decimal', precision: 14, scale: 4, nullable: true })
   originalUnitPrice: string | null;
 
   @ApiPropertyOptional({ example: 'Returning customer' })

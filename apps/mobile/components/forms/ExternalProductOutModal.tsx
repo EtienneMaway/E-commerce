@@ -45,7 +45,7 @@ export function ExternalProductOutModal({ visible, onClose, contactId }: Props) 
   };
 
   const totalHint = form.unitPrice && form.quantity
-    ? formatCurrency((parseFloat(form.unitPrice || '0') * parseInt(form.quantity || '0', 10)).toFixed(2))
+    ? formatCurrency((parseFloat(form.unitPrice || '0') * parseInt(form.quantity || '0', 10)).toFixed(4))
     : '...';
 
   return (

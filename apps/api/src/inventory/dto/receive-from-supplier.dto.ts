@@ -21,11 +21,11 @@ export class ReceiveFromSupplierDto {
   productName: string;
 
   @ApiProperty({ example: '22.00', description: 'Agreed price to pay supplier per unit' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   unitCost: string;
 
   @ApiProperty({ example: '30.00', description: 'Price you intend to sell at' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   sellingPrice: string;
 
   @ApiProperty({ example: 50 })
@@ -39,7 +39,7 @@ export class ReceiveFromSupplierDto {
   category?: string;
 
   @ApiPropertyOptional({ example: '240.00', description: 'Purchase price for one full carton' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   @IsOptional()
   cartonPrice?: string;
 

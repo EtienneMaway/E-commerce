@@ -38,7 +38,7 @@ export function RecordDebtorPaymentModal({ visible, onClose, debtorId, debtorUse
     mutationFn: () =>
       paymentsApi.recordDebtorPayment({
         debtorUserId: debtorId,
-        amount: effectiveUsd.toFixed(2),
+        amount: effectiveUsd.toFixed(4),
         note: note || undefined,
       }),
     onSuccess: () => {

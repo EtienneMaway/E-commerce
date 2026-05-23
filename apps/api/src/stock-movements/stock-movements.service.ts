@@ -173,9 +173,9 @@ export class StockMovementsService {
         qtyIn,
         qtyOut,
         qtyNet: qtyIn - qtyOut,
-        valueIn: valueIn.toFixed(2),
-        valueOut: valueOut.toFixed(2),
-        valueNet: (valueIn - valueOut).toFixed(2),
+        valueIn: valueIn.toFixed(4),
+        valueOut: valueOut.toFixed(4),
+        valueNet: (valueIn - valueOut).toFixed(4),
       },
     };
   }

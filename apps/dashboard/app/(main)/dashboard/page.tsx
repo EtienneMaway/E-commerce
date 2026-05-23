@@ -20,13 +20,16 @@ interface SourceRow { source: string; supplierUsername?: string; totalProfit: st
 interface SaleRow { id: string; productName: string; salePrice: string; qtySold: number; profit: string; isLoss: boolean; date: string; }
 interface SalesPage { data: SaleRow[]; total: number; }
 interface AlertItem {
-  type: 'overdue_debtor' | 'low_stock';
+  type: 'overdue_debtor' | 'low_stock' | 'inverted_exchange_rates' | 'pending_consignment';
   debtorUserId?: string;
   debtorUsername?: string;
   outstandingBalance?: string;
   daysSinceActivity?: number;
   productName?: string;
   quantityRemaining?: number;
+  systemSellingRate?: string;
+  buyingRate?: string;
+  pendingCount?: number;
 }
 
 export default function DashboardPage() {
@@ -61,6 +64,7 @@ export default function DashboardPage() {
   const alerts = (alertsData as AlertItem[] | undefined) ?? [];
   const overdueDebtors = alerts.filter((a) => a.type === 'overdue_debtor');
   const lowStockItems  = alerts.filter((a) => a.type === 'low_stock');
+  const invertedRates  = alerts.find((a) => a.type === 'inverted_exchange_rates');
 
   const s = summary as Summary | undefined;
   const net = s ? parseFloat(s.netPosition) : 0;
@@ -83,6 +87,30 @@ export default function DashboardPage() {
         {/* ── Alerts ────────────────────────────────────────────────── */}
         {alerts.length > 0 && (
           <div className="space-y-3 anim-fade-up">
+            {invertedRates && (
+              <div
+                className="alert-box"
+                style={{ background: 'var(--danger-light)', borderColor: 'rgba(var(--danger-rgb),0.3)' }}
+              >
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-base"
+                  style={{ background: 'rgba(var(--danger-rgb),0.18)' }}
+                >
+                  ⚠️
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm" style={{ color: 'var(--danger)' }}>
+                    {t.dashboard.invertedRatesTitle}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--danger)', opacity: 0.85 }}>
+                    {t.dashboard.invertedRatesBody}
+                  </p>
+                </div>
+                <a href="/settings" className="btn btn-danger text-xs flex-shrink-0">
+                  {t.dashboard.invertedRatesCta} →
+                </a>
+              </div>
+            )}
             {overdueDebtors.length > 0 && (
               <div
                 className="alert-box"
@@ -228,7 +256,7 @@ export default function DashboardPage() {
                     <td className="data-table-cell">
                       <Badge
                         label={row.isLoss
-                          ? `-${formatCurrency(Math.abs(parseFloat(row.profit)).toFixed(2))}`
+                          ? `-${formatCurrency(Math.abs(parseFloat(row.profit)).toFixed(4))}`
                           : `+${formatCurrency(row.profit)}`}
                         variant={row.isLoss ? 'loss' : 'profit'}
                       />

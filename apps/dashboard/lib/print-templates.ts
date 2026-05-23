@@ -108,7 +108,7 @@ export function consignmentHtml(data: ConsignmentPrintData): string {
       (it) => {
         const ppc = it.piecesPerCarton;
         const cartonPrice = ppc
-          ? data.formatCurrency((parseFloat(it.agreedUnitPrice) * ppc).toFixed(2))
+          ? data.formatCurrency((parseFloat(it.agreedUnitPrice) * ppc).toFixed(4))
           : null;
         const ppcLine = ppc
           ? `<span style="font-size:10px;color:#777">1 ctn = ${ppc} ${data.t.pcsPerCarton}</span>`
@@ -121,7 +121,7 @@ export function consignmentHtml(data: ConsignmentPrintData): string {
           <td class="cap">${esc(it.productName)}${sub ? `<br>${sub}` : ''}</td>
           <td class="center">${it.quantity}</td>
           <td class="right">${data.formatCurrency(it.agreedUnitPrice)}</td>
-          <td class="right bold">${data.formatCurrency((parseFloat(it.agreedUnitPrice) * it.quantity).toFixed(2))}</td>
+          <td class="right bold">${data.formatCurrency((parseFloat(it.agreedUnitPrice) * it.quantity).toFixed(4))}</td>
         </tr>`;
       },
     )
@@ -146,7 +146,7 @@ export function consignmentHtml(data: ConsignmentPrintData): string {
     <hr class="divider-solid" />
     <table><tr class="total-row">
       <td colspan="3">${data.t.grandTotal}</td>
-      <td class="right">${data.formatCurrency(total.toFixed(2))}</td>
+      <td class="right">${data.formatCurrency(total.toFixed(4))}</td>
     </tr></table>`;
 
   return buildDocumentHtml({
@@ -208,7 +208,7 @@ export function externalProductHtml(data: ExternalProductPrintData): string {
     <hr class="divider-solid" />
     <table><tr class="total-row">
       <td colspan="3">${data.t.grandTotal}</td>
-      <td class="right">${data.formatCurrency(grandTotal.toFixed(2))}</td>
+      <td class="right">${data.formatCurrency(grandTotal.toFixed(4))}</td>
     </tr></table>
     <hr class="divider" />
     <div class="summary-row"><span class="label">${data.t.balance}:</span><span class="value">${data.formatCurrency(data.balance)}</span></div>`;
@@ -266,7 +266,7 @@ export function externalBatchHtml(data: ExternalBatchPrintData): string {
     .map((it) => {
       const ppc = it.piecesPerCarton;
       const cartonPrice = ppc
-        ? data.formatCurrency((parseFloat(it.unitPrice) * ppc).toFixed(2))
+        ? data.formatCurrency((parseFloat(it.unitPrice) * ppc).toFixed(4))
         : null;
       const ppcLine = ppc
         ? `<span style="font-size:10px;color:#777">1 ctn = ${ppc} ${data.t.pcsPerCarton}</span>`
@@ -302,7 +302,7 @@ export function externalBatchHtml(data: ExternalBatchPrintData): string {
     <hr class="divider-solid" />
     <table><tr class="total-row">
       <td colspan="3">${data.t.grandTotal}</td>
-      <td class="right">${data.formatCurrency(total.toFixed(2))}</td>
+      <td class="right">${data.formatCurrency(total.toFixed(4))}</td>
     </tr></table>
     <hr class="divider" />
     <div class="summary-row"><span class="label">${data.t.balance}:</span><span class="value">${data.formatCurrency(data.balance)}</span></div>`;
@@ -358,7 +358,7 @@ export function singleExternalTxHtml(data: SingleExternalTxPrintData): string {
     ${isProduct ? (() => {
       const ppc = tx.piecesPerCarton;
       const cartonPrice = ppc && tx.unitPrice
-        ? data.formatCurrency((parseFloat(tx.unitPrice) * ppc).toFixed(2))
+        ? data.formatCurrency((parseFloat(tx.unitPrice) * ppc).toFixed(4))
         : null;
       const ppcLine = ppc
         ? `<span style="font-size:10px;color:#777">1 ctn = ${ppc} ${data.t.pcsPerCarton}</span>`
@@ -408,7 +408,7 @@ export function saleReceiptHtml(data: SaleReceiptPrintData): string {
       (it) => {
         const ppc = it.piecesPerCarton;
         const cartonPrice = ppc
-          ? data.formatCurrency((parseFloat(it.salePrice) * ppc).toFixed(2))
+          ? data.formatCurrency((parseFloat(it.salePrice) * ppc).toFixed(4))
           : null;
         const ppcLine = ppc
           ? `<span style="font-size:10px;color:#777">1 ctn = ${ppc} ${data.t.pcsPerCarton}</span>`
@@ -421,7 +421,7 @@ export function saleReceiptHtml(data: SaleReceiptPrintData): string {
           <td class="cap">${esc(it.productName)}${sub ? `<br>${sub}` : ''}</td>
           <td class="center">x${it.qtySold}</td>
           <td class="right">${data.formatCurrency(it.salePrice)}</td>
-          <td class="right bold">${data.formatCurrency((parseFloat(it.salePrice) * it.qtySold).toFixed(2))}</td>
+          <td class="right bold">${data.formatCurrency((parseFloat(it.salePrice) * it.qtySold).toFixed(4))}</td>
         </tr>`;
       },
     )
@@ -440,7 +440,7 @@ export function saleReceiptHtml(data: SaleReceiptPrintData): string {
     <hr class="divider-solid" />
     <table><tr class="total-row">
       <td colspan="3">${data.t.grandTotal}</td>
-      <td class="right">${data.formatCurrency(grandTotal.toFixed(2))}</td>
+      <td class="right">${data.formatCurrency(grandTotal.toFixed(4))}</td>
     </tr></table>`;
 
   return buildDocumentHtml({

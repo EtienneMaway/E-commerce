@@ -59,7 +59,7 @@ export class PricingService {
     // Owner action: no cap, no reason required.
     if (args.ctx.tier === 'OWNER') {
       return {
-        effectiveUnitPrice: submitted.toFixed(2),
+        effectiveUnitPrice: submitted.toFixed(4),
         standardPrice: standard,
         capped: false,
         originalUnitPrice: null,
@@ -69,7 +69,7 @@ export class PricingService {
     if (!standard) {
       // No standard set by owner — let it pass.
       return {
-        effectiveUnitPrice: submitted.toFixed(2),
+        effectiveUnitPrice: submitted.toFixed(4),
         standardPrice: null,
         capped: false,
         originalUnitPrice: null,
@@ -81,7 +81,7 @@ export class PricingService {
     if (submitted.gt(standardDec)) {
       // Cap silently to standard.
       return {
-        effectiveUnitPrice: standardDec.toFixed(2),
+        effectiveUnitPrice: standardDec.toFixed(4),
         standardPrice: standard,
         capped: true,
         originalUnitPrice: null,
@@ -94,22 +94,22 @@ export class PricingService {
       if (!reason) {
         throw new UnprocessableEntityException({
           error: 'DISCOUNT_REASON_REQUIRED',
-          standardPrice: standardDec.toFixed(2),
-          submittedPrice: submitted.toFixed(2),
-          message: `Selling below standard price (${standardDec.toFixed(2)}) requires a discountReason.`,
+          standardPrice: standardDec.toFixed(4),
+          submittedPrice: submitted.toFixed(4),
+          message: `Selling below standard price (${standardDec.toFixed(4)}) requires a discountReason.`,
         });
       }
       return {
-        effectiveUnitPrice: submitted.toFixed(2),
+        effectiveUnitPrice: submitted.toFixed(4),
         standardPrice: standard,
         capped: false,
-        originalUnitPrice: standardDec.toFixed(2),
+        originalUnitPrice: standardDec.toFixed(4),
       };
     }
 
     // Equal — passthrough.
     return {
-      effectiveUnitPrice: submitted.toFixed(2),
+      effectiveUnitPrice: submitted.toFixed(4),
       standardPrice: standard,
       capped: false,
       originalUnitPrice: null,
@@ -132,13 +132,13 @@ export class PricingService {
     }
     const existing = await this.repo.findOne({ where: { ownerId, productName: normalized } });
     if (existing) {
-      existing.unitPrice = new Decimal(unitPrice).toFixed(2);
+      existing.unitPrice = new Decimal(unitPrice).toFixed(4);
       return this.repo.save(existing);
     }
     const created = this.repo.create({
       ownerId,
       productName: normalized,
-      unitPrice: new Decimal(unitPrice).toFixed(2),
+      unitPrice: new Decimal(unitPrice).toFixed(4),
     });
     return this.repo.save(created);
   }
@@ -149,7 +149,7 @@ export class PricingService {
     if (new Decimal(unitPrice).lte(0)) {
       throw new ConflictException('Unit price must be greater than zero');
     }
-    row.unitPrice = new Decimal(unitPrice).toFixed(2);
+    row.unitPrice = new Decimal(unitPrice).toFixed(4);
     return this.repo.save(row);
   }
 

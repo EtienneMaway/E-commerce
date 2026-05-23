@@ -152,7 +152,7 @@ export default function ExpensesPage() {
     if (cash && currency === 'USD') {
       const projected = parseFloat(cash.availableBusinessCash) - parseFloat(amount);
       if (projected < 0) {
-        setOverBudgetProjection(projected.toFixed(2));
+        setOverBudgetProjection(projected.toFixed(4));
         setOverBudgetOpen(true);
         return;
       }

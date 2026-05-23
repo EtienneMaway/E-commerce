@@ -4,7 +4,7 @@ import { use, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { externalContactsApi, inventoryApi } from '../../../../lib/api';
+import { currencyApi, externalContactsApi, inventoryApi } from '../../../../lib/api';
 import { QK } from '../../../../lib/query-keys';
 import { useFormatCurrency } from '../../../../lib/currency';
 import { useT } from '../../../../lib/i18n';
@@ -181,6 +181,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
   const [form, setForm] = useState({ productName: '', quantity: '', unitPrice: '', unitCost: '', sellingPrice: '', category: '', amount: '', notes: '' });
   const [poItems, setPoItems] = useState<ProductOutItem[]>([{ ...EMPTY_PO_ITEM }]);
   const [focusedItemIndex, setFocusedItemIndex] = useState<number | null>(null);
+  const [entryCurrency, setEntryCurrency] = useState<'USD' | 'FC'>('USD');
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -193,6 +194,70 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
     enabled: modal === 'product-out',
   });
 
+  // Rate for FC entry on outgoing transactions — use system selling rate so the
+  // FC the merchant types matches what useFormatCurrency renders later.
+  const { data: rateData } = useQuery({
+    queryKey: QK.exchangeRate,
+    queryFn: currencyApi.getRate,
+    staleTime: 5 * 60_000,
+    retry: false,
+    enabled: modal === 'product-out',
+  });
+  const systemRate = rateData?.usdToFcRate ? parseFloat(rateData.usdToFcRate) : null;
+  const isFC = entryCurrency === 'FC';
+  const canUseFC = systemRate !== null && systemRate > 0;
+
+  const toUsd = (value: string): string => {
+    if (!value) return value;
+    if (!isFC || !systemRate) return value;
+    const n = parseFloat(value);
+    if (isNaN(n) || n <= 0) return value;
+    return (n / systemRate).toFixed(4);
+  };
+
+  const fromUsd = (usdValue: string): string => {
+    if (!usdValue) return usdValue;
+    if (!isFC || !systemRate) return usdValue;
+    const n = parseFloat(usdValue);
+    if (isNaN(n) || n <= 0) return usdValue;
+    return (n * systemRate).toFixed(4);
+  };
+
+  const fmtPrice = (value: string | number): string => {
+    const n = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(n)) return isFC ? '0.0000 FC' : '$0.0000';
+    const truncated = Math.trunc(n * 10000) / 10000;
+    if (isFC) return new Intl.NumberFormat('fr-CD', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(truncated) + ' FC';
+    return '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(truncated);
+  };
+
+  const switchCurrency = (next: 'USD' | 'FC') => {
+    if (next === entryCurrency) return;
+    if (next === 'FC' && !canUseFC) return;
+    if (!systemRate) {
+      setEntryCurrency(next);
+      return;
+    }
+    const factor = next === 'FC' ? systemRate : 1 / systemRate;
+    setPoItems((prev) =>
+      prev.map((row) => {
+        const convert = (s: string) => {
+          if (!s) return s;
+          const n = parseFloat(s);
+          if (isNaN(n) || n <= 0) return s;
+          return (n * factor).toFixed(4);
+        };
+        return {
+          ...row,
+          unitPrice: convert(row.unitPrice),
+          cartonPrice: convert(row.cartonPrice),
+          unitCost: convert(row.unitCost),
+        };
+      }),
+    );
+    setEntryCurrency(next);
+  };
+
   const getFilteredProducts = (query: string): ProductSummary[] =>
     (products as ProductSummary[] | undefined)?.filter((p) =>
       p.productName.includes(query.toLowerCase().trim())
@@ -200,7 +265,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
 
   const deriveCartonPrice = (unitPrice: string, ppc: number | null): string => {
     const up = parseFloat(unitPrice);
-    return !isNaN(up) && up > 0 && ppc ? (up * ppc).toFixed(2) : '';
+    return !isNaN(up) && up > 0 && ppc ? (up * ppc).toFixed(4) : '';
   };
 
   const selectPoProduct = (i: number, p: ProductSummary) => {
@@ -208,9 +273,9 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
       prev.map((row, idx) => {
         if (idx !== i) return row;
         const ppc = p.piecesPerCarton;
-        const unitPrice = p.latestSellingPrice;
+        const unitPrice = fromUsd(p.latestSellingPrice);
         const cartonPrice = deriveCartonPrice(unitPrice, ppc);
-        return { ...row, productName: p.productName, unitPrice, cartonPrice, unitCost: p.latestUnitCost, piecesPerCarton: ppc, selectedStock: p.totalAvailable };
+        return { ...row, productName: p.productName, unitPrice, cartonPrice, unitCost: fromUsd(p.latestUnitCost), piecesPerCarton: ppc, selectedStock: p.totalAvailable };
       })
     );
     setFocusedItemIndex(null);
@@ -238,7 +303,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
       prev.map((row, idx) => {
         if (idx !== i || !row.piecesPerCarton) return row;
         const cp = parseFloat(value);
-        const unitPrice = !isNaN(cp) ? (cp / row.piecesPerCarton).toFixed(2) : row.unitPrice;
+        const unitPrice = !isNaN(cp) ? (cp / row.piecesPerCarton).toFixed(4) : row.unitPrice;
         return { ...row, cartonPrice: value, unitPrice };
       })
     );
@@ -269,6 +334,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
     setForm({ productName: '', quantity: '', unitPrice: '', unitCost: '', sellingPrice: '', category: '', amount: '', notes: '' });
     setPoItems([{ ...EMPTY_PO_ITEM }]);
     setFocusedItemIndex(null);
+    setEntryCurrency('USD');
   }, [modal]);
 
   const onSuccess = () => {
@@ -284,7 +350,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
         const items = poItems.map((item) => ({
           productName: item.productName,
           quantity: getPoTotalPieces(parseInt(item.quantity, 10), item.piecesPerCarton, item.extraPieces),
-          unitPrice: item.unitPrice,
+          unitPrice: toUsd(item.unitPrice),
         }));
         return externalContactsApi.recordProductOutBatch(contactId, {
           items,
@@ -324,6 +390,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
     poItems.length > 0 &&
     !hasPoItemBelowCost &&
     !hasInvalidExtraPieces &&
+    (!isFC || canUseFC) &&
     poItems.every((it) => {
       const totalPcs = getPoTotalPieces(parseInt(it.quantity, 10), it.piecesPerCarton, it.extraPieces);
       return it.productName.trim() &&
@@ -343,6 +410,41 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
             </button>
           )}
         </div>
+        {modal === 'product-out' && (
+          <div className="mb-4">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted-foreground)' }}>
+                {t.externalContacts.enterIn}
+              </span>
+              <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
+                {(['USD', 'FC'] as const).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => switchCurrency(c)}
+                    className="px-3 py-1.5 text-xs font-semibold transition-colors"
+                    style={{
+                      background: entryCurrency === c ? (c === 'FC' ? 'var(--warning)' : 'var(--primary)') : 'var(--input)',
+                      color: entryCurrency === c ? '#fff' : 'var(--foreground)',
+                      opacity: c === 'FC' && !canUseFC ? 0.4 : 1,
+                      cursor: c === 'FC' && !canUseFC ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {c === 'USD' ? '$ USD' : 'FC'}
+                  </button>
+                ))}
+              </div>
+              {isFC && systemRate && (
+                <span className="text-xs tabular-nums" style={{ color: 'var(--warning)' }}>
+                  1$ = {new Intl.NumberFormat('en-US').format(systemRate)} FC
+                </span>
+              )}
+            </div>
+            {!canUseFC && isFC && (
+              <p className="text-xs mt-2" style={{ color: 'var(--warning)' }}>{t.externalContacts.noSystemRate}</p>
+            )}
+          </div>
+        )}
         <div className="space-y-3">
           {modal === 'product-out' && (
             <>
@@ -379,7 +481,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                           >
                             {suggestions.map((p) => {
                               const sPpc = p.piecesPerCarton;
-                              const cartonSell = sPpc ? (parseFloat(p.latestSellingPrice) * sPpc).toFixed(2) : null;
+                              const cartonSell = sPpc ? (parseFloat(p.latestSellingPrice) * sPpc).toFixed(4) : null;
                               const sCartons = sPpc ? Math.floor(p.totalAvailable / sPpc) : null;
                               return (
                                 <div
@@ -396,8 +498,8 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                                   </span>
                                   <span className="flex justify-between mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
                                     <span>
-                                      {formatCurrency(p.latestUnitCost)} cost
-                                      {cartonSell ? <> · {formatCurrency(cartonSell)}/carton</> : null}
+                                      {fmtPrice(fromUsd(p.latestUnitCost))} cost
+                                      {cartonSell ? <> · {fmtPrice(fromUsd(cartonSell))}/carton</> : null}
                                     </span>
                                     <span>
                                       {sCartons != null
@@ -522,7 +624,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                     {/* Below-cost warning */}
                     {belowCost && (
                       <div className="rounded-lg px-3 py-2 mt-2 text-xs font-medium" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)' }}>
-                        {t.externalContacts.belowCostWarning(formatCurrency(item.unitPrice), formatCurrency(item.unitCost))}
+                        {t.externalContacts.belowCostWarning(fmtPrice(item.unitPrice), fmtPrice(item.unitCost))}
                       </div>
                     )}
 
@@ -534,7 +636,7 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                             {t.externalContacts.totalLabel} ({ppc ? <>{cartonQty > 0 ? t.externalContacts.cartonsCount(cartonQty) : ''}{extraPcs > 0 ? `${cartonQty > 0 ? ' + ' : ''}${t.externalContacts.piecesOnly(extraPcs)}` : ''} · {t.externalContacts.piecesOnly(totalPieces)}</> : <>{t.externalContacts.piecesOnly(totalPieces)}</>})
                           </span>
                           <span className="font-bold" style={{ color: belowCost ? 'var(--danger)' : 'var(--success)' }}>
-                            {formatCurrency((parseFloat(item.unitPrice) * totalPieces).toFixed(2))}
+                            {fmtPrice((parseFloat(item.unitPrice) * totalPieces).toFixed(4))}
                           </span>
                         </div>
                       </div>
@@ -562,21 +664,21 @@ function ActionModal({ modal, contactId, onClose }: { modal: Modal; contactId: s
                             {ppc ? <>{q > 0 ? t.externalContacts.cartonsCount(q) : ''}{extra > 0 ? `${q > 0 ? ' + ' : ''}${t.externalContacts.piecesOnly(extra)}` : ''} ({t.externalContacts.piecesOnly(pieces)})</> : <>{t.externalContacts.piecesOnly(pieces)}</>}
                           </span>
                         </span>
-                        <span className="font-medium" style={{ color: 'var(--foreground)' }}>{formatCurrency((price * pieces).toFixed(2))}</span>
+                        <span className="font-medium" style={{ color: 'var(--foreground)' }}>{fmtPrice((price * pieces).toFixed(4))}</span>
                       </div>
                     );
                   })}
                   <div className="flex justify-between text-sm font-bold pt-1.5 mt-1.5 border-t" style={{ borderColor: 'var(--border)' }}>
                     <span style={{ color: 'var(--foreground)' }}>{t.externalContacts.grandTotal}</span>
                     <span style={{ color: hasPoItemBelowCost ? 'var(--danger)' : 'var(--success)' }}>
-                      {formatCurrency(
+                      {fmtPrice(
                         poItems.reduce((s, it) => {
                           const q = parseInt(it.quantity, 10);
                           const price = parseFloat(it.unitPrice);
                           const pieces = getPoTotalPieces(q, it.piecesPerCarton, it.extraPieces);
                           if (isNaN(pieces) || pieces <= 0 || isNaN(price) || price <= 0) return s;
                           return s + price * pieces;
-                        }, 0).toFixed(2)
+                        }, 0).toFixed(4)
                       )}
                     </span>
                   </div>
@@ -827,7 +929,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                     <div className="flex items-start gap-3 ml-4">
                       <div className="text-right">
                         <p className="font-bold text-sm" style={{ color: txBadgeColor(b.type) }}>
-                          {formatCurrency(b.totalAmount.toFixed(2))}
+                          {formatCurrency(b.totalAmount.toFixed(4))}
                         </p>
                         <p className="text-[10px] mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
                           {t.externalContacts.itemsCount(b.items.length)}
@@ -913,7 +1015,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                       </p>
                       {tx.profit != null && (
                         <p className="text-xs font-medium mt-0.5" style={{ color: tx.isLoss ? 'var(--danger)' : 'var(--success)' }}>
-                          {tx.isLoss ? '▼' : '▲'} {formatCurrency(Math.abs(parseFloat(tx.profit)).toFixed(2))} {t.externalContacts.profit}
+                          {tx.isLoss ? '▼' : '▲'} {formatCurrency(Math.abs(parseFloat(tx.profit)).toFixed(4))} {t.externalContacts.profit}
                         </p>
                       )}
                     </div>

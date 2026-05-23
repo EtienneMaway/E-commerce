@@ -34,15 +34,15 @@ export class SaleTransaction {
   qtySold: number;
 
   @ApiProperty({ example: '25.00' })
-  @Column({ name: 'unit_cost', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'unit_cost', type: 'decimal', precision: 14, scale: 4 })
   unitCost: string;
 
   @ApiProperty({ example: '30.00' })
-  @Column({ name: 'sale_price', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'sale_price', type: 'decimal', precision: 14, scale: 4 })
   salePrice: string;
 
   @ApiProperty({ example: '50.00', description: '(salePrice - unitCost) × qtySold' })
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 14, scale: 4 })
   profit: string;
 
   @ApiProperty({ example: false, description: 'True when sold below cost price' })
@@ -79,7 +79,7 @@ export class SaleTransaction {
   actor: User | null;
 
   @ApiPropertyOptional({ example: '32.00', description: 'Owner\'s standard unit price at sale time; set only when employee discounted' })
-  @Column({ name: 'original_unit_price', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ name: 'original_unit_price', type: 'decimal', precision: 14, scale: 4, nullable: true })
   originalUnitPrice: string | null;
 
   @ApiPropertyOptional({ example: 'Loyal customer', description: 'Reason the employee discounted; required when employee sells below standard' })

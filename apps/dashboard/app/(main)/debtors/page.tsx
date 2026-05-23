@@ -72,7 +72,7 @@ export default function DebtorsPage() {
         <div>
           <h1 className="page-title">{t.debtors.title}</h1>
           <p className="page-sub">
-            {t.debtors.sub(rows.length, formatCurrency(totalOwed.toFixed(2)))}
+            {t.debtors.sub(rows.length, formatCurrency(totalOwed.toFixed(4)))}
           </p>
         </div>
       </div>

@@ -92,7 +92,7 @@ export function PaySupplierDialog({ supplier, onClose }: Props) {
               {outstanding > 0 && (
                 <button
                   type="button"
-                  onClick={() => setAmount(outstanding.toFixed(2))}
+                  onClick={() => setAmount(outstanding.toFixed(4))}
                   className="text-xs font-bold px-2 py-0.5 rounded-md transition-colors"
                   style={{ background: 'var(--primary-light, #eff6ff)', color: 'var(--primary)' }}
                 >
@@ -104,13 +104,13 @@ export function PaySupplierDialog({ supplier, onClose }: Props) {
               type="number"
               min="0.01"
               step="0.01"
-              max={outstanding > 0 ? outstanding.toFixed(2) : undefined}
+              max={outstanding > 0 ? outstanding.toFixed(4) : undefined}
               value={amount}
               onChange={(e) => {
                 setAmount(e.target.value);
                 if (error) setError('');
               }}
-              placeholder={outstanding > 0 ? outstanding.toFixed(2) : '0.00'}
+              placeholder={outstanding > 0 ? outstanding.toFixed(4) : '0.00'}
               className="input"
             />
           </div>

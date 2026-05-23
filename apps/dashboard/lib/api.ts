@@ -72,10 +72,35 @@ export const inventoryApi = {
     api.get('/inventory', { params }).then((r) => r.data),
   addPersonal: (body: { productName: string; unitCost: string; sellingPrice: string; quantity: number; category?: string; cartonPrice?: string; piecesPerCarton?: number }) =>
     api.post('/inventory/personal', body).then((r) => r.data),
+  addPersonalBulk: (body: {
+    items: Array<{
+      productName: string;
+      unitCost: string;
+      sellingPrice: string;
+      quantity: number;
+      category?: string;
+      cartonPrice?: string;
+      piecesPerCarton?: number;
+    }>;
+  }) => api.post('/inventory/personal/bulk', body).then((r) => r.data),
   receiveFromSupplier: (body: { supplierUserId: string; productName: string; unitCost: string; sellingPrice: string; quantity: number; category?: string; cartonPrice?: string; piecesPerCarton?: number }) =>
     api.post('/inventory/receive', body).then((r) => r.data),
   updateSellingPrice: (id: string, sellingPrice: string) =>
     api.patch(`/inventory/${id}/selling-price`, { sellingPrice }).then((r) => r.data),
+  renameProduct: (
+    currentName: string,
+    newName: string,
+  ): Promise<{
+    oldName: string;
+    newName: string;
+    entriesUpdated: number;
+    salesUpdated: number;
+    externalTxUpdated: number;
+    pricingUpdated: number;
+  }> =>
+    api
+      .patch(`/inventory/products/${encodeURIComponent(currentName)}/rename`, { newName })
+      .then((r) => r.data),
   adjustStock: (
     entryId: string,
     body: { reason: string; qty: number; notes?: string },

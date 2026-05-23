@@ -81,7 +81,7 @@ export interface ProfitByProduct {
 }
 
 export interface AlertItem {
-  type: 'overdue_debtor' | 'low_stock' | 'pending_consignment';
+  type: 'overdue_debtor' | 'low_stock' | 'pending_consignment' | 'inverted_exchange_rates';
   // overdue_debtor fields
   debtorUserId?: string;
   debtorUsername?: string;
@@ -93,6 +93,9 @@ export interface AlertItem {
   source?: string;
   // pending_consignment fields
   pendingCount?: number;
+  // inverted_exchange_rates fields — system selling rate (usdToFcRate) is below the buying rate
+  systemSellingRate?: string;
+  buyingRate?: string;
 }
 
 export interface ProfitBySource {
@@ -267,7 +270,7 @@ export class DashboardService {
 
     const directSalesProfit = sales.reduce((sum, s) => sum.plus(s.profit), new Decimal(0));
     const extProfit = new Decimal(externalProfit?.total ?? 0);
-    const totalProfitAllTime = directSalesProfit.plus(consignmentProfit).plus(extProfit).toFixed(2);
+    const totalProfitAllTime = directSalesProfit.plus(consignmentProfit).plus(extProfit).toFixed(4);
 
     // Inventory value totals (only entries with remaining stock, excluding CONSIGNED_OUT)
     let totalPurchaseValue = new Decimal(0);
@@ -278,16 +281,16 @@ export class DashboardService {
       totalSellingValue = totalSellingValue.plus(new Decimal(entry.sellingPrice).mul(entry.quantityRemaining));
     }
 
-    const iOweFixed = totalIOwe.toFixed(2);
-    const owedFixed = totalOwedToMe.toFixed(2);
+    const iOweFixed = totalIOwe.toFixed(4);
+    const owedFixed = totalOwedToMe.toFixed(4);
 
     return {
       totalIOwe: iOweFixed,
       totalOwedToMe: owedFixed,
-      netPosition: new Decimal(owedFixed).minus(iOweFixed).toFixed(2),
+      netPosition: new Decimal(owedFixed).minus(iOweFixed).toFixed(4),
       totalProfitAllTime,
-      totalPurchaseValue: totalPurchaseValue.toFixed(2),
-      totalSellingValue: totalSellingValue.toFixed(2),
+      totalPurchaseValue: totalPurchaseValue.toFixed(4),
+      totalSellingValue: totalSellingValue.toFixed(4),
     };
   }
 
@@ -410,21 +413,21 @@ export class DashboardService {
       .minus(totalWithdrawn);
 
     return {
-      totalIncome: totalIncome.toFixed(2),
-      totalCogs: totalCogs.toFixed(2),
-      totalProfit: totalProfit.toFixed(2),
-      totalExpenses: totalExpenses.toFixed(2),
-      availableProfitCash: availableProfitCash.toFixed(2),
-      totalCashReceived: totalCashReceived.toFixed(2),
-      totalWithdrawn: totalWithdrawn.toFixed(2),
-      availableBusinessCash: availableBusinessCash.toFixed(2),
+      totalIncome: totalIncome.toFixed(4),
+      totalCogs: totalCogs.toFixed(4),
+      totalProfit: totalProfit.toFixed(4),
+      totalExpenses: totalExpenses.toFixed(4),
+      availableProfitCash: availableProfitCash.toFixed(4),
+      totalCashReceived: totalCashReceived.toFixed(4),
+      totalWithdrawn: totalWithdrawn.toFixed(4),
+      availableBusinessCash: availableBusinessCash.toFixed(4),
       breakdown: {
-        directSalesRevenue: directRevenue.toFixed(2),
-        consignmentRevenue: consignmentRevenue.toFixed(2),
-        externalProductOutRevenue: extRevenue.toFixed(2),
-        directSalesCash: directSalesCash.toFixed(2),
-        debtorPaymentsCash: debtorPaymentsCash.toFixed(2),
-        externalPaymentInCash: externalPaymentInCash.toFixed(2),
+        directSalesRevenue: directRevenue.toFixed(4),
+        consignmentRevenue: consignmentRevenue.toFixed(4),
+        externalProductOutRevenue: extRevenue.toFixed(4),
+        directSalesCash: directSalesCash.toFixed(4),
+        debtorPaymentsCash: debtorPaymentsCash.toFixed(4),
+        externalPaymentInCash: externalPaymentInCash.toFixed(4),
       },
     };
   }
@@ -476,7 +479,7 @@ export class DashboardService {
         (sum, s) => sum.plus(new Decimal(s.salePrice).mul(s.qtySold)),
         new Decimal(0),
       )
-      .toFixed(2);
+      .toFixed(4);
 
     return {
       supplierUserId,
@@ -593,7 +596,7 @@ export class DashboardService {
       : new Decimal(0);
     const extRows = extProductOutRows.map((r) => ({
       productName: r.productName,
-      totalProfit: new Decimal(r.totalMargin ?? 0).mul(extRealizationRatio).toFixed(2),
+      totalProfit: new Decimal(r.totalMargin ?? 0).mul(extRealizationRatio).toFixed(4),
       totalQty: r.totalQty,
     }));
 
@@ -634,7 +637,7 @@ export class DashboardService {
     return Array.from(profitMap.entries())
       .map(([productName, { profit, qtySold }]) => ({
         productName,
-        totalProfit: profit.toFixed(2),
+        totalProfit: profit.toFixed(4),
         totalQtySold: qtySold,
       }))
       .sort((a, b) => new Decimal(b.totalProfit).minus(a.totalProfit).toNumber());
@@ -667,7 +670,7 @@ export class DashboardService {
       source: r.source,
       supplierUserId: r.supplierUserId,
       supplierUsername: r.supplierUsername,
-      totalProfit: new Decimal(r.totalProfit ?? 0).toFixed(2),
+      totalProfit: new Decimal(r.totalProfit ?? 0).toFixed(4),
     }));
 
     // Append realized consignment profit as its own source entry
@@ -676,7 +679,7 @@ export class DashboardService {
         source: InventorySource.CONSIGNED_OUT,
         supplierUserId: null,
         supplierUsername: null,
-        totalProfit: consignmentTotal.toFixed(2),
+        totalProfit: consignmentTotal.toFixed(4),
       });
     }
 
@@ -695,7 +698,7 @@ export class DashboardService {
         source: 'EXTERNAL_CONTACT',
         supplierUserId: null,
         supplierUsername: null,
-        totalProfit: extTotal.toFixed(2),
+        totalProfit: extTotal.toFixed(4),
       });
     }
 
@@ -728,7 +731,7 @@ export class DashboardService {
         type: 'overdue_debtor',
         debtorUserId: credit.debtorUserId,
         debtorUsername: credit.debtorUser.username,
-        outstandingBalance: new Decimal(credit.outstandingBalance).toFixed(2),
+        outstandingBalance: new Decimal(credit.outstandingBalance).toFixed(4),
         daysSinceActivity,
       });
     }
@@ -762,6 +765,24 @@ export class DashboardService {
     const pendingCount = await this.consignmentsService.countPendingIncoming(ownerId);
     if (pendingCount > 0) {
       alerts.push({ type: 'pending_consignment', pendingCount });
+    }
+
+    // ── Inverted exchange rates ──────────────────────────────────────────────
+    // The Buying Rate (sellingRate column) should not exceed the System Selling
+    // Rate (usdToFcRate). When it does, FC purchase costs are converted to USD
+    // at a more favourable rate than FC income is valued at, inflating
+    // FC-displayed profit and distorting cash position numbers.
+    const rate = await this.currencyService.getRate();
+    if (rate?.sellingRate && rate.usdToFcRate) {
+      const sys = new Decimal(rate.usdToFcRate);
+      const buy = new Decimal(rate.sellingRate);
+      if (sys.gt(0) && buy.gt(0) && sys.lt(buy)) {
+        alerts.push({
+          type: 'inverted_exchange_rates',
+          systemSellingRate: sys.toFixed(4),
+          buyingRate: buy.toFixed(4),
+        });
+      }
     }
 
     return alerts;

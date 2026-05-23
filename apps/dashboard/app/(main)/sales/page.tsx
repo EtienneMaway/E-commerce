@@ -99,7 +99,7 @@ export default function SalesPage() {
       getValue: (r) => parseFloat(r.profit),
       render: (r) => (
         <Badge
-          label={r.isLoss ? `-${formatCurrency(Math.abs(parseFloat(r.profit)).toFixed(2))}` : `+${formatCurrency(r.profit)}`}
+          label={r.isLoss ? `-${formatCurrency(Math.abs(parseFloat(r.profit)).toFixed(4))}` : `+${formatCurrency(r.profit)}`}
           variant={r.isLoss ? 'loss' : 'profit'}
         />
       ),
@@ -150,10 +150,10 @@ export default function SalesPage() {
           <h1 className="page-title">{t.sales.title}</h1>
           <p className="page-sub">
             {t.sales.transactions(rows.length)} · {t.sales.revenue}:{' '}
-            <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>{formatCurrency(totalRevenue.toFixed(2))}</span>
+            <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>{formatCurrency(totalRevenue.toFixed(4))}</span>
             {' '}· {t.sales.profit}:{' '}
             <span style={{ fontWeight: 600, color: totalProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-              {formatCurrency(totalProfit.toFixed(2))}
+              {formatCurrency(totalProfit.toFixed(4))}
             </span>
             {lossCount > 0 && (
               <span style={{ color: 'var(--danger)' }}> · {t.sales.lossSales(lossCount)}</span>

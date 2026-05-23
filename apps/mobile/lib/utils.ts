@@ -29,15 +29,25 @@ export function formatBreakdown(b: QuantityBreakdown): string {
   return `${parts.join('  ')}  (${b.totalPieces} total)`;
 }
 
-/** Format a decimal string as a currency value, e.g. "1234.50" → "$1,234.50" */
-export function formatCurrency(value: string | number, currency = 'USD'): string {
+/** Format a decimal string as a currency value, e.g. "1234.5057" → "$1,234.5057".
+ * Default precision is 4dp; pass `dp` (e.g. 2) for compact card displays. Values
+ * are TRUNCATED to the requested precision so we never overstate the amount.
+ */
+export function formatCurrency(
+  value: string | number,
+  currency = 'USD',
+  dp = 4,
+): string {
   const num = typeof value === 'string' ? parseFloat(value) : value;
   if (isNaN(num)) return '—';
+  const factor = Math.pow(10, dp);
+  const truncated = Math.trunc(num * factor) / factor;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
-    minimumFractionDigits: 2,
-  }).format(num);
+    minimumFractionDigits: dp,
+    maximumFractionDigits: dp,
+  }).format(truncated);
 }
 
 /** Format an ISO date string as a readable date, e.g. "2025-01-15T10:30:00.000Z" → "Jan 15, 2025" */

@@ -66,19 +66,19 @@ export class ExpensesService {
 
     if (amountUsd.gt(availableProfit)) {
       throw new BadRequestException(
-        `Cannot spend more than current profit — available profit is ${availableProfit.toFixed(2)} USD`,
+        `Cannot spend more than current profit — available profit is ${availableProfit.toFixed(4)} USD`,
       );
     }
     if (amountUsd.gt(availableBusinessCash)) {
       throw new BadRequestException(
-        `Cannot spend more than available business cash (${availableBusinessCash.toFixed(2)} USD)`,
+        `Cannot spend more than available business cash (${availableBusinessCash.toFixed(4)} USD)`,
       );
     }
 
     const expense = this.expenseRepo.create({
       ownerId,
       actorId,
-      amount: amountOriginal.toFixed(2),
+      amount: amountOriginal.toFixed(4),
       currency: dto.currency,
       category: dto.category,
       description: dto.description ?? null,
@@ -129,7 +129,7 @@ export class ExpensesService {
 
     const data = pageRows.map((e) => ({
       ...e,
-      amountUsd: this.toUsd(e, fallbackRate).toFixed(2),
+      amountUsd: this.toUsd(e, fallbackRate).toFixed(4),
     }));
 
     const categoryMap = new Map<ExpenseCategory, { total: Decimal; count: number }>();
@@ -149,11 +149,11 @@ export class ExpensesService {
     return {
       data,
       totals: {
-        totalAmountUsd: grandTotal.toFixed(2),
+        totalAmountUsd: grandTotal.toFixed(4),
         byCategory: Array.from(categoryMap.entries())
           .map(([category, { total, count }]) => ({
             category,
-            totalUsd: total.toFixed(2),
+            totalUsd: total.toFixed(4),
             count,
           }))
           .sort((a, b) => new Decimal(b.totalUsd).minus(a.totalUsd).toNumber()),

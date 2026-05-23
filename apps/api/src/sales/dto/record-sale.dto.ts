@@ -21,7 +21,7 @@ export class RecordSaleDto {
   qtySold: number;
 
   @ApiProperty({ example: '32.00', description: 'Actual selling price per unit' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   salePrice: string;
 
   @ApiPropertyOptional({

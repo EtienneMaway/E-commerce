@@ -73,7 +73,7 @@ export function EditProductSellingPriceDialog({
     if (open && latest) {
       setUnitPrice(latest.sellingPrice);
       if (piecesPerCarton) {
-        setCartonPrice((parseFloat(latest.sellingPrice) * piecesPerCarton).toFixed(2));
+        setCartonPrice((parseFloat(latest.sellingPrice) * piecesPerCarton).toFixed(4));
       } else {
         setCartonPrice('');
       }
@@ -87,14 +87,14 @@ export function EditProductSellingPriceDialog({
     setUnitPrice(v);
     const n = parseFloat(v);
     if (piecesPerCarton && !isNaN(n)) {
-      setCartonPrice((n * piecesPerCarton).toFixed(2));
+      setCartonPrice((n * piecesPerCarton).toFixed(4));
     }
   }
   function onCartonChange(v: string) {
     setCartonPrice(v);
     const n = parseFloat(v);
     if (piecesPerCarton && !isNaN(n)) {
-      setUnitPrice((n / piecesPerCarton).toFixed(2));
+      setUnitPrice((n / piecesPerCarton).toFixed(4));
     }
   }
 
@@ -104,7 +104,7 @@ export function EditProductSellingPriceDialog({
       if (!finalUnit || finalUnit <= 0) throw new Error('Invalid price');
       // Update each editable lot in parallel
       await Promise.all(
-        editable.map((e) => inventoryApi.updateSellingPrice(e.id, finalUnit.toFixed(2))),
+        editable.map((e) => inventoryApi.updateSellingPrice(e.id, finalUnit.toFixed(4))),
       );
     },
     onSuccess: () => {
@@ -179,7 +179,7 @@ export function EditProductSellingPriceDialog({
                       {t.inventory.bulkSellingCurrentCarton}
                     </span>
                     <span className="font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>
-                      {formatCurrency((parseFloat(latest.sellingPrice) * piecesPerCarton).toFixed(2))}
+                      {formatCurrency((parseFloat(latest.sellingPrice) * piecesPerCarton).toFixed(4))}
                     </span>
                   </div>
                 )}
@@ -229,7 +229,7 @@ export function EditProductSellingPriceDialog({
               />
               {belowCost && (
                 <p className="text-xs mt-1" style={{ color: 'var(--warning)' }}>
-                  ⚠️ {formatCurrency(parsedUnit.toFixed(2))} ≤ cost ({formatCurrency(minCost.toFixed(2))})
+                  ⚠️ {formatCurrency(parsedUnit.toFixed(4))} ≤ cost ({formatCurrency(minCost.toFixed(4))})
                 </p>
               )}
             </div>

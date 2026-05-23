@@ -7,7 +7,7 @@ export class RecordDebtorPaymentDto {
   debtorUserId: string;
 
   @ApiProperty({ example: '100.00', description: 'Amount received from the debtor' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   amount: string;
 
   @ApiPropertyOptional({ example: 'Received via mobile money' })

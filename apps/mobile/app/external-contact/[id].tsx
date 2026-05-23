@@ -238,7 +238,7 @@ export default function ExternalContactDetailScreen() {
                 </Text>
                 {tx.profit != null && (
                   <Text className={`text-xs font-medium mt-0.5 ${tx.isLoss ? 'text-danger' : 'text-success'}`}>
-                    {tx.isLoss ? '▼' : '▲'} {formatCurrency(Math.abs(parseFloat(tx.profit)).toFixed(2))}
+                    {tx.isLoss ? '▼' : '▲'} {formatCurrency(Math.abs(parseFloat(tx.profit)).toFixed(4))}
                   </Text>
                 )}
                 <TouchableOpacity onPress={() => handleDeleteTx(tx.id)} hitSlop={8} className="mt-1">

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -9,11 +10,14 @@ import { DataSource, ILike, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import {
   DebtorCredit,
+  ExternalTransaction,
   InventoryEntry,
   InventorySource,
   ManualStockMovementReason,
   NOTES_REQUIRED_REASONS,
   POSITIVE_REASONS,
+  ProductPrice,
+  SaleTransaction,
   StockMovement,
   StockMovementReason,
   SupplierDebt,
@@ -38,11 +42,23 @@ export interface ProductSummary {
 }
 
 import { AddPersonalDto } from './dto/add-personal.dto';
+import { AddPersonalBulkDto } from './dto/add-personal-bulk.dto';
 import { ReceiveFromSupplierDto } from './dto/receive-from-supplier.dto';
 import { ConsignToDebtorDto } from './dto/consign-to-debtor.dto';
 import { InventoryFilterDto } from './dto/inventory-filter.dto';
 import { UpdateSellingPriceDto } from './dto/update-selling-price.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
+import { RenameProductDto } from './dto/rename-product.dto';
+import type { EntityManager } from 'typeorm';
+
+export interface RenameProductResult {
+  oldName: string;
+  newName: string;
+  entriesUpdated: number;
+  salesUpdated: number;
+  externalTxUpdated: number;
+  pricingUpdated: number;
+}
 
 @Injectable()
 export class InventoryService {
@@ -124,8 +140,8 @@ export class InventoryService {
       const category = productEntries.find((e) => e.category !== null)?.category ?? null;
 
       const sellable = [...personal, ...supplier, ...consignedIn];
-      const latestSellingPrice = sellable[0]?.sellingPrice ?? '0.00';
-      const latestUnitCost = sellable[0]?.unitCost ?? '0.00';
+      const latestSellingPrice = sellable[0]?.sellingPrice ?? '0.0000';
+      const latestUnitCost = sellable[0]?.unitCost ?? '0.0000';
 
       summaries.push({
         productName,
@@ -148,52 +164,73 @@ export class InventoryService {
   }
 
   async addPersonal(ownerId: string, dto: AddPersonalDto): Promise<InventoryEntry> {
+    return this.dataSource.transaction((manager) =>
+      this.addPersonalInTx(manager, ownerId, dto),
+    );
+  }
+
+  async addPersonalBulk(
+    ownerId: string,
+    dto: AddPersonalBulkDto,
+  ): Promise<InventoryEntry[]> {
+    return this.dataSource.transaction(async (manager) => {
+      const results: InventoryEntry[] = [];
+      for (const item of dto.items) {
+        results.push(await this.addPersonalInTx(manager, ownerId, item));
+      }
+      return results;
+    });
+  }
+
+  private async addPersonalInTx(
+    manager: EntityManager,
+    ownerId: string,
+    dto: AddPersonalDto,
+  ): Promise<InventoryEntry> {
     const normalizedName = dto.productName.trim().toLowerCase();
 
-    return this.dataSource.transaction(async (manager) => {
-      const existing = await manager.findOne(InventoryEntry, {
-        where: { ownerId, source: InventorySource.PERSONAL, productName: ILike(normalizedName) },
-      });
-
-      let saved: InventoryEntry;
-      let qtyBefore: number;
-
-      if (existing) {
-        qtyBefore = existing.quantityRemaining;
-        existing.quantityOriginal += dto.quantity;
-        existing.quantityRemaining += dto.quantity;
-        existing.unitCost = dto.unitCost;
-        existing.sellingPrice = dto.sellingPrice;
-        if (dto.cartonPrice !== undefined) existing.cartonPrice = dto.cartonPrice;
-        if (dto.piecesPerCarton !== undefined) existing.piecesPerCarton = dto.piecesPerCarton;
-        saved = await manager.save(InventoryEntry, existing);
-      } else {
-        qtyBefore = 0;
-        const entry = manager.create(InventoryEntry, {
-          ownerId,
-          source: InventorySource.PERSONAL,
-          productName: normalizedName,
-          unitCost: dto.unitCost,
-          sellingPrice: dto.sellingPrice,
-          category: dto.category ?? null,
-          quantityOriginal: dto.quantity,
-          quantityRemaining: dto.quantity,
-          cartonPrice: dto.cartonPrice ?? null,
-          piecesPerCarton: dto.piecesPerCarton ?? null,
-        });
-        saved = await manager.save(InventoryEntry, entry);
-      }
-
-      await this.stockMovements.record(manager, {
-        ownerId,
-        entry: saved,
-        reason: StockMovementReason.PURCHASE,
-        qty: dto.quantity,
-        qtyBefore,
-      });
-
-      return saved;
+    const existing = await manager.findOne(InventoryEntry, {
+      where: { ownerId, source: InventorySource.PERSONAL, productName: ILike(normalizedName) },
     });
+
+    let saved: InventoryEntry;
+    let qtyBefore: number;
+
+    if (existing) {
+      qtyBefore = existing.quantityRemaining;
+      existing.quantityOriginal += dto.quantity;
+      existing.quantityRemaining += dto.quantity;
+      existing.unitCost = dto.unitCost;
+      existing.sellingPrice = dto.sellingPrice;
+      if (dto.cartonPrice !== undefined) existing.cartonPrice = dto.cartonPrice;
+      if (dto.piecesPerCarton !== undefined) existing.piecesPerCarton = dto.piecesPerCarton;
+      saved = await manager.save(InventoryEntry, existing);
+    } else {
+      qtyBefore = 0;
+      const entry = manager.create(InventoryEntry, {
+        ownerId,
+        source: InventorySource.PERSONAL,
+        productName: normalizedName,
+        unitCost: dto.unitCost,
+        sellingPrice: dto.sellingPrice,
+        category: dto.category ?? null,
+        quantityOriginal: dto.quantity,
+        quantityRemaining: dto.quantity,
+        cartonPrice: dto.cartonPrice ?? null,
+        piecesPerCarton: dto.piecesPerCarton ?? null,
+      });
+      saved = await manager.save(InventoryEntry, entry);
+    }
+
+    await this.stockMovements.record(manager, {
+      ownerId,
+      entry: saved,
+      reason: StockMovementReason.PURCHASE,
+      qty: dto.quantity,
+      qtyBefore,
+    });
+
+    return saved;
   }
 
   async receiveFromSupplier(
@@ -253,7 +290,7 @@ export class InventoryService {
       }
 
       // Upsert SupplierDebt
-      const creditValue = new Decimal(dto.unitCost).mul(dto.quantity).toFixed(2);
+      const creditValue = new Decimal(dto.unitCost).mul(dto.quantity).toFixed(4);
 
       let debt = await manager.findOne(SupplierDebt, {
         where: { ownerId, supplierUserId: dto.supplierUserId },
@@ -264,16 +301,16 @@ export class InventoryService {
           ownerId,
           supplierUserId: dto.supplierUserId,
           totalCreditReceived: creditValue,
-          totalPaid: '0.00',
+          totalPaid: '0.0000',
           outstandingBalance: creditValue,
         });
       } else {
         debt.totalCreditReceived = new Decimal(debt.totalCreditReceived)
           .plus(creditValue)
-          .toFixed(2);
+          .toFixed(4);
         debt.outstandingBalance = new Decimal(debt.outstandingBalance)
           .plus(creditValue)
-          .toFixed(2);
+          .toFixed(4);
       }
 
       const savedDebt = await manager.save(SupplierDebt, debt);
@@ -377,7 +414,7 @@ export class InventoryService {
       // Upsert DebtorCredit
       const creditValue = new Decimal(dto.agreedUnitPrice)
         .mul(dto.quantity)
-        .toFixed(2);
+        .toFixed(4);
 
       let credit = await manager.findOne(DebtorCredit, {
         where: { ownerId, debtorUserId: dto.debtorUserId },
@@ -388,16 +425,16 @@ export class InventoryService {
           ownerId,
           debtorUserId: dto.debtorUserId,
           totalCreditGiven: creditValue,
-          totalReceived: '0.00',
+          totalReceived: '0.0000',
           outstandingBalance: creditValue,
         });
       } else {
         credit.totalCreditGiven = new Decimal(credit.totalCreditGiven)
           .plus(creditValue)
-          .toFixed(2);
+          .toFixed(4);
         credit.outstandingBalance = new Decimal(credit.outstandingBalance)
           .plus(creditValue)
-          .toFixed(2);
+          .toFixed(4);
       }
 
       const savedCredit = await manager.save(DebtorCredit, credit);
@@ -407,6 +444,113 @@ export class InventoryService {
       await manager.save(InventoryEntry, savedEntry);
 
       return savedEntry;
+    });
+  }
+
+  async renameProduct(
+    ownerId: string,
+    currentName: string,
+    dto: RenameProductDto,
+  ): Promise<RenameProductResult> {
+    const oldNorm = currentName.trim().toLowerCase();
+    const newNorm = dto.newName.trim().toLowerCase();
+
+    if (!oldNorm) throw new BadRequestException('Current product name is required');
+    if (!newNorm) throw new BadRequestException('New product name is required');
+
+    if (oldNorm === newNorm) {
+      return {
+        oldName: oldNorm,
+        newName: newNorm,
+        entriesUpdated: 0,
+        salesUpdated: 0,
+        externalTxUpdated: 0,
+        pricingUpdated: 0,
+      };
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      // Block when ACTIVE consignment-linked stock exists. Settled consignment
+      // rows (quantityRemaining = 0) stay under their original name on both
+      // sides — historical paper trail — but don't prevent renaming the
+      // owner-controlled lots forward.
+      const activeConsigned = await manager
+        .createQueryBuilder(InventoryEntry, 'e')
+        .where('e.owner_id = :ownerId', { ownerId })
+        .andWhere('LOWER(e.product_name) = :name', { name: oldNorm })
+        .andWhere('e.source IN (:...sources)', {
+          sources: [InventorySource.CONSIGNED_IN, InventorySource.CONSIGNED_OUT],
+        })
+        .andWhere('e.quantity_remaining > 0')
+        .getCount();
+      if (activeConsigned > 0) {
+        throw new BadRequestException(
+          'Cannot rename while there is active consigned-in or consigned-out stock for this product. Settle those consignments first.',
+        );
+      }
+
+      const ownedCount = await manager.count(InventoryEntry, {
+        where: [
+          { ownerId, productName: ILike(oldNorm), source: InventorySource.PERSONAL },
+          { ownerId, productName: ILike(oldNorm), source: InventorySource.SUPPLIER },
+        ],
+      });
+      if (ownedCount === 0) {
+        throw new NotFoundException(`No PERSONAL or SUPPLIER stock found for product "${currentName}"`);
+      }
+
+      const conflict = await manager.count(InventoryEntry, {
+        where: { ownerId, productName: ILike(newNorm) },
+      });
+      if (conflict > 0) {
+        throw new ConflictException(
+          `Another product already uses the name "${dto.newName}". Choose a different name or merge manually.`,
+        );
+      }
+
+      const entriesResult = await manager
+        .createQueryBuilder()
+        .update(InventoryEntry)
+        .set({ productName: newNorm })
+        .where('owner_id = :ownerId', { ownerId })
+        .andWhere('LOWER(product_name) = :name', { name: oldNorm })
+        .andWhere('source IN (:...sources)', {
+          sources: [InventorySource.PERSONAL, InventorySource.SUPPLIER],
+        })
+        .execute();
+
+      const salesResult = await manager
+        .createQueryBuilder()
+        .update(SaleTransaction)
+        .set({ productName: newNorm })
+        .where('owner_id = :ownerId', { ownerId })
+        .andWhere('LOWER(product_name) = :name', { name: oldNorm })
+        .execute();
+
+      const externalResult = await manager
+        .createQueryBuilder()
+        .update(ExternalTransaction)
+        .set({ productName: newNorm })
+        .where('owner_id = :ownerId', { ownerId })
+        .andWhere('LOWER(product_name) = :name', { name: oldNorm })
+        .execute();
+
+      const pricingResult = await manager
+        .createQueryBuilder()
+        .update(ProductPrice)
+        .set({ productName: newNorm })
+        .where('owner_id = :ownerId', { ownerId })
+        .andWhere('LOWER(product_name) = :name', { name: oldNorm })
+        .execute();
+
+      return {
+        oldName: oldNorm,
+        newName: newNorm,
+        entriesUpdated: entriesResult.affected ?? 0,
+        salesUpdated: salesResult.affected ?? 0,
+        externalTxUpdated: externalResult.affected ?? 0,
+        pricingUpdated: pricingResult.affected ?? 0,
+      };
     });
   }
 
@@ -484,8 +628,8 @@ export class InventoryService {
             'Returned value exceeds outstanding debt — record a refund instead',
           );
         }
-        debt.totalCreditReceived = newCredit.toFixed(2);
-        debt.outstandingBalance = newOutstanding.toFixed(2);
+        debt.totalCreditReceived = newCredit.toFixed(4);
+        debt.outstandingBalance = newOutstanding.toFixed(4);
         await manager.save(SupplierDebt, debt);
         supplierDebtId = debt.id;
       }

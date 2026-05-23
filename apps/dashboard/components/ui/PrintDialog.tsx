@@ -34,7 +34,10 @@ export function PrintDialog({ open, onClose, buildHtml }: Props) {
   if (!open) return null;
 
   function handlePrint() {
-    const fmt = (v: string | number) => formatMoney(v, currency, rate);
+    // Receipts in FC look cleanest as whole numbers (clients pay in physical FC
+    // notes — no sub-unit). USD keeps the standard 4dp precision used app-wide.
+    const printDp = currency === 'FC' ? 0 : 4;
+    const fmt = (v: string | number) => formatMoney(v, currency, rate, printDp);
     const html = buildHtml(fmt);
     openPrintWindow(html);
     onClose();

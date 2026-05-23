@@ -24,11 +24,11 @@ export class ProductInBatchItemDto {
   quantity: number;
 
   @ApiProperty({ example: '22.00', description: 'What you agreed to pay per unit' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   unitCost: string;
 
   @ApiProperty({ example: '30.00', description: 'Your intended selling price' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   sellingPrice: string;
 
   @ApiPropertyOptional({ example: 'Grains' })

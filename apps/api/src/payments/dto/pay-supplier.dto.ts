@@ -7,7 +7,7 @@ export class PaySupplierDto {
   supplierUserId: string;
 
   @ApiProperty({ example: '150.00', description: 'Amount being paid to the supplier' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   amount: string;
 
   @ApiPropertyOptional({ example: 'Partial payment for rice batch' })

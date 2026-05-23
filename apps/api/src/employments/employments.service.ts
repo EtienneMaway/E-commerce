@@ -145,7 +145,7 @@ export class EmploymentsService {
       tier: EmploymentTier.SALES_ONLY,
       status: EmploymentStatus.ACTIVE,
       acceptedAt: new Date(),
-      monthlyPay: dto.monthlyPay !== undefined ? dto.monthlyPay.toFixed(2) : null,
+      monthlyPay: dto.monthlyPay !== undefined ? dto.monthlyPay.toFixed(4) : null,
       payrollActive: true,
     });
     const savedEmployment = await this.employmentRepo.save(employment);
@@ -343,7 +343,7 @@ export class EmploymentsService {
       employment.monthlyPay = null;
     } else {
       if (dto.monthlyPay < 0) throw new BadRequestException('Monthly pay must be non-negative');
-      employment.monthlyPay = dto.monthlyPay.toFixed(2);
+      employment.monthlyPay = dto.monthlyPay.toFixed(4);
     }
     return this.employmentRepo.save(employment);
   }

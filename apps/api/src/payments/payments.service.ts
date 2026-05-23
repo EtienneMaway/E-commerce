@@ -61,7 +61,7 @@ export class PaymentsService {
     }
 
     const payment = this.paymentRepo.create({
-      amount: amount.toFixed(2),
+      amount: amount.toFixed(4),
       note: dto.note ?? null,
       direction: PaymentDirection.OWNER_TO_SUPPLIER,
       status: PaymentStatus.PENDING,
@@ -116,16 +116,16 @@ export class PaymentsService {
     const debtorId = debt.ownerId;
 
     return this.dataSource.transaction(async (manager) => {
-      debt.totalPaid = new Decimal(debt.totalPaid).plus(amount).toFixed(2);
-      debt.outstandingBalance = new Decimal(debt.outstandingBalance).minus(amount).toFixed(2);
+      debt.totalPaid = new Decimal(debt.totalPaid).plus(amount).toFixed(4);
+      debt.outstandingBalance = new Decimal(debt.outstandingBalance).minus(amount).toFixed(4);
       await manager.save(SupplierDebt, debt);
 
       const credit = await manager.findOne(DebtorCredit, {
         where: { ownerId: supplierId, debtorUserId: debtorId },
       });
       if (credit) {
-        credit.totalReceived = new Decimal(credit.totalReceived).plus(amount).toFixed(2);
-        credit.outstandingBalance = new Decimal(credit.outstandingBalance).minus(amount).toFixed(2);
+        credit.totalReceived = new Decimal(credit.totalReceived).plus(amount).toFixed(4);
+        credit.outstandingBalance = new Decimal(credit.outstandingBalance).minus(amount).toFixed(4);
         const savedCredit = await manager.save(DebtorCredit, credit);
         payment.debtorCreditId = savedCredit.id;
       }
@@ -180,14 +180,14 @@ export class PaymentsService {
     }
 
     return this.dataSource.transaction(async (manager) => {
-      credit.totalReceived = new Decimal(credit.totalReceived).plus(amount).toFixed(2);
+      credit.totalReceived = new Decimal(credit.totalReceived).plus(amount).toFixed(4);
       credit.outstandingBalance = new Decimal(credit.outstandingBalance)
         .minus(amount)
-        .toFixed(2);
+        .toFixed(4);
       await manager.save(DebtorCredit, credit);
 
       const payment = manager.create(Payment, {
-        amount: amount.toFixed(2),
+        amount: amount.toFixed(4),
         note: dto.note ?? null,
         direction: PaymentDirection.DEBTOR_TO_OWNER,
         status: PaymentStatus.APPROVED,

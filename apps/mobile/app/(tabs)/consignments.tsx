@@ -97,7 +97,7 @@ function ConsignmentCard({
       <View className="flex-row justify-between mt-3 pt-2 border-t border-border dark:border-slate-700">
         <Text className="text-muted dark:text-slate-500 text-sm">{t.consignments.totalValue}</Text>
         <Text className="text-text dark:text-slate-100 font-bold text-base">
-          {formatCurrency(totalValue.toFixed(2))}
+          {formatCurrency(totalValue.toFixed(4))}
         </Text>
       </View>
 

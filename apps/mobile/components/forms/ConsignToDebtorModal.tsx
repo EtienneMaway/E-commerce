@@ -160,7 +160,7 @@ export function ConsignToDebtorModal({ visible, onClose }: Props) {
         <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
           <Text className="text-blue-700 text-xs">
             {t.consignToDebtorModal.debtHint(form.agreedUnitPrice && form.quantity
-              ? formatCurrency((parseFloat(form.agreedUnitPrice || '0') * parseInt(form.quantity || '0', 10)).toFixed(2))
+              ? formatCurrency((parseFloat(form.agreedUnitPrice || '0') * parseInt(form.quantity || '0', 10)).toFixed(4))
               : '...')}
           </Text>
         </View>

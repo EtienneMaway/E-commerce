@@ -29,7 +29,7 @@ export class Payment {
   id: string;
 
   @ApiProperty({ example: '150.00' })
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 14, scale: 4 })
   amount: string;
 
   @ApiPropertyOptional({ example: 'Partial payment for rice batch' })
@@ -49,7 +49,7 @@ export class Payment {
   status: PaymentStatus;
 
   @ApiPropertyOptional({ example: '150.00', description: 'Remaining balance after approval — null while PENDING' })
-  @Column({ name: 'remaining_balance', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ name: 'remaining_balance', type: 'decimal', precision: 14, scale: 4, nullable: true })
   remainingBalance: string | null;
 
   // The user who sent the payment (debtor)

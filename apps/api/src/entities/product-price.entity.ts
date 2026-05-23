@@ -32,7 +32,7 @@ export class ProductPrice {
   productName: string;
 
   @ApiProperty({ example: '30.00' })
-  @Column({ name: 'unit_price', type: 'decimal', precision: 12, scale: 2 })
+  @Column({ name: 'unit_price', type: 'decimal', precision: 14, scale: 4 })
   unitPrice: string;
 
   @CreateDateColumn({ name: 'created_at' })

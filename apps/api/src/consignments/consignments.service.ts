@@ -175,7 +175,7 @@ export class ConsignmentsService {
           });
         }
 
-        const creditValue = new Decimal(item.agreedUnitPrice).mul(item.quantity).toFixed(2);
+        const creditValue = new Decimal(item.agreedUnitPrice).mul(item.quantity).toFixed(4);
 
         let credit = await manager.findOne(DebtorCredit, {
           where: { ownerId: request.supplierId, debtorUserId: request.debtorId },
@@ -186,12 +186,12 @@ export class ConsignmentsService {
             ownerId: request.supplierId,
             debtorUserId: request.debtorId,
             totalCreditGiven: creditValue,
-            totalReceived: '0.00',
+            totalReceived: '0.0000',
             outstandingBalance: creditValue,
           });
         } else {
-          credit.totalCreditGiven = new Decimal(credit.totalCreditGiven).plus(creditValue).toFixed(2);
-          credit.outstandingBalance = new Decimal(credit.outstandingBalance).plus(creditValue).toFixed(2);
+          credit.totalCreditGiven = new Decimal(credit.totalCreditGiven).plus(creditValue).toFixed(4);
+          credit.outstandingBalance = new Decimal(credit.outstandingBalance).plus(creditValue).toFixed(4);
         }
         const savedCredit = await manager.save(DebtorCredit, credit);
 
@@ -203,12 +203,12 @@ export class ConsignmentsService {
             ownerId: request.debtorId,
             supplierUserId: request.supplierId,
             totalCreditReceived: creditValue,
-            totalPaid: '0.00',
+            totalPaid: '0.0000',
             outstandingBalance: creditValue,
           });
         } else {
-          debt.totalCreditReceived = new Decimal(debt.totalCreditReceived).plus(creditValue).toFixed(2);
-          debt.outstandingBalance  = new Decimal(debt.outstandingBalance).plus(creditValue).toFixed(2);
+          debt.totalCreditReceived = new Decimal(debt.totalCreditReceived).plus(creditValue).toFixed(4);
+          debt.outstandingBalance  = new Decimal(debt.outstandingBalance).plus(creditValue).toFixed(4);
         }
         const savedDebt = await manager.save(SupplierDebt, debt);
 

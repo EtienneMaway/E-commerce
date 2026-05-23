@@ -63,7 +63,7 @@ export class Employment {
   terminationRequestedBy: string | null;
 
   @ApiPropertyOptional({ example: '300.00', description: 'Target monthly pay in USD — null until set by the employer' })
-  @Column({ name: 'monthly_pay', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ name: 'monthly_pay', type: 'decimal', precision: 14, scale: 4, nullable: true })
   monthlyPay: string | null;
 
   @ApiProperty({

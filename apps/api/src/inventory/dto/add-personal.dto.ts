@@ -16,11 +16,11 @@ export class AddPersonalDto {
   productName: string;
 
   @ApiProperty({ example: '25.00', description: 'Cost price you paid per unit' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   unitCost: string;
 
   @ApiProperty({ example: '30.00', description: 'Price you intend to sell at' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   sellingPrice: string;
 
   @ApiProperty({ example: 100 })
@@ -34,7 +34,7 @@ export class AddPersonalDto {
   category?: string;
 
   @ApiPropertyOptional({ example: '240.00', description: 'Purchase price for one full carton' })
-  @IsDecimal({ decimal_digits: '1,2' })
+  @IsDecimal({ decimal_digits: '1,4' })
   @IsOptional()
   cartonPrice?: string;
 
