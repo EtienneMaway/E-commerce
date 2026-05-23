@@ -36,6 +36,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (token, user) => {
     await SecureStore.setItemAsync(TOKEN_KEY, token);
     set({ token, user });
+    // Resolve persona now that we know whether the user has an active
+    // employment. Mobile defaults to 'employer' when employed so an employee's
+    // first action (sale, expense, etc.) lands on the employer's books rather
+    // than the employee's own (empty) account.
+    await usePersonaStore.getState().applyDefaultForUser(user);
   },
 
   logout: async () => {

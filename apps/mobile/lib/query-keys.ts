@@ -19,6 +19,8 @@ export const QK = {
   externalContactDetail: (id: string) => ['external-contacts', id] as const,
   salaryPaymentsPending: ['salary-payments', 'pending'] as const,
   salaryHistory: ['salary-payments', 'history'] as const,
+  salarySummary: (employmentId: string, periodMonth: string) =>
+    ['salary-payments', 'summary', employmentId, periodMonth] as const,
   expenses: (params?: object) => ['expenses', params ?? {}] as const,
   cashPosition: ['dashboard', 'cash-position'] as const,
 } as const;

@@ -298,11 +298,26 @@ export interface SalaryPayment {
   updatedAt: string;
 }
 
+export interface SalarySummary {
+  employmentId: string;
+  periodMonth: string;
+  monthlyPay: string | null;
+  paidConfirmed: string;
+  pendingConfirmation: string;
+  rejected: string;
+  balanceRemaining: string | null;
+  paymentCount: number;
+}
+
 export const salaryPaymentsApi = {
   pending: (): Promise<SalaryPayment[]> =>
     api.get('/salary-payments/pending').then((r) => r.data),
   myHistory: (): Promise<SalaryPayment[]> =>
     api.get('/salary-payments', { params: { role: 'employee' } }).then((r) => r.data),
+  summary: (employmentId: string, periodMonth?: string): Promise<SalarySummary> =>
+    api
+      .get('/salary-payments/summary', { params: { employmentId, periodMonth } })
+      .then((r) => r.data),
   confirm: (id: string): Promise<SalaryPayment> =>
     api.patch(`/salary-payments/${id}/confirm`).then((r) => r.data),
   reject: (id: string, reason?: string): Promise<SalaryPayment> =>

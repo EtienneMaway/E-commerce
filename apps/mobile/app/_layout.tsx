@@ -79,10 +79,14 @@ function AuthGuard() {
     if (!token && !inAuthGroup) {
       router.replace('/(auth)/login');
     } else if (token && inAuthGroup) {
-      // Validate token is still good then go to tabs
+      // Validate token is still good then go to tabs.
+      // Awaiting login() matters: it resolves the persona (Self/Employer) so
+      // the very next API call from the home tab carries the right
+      // X-Acting-As header. Without the await, queries can fire before
+      // persona is applied and momentarily return the wrong "books".
       authApi.me()
-        .then((user) => {
-          useAuthStore.getState().login(token, user);
+        .then(async (user) => {
+          await useAuthStore.getState().login(token, user);
           router.replace('/(tabs)');
           // Schedule alert notifications after confirmed auth
           dashboardApi.alerts()

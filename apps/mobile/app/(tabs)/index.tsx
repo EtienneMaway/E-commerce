@@ -70,6 +70,13 @@ export default function DashboardScreen() {
     enabled: !isOffline,
   });
 
+  const { data: cashData } = useQuery({
+    queryKey: QK.cashPosition,
+    queryFn: dashboardApi.cashPosition,
+    enabled: !isOffline,
+    staleTime: 30_000,
+  });
+
   const { data: pendingSalaryData } = useQuery({
     queryKey: QK.salaryPaymentsPending,
     queryFn: salaryPaymentsApi.pending,
@@ -364,7 +371,7 @@ export default function DashboardScreen() {
       ) : (
         <>
           {/* Net Position */}
-          <Card className="mb-4">
+          <Card className="mb-3">
             <Text className="text-muted dark:text-slate-500 text-sm font-medium uppercase tracking-wide mb-1">{t.home.netPosition}</Text>
             {isLoading ? (
               <Text className="text-3xl font-bold text-text dark:text-slate-100">—</Text>
@@ -378,6 +385,29 @@ export default function DashboardScreen() {
               </Text>
             )}
             <Text className="text-muted dark:text-slate-500 text-sm mt-1">{t.home.netPositionSub}</Text>
+          </Card>
+
+          {/* Available Business Cash — what's actually in the till. Honors persona via X-Acting-As. */}
+          <Card className="mb-4">
+            <Text className="text-muted dark:text-slate-500 text-sm font-medium uppercase tracking-wide mb-1">
+              {t.home.availableBusinessCash}
+            </Text>
+            {cashData ? (
+              <Text
+                className={`text-3xl font-bold ${
+                  parseFloat(cashData.availableBusinessCash) >= 0 ? 'text-success' : 'text-danger'
+                }`}
+              >
+                {formatCurrency(cashData.availableBusinessCash)}
+              </Text>
+            ) : (
+              <Text className="text-3xl font-bold text-text dark:text-slate-100">—</Text>
+            )}
+            <Text className="text-muted dark:text-slate-500 text-sm mt-1">
+              {cashData && parseFloat(cashData.availableBusinessCash) < 0
+                ? t.home.availableBusinessCashOver
+                : t.home.availableBusinessCashSub}
+            </Text>
           </Card>
 
           {/* KPI row 1 */}

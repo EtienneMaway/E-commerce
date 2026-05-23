@@ -37,14 +37,7 @@
       "expo-router",
       "expo-secure-store",
       "expo-notifications",
-      "expo-sharing",
-      [
-        "react-native-bluetooth-classic",
-        {
-          "neverForLocation": false,
-          "peripheralUsageDescription": "Connect to a Bluetooth thermal printer to print sales receipts."
-        }
-      ]
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true
