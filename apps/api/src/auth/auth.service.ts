@@ -1,6 +1,7 @@
 import {
   ConflictException,
   ForbiddenException,
+  GoneException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -14,7 +15,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { PairMiniEmployeeDto } from './dto/pair-mini-employee.dto';
 import { AuthResponseDto, UserPublicDto } from './dto/auth-response.dto';
-import { BCRYPT_SALT_ROUNDS } from '../common/constants';
+import { ACCOUNT_DELETION_GRACE_MS, BCRYPT_SALT_ROUNDS } from '../common/constants';
 
 @Injectable()
 export class AuthService {
@@ -26,7 +27,6 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
-    // Check uniqueness
     if (dto.email) {
       const existing = await this.userRepo.findOne({ where: { email: dto.email } });
       if (existing) throw new ConflictException('Email already registered');
@@ -66,6 +66,50 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
+    if (user.anonymizedAt) {
+      throw new UnauthorizedException('Account deleted');
+    }
+
+    if (user.deletedAt) {
+      const expiresAt = new Date(user.deletedAt.getTime() + ACCOUNT_DELETION_GRACE_MS);
+      if (Date.now() > expiresAt.getTime()) {
+        throw new UnauthorizedException('Account deleted');
+      }
+      // Inside grace window: refuse the normal login but expose the restore path.
+      throw new GoneException({
+        pendingDeletion: true,
+        deletedAt: user.deletedAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        message: 'Account pending deletion',
+      });
+    }
+
+    return this.buildAuthResponse(user);
+  }
+
+  async restore(dto: LoginDto): Promise<AuthResponseDto> {
+    const user = await this.userRepo.findOne({
+      where: [{ email: dto.emailOrPhone }, { phone: dto.emailOrPhone }],
+    });
+    if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (user.isMiniEmployee) {
+      throw new ForbiddenException('Mini employees must pair via the mobile app');
+    }
+    const valid = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!valid) throw new UnauthorizedException('Invalid credentials');
+    if (user.anonymizedAt) {
+      throw new UnauthorizedException('Account deleted');
+    }
+    if (!user.deletedAt) {
+      // Not pending deletion — treat as a normal login.
+      return this.buildAuthResponse(user);
+    }
+    const expiresAt = new Date(user.deletedAt.getTime() + ACCOUNT_DELETION_GRACE_MS);
+    if (Date.now() > expiresAt.getTime()) {
+      throw new UnauthorizedException('Account deleted');
+    }
+    user.deletedAt = null;
+    await this.userRepo.save(user);
     return this.buildAuthResponse(user);
   }
 
@@ -78,7 +122,6 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.pairingCode, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid pairing credentials');
 
-    // Refuse to pair a mini employee whose employment was terminated.
     const employment = await this.employmentsService.findActiveAsEmployee(user.id);
     if (!employment) {
       throw new ForbiddenException('This mini-employee account is no longer active');

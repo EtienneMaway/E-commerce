@@ -34,8 +34,22 @@ export class AuthController {
   @ApiOperation({ summary: 'Login with email/phone and password' })
   @ApiResponse({ status: 200, type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  @ApiResponse({ status: 410, description: 'Account is pending deletion (within 7-day grace window). Body includes deletedAt + expiresAt; offer the user a restore path.' })
   login(@Body() dto: LoginDto): Promise<AuthResponseDto> {
     return this.authService.login(dto);
+  }
+
+  @Post('restore')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({
+    summary: 'Restore an account that is within its 7-day deletion grace window',
+    description:
+      'Takes the same body as /auth/login. If the account is in its deletion grace window, clears the deletion timestamp and returns a fresh auth response.',
+  })
+  @ApiResponse({ status: 200, type: AuthResponseDto })
+  @ApiResponse({ status: 401, description: 'Invalid credentials or grace period expired' })
+  restore(@Body() dto: LoginDto): Promise<AuthResponseDto> {
+    return this.authService.restore(dto);
   }
 
   @Post('pair-mini-employee')

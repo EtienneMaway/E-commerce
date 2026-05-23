@@ -28,6 +28,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload): Promise<User> {
     const user = await this.userRepo.findOne({ where: { id: payload.sub } });
     if (!user) throw new UnauthorizedException('Token user not found');
+    if (user.deletedAt || user.anonymizedAt) {
+      throw new UnauthorizedException('Account deleted');
+    }
     return user;
   }
 }

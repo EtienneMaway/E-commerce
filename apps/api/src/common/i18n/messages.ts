@@ -36,6 +36,54 @@ export const FR_TRANSLATIONS: Translation[] = [
     pattern: /^Unauthorized$/i,
     fr: () => 'Non autorisé',
   },
+  {
+    pattern: /^Account deleted$/,
+    fr: () => 'Compte supprimé',
+  },
+  {
+    pattern: /^Account pending deletion$/,
+    fr: () => 'Compte en attente de suppression',
+  },
+  {
+    pattern: /^Account is already pending deletion$/,
+    fr: () => 'Le compte est déjà en attente de suppression',
+  },
+  {
+    pattern: /^Account has already been anonymized and cannot be restored$/,
+    fr: () => 'Le compte a déjà été anonymisé et ne peut plus être restauré',
+  },
+  {
+    pattern: /^Grace period has expired$/,
+    fr: () => 'Le délai de grâce a expiré',
+  },
+  {
+    pattern: /^Current password is incorrect$/,
+    fr: () => 'Le mot de passe actuel est incorrect',
+  },
+  {
+    pattern: /^Password is incorrect$/,
+    fr: () => 'Le mot de passe est incorrect',
+  },
+  {
+    pattern: /^New password must differ from the current password$/,
+    fr: () => 'Le nouveau mot de passe doit être différent de l’actuel',
+  },
+  {
+    pattern: /^At least one of email or phone is required$/,
+    fr: () => 'Au moins un e-mail ou un numéro de téléphone est requis',
+  },
+  {
+    pattern: /^Employee profiles are managed by the employer$/,
+    fr: () => 'Les profils des employés sont gérés par l’employeur',
+  },
+  {
+    pattern: /^Employee profiles are deleted by the employer$/,
+    fr: () => 'Les profils des employés sont supprimés par l’employeur',
+  },
+  {
+    pattern: /^Mini-employee accounts do not use a password$/,
+    fr: () => 'Les comptes mini-employés n’utilisent pas de mot de passe',
+  },
 
   // ─── Inventory ───────────────────────────────────────────────────────────
   {

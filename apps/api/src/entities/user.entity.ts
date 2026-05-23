@@ -56,6 +56,14 @@ export class User {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
+  @ApiPropertyOptional({ description: 'When the user requested account deletion. Within the grace window the account can still be restored; afterwards it is anonymized.' })
+  @Column({ name: 'deleted_at', type: 'timestamp', nullable: true })
+  deletedAt: Date | null;
+
+  @ApiPropertyOptional({ description: 'When the user was anonymized (PII cleared) after the grace period elapsed.' })
+  @Column({ name: 'anonymized_at', type: 'timestamp', nullable: true })
+  anonymizedAt: Date | null;
+
   // Owner perspective: inventory entries this user owns
   @OneToMany(() => InventoryEntry, (entry) => entry.owner)
   inventoryEntries: InventoryEntry[];

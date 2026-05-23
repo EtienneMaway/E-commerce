@@ -108,3 +108,24 @@ export function getPriceGuardWarning(error: unknown): {
   }
   return null;
 }
+
+/** Check if a login error means the account is in its soft-delete grace window (HTTP 410). */
+export function isPendingDeletionError(error: unknown): boolean {
+  if (error && typeof error === 'object' && 'response' in error) {
+    const resp = (error as { response?: { status?: number; data?: { pendingDeletion?: boolean } } }).response;
+    return resp?.status === 410 && resp?.data?.pendingDeletion === true;
+  }
+  return false;
+}
+
+/** Extract the pending-deletion payload from a login 410 response. */
+export function getPendingDeletion(error: unknown): {
+  deletedAt: string;
+  expiresAt: string;
+} | null {
+  if (isPendingDeletionError(error)) {
+    const resp = (error as { response: { data: { deletedAt: string; expiresAt: string } } }).response;
+    return { deletedAt: resp.data.deletedAt, expiresAt: resp.data.expiresAt };
+  }
+  return null;
+}

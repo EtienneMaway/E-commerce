@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "KMB",
-    "slug": "kmb-app",
+    "name": "KMB-Talk",
+    "slug": "trading-app",
     "version": "1.0.0",
     "scheme": "kmb-app",
     "orientation": "portrait",
@@ -48,6 +48,12 @@
         "projectId": "e13f95c5-e462-4ab6-9fc7-6beb8a1946f5"
       }
     },
-    "owner": "etienne_mw"
+    "owner": "etienne_mw",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e13f95c5-e462-4ab6-9fc7-6beb8a1946f5"
+    }
   }
 }

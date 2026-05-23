@@ -5,7 +5,7 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { authApi } from '../../lib/api';
 import { useAuthStore } from '../../store/auth.store';
-import { getErrorMessage } from '../../lib/utils';
+import { getErrorMessage, getPendingDeletion, formatDate } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 
 export default function LoginScreen() {
@@ -15,18 +15,56 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const login = useAuthStore((s) => s.login);
 
+  const completeLogin = async (creds: { emailOrPhone: string; password: string }) => {
+    const { accessToken, user } = await authApi.login(creds);
+    await login(accessToken, user);
+    router.replace('/(tabs)');
+  };
+
+  const promptRestore = (
+    creds: { emailOrPhone: string; password: string },
+    expiresAt: string,
+  ) => {
+    Alert.alert(
+      t.account.pendingDeletionTitle,
+      t.account.pendingDeletionBody(formatDate(expiresAt)),
+      [
+        { text: t.account.keepDeletedBtn, style: 'cancel' },
+        {
+          text: t.account.restoreBtn,
+          onPress: async () => {
+            setLoading(true);
+            try {
+              const { accessToken, user } = await authApi.restore(creds);
+              await login(accessToken, user);
+              router.replace('/(tabs)');
+            } catch (err) {
+              Alert.alert(t.account.restoreFailed, getErrorMessage(err));
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const handleLogin = async () => {
     if (!emailOrPhone.trim() || !password) {
       Alert.alert(t.common.missingFields, t.auth.missingFieldsMsg);
       return;
     }
+    const creds = { emailOrPhone: emailOrPhone.trim(), password };
     setLoading(true);
     try {
-      const { accessToken, user } = await authApi.login({ emailOrPhone: emailOrPhone.trim(), password });
-      await login(accessToken, user);
-      router.replace('/(tabs)');
+      await completeLogin(creds);
     } catch (err) {
-      Alert.alert(t.auth.loginFailed, getErrorMessage(err));
+      const pending = getPendingDeletion(err);
+      if (pending) {
+        promptRestore(creds, pending.expiresAt);
+      } else {
+        Alert.alert(t.auth.loginFailed, getErrorMessage(err));
+      }
     } finally {
       setLoading(false);
     }

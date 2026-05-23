@@ -10,6 +10,7 @@ import { useLocaleStore } from '../store/locale.store';
 import { useT } from '../lib/i18n';
 import { authApi, dashboardApi } from '../lib/api';
 import { scheduleAlertNotifications } from '../lib/notifications';
+import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -97,35 +98,42 @@ function DynamicStatusBar() {
 export default function RootLayout() {
   const t = useT();
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeSync />
-      <LocaleSync />
-      <AuthGuard />
-      <DynamicStatusBar />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen
-          name="supplier/[id]"
-          options={{ headerShown: true, title: t.screens.supplierDetail, headerBackTitle: t.screens.back }}
-        />
-        <Stack.Screen
-          name="debtor/[id]"
-          options={{ headerShown: true, title: t.screens.debtorDetail, headerBackTitle: t.screens.back }}
-        />
-        <Stack.Screen
-          name="consignments"
-          options={{ headerShown: true, title: t.screens.incomingConsignments, headerBackTitle: t.screens.back }}
-        />
-        <Stack.Screen
-          name="external-contacts"
-          options={{ headerShown: true, title: t.screens.externalContacts, headerBackTitle: t.screens.back }}
-        />
-        <Stack.Screen
-          name="external-contact/[id]"
-          options={{ headerShown: true, title: t.screens.externalContactDetail, headerBackTitle: t.screens.back }}
-        />
-      </Stack>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeSync />
+        <LocaleSync />
+        <AuthGuard />
+        <DynamicStatusBar />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen
+            name="supplier/[id]"
+            options={{ headerShown: true, title: t.screens.supplierDetail, headerBackTitle: t.screens.back }}
+          />
+          <Stack.Screen
+            name="debtor/[id]"
+            options={{ headerShown: true, title: t.screens.debtorDetail, headerBackTitle: t.screens.back }}
+          />
+          <Stack.Screen
+            name="consignments"
+            options={{ headerShown: true, title: t.screens.incomingConsignments, headerBackTitle: t.screens.back }}
+          />
+          <Stack.Screen
+            name="external-contacts"
+            options={{ headerShown: true, title: t.screens.externalContacts, headerBackTitle: t.screens.back }}
+          />
+          <Stack.Screen
+            name="external-contact/[id]"
+            options={{ headerShown: true, title: t.screens.externalContactDetail, headerBackTitle: t.screens.back }}
+          />
+          <Stack.Screen name="account" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="expenses"
+            options={{ headerShown: true, title: t.expenses.title, headerBackTitle: t.screens.back }}
+          />
+        </Stack>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

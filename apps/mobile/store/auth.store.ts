@@ -7,6 +7,7 @@ interface UserProfile {
   username: string;
   email: string | null;
   phone: string | null;
+  name?: string | null;
   createdAt: string;
 }
 

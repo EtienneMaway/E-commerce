@@ -1,9 +1,12 @@
 {
   "cli": {
-    "version": ">= 18.0.0"
+    "version": ">= 18.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "preview": {
+      "channel": "preview",
+      "distribution": "internal",
       "android": {
         "buildType": "apk",
         "env": {
@@ -12,11 +15,23 @@
       }
     },
     "production": {
+      "channel": "production",
+      "autoIncrement": true,
       "android": {
         "buildType": "app-bundle",
         "env": {
           "EXPO_PUBLIC_API_URL": "https://api-production-05dd.up.railway.app/api"
         }
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./play-store-service-account.json",
+        "track": "internal",
+        "releaseStatus": "draft",
+        "changesNotSentForReview": false
       }
     }
   }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ScrollView, View, Text, RefreshControl, TouchableOpacity, Pressable, Alert, ActivityIndicator } from 'react-native';
+import Constants from 'expo-constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { dashboardApi, inventoryApi, salaryPaymentsApi, type SalaryPayment } from '../../lib/api';
@@ -183,6 +184,13 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          <TouchableOpacity
+            onPress={() => router.push('/account')}
+            hitSlop={8}
+            accessibilityLabel={t.account.menuTitle}
+          >
+            <Text className="text-xl">👤</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout}>
             <Text className="text-danger font-medium">{t.home.logout}</Text>
           </TouchableOpacity>
@@ -396,6 +404,20 @@ export default function DashboardScreen() {
             className="mb-6"
           />
 
+          {/* Expenses entry tile */}
+          <Pressable
+            onPress={() => router.push('/expenses')}
+            className="flex-row items-center bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4 mb-5"
+            style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
+          >
+            <Text className="text-2xl mr-3">🧾</Text>
+            <View className="flex-1">
+              <Text className="text-text dark:text-slate-100 font-semibold text-base">{t.expenses.title}</Text>
+              <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">{t.expenses.subtitle}</Text>
+            </View>
+            <Text className="text-muted dark:text-slate-500 text-xl">›</Text>
+          </Pressable>
+
           {/* Top Suppliers */}
           {(suppliers?.length ?? 0) > 0 && (
             <View className="mb-5">
@@ -449,6 +471,14 @@ export default function DashboardScreen() {
           )}
         </>
       )}
+
+      {/* App version footer — keep last so the value is easy for users to read out during bug reports. */}
+      <View className="items-center mt-8 mb-4">
+        <Text className="text-muted dark:text-slate-500 text-xs tabular-nums">
+          v{Constants.expoConfig?.version ?? Constants.nativeAppVersion ?? '—'}
+          {Constants.nativeBuildVersion ? ` (${Constants.nativeBuildVersion})` : ''}
+        </Text>
+      </View>
     </ScrollView>
   );
 }

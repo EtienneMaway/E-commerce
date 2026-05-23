@@ -27,7 +27,17 @@ export const authApi = {
   login: (body: { emailOrPhone: string; password: string }) =>
     api.post('/auth/login', body).then((r) => r.data),
 
+  restore: (body: { emailOrPhone: string; password: string }) =>
+    api.post('/auth/restore', body).then((r) => r.data),
+
   me: () => api.get('/auth/me').then((r) => r.data),
+};
+
+export type PendingDeletionPayload = {
+  pendingDeletion: true;
+  deletedAt: string;
+  expiresAt: string;
+  message?: string;
 };
 
 // ─── Users ─────────────────────────────────────────────────────────────────
@@ -35,6 +45,92 @@ export const authApi = {
 export const usersApi = {
   search: (q: string) =>
     api.get('/users/search', { params: { q } }).then((r) => r.data),
+};
+
+// ─── Expenses ──────────────────────────────────────────────────────────────
+
+export const EXPENSE_CATEGORIES = [
+  'TRANSPORT',
+  'RENT',
+  'UTILITIES',
+  'COMMUNICATION',
+  'STAFF',
+  'PACKAGING',
+  'MARKETING',
+  'TAXES',
+  'MAINTENANCE',
+  'MEALS',
+  'OTHER',
+] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+export type ExpenseCurrency = 'USD' | 'FC';
+export type ExpensePeriod = 'today' | 'week' | 'month' | 'lastNDays' | 'all';
+
+export interface Expense {
+  id: string;
+  ownerId: string;
+  amount: string;
+  currency: ExpenseCurrency;
+  category: ExpenseCategory;
+  description: string | null;
+  usdToFcRateSnapshot: string | null;
+  date: string;
+  createdAt: string;
+  updatedAt: string;
+  amountUsd: string;
+  actorId: string | null;
+  actor?: { id: string; username: string } | null;
+}
+
+export interface ExpenseListResponse {
+  data: Expense[];
+  totals: {
+    totalAmountUsd: string;
+    byCategory: { category: ExpenseCategory; totalUsd: string; count: number }[];
+    count: number;
+  };
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface ExpenseListParams {
+  period?: ExpensePeriod;
+  days?: number;
+  from?: string;
+  to?: string;
+  category?: ExpenseCategory;
+  actorId?: string;
+  page?: number;
+  limit?: number;
+}
+
+export const expensesApi = {
+  list: (params?: ExpenseListParams): Promise<ExpenseListResponse> =>
+    api.get('/expenses', { params }).then((r) => r.data),
+
+  create: (body: {
+    amount: string;
+    currency: ExpenseCurrency;
+    category: ExpenseCategory;
+    description?: string;
+    date?: string;
+  }): Promise<Expense> => api.post('/expenses', body).then((r) => r.data),
+
+  delete: (id: string): Promise<void> => api.delete(`/expenses/${id}`).then(() => undefined),
+};
+
+// ─── Account (self-service profile + deletion) ─────────────────────────────
+
+export const accountApi = {
+  updateProfile: (body: { name?: string | null; email?: string | null; phone?: string | null }) =>
+    api.patch('/users/me', body).then((r) => r.data),
+
+  changePassword: (body: { currentPassword: string; newPassword: string }) =>
+    api.patch('/users/me/password', body).then((r) => r.data),
+
+  deleteAccount: (body: { password: string }) =>
+    api
+      .delete('/users/me', { data: body })
+      .then((r) => r.data as { deletedAt: string; expiresAt: string }),
 };
 
 // ─── Inventory ─────────────────────────────────────────────────────────────
@@ -105,7 +201,17 @@ export const consignmentsApi = {
 // ─── Currency ──────────────────────────────────────────────────────────────
 
 export const currencyApi = {
-  getRate: () => api.get('/currency/rate').then((r) => r.data as { usdToFcRate: string; updatedAt: string }),
+  getRate: () =>
+    api
+      .get('/currency/rate')
+      .then(
+        (r) =>
+          r.data as {
+            usdToFcRate: string;
+            sellingRate?: string | null;
+            updatedAt: string;
+          },
+      ),
 };
 
 // ─── External Contacts ─────────────────────────────────────────────────────
@@ -194,6 +300,13 @@ export const salaryPaymentsApi = {
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────
 
+export interface CashPosition {
+  totalExpenses: string;
+  totalExpensesAtBuyingRate: string;
+  availableBusinessCash: string;
+  availableProfitCash: string;
+}
+
 export const dashboardApi = {
   summary: () => api.get('/dashboard').then((r) => r.data),
   suppliers: () => api.get('/dashboard/suppliers').then((r) => r.data),
@@ -203,4 +316,5 @@ export const dashboardApi = {
   profitByProduct: () => api.get('/dashboard/profit-by-product').then((r) => r.data),
   profitBySource: () => api.get('/dashboard/profit-by-source').then((r) => r.data),
   alerts: () => api.get('/dashboard/alerts').then((r) => r.data),
+  cashPosition: (): Promise<CashPosition> => api.get('/dashboard/cash-position').then((r) => r.data),
 };
