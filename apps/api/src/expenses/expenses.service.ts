@@ -47,17 +47,39 @@ export class ExpensesService {
       throw new BadRequestException('Expense date cannot be in the future');
     }
 
+    // Mental model: cash is FC. Every expense drains FC. For FC expenses the
+    // entered amount is what's drained. For USD expenses the merchant must
+    // exchange FC for USD at the Buying Rate, so the FC actually drained is
+    // `amountOriginal × buyingRate`. We persist amountUsd as the System-Rate
+    // value of that FC, so totalExpenses balances against totalCashReceived
+    // (also booked at the System Rate).
+    const rateRow = await this.currencyService.getRate();
+    const systemRate = rateRow?.usdToFcRate
+      ? new Decimal(rateRow.usdToFcRate)
+      : null;
+    const buyingRate = rateRow?.sellingRate
+      ? new Decimal(rateRow.sellingRate)
+      : null;
+
     let rateSnapshot: string | null = null;
     let amountUsd = amountOriginal;
     if (dto.currency === ExpenseCurrency.FC) {
-      const rate = await this.currencyService.getRate();
-      if (!rate || new Decimal(rate.usdToFcRate).lte(0)) {
+      if (!systemRate || systemRate.lte(0)) {
         throw new BadRequestException(
           'System rate not set — configure the USD → FC rate in Settings before recording FC expenses',
         );
       }
-      rateSnapshot = new Decimal(rate.usdToFcRate).toFixed(4);
-      amountUsd = amountOriginal.div(rate.usdToFcRate);
+      rateSnapshot = systemRate.toFixed(4);
+      amountUsd = amountOriginal.div(systemRate);
+    } else {
+      // USD expense — apply buying-rate spread when configured.
+      if (
+        systemRate !== null && systemRate.gt(0) &&
+        buyingRate !== null && buyingRate.gt(0)
+      ) {
+        amountUsd = amountOriginal.mul(buyingRate).div(systemRate);
+        rateSnapshot = buyingRate.toFixed(4);
+      }
     }
 
     const position = await this.dashboardService.getCashPosition(ownerId);
@@ -121,21 +143,28 @@ export class ExpensesService {
       take: limit,
     });
 
-    // Fallback rate for FC rows missing a snapshot — uses System Rate.
+    // Display USD value is computed at the Buying Rate (lower rate). Cash is
+    // held as FC, so the realistic USD value of any FC outflow is what the
+    // merchant would receive when exchanging that FC for USD — i.e. divided by
+    // the Buying Rate. USD-entered expenses simply display as the typed USD.
+    // Falls back to the captured system rate when no Buying Rate is configured.
     const currentRate = await this.currencyService.getRate();
-    const fallbackRate = currentRate?.usdToFcRate
+    const buyingRate = currentRate?.sellingRate
+      ? new Decimal(currentRate.sellingRate)
+      : null;
+    const systemRate = currentRate?.usdToFcRate
       ? new Decimal(currentRate.usdToFcRate)
       : null;
 
     const data = pageRows.map((e) => ({
       ...e,
-      amountUsd: this.toUsd(e, fallbackRate).toFixed(4),
+      amountUsd: this.toDisplayUsd(e, buyingRate, systemRate).toFixed(4),
     }));
 
     const categoryMap = new Map<ExpenseCategory, { total: Decimal; count: number }>();
     let grandTotal = new Decimal(0);
     for (const row of allMatching) {
-      const usd = this.toUsd(row, fallbackRate);
+      const usd = this.toDisplayUsd(row, buyingRate, systemRate);
       grandTotal = grandTotal.plus(usd);
       const stats = categoryMap.get(row.category) ?? { total: new Decimal(0), count: 0 };
       stats.total = stats.total.plus(usd);
@@ -170,12 +199,25 @@ export class ExpensesService {
     await this.expenseRepo.remove(expense);
   }
 
-  private toUsd(e: Expense, fallbackRate: Decimal | null): Decimal {
+  /**
+   * USD value used for display on the expenses page. FC outflows convert at
+   * the current Buying Rate (the rate the merchant would actually pay if
+   * exchanging FC for USD). When no Buying Rate is configured, fall back to
+   * the row's snapshot rate, then to the current System Rate.
+   */
+  private toDisplayUsd(
+    e: Expense,
+    buyingRate: Decimal | null,
+    systemRate: Decimal | null,
+  ): Decimal {
     const amount = new Decimal(e.amount);
     if (e.currency === ExpenseCurrency.USD) return amount;
-    const rate = e.usdToFcRateSnapshot
-      ? new Decimal(e.usdToFcRateSnapshot)
-      : fallbackRate;
+    const rate =
+      buyingRate && buyingRate.gt(0)
+        ? buyingRate
+        : e.usdToFcRateSnapshot
+        ? new Decimal(e.usdToFcRateSnapshot)
+        : systemRate;
     if (!rate || rate.lte(0)) return new Decimal(0);
     return amount.div(rate);
   }

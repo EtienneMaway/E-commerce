@@ -9,12 +9,14 @@ import {
   ExpenseListParams,
   ExpenseListResponse,
   ExpensePeriod,
+  currencyApi,
   dashboardApi,
   expensesApi,
 } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
+import { useCurrencyStore } from '../../../store/currency.store';
 import { useT } from '../../../lib/i18n';
 import { KpiCard } from '../../../components/ui/KpiCard';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -28,7 +30,9 @@ import { useAuthStore } from '../../../store/auth.store';
 
 interface CashPosition {
   totalExpenses: string;
+  totalExpensesAtBuyingRate: string;
   availableBusinessCash: string;
+  availableProfitCash: string;
 }
 
 type FilterKey = 'all' | 'today' | 'week' | 'month' | 'lastN' | 'custom';
@@ -41,6 +45,7 @@ export default function ExpensesPage() {
   const t = useT();
   const confirmDialog = useConfirm();
   const formatCurrency = useFormatCurrency();
+  const { displayCurrency } = useCurrencyStore();
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const today = todayISO();
@@ -96,8 +101,54 @@ export default function ExpensesPage() {
     queryKey: QK.cashPosition,
     queryFn: () => dashboardApi.cashPosition(),
   });
+  const { data: rateData } = useQuery({
+    queryKey: QK.exchangeRate,
+    queryFn: currencyApi.getRate,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
 
   const cash = cashData as CashPosition | undefined;
+
+  // USD expenses come out of FC reserves at the Buying Rate (less favourable).
+  // Surface the smaller effective cap only when the user has actually started
+  // typing an amount, mirroring the withdrawal warning UX.
+  const systemRate = rateData?.usdToFcRate ? parseFloat(rateData.usdToFcRate) : null;
+  const buyingRate = rateData?.sellingRate ? parseFloat(rateData.sellingRate) : null;
+  const hasTypedAmount = amount.trim().length > 0;
+  const showUsdBuyingWarning =
+    currency === 'USD' &&
+    hasTypedAmount &&
+    parseFloat(amount) > 0 &&
+    !!systemRate && systemRate > 0 &&
+    !!buyingRate && buyingRate > 0;
+  // FC actually leaving the till = entered USD × buying rate.
+  const fcDeducted = showUsdBuyingWarning
+    ? parseFloat(amount) * buyingRate!
+    : null;
+
+  /**
+   * Format an expense value (already a USD figure computed at the Buying Rate
+   * by the API) honouring the global display-currency toggle, but using the
+   * Buying Rate (not the System Rate) for the USD↔FC conversion. This keeps
+   * every figure on this page consistent with the "cash is FC" mental model.
+   * Falls back to the standard formatCurrency when no Buying Rate is set.
+   */
+  function fmtExpenseUsdAtBuyingRate(value: string | number): string {
+    if (!buyingRate || buyingRate <= 0) return formatCurrency(value);
+    const usd = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(usd)) return formatCurrency(value);
+    if (displayCurrency === 'USD') {
+      const truncated = Math.trunc(usd * 10000) / 10000;
+      return '$' + new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 4,
+      }).format(truncated);
+    }
+    // FC display: derive real FC outflow = (USD at buying rate) × buying rate.
+    const fc = Math.floor(usd * buyingRate);
+    return new Intl.NumberFormat('fr-CD').format(fc) + ' FC';
+  }
   const list = (listData as ExpenseListResponse | undefined) ?? {
     data: [],
     totals: { totalAmountUsd: '0.00', byCategory: [], count: 0 },
@@ -209,7 +260,7 @@ export default function ExpensesPage() {
         <div className="grid grid-cols-1 gap-4">
           <KpiCard
             label={t.dashboard.totalExpenses}
-            value={formatCurrency(cash?.totalExpenses ?? '0')}
+            value={fmtExpenseUsdAtBuyingRate(cash?.totalExpensesAtBuyingRate ?? cash?.totalExpenses ?? '0')}
             icon="🧾"
             color="warning"
             sub={t.dashboard.totalExpensesSub}
@@ -247,6 +298,26 @@ export default function ExpensesPage() {
                 </select>
               </div>
             </div>
+
+            {showUsdBuyingWarning && fcDeducted !== null && (
+              <div
+                className="rounded-xl px-3 py-2.5 text-xs leading-relaxed"
+                style={{
+                  background: 'var(--warning-light)',
+                  border: '1px solid rgba(var(--warning-rgb), 0.35)',
+                  color: 'var(--warning)',
+                }}
+              >
+                <p className="font-semibold mb-1">⚠️ {t.expenses.usdBuyingRateWarningTitle}</p>
+                <p>
+                  {t.expenses.usdBuyingRateWarningBody(
+                    '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(parseFloat(amount)),
+                    new Intl.NumberFormat('fr-CD').format(Math.round(fcDeducted)) + ' FC',
+                    new Intl.NumberFormat('en-US').format(buyingRate!),
+                  )}
+                </p>
+              </div>
+            )}
 
             <div>
               <label className={labelCls} style={labelStyle}>{t.expenses.category}</label>
@@ -312,7 +383,7 @@ export default function ExpensesPage() {
                 {t.expenses.totalLabel}
               </p>
               <p className="text-2xl font-bold tracking-tight mt-2" style={{ color: 'var(--foreground)' }}>
-                {formatCurrency(list.totals.totalAmountUsd)}
+                {fmtExpenseUsdAtBuyingRate(list.totals.totalAmountUsd)}
               </p>
               <p className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>
                 {list.totals.count} {t.expenses.countLabel.toLowerCase()}
@@ -330,7 +401,7 @@ export default function ExpensesPage() {
                   <div key={c.category} className="flex justify-between text-xs">
                     <span style={{ color: 'var(--muted)' }}>{categoryLabel(c.category)}</span>
                     <span className="font-semibold" style={{ color: 'var(--foreground)' }}>
-                      {formatCurrency(c.totalUsd)}
+                      {fmtExpenseUsdAtBuyingRate(c.totalUsd)}
                     </span>
                   </div>
                 ))}
@@ -454,7 +525,7 @@ export default function ExpensesPage() {
                         {categoryLabel(row.category)}
                       </td>
                       <td className="data-table-cell">
-                        <div className="font-semibold">{formatCurrency(row.amountUsd)}</div>
+                        <div className="font-semibold">{fmtExpenseUsdAtBuyingRate(row.amountUsd)}</div>
                         {row.currency === 'FC' && (
                           <div className="text-xs" style={{ color: 'var(--muted)' }}>
                             {row.amount} FC

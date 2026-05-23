@@ -110,7 +110,8 @@ export interface CashPosition {
   totalIncome: string;              // Gross revenue across all streams (USD, accrual)
   totalCogs: string;                // Cost of goods sold (USD)
   totalProfit: string;              // totalIncome − totalCogs (USD)
-  totalExpenses: string;            // Sum of all expenses converted to USD
+  totalExpenses: string;            // Sum of all expenses converted to USD at the System Rate (ledger)
+  totalExpensesAtBuyingRate: string;// Same sum but converted at the Buying Rate — for display only
   availableProfitCash: string;      // totalProfit − totalExpenses − totalWithdrawn; negative = over-spent
   // Cash-basis view — actual money that has arrived
   totalCashReceived: string;        // direct sales + debtor payments + external PAYMENT_IN
@@ -376,24 +377,42 @@ export class DashboardService {
     const totalCogs = directCogs.plus(consignmentCogs).plus(extCogs);
     const totalProfit = totalIncome.minus(totalCogs);
 
-    // Convert expenses to USD using each entry's captured rate (System Rate).
+    // Convert expenses to USD twice:
+    //   - totalExpenses uses the System Rate (each row's snapshot) — this is
+    //     the canonical ledger value used in profit / cash-position math.
+    //   - totalExpensesAtBuyingRate uses the current Buying Rate — display-
+    //     only, mirroring the per-row USD shown on /expenses so the page's
+    //     top KPI matches the table totals.
     const currentRate = await this.currencyService.getRate();
     const fallbackRate = currentRate?.usdToFcRate
       ? new Decimal(currentRate.usdToFcRate)
       : null;
+    const buyingRate = currentRate?.sellingRate
+      ? new Decimal(currentRate.sellingRate)
+      : null;
 
     let totalExpenses = new Decimal(0);
+    let totalExpensesAtBuyingRate = new Decimal(0);
     for (const e of expenses) {
       const amount = new Decimal(e.amount);
       if (e.currency === ExpenseCurrency.USD) {
         totalExpenses = totalExpenses.plus(amount);
+        totalExpensesAtBuyingRate = totalExpensesAtBuyingRate.plus(amount);
         continue;
       }
-      const rate = e.usdToFcRateSnapshot
+      const systemRateForRow = e.usdToFcRateSnapshot
         ? new Decimal(e.usdToFcRateSnapshot)
         : fallbackRate;
-      if (!rate || rate.lte(0)) continue;
-      totalExpenses = totalExpenses.plus(amount.div(rate));
+      if (systemRateForRow && systemRateForRow.gt(0)) {
+        totalExpenses = totalExpenses.plus(amount.div(systemRateForRow));
+      }
+      const buyingRateForRow =
+        buyingRate && buyingRate.gt(0) ? buyingRate : systemRateForRow;
+      if (buyingRateForRow && buyingRateForRow.gt(0)) {
+        totalExpensesAtBuyingRate = totalExpensesAtBuyingRate.plus(
+          amount.div(buyingRateForRow),
+        );
+      }
     }
 
     // Cash-basis (for business cash / withdrawal)
@@ -417,6 +436,7 @@ export class DashboardService {
       totalCogs: totalCogs.toFixed(4),
       totalProfit: totalProfit.toFixed(4),
       totalExpenses: totalExpenses.toFixed(4),
+      totalExpensesAtBuyingRate: totalExpensesAtBuyingRate.toFixed(4),
       availableProfitCash: availableProfitCash.toFixed(4),
       totalCashReceived: totalCashReceived.toFixed(4),
       totalWithdrawn: totalWithdrawn.toFixed(4),

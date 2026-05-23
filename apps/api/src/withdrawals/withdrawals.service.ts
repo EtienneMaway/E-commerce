@@ -92,20 +92,45 @@ export class WithdrawalsService {
       throw new BadRequestException('Amount must be greater than zero');
     }
 
-    // Convert to USD using the System Rate (usdToFcRate) — snapshot it.
+    // Mental model: cash on hand is FC. Every withdrawal drains FC from the
+    // till. For FC withdrawals the entered FC amount is what's drained. For
+    // USD withdrawals the merchant exchanges FC for USD at the (less-
+    // favourable) Buying Rate, so the FC actually drained is
+    // `amountUsd × buyingRate`. We persist amountUsd at the System Rate
+    // value of FC drained — that keeps totalWithdrawn balanced against
+    // totalCashReceived (also booked at the System Rate).
+    const rateRow = await this.currencyService.getRate();
+    const systemRate = rateRow?.usdToFcRate
+      ? new Decimal(rateRow.usdToFcRate)
+      : null;
+    const buyingRate = rateRow?.sellingRate
+      ? new Decimal(rateRow.sellingRate)
+      : null;
+
     let amountUsd: Decimal;
     let rateSnapshot: string | null = null;
     if (dto.currency === WithdrawalCurrency.USD) {
-      amountUsd = amountOriginal;
+      if (
+        systemRate !== null && systemRate.gt(0) &&
+        buyingRate !== null && buyingRate.gt(0)
+      ) {
+        // FC drained = amountOriginal × buyingRate.
+        // Booked USD-at-system-rate value of that FC = (amountOriginal × buyingRate) / systemRate.
+        amountUsd = amountOriginal.mul(buyingRate).div(systemRate);
+        rateSnapshot = buyingRate.toFixed(4);
+      } else {
+        // No buying rate configured — fall back to 1:1 with system rate (i.e.,
+        // treat USD as USD with no spread).
+        amountUsd = amountOriginal;
+      }
     } else {
-      const rate = await this.currencyService.getRate();
-      if (!rate || new Decimal(rate.usdToFcRate).lte(0)) {
+      if (!systemRate || systemRate.lte(0)) {
         throw new BadRequestException(
           'System rate not set — configure the USD → FC rate in Settings before recording FC withdrawals',
         );
       }
-      rateSnapshot = new Decimal(rate.usdToFcRate).toFixed(4);
-      amountUsd = amountOriginal.div(rate.usdToFcRate);
+      rateSnapshot = systemRate.toFixed(4);
+      amountUsd = amountOriginal.div(systemRate);
     }
 
     const [snapshot, position] = await Promise.all([
@@ -113,17 +138,11 @@ export class WithdrawalsService {
       this.dashboardService.getCashPosition(ownerId),
     ]);
     const available = new Decimal(snapshot.available);
-    const availableProfit = new Decimal(position.availableProfitCash);
     const availableBusinessCash = new Decimal(position.availableBusinessCash);
 
-    if (amountUsd.gt(availableProfit)) {
-      throw new BadRequestException(
-        `Cannot spend more than current profit — available profit is ${availableProfit.toFixed(4)} USD`,
-      );
-    }
     if (amountUsd.gt(availableBusinessCash)) {
       throw new BadRequestException(
-        `Cannot spend more than available business cash (${availableBusinessCash.toFixed(4)} USD)`,
+        `Cannot withdraw more than available business cash (${availableBusinessCash.toFixed(4)} USD)`,
       );
     }
 

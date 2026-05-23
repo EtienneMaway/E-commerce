@@ -6,6 +6,7 @@ import {
   AvailableWithdrawal,
   Withdrawal,
   WithdrawalCurrency,
+  currencyApi,
   dashboardApi,
   withdrawalsApi,
 } from '../../../lib/api';
@@ -53,9 +54,59 @@ export default function WithdrawalsPage() {
     queryFn: () => dashboardApi.cashPosition(),
     enabled: isOwner,
   });
+  const { data: rateData } = useQuery({
+    queryKey: QK.exchangeRate,
+    queryFn: currencyApi.getRate,
+    staleTime: 5 * 60_000,
+    retry: false,
+    enabled: isOwner,
+  });
 
   const avail = availableData as AvailableWithdrawal | undefined;
   const cp = cashPositionData as CashPosition | undefined;
+
+  // USD withdrawals convert FC-on-hand at the Buying Rate (less favourable).
+  // Surface the smaller effective max only once the merchant starts typing an
+  // amount — keeps the form quiet at rest, and lets the warning act as
+  // contextual guidance the moment they're actually making a decision.
+  const systemRate = rateData?.usdToFcRate ? parseFloat(rateData.usdToFcRate) : null;
+  const buyingRate = rateData?.sellingRate ? parseFloat(rateData.sellingRate) : null;
+  const hasTypedAmount = amount.trim().length > 0;
+  const showUsdBuyingWarning =
+    currency === 'USD' &&
+    hasTypedAmount &&
+    parseFloat(amount) > 0 &&
+    !!systemRate && systemRate > 0 &&
+    !!buyingRate && buyingRate > 0;
+  // FC actually leaving the till = entered USD × buying rate.
+  const fcDeducted = showUsdBuyingWarning
+    ? parseFloat(amount) * buyingRate!
+    : null;
+
+  // Maximum the merchant can withdraw, expressed in each currency.
+  //   FC max  = FC actually in the till = availableBusinessCash × systemRate
+  //   USD max = FC max ÷ buyingRate (you exchange all FC at the worse rate)
+  //           = availableBusinessCash × (systemRate / buyingRate)
+  // If a rate is missing, fall back conservatively.
+  const cashUsd = cp ? parseFloat(cp.availableBusinessCash) : 0;
+  const maxFc =
+    systemRate && systemRate > 0 ? cashUsd * systemRate : null;
+  const maxUsd =
+    systemRate && systemRate > 0 && buyingRate && buyingRate > 0
+      ? cashUsd * (systemRate / buyingRate)
+      : cashUsd;
+
+  function fillMax() {
+    if (currency === 'USD') {
+      // 4dp for USD, floor (truncate) to never overshoot the cap.
+      const v = Math.floor(maxUsd * 10000) / 10000;
+      setAmount(v > 0 ? v.toFixed(4) : '');
+    } else {
+      // Whole-FC max — clients can't pay sub-units.
+      const v = maxFc !== null ? Math.floor(maxFc) : 0;
+      setAmount(v > 0 ? String(v) : '');
+    }
+  }
   const historyResp = historyData as { data: Withdrawal[]; pagination: { page: number; total: number; totalPages: number } } | undefined;
   const history = historyResp?.data ?? [];
   // The "latest" deletable row is only meaningful on page 1 (where the most recent rows live).
@@ -159,6 +210,35 @@ export default function WithdrawalsPage() {
             <p className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>
               {t.dashboard.availableBusinessCashSub}
             </p>
+
+            {cp && (
+              <div
+                className="mt-3 pt-3 space-y-1.5 text-xs"
+                style={{ borderTop: '1px solid rgba(var(--primary-rgb), 0.2)' }}
+              >
+                {maxFc !== null && (
+                  <div className="flex justify-between gap-2">
+                    <span style={{ color: 'var(--muted)' }}>{t.withdrawals.maxIfFc}</span>
+                    <span className="font-semibold tabular-nums" style={{ color: 'var(--primary)' }}>
+                      {new Intl.NumberFormat('fr-CD').format(Math.floor(maxFc))} FC
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-2">
+                  <span style={{ color: 'var(--muted)' }}>
+                    {t.withdrawals.maxIfUsd}
+                    {buyingRate && systemRate ? (
+                      <span style={{ color: 'var(--warning)' }}>
+                        {' '}({new Intl.NumberFormat('en-US').format(buyingRate)} FC/$)
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="font-semibold tabular-nums" style={{ color: 'var(--primary)' }}>
+                    {'$' + (Math.floor(maxUsd * 10000) / 10000).toFixed(4)}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Breakdown */}
@@ -186,7 +266,20 @@ export default function WithdrawalsPage() {
           {/* Form */}
           <form onSubmit={handleSubmit} className="card space-y-3" style={{ padding: '24px' }}>
             <div>
-              <label className={labelCls} style={labelStyle}>{t.withdrawals.amount}</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className={labelCls} style={{ ...labelStyle, marginBottom: 0 }}>
+                  {t.withdrawals.amount}
+                </label>
+                <button
+                  type="button"
+                  onClick={fillMax}
+                  className="text-xs font-semibold uppercase tracking-wide"
+                  style={{ color: 'var(--primary)' }}
+                  disabled={!cp || cashUsd <= 0}
+                >
+                  {t.withdrawals.max}
+                </button>
+              </div>
               <div className="flex gap-2">
                 <input
                   type="number"
@@ -209,6 +302,26 @@ export default function WithdrawalsPage() {
                 </select>
               </div>
             </div>
+
+            {showUsdBuyingWarning && fcDeducted !== null && (
+              <div
+                className="rounded-xl px-3 py-2.5 text-xs leading-relaxed"
+                style={{
+                  background: 'var(--warning-light)',
+                  border: '1px solid rgba(var(--warning-rgb), 0.35)',
+                  color: 'var(--warning)',
+                }}
+              >
+                <p className="font-semibold mb-1">⚠️ {t.withdrawals.usdBuyingRateWarningTitle}</p>
+                <p>
+                  {t.withdrawals.usdBuyingRateWarningBody(
+                    '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(parseFloat(amount)),
+                    new Intl.NumberFormat('fr-CD').format(Math.round(fcDeducted)) + ' FC',
+                    new Intl.NumberFormat('en-US').format(buyingRate!),
+                  )}
+                </p>
+              </div>
+            )}
             <div>
               <label className={labelCls} style={labelStyle}>{t.withdrawals.note}</label>
               <textarea
