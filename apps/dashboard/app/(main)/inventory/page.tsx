@@ -126,7 +126,7 @@ export default function InventoryPage() {
       render: (r) => {
         if (r.latestCartonPrice) return formatCurrency(r.latestCartonPrice);
         if (r.piecesPerCarton) {
-          const computed = (parseFloat(r.latestUnitCost) * r.piecesPerCarton).toFixed(2);
+          const computed = (parseFloat(r.latestUnitCost) * r.piecesPerCarton).toFixed(4);
           return <span style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{formatCurrency(computed)}</span>;
         }
         return <span style={{ color: 'var(--muted)' }}>—</span>;
@@ -139,7 +139,7 @@ export default function InventoryPage() {
       getValue: (r) => r.piecesPerCarton ? parseFloat(r.latestSellingPrice) * r.piecesPerCarton : 0,
       render: (r) => {
         if (!r.piecesPerCarton) return <span style={{ color: 'var(--muted)' }}>—</span>;
-        const computed = (parseFloat(r.latestSellingPrice) * r.piecesPerCarton).toFixed(2);
+        const computed = (parseFloat(r.latestSellingPrice) * r.piecesPerCarton).toFixed(4);
         return <span style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{formatCurrency(computed)}</span>;
       },
     },
