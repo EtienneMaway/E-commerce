@@ -19,6 +19,7 @@ import { QK } from '../../lib/query-keys';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { AddPersonalModal } from '../../components/forms/AddPersonalModal';
 import { ReceiveFromSupplierModal } from '../../components/forms/ReceiveFromSupplierModal';
 import { ConsignToDebtorModal } from '../../components/forms/ConsignToDebtorModal';
@@ -195,6 +196,7 @@ export default function InventoryScreen() {
 
   return (
     <View className="flex-1 bg-surface dark:bg-slate-900">
+      <View className="px-4 pt-4"><PersonaBanner /></View>
       {/* Pending consignments banner */}
       {pendingCount > 0 && (
         <Pressable

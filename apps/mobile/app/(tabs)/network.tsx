@@ -15,6 +15,7 @@ import { QK } from '../../lib/query-keys';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { PersonaBanner } from '../../components/ui/PersonaBanner';
 
 type Tab = 'suppliers' | 'debtors';
 
@@ -121,6 +122,7 @@ export default function NetworkScreen() {
 
   return (
     <View className="flex-1 bg-surface dark:bg-slate-900">
+      <View className="px-4 pt-4"><PersonaBanner /></View>
       {/* External contacts entry */}
       <ExternalContactsBanner />
 

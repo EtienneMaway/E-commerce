@@ -15,6 +15,7 @@ import { formatDate } from '../../lib/utils';
 import { useFormatCurrency } from '../../lib/currency';
 import { Badge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { useT } from '@/lib/i18n';
 
 type View_ = 'history' | 'top';
@@ -155,6 +156,7 @@ export default function SalesScreen() {
 
   return (
     <View className="flex-1 bg-surface dark:bg-slate-900">
+      <View className="px-4 pt-4"><PersonaBanner /></View>
       {/* View toggle */}
       <View className="flex-row mx-4 mt-4 mb-3 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
         <TouchableOpacity

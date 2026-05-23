@@ -1,5 +1,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { usePrinterStore } from '../store/printer.store';
+import { printReceiptToBluetooth } from './bluetooth-printer';
 
 export interface ReceiptItem {
   readonly productName: string;
@@ -94,7 +96,37 @@ function formatFc(value: number): string {
   return new Intl.NumberFormat('fr-CD').format(Math.round(value)) + ' FC';
 }
 
+/**
+ * Print a receipt. Routing:
+ *   1. If a Bluetooth thermal printer is paired (printer.store), send raw
+ *      ESC/POS bytes directly — this is the POS / quick-receipt path.
+ *   2. Otherwise fall back to the Android system print dialog via expo-print,
+ *      which is what every device gets out of the box.
+ *
+ * Errors during the Bluetooth path bubble up so the caller can show a
+ * specific "couldn't reach printer — opened system dialog instead" message.
+ */
 export async function printReceipt(data: ReceiptData): Promise<void> {
+  const paired = usePrinterStore.getState().printer;
+  if (paired) {
+    try {
+      await printReceiptToBluetooth(paired, data);
+      return;
+    } catch (err) {
+      // Bubble up to the caller (RecordSaleModal) which decides whether to
+      // open the system print dialog as a fallback, or just surface the error.
+      throw err;
+    }
+  }
+  await Print.printAsync({ html: buildHtml(data) });
+}
+
+/**
+ * Lower-level escape hatch: print via the system print dialog regardless of
+ * whether a Bluetooth printer is paired. Used as the fallback path when the
+ * paired printer is unreachable.
+ */
+export async function printReceiptViaSystem(data: ReceiptData): Promise<void> {
   await Print.printAsync({ html: buildHtml(data) });
 }
 

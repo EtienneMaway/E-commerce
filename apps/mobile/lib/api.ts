@@ -3,18 +3,29 @@ import * as SecureStore from 'expo-secure-store';
 
 export const TOKEN_KEY = 'auth_token';
 
+export type ActingAs = 'self' | 'employer';
+
+// Module-level mirror of the persona store. Set by store/persona.store.ts so
+// the interceptor can read synchronously without importing the store (avoids a
+// circular dependency: store imports api, api would import store).
+let _actingAs: ActingAs = 'self';
+export function setActingAs(kind: ActingAs): void {
+  _actingAs = kind;
+}
+
 export const api = axios.create({
   baseURL: process.env.EXPO_PUBLIC_API_URL ?? 'http://10.0.2.2:3001/api',
   timeout: 10_000,
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach JWT to every request
+// Attach JWT + persona on every request.
 api.interceptors.request.use(async (config) => {
   const token = await SecureStore.getItemAsync(TOKEN_KEY);
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  config.headers['X-Acting-As'] = _actingAs;
   return config;
 });
 

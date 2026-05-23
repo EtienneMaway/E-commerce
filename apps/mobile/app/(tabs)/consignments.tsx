@@ -14,6 +14,7 @@ import { QK } from '../../lib/query-keys';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import type { ConsignmentRequest, ConsignmentStatus } from '@trading-app/types';
 
 const STATUS_COLOR: Record<ConsignmentStatus, string> = {
@@ -264,6 +265,7 @@ export default function ConsignmentsScreen() {
         <Text className="text-2xl font-bold text-text dark:text-slate-100 mb-4">
           {t.consignments.title}
         </Text>
+        <PersonaBanner />
 
         {/* Tab toggle */}
         <View className="flex-row bg-slate-100 dark:bg-slate-800 rounded-xl p-1">

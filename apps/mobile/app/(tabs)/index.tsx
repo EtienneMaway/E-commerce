@@ -9,6 +9,8 @@ import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { StatCard } from '../../components/ui/StatCard';
 import { Card } from '../../components/ui/Card';
+import { PersonaSwitcher } from '../../components/ui/PersonaSwitcher';
+import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { useAuthStore } from '../../store/auth.store';
 import { useThemeStore } from '../../store/theme.store';
 import { useLocaleStore } from '../../store/locale.store';
@@ -26,7 +28,6 @@ interface ProductSummary {
 export default function DashboardScreen() {
   const t = useT();
   const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
   const { theme, toggle } = useThemeStore();
   const formatCurrency = useFormatCurrency();
   const exchangeRate = useExchangeRate();
@@ -88,11 +89,6 @@ export default function DashboardScreen() {
     const rate = parseFloat(exchangeRate) || 1;
     return sum + parseFloat(s.salePrice) * s.qtySold * rate;
   }, 0);
-
-  const handleLogout = async () => {
-    await logout();
-    router.replace('/(auth)/login');
-  };
 
   const handleToggleOffline = () => {
     if (isOffline) {
@@ -163,9 +159,12 @@ export default function DashboardScreen() {
     >
       {/* Header */}
       <View className="flex-row items-center justify-between mb-4">
-        <View>
+        <View className="flex-1 pr-2">
           <Text className="text-2xl font-bold text-text dark:text-slate-100">{t.home.title}</Text>
-          <Text className="text-muted dark:text-slate-500 text-sm">@{user?.username}</Text>
+          <View className="flex-row items-center gap-2 mt-0.5">
+            <Text className="text-muted dark:text-slate-500 text-sm">@{user?.username}</Text>
+            <PersonaSwitcher />
+          </View>
         </View>
         <View className="flex-row items-center gap-3">
           <TouchableOpacity onPress={toggle}>
@@ -191,11 +190,10 @@ export default function DashboardScreen() {
           >
             <Text className="text-xl">👤</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout}>
-            <Text className="text-danger font-medium">{t.home.logout}</Text>
-          </TouchableOpacity>
         </View>
       </View>
+
+      <PersonaBanner />
 
       {/* Offline mode toggle */}
       <TouchableOpacity

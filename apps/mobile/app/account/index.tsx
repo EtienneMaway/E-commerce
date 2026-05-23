@@ -1,4 +1,4 @@
-import { ScrollView, View, Text, Pressable } from 'react-native';
+import { ScrollView, View, Text, Pressable, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../store/auth.store';
 import { useT } from '../../lib/i18n';
@@ -31,6 +31,21 @@ function MenuItem({ title, subtitle, onPress, destructive }: MenuItemProps) {
 export default function AccountMenuScreen() {
   const t = useT();
   const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+
+  const handleLogout = () => {
+    Alert.alert(t.account.logout, t.account.logoutSubtitle, [
+      { text: t.common.cancel, style: 'cancel' },
+      {
+        text: t.account.logout,
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/(auth)/login');
+        },
+      },
+    ]);
+  };
 
   return (
     <ScrollView
@@ -57,6 +72,16 @@ export default function AccountMenuScreen() {
         title={t.account.changePassword}
         subtitle={t.account.changePasswordSubtitle}
         onPress={() => router.push('/account/change-password')}
+      />
+      <MenuItem
+        title={t.printer.title}
+        subtitle={t.printer.subtitle}
+        onPress={() => router.push('/account/printer')}
+      />
+      <MenuItem
+        title={t.account.logout}
+        subtitle={t.account.logoutSubtitle}
+        onPress={handleLogout}
       />
       <MenuItem
         title={t.account.deleteAccount}

@@ -7,6 +7,8 @@ import { useColorScheme } from 'nativewind';
 import { useAuthStore } from '../store/auth.store';
 import { useThemeStore } from '../store/theme.store';
 import { useLocaleStore } from '../store/locale.store';
+import { usePersonaStore } from '../store/persona.store';
+import { usePrinterStore } from '../store/printer.store';
 import { useT } from '../lib/i18n';
 import { authApi, dashboardApi } from '../lib/api';
 import { scheduleAlertNotifications } from '../lib/notifications';
@@ -48,6 +50,12 @@ function AuthGuard() {
 
   useEffect(() => {
     useAuthStore.getState().hydrate();
+    // Persona must hydrate before any request leaves, so the X-Acting-As
+    // header reflects the persisted choice from the previous session.
+    void usePersonaStore.getState().hydrate();
+    // Restore the paired Bluetooth printer so the first sale of the session
+    // can print directly without an explicit re-pair.
+    void usePrinterStore.getState().hydrate();
   }, []);
 
   // useRootNavigationState is deprecated in Expo Router 55 and throws from root layout.

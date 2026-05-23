@@ -23,7 +23,8 @@ import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
-import { printReceipt, shareReceiptAsPdf } from '../../lib/receipt';
+import { printReceipt, printReceiptViaSystem, shareReceiptAsPdf, type ReceiptData } from '../../lib/receipt';
+import { usePrinterStore } from '../../store/printer.store';
 import type { InventoryEntry } from '@trading-app/types';
 
 interface Props {
@@ -218,7 +219,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
   const offerReceipt = (soldItems: CartItem[]): void => {
     const rate = parseFloat(exchangeRate) || 1;
-    const receiptData = {
+    const receiptData: ReceiptData = {
       items: soldItems.map((item) => {
         const unitPriceFc = parseFloat(item.unitCost) * (1 + markupPct / 100) * rate;
         return {
@@ -234,11 +235,29 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       sellerUsername: user?.username,
     };
 
+    // Print path tries the paired Bluetooth printer first (printReceipt's
+    // built-in routing). If that throws, fall back to the system print dialog
+    // so the user isn't stranded with no receipt.
+    const handlePrint = async () => {
+      try {
+        await printReceipt(receiptData);
+      } catch (err) {
+        if (usePrinterStore.getState().printer) {
+          Alert.alert(t.printer.printFailed, getErrorMessage(err), [
+            { text: t.common.cancel, style: 'cancel' },
+            { text: t.printer.fallbackUsed, onPress: () => void printReceiptViaSystem(receiptData) },
+          ]);
+        } else {
+          Alert.alert(t.printer.printFailed, getErrorMessage(err));
+        }
+      }
+    };
+
     Alert.alert(
       '✅ Sale recorded',
       'Would you like a receipt?',
       [
-        { text: 'Print', onPress: () => void printReceipt(receiptData) },
+        { text: 'Print', onPress: () => void handlePrint() },
         { text: 'Share PDF', onPress: () => void shareReceiptAsPdf(receiptData) },
         { text: 'Skip', style: 'cancel' },
       ],

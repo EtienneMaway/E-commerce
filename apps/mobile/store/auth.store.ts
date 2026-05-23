@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { TOKEN_KEY } from '../lib/api';
+import { usePersonaStore } from './persona.store';
 
 interface UserProfile {
   id: string;
@@ -9,6 +10,13 @@ interface UserProfile {
   phone: string | null;
   name?: string | null;
   createdAt: string;
+  activeEmployment?: {
+    id: string;
+    tier: 'FULL' | 'SALES_ONLY';
+    status: 'ACTIVE' | 'TERMINATION_REQUESTED';
+    employer: { id: string; username: string };
+    terminationRequestedBy: string | null;
+  } | null;
 }
 
 interface AuthState {
@@ -32,6 +40,9 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+    // Reset persona so the next user logging in on this device starts in Self,
+    // not whatever the previous user had selected.
+    await usePersonaStore.getState().setKind('self');
     set({ token: null, user: null });
   },
 
