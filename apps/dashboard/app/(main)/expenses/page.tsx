@@ -110,7 +110,7 @@ export default function ExpensesPage() {
 
   const cash = cashData as CashPosition | undefined;
 
-  // USD expenses come out of FC reserves at the Buying Rate (less favourable).
+  // USD expenses come out of FC reserves at the Current Market Rate (less favourable).
   // Surface the smaller effective cap only when the user has actually started
   // typing an amount, mirroring the withdrawal warning UX.
   const systemRate = rateData?.usdToFcRate ? parseFloat(rateData.usdToFcRate) : null;
@@ -122,17 +122,18 @@ export default function ExpensesPage() {
     parseFloat(amount) > 0 &&
     !!systemRate && systemRate > 0 &&
     !!buyingRate && buyingRate > 0;
-  // FC actually leaving the till = entered USD × buying rate.
+  // FC actually leaving the till = entered USD × Current Market Rate.
   const fcDeducted = showUsdBuyingWarning
     ? parseFloat(amount) * buyingRate!
     : null;
 
   /**
-   * Format an expense value (already a USD figure computed at the Buying Rate
-   * by the API) honouring the global display-currency toggle, but using the
-   * Buying Rate (not the System Rate) for the USD↔FC conversion. This keeps
-   * every figure on this page consistent with the "cash is FC" mental model.
-   * Falls back to the standard formatCurrency when no Buying Rate is set.
+   * Format an expense value (already a USD figure computed at the Current
+   * Market Rate by the API) honouring the global display-currency toggle, but
+   * using the Current Market Rate (not the System Rate) for the USD↔FC
+   * conversion. This keeps every figure on this page consistent with the
+   * "cash is FC" mental model.
+   * Falls back to the standard formatCurrency when no Current Market Rate is set.
    */
   function fmtExpenseUsdAtBuyingRate(value: string | number): string {
     if (!buyingRate || buyingRate <= 0) return formatCurrency(value);
@@ -145,7 +146,7 @@ export default function ExpensesPage() {
         maximumFractionDigits: 4,
       }).format(truncated);
     }
-    // FC display: derive real FC outflow = (USD at buying rate) × buying rate.
+    // FC display: derive real FC outflow = (USD at Current Market Rate) × Current Market Rate.
     const fc = Math.floor(usd * buyingRate);
     return new Intl.NumberFormat('fr-CD').format(fc) + ' FC';
   }

@@ -35,30 +35,7 @@ export async function scheduleAlertNotifications(alerts: AlertItem[]): Promise<v
   // Cancel existing scheduled notifications to avoid duplicates
   await Notifications.cancelAllScheduledNotificationsAsync();
 
-  const overdueDebtors = alerts.filter((a) => a.type === 'overdue_debtor');
   const lowStockItems = alerts.filter((a) => a.type === 'low_stock');
-
-  // Schedule overdue debtor reminder — fires daily at 9am
-  if (overdueDebtors.length > 0) {
-    const names = overdueDebtors
-      .slice(0, 3)
-      .map((a) => `@${a.debtorUsername}`)
-      .join(', ');
-    const more = overdueDebtors.length > 3 ? ` +${overdueDebtors.length - 3} more` : '';
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `⏰ ${overdueDebtors.length} Overdue Debtor${overdueDebtors.length !== 1 ? 's' : ''}`,
-        body: `${names}${more} still owe${overdueDebtors.length === 1 ? 's' : ''} you money — 30+ days overdue.`,
-        sound: true,
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour: 9,
-        minute: 0,
-      },
-    });
-  }
 
   // Schedule low-stock reminder — fires daily at 9:05am
   if (lowStockItems.length > 0) {

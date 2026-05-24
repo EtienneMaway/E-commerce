@@ -204,26 +204,6 @@ export const salesApi = {
 export const paymentsApi = {
   paySupplier: (body: { supplierUserId: string; amount: string; note?: string }) =>
     api.post('/payments/to-supplier', body).then((r) => r.data),
-
-  recordDebtorPayment: (body: { debtorUserId: string; amount: string; note?: string }) =>
-    api.post('/payments/from-debtor', body).then((r) => r.data),
-};
-
-// ─── Consignments ──────────────────────────────────────────────────────────
-
-export const consignmentsApi = {
-  send: (body: {
-    debtorUserId: string;
-    note?: string;
-    items: Array<{ productName: string; quantity: number; agreedUnitPrice: string }>;
-  }) => api.post('/consignments', body).then((r) => r.data),
-
-  incoming: () => api.get('/consignments/incoming').then((r) => r.data),
-  outgoing: () => api.get('/consignments/outgoing').then((r) => r.data),
-
-  confirm: (id: string) => api.patch(`/consignments/${id}/confirm`).then((r) => r.data),
-  reject: (id: string) => api.patch(`/consignments/${id}/reject`).then((r) => r.data),
-  cancel: (id: string) => api.patch(`/consignments/${id}/cancel`).then((r) => r.data),
 };
 
 // ─── Currency ──────────────────────────────────────────────────────────────
@@ -240,37 +220,6 @@ export const currencyApi = {
             updatedAt: string;
           },
       ),
-};
-
-// ─── External Contacts ─────────────────────────────────────────────────────
-
-export const externalContactsApi = {
-  list: () => api.get('/external-contacts').then((r) => r.data),
-
-  create: (body: { name: string; phone?: string; notes?: string; role: 'DEBTOR' | 'SUPPLIER' | 'BOTH' }) =>
-    api.post('/external-contacts', body).then((r) => r.data),
-
-  detail: (id: string) => api.get(`/external-contacts/${id}`).then((r) => r.data),
-
-  update: (id: string, body: { name?: string; phone?: string; notes?: string; role?: 'DEBTOR' | 'SUPPLIER' | 'BOTH' }) =>
-    api.patch(`/external-contacts/${id}`, body).then((r) => r.data),
-
-  delete: (id: string) => api.delete(`/external-contacts/${id}`),
-
-  recordProductOut: (id: string, body: { productName: string; quantity: number; unitPrice: string; notes?: string }) =>
-    api.post(`/external-contacts/${id}/product-out`, body).then((r) => r.data),
-
-  recordPaymentIn: (id: string, body: { amount: string; notes?: string }) =>
-    api.post(`/external-contacts/${id}/payment-in`, body).then((r) => r.data),
-
-  recordProductIn: (id: string, body: { productName: string; quantity: number; unitCost: string; sellingPrice: string; category?: string; notes?: string }) =>
-    api.post(`/external-contacts/${id}/product-in`, body).then((r) => r.data),
-
-  recordPaymentOut: (id: string, body: { amount: string; notes?: string }) =>
-    api.post(`/external-contacts/${id}/payment-out`, body).then((r) => r.data),
-
-  deleteTransaction: (contactId: string, txId: string) =>
-    api.delete(`/external-contacts/${contactId}/transactions/${txId}`),
 };
 
 // ─── Salary Payments ───────────────────────────────────────────────────────
@@ -354,8 +303,6 @@ export const dashboardApi = {
   summary: () => api.get('/dashboard').then((r) => r.data),
   suppliers: () => api.get('/dashboard/suppliers').then((r) => r.data),
   supplierDetail: (id: string) => api.get(`/dashboard/suppliers/${id}`).then((r) => r.data),
-  debtors: () => api.get('/dashboard/debtors').then((r) => r.data),
-  debtorDetail: (id: string) => api.get(`/dashboard/debtors/${id}`).then((r) => r.data),
   profitByProduct: () => api.get('/dashboard/profit-by-product').then((r) => r.data),
   profitBySource: () => api.get('/dashboard/profit-by-source').then((r) => r.data),
   alerts: () => api.get('/dashboard/alerts').then((r) => r.data),

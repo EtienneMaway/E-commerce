@@ -78,7 +78,7 @@ export default function SettingsPage() {
 
   const previewUsd = '100.00';
 
-  // Inverted-rate detection: warn when Buying Rate > System Selling Rate.
+  // Inverted-rate detection: warn when Current Market Rate > System Selling Rate.
   // Compare against typed inputs (so the warning reacts live) but only when
   // both are valid positive numbers.
   const sysNum = parseFloat(rateInput);

@@ -91,59 +91,106 @@ function renderItem(item: ReceiptItem): number[] {
  */
 export function encodeReceipt(data: ReceiptData): Uint8Array {
   const bytes: number[] = [];
+  const BRAND = 'KMB-Talk';
 
   bytes.push(...ENC.INIT);
 
-  // Header — centered, double-height
+  // ── Brand header (double-height, bold) ──────────────────────────────────
   bytes.push(...ENC.ALIGN_CENTER);
   bytes.push(...ENC.BOLD_ON);
   bytes.push(...ENC.DOUBLE_HEIGHT_ON);
-  bytes.push(...ascii(data.sellerUsername ? `@${data.sellerUsername}` : 'Sales Receipt'));
+  bytes.push(...ascii(BRAND));
   bytes.push(...ENC.LF);
   bytes.push(...ENC.NORMAL);
   bytes.push(...ENC.BOLD_OFF);
 
-  bytes.push(...ascii(data.date));
+  bytes.push(...ascii('sales receipt'));
   bytes.push(...ENC.LF);
 
+  bytes.push(...divider('='));
+
+  // ── Business identity ───────────────────────────────────────────────────
+  const businessLine = data.businessName ?? (data.businessHandle ? `@${data.businessHandle}` : '');
+  if (businessLine) {
+    bytes.push(...ENC.BOLD_ON);
+    bytes.push(...ascii(businessLine));
+    bytes.push(...ENC.LF);
+    bytes.push(...ENC.BOLD_OFF);
+  }
+  if (data.businessName && data.businessHandle) {
+    bytes.push(...ascii(`@${data.businessHandle}`));
+    bytes.push(...ENC.LF);
+  }
+
+  bytes.push(...ENC.LF);
+
+  // ── Meta (receipt # + date) ─────────────────────────────────────────────
   bytes.push(...ENC.ALIGN_LEFT);
+  if (data.receiptId) {
+    bytes.push(...ascii(metaLine('Receipt #', data.receiptId)));
+    bytes.push(...ENC.LF);
+  }
+  bytes.push(...ascii(metaLine('Date', data.date)));
+  bytes.push(...ENC.LF);
+
   bytes.push(...divider('-'));
 
-  // Items
+  // ── Items ───────────────────────────────────────────────────────────────
   for (const item of data.items) {
     bytes.push(...renderItem(item));
   }
 
   bytes.push(...divider('-'));
 
-  // Total — bold, double-height
+  // ── Total (bold + double-height) ────────────────────────────────────────
   bytes.push(...ENC.BOLD_ON);
   bytes.push(...ENC.DOUBLE_HEIGHT_ON);
   const totalStr = fc(data.grandTotalFc);
-  const label = 'TOTAL';
-  // Right-align the total against the 32-col width
-  const totalLine = padRight(label, COLS - totalStr.length) + totalStr;
+  const totalLine = padRight('TOTAL', COLS - totalStr.length) + totalStr;
   bytes.push(...ascii(totalLine));
   bytes.push(...ENC.LF);
   bytes.push(...ENC.NORMAL);
   bytes.push(...ENC.BOLD_OFF);
 
-  bytes.push(...ENC.LF);
+  bytes.push(...divider('='));
 
-  // Footer
+  // ── Seller (who recorded the sale) ──────────────────────────────────────
+  if (data.sellerName || data.sellerUsername) {
+    const sellerLabel = data.sellerName ?? `@${data.sellerUsername ?? ''}`;
+    bytes.push(...ascii(metaLine('Sold by', sellerLabel)));
+    bytes.push(...ENC.LF);
+    if (data.sellerName && data.sellerUsername) {
+      bytes.push(...ascii(metaLine('', `@${data.sellerUsername}`)));
+      bytes.push(...ENC.LF);
+    }
+  }
+
+  // ── Footer ──────────────────────────────────────────────────────────────
+  bytes.push(...ENC.LF);
   bytes.push(...ENC.ALIGN_CENTER);
   if (data.markupPct > 0) {
-    bytes.push(...ascii(`Markup: ${data.markupPct}%`));
+    bytes.push(...ascii(`Markup ${data.markupPct}%`));
     bytes.push(...ENC.LF);
   }
-  bytes.push(...ascii('Thank you!'));
+  bytes.push(...ENC.BOLD_ON);
+  bytes.push(...ascii('* THANK YOU *'));
   bytes.push(...ENC.LF);
+  bytes.push(...ENC.BOLD_OFF);
 
   // Feed + cut
   bytes.push(...ENC.FEED_LINES(3));
   bytes.push(...ENC.CUT);
 
   return new Uint8Array(bytes);
+}
+
+/** Format a "Label    value" line right-aligned to the 32-col paper width. */
+function metaLine(label: string, value: string): string {
+  const left = label;
+  const right = value;
+  const space = COLS - left.length - right.length;
+  if (space < 1) return (left + ' ' + right).slice(0, COLS);
+  return left + ' '.repeat(space) + right;
 }
 
 /**

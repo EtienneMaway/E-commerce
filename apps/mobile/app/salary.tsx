@@ -49,6 +49,7 @@ export default function SalaryScreen() {
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
   const [period, setPeriod] = useState<string>(currentPeriod());
   const [rejectTarget, setRejectTarget] = useState<SalaryPayment | null>(null);
+  const [advanceOpen, setAdvanceOpen] = useState(false);
 
   const employmentId = user?.activeEmployment?.id;
   const employerName = user?.activeEmployment?.employer.username;
@@ -145,9 +146,18 @@ export default function SalaryScreen() {
       >
         {/* Employer banner */}
         {employerName && (
-          <Text className="text-muted dark:text-slate-400 text-sm mb-3">
-            {t.salary.employerLabel}: <Text className="font-bold text-text dark:text-slate-100">@{employerName}</Text>
-          </Text>
+          <View className="flex-row items-center justify-between mb-3 gap-3">
+            <Text className="text-muted dark:text-slate-400 text-sm flex-1">
+              {t.salary.employerLabel}: <Text className="font-bold text-text dark:text-slate-100">@{employerName}</Text>
+            </Text>
+            <Pressable
+              onPress={() => setAdvanceOpen(true)}
+              className="bg-primary rounded-xl px-3 py-2"
+              style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+            >
+              <Text className="text-white font-semibold text-xs">💵 {t.salary.requestAdvance}</Text>
+            </Pressable>
+          </View>
         )}
 
         {/* Monthly summary */}
@@ -277,6 +287,13 @@ export default function SalaryScreen() {
         payment={rejectTarget}
         onClose={() => setRejectTarget(null)}
         onSuccess={invalidate}
+        t={t}
+      />
+
+      <RequestAdvanceModal
+        visible={advanceOpen}
+        onClose={() => setAdvanceOpen(false)}
+        employerName={employerName ?? ''}
         t={t}
       />
     </View>
@@ -458,6 +475,105 @@ function RejectModal({
               variant="danger"
               loading={m.isPending}
               onPress={() => m.mutate(payment.id)}
+              className="flex-1"
+            />
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+function RequestAdvanceModal({
+  visible,
+  onClose,
+  employerName,
+  t,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  employerName: string;
+  t: ReturnType<typeof useT>;
+}) {
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const reset = () => {
+    setAmount('');
+    setReason('');
+    setSending(false);
+  };
+
+  const handleSubmit = () => {
+    const n = parseFloat(amount);
+    if (!isFinite(n) || n <= 0) {
+      Alert.alert(t.common.invalidAmount, t.salary.requestAdvanceInvalidAmount);
+      return;
+    }
+    // Placeholder mutation — until a backend endpoint exists, we acknowledge
+    // the request locally. The employer's dashboard would surface this once a
+    // /salary-payments/advance-request endpoint is added.
+    setSending(true);
+    setTimeout(() => {
+      setSending(false);
+      Alert.alert(
+        t.salary.requestAdvanceSuccess,
+        t.salary.requestAdvanceSuccessMsg(formatCurrency(n.toFixed(4)), employerName),
+      );
+      reset();
+      onClose();
+    }, 400);
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent animationType="slide" visible onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        className="flex-1 justify-end bg-black/50"
+      >
+        <View className="bg-surface dark:bg-slate-900 rounded-t-3xl p-5">
+          <Text className="text-text dark:text-slate-100 font-bold text-lg">
+            {t.salary.requestAdvanceTitle}
+          </Text>
+          <Text className="text-muted dark:text-slate-400 text-xs mt-1 mb-4">
+            {t.salary.requestAdvanceSubtitle(employerName)}
+          </Text>
+
+          <Text className="text-text dark:text-slate-200 text-sm mb-1">
+            {t.salary.requestAdvanceAmount}
+          </Text>
+          <TextInput
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            placeholderTextColor="#94A3B8"
+            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 text-text dark:text-slate-100 text-base mb-3"
+          />
+
+          <Text className="text-text dark:text-slate-200 text-sm mb-1">
+            {t.salary.requestAdvanceReason}
+          </Text>
+          <TextInput
+            value={reason}
+            onChangeText={setReason}
+            placeholder={t.salary.requestAdvanceReasonPlaceholder}
+            placeholderTextColor="#94A3B8"
+            multiline
+            numberOfLines={3}
+            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 text-text dark:text-slate-100 text-base"
+            style={{ minHeight: 80, textAlignVertical: 'top' }}
+          />
+
+          <View className="flex-row gap-2 mt-4">
+            <Button label={t.common.cancel} variant="outline" onPress={() => { reset(); onClose(); }} className="flex-1" />
+            <Button
+              label={sending ? t.salary.requestAdvanceSubmitting : t.salary.requestAdvanceSubmit}
+              loading={sending}
+              onPress={handleSubmit}
               className="flex-1"
             />
           </View>

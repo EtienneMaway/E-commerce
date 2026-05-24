@@ -57,12 +57,6 @@ export default function DashboardScreen() {
     enabled: !isOffline,
   });
 
-  const { data: debtors } = useQuery({
-    queryKey: QK.debtors,
-    queryFn: dashboardApi.debtors,
-    enabled: !isOffline,
-  });
-
   const { data: alertsData } = useQuery({
     queryKey: QK.alerts,
     queryFn: dashboardApi.alerts,
@@ -87,7 +81,6 @@ export default function DashboardScreen() {
   const pendingSalaryTotal = pendingSalary.reduce((sum, p) => sum + parseFloat(p.amount), 0);
 
   const alerts = (alertsData as AlertItem[] | undefined) ?? [];
-  const overdueDebtors = alerts.filter((a) => a.type === 'overdue_debtor');
   const lowStockItems = alerts.filter((a) => a.type === 'low_stock');
 
   // Pending sales stats for sync banner
@@ -309,28 +302,8 @@ export default function DashboardScreen() {
       )}
 
       {/* Alerts banner — only in online mode */}
-      {!isOffline && alerts.length > 0 && (
+      {!isOffline && lowStockItems.length > 0 && (
         <View className="mb-4 gap-2">
-          {overdueDebtors.length > 0 && (
-            <Pressable
-              onPress={() => router.push('/(tabs)/network')}
-              className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 rounded-xl px-4 py-3 flex-row items-start gap-3"
-              style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
-            >
-              <Text className="text-lg">⏰</Text>
-              <View className="flex-1">
-                <Text className="text-danger font-semibold text-sm">
-                  {t.home.overdueDebtors(overdueDebtors.length)}
-                </Text>
-                <Text className="text-danger text-sm mt-0.5">
-                  {overdueDebtors.slice(0, 2).map((a) => `@${a.debtorUsername}`).join(', ')}
-                  {overdueDebtors.length > 2 && ` +${overdueDebtors.length - 2} more`}
-                  {` ${t.home.overdueSuffix}`}
-                </Text>
-              </View>
-              <Text className="text-danger text-sm font-medium">{t.home.viewArrow}</Text>
-            </Pressable>
-          )}
           {lowStockItems.length > 0 && (
             <Pressable
               onPress={() => router.push('/(tabs)/inventory')}
@@ -472,31 +445,6 @@ export default function DashboardScreen() {
             </View>
           )}
 
-          {/* Top Debtors */}
-          {(debtors?.length ?? 0) > 0 && (
-            <View>
-              <Text className="text-text dark:text-slate-100 font-semibold text-lg mb-2">{t.home.topDebtors}</Text>
-              {(debtors as Array<{ debtorUserId: string; debtorUsername: string; outstandingBalance: string }>)
-                .slice(0, 3)
-                .map((d) => (
-                  <Pressable
-                    key={d.debtorUserId}
-                    onPress={() => router.push(`/debtor/${d.debtorUserId}`)}
-                    className="flex-row items-center justify-between bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 mb-2"
-                    style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
-                  >
-                    <View>
-                      <Text className="text-text dark:text-slate-100 font-semibold text-base">@{d.debtorUsername}</Text>
-                      <Text className="text-muted dark:text-slate-500 text-sm">{t.home.owesYou}</Text>
-                    </View>
-                    <Text className="text-success font-bold text-base">{formatCurrency(d.outstandingBalance)}</Text>
-                  </Pressable>
-                ))}
-              <TouchableOpacity onPress={() => router.push('/(tabs)/network')}>
-                <Text className="text-primary text-sm font-medium text-center mt-1">{t.home.viewAllDebtors}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
         </>
       )}
 

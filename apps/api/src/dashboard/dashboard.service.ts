@@ -93,7 +93,7 @@ export interface AlertItem {
   source?: string;
   // pending_consignment fields
   pendingCount?: number;
-  // inverted_exchange_rates fields — system selling rate (usdToFcRate) is below the buying rate
+  // inverted_exchange_rates fields — system selling rate (usdToFcRate) is below the Current Market Rate
   systemSellingRate?: string;
   buyingRate?: string;
 }
@@ -111,7 +111,7 @@ export interface CashPosition {
   totalCogs: string;                // Cost of goods sold (USD)
   totalProfit: string;              // totalIncome − totalCogs (USD)
   totalExpenses: string;            // Sum of all expenses converted to USD at the System Rate (ledger)
-  totalExpensesAtBuyingRate: string;// Same sum but converted at the Buying Rate — for display only
+  totalExpensesAtBuyingRate: string;// Same sum but converted at the Current Market Rate — for display only
   availableProfitCash: string;      // totalProfit − totalExpenses − totalWithdrawn; negative = over-spent
   // Cash-basis view — actual money that has arrived
   totalCashReceived: string;        // direct sales + debtor payments + external PAYMENT_IN
@@ -308,7 +308,7 @@ export class DashboardService {
    *   - totalCashReceived = direct sales + approved debtor payments + external PAYMENT_IN
    *   - availableBusinessCash = totalCashReceived − totalExpenses − totalWithdrawn
    *
-   * Expenses: summed in USD using each entry's snapshot Buying Rate.
+   * Expenses: summed in USD using each entry's snapshot Current Market Rate.
    * Withdrawals: summed from persisted amountUsd (snapshotted at withdrawal time).
    */
   async getCashPosition(ownerId: string): Promise<CashPosition> {
@@ -380,7 +380,7 @@ export class DashboardService {
     // Convert expenses to USD twice:
     //   - totalExpenses uses the System Rate (each row's snapshot) — this is
     //     the canonical ledger value used in profit / cash-position math.
-    //   - totalExpensesAtBuyingRate uses the current Buying Rate — display-
+    //   - totalExpensesAtBuyingRate uses the Current Market Rate — display-
     //     only, mirroring the per-row USD shown on /expenses so the page's
     //     top KPI matches the table totals.
     const currentRate = await this.currencyService.getRate();
@@ -788,7 +788,7 @@ export class DashboardService {
     }
 
     // ── Inverted exchange rates ──────────────────────────────────────────────
-    // The Buying Rate (sellingRate column) should not exceed the System Selling
+    // The Current Market Rate (sellingRate column) should not exceed the System Selling
     // Rate (usdToFcRate). When it does, FC purchase costs are converted to USD
     // at a more favourable rate than FC income is valued at, inflating
     // FC-displayed profit and distorting cash position numbers.

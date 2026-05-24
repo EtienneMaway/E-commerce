@@ -58,7 +58,7 @@ export class Expense {
   @Column({ type: 'varchar', nullable: true })
   description: string | null;
 
-  @ApiPropertyOptional({ example: '2700.0000', description: 'Buying rate FC/USD captured at entry time; null for USD entries' })
+  @ApiPropertyOptional({ example: '2700.0000', description: 'Current Market Rate FC/USD captured at entry time; null for USD entries' })
   @Column({ name: 'usd_to_fc_rate_snapshot', type: 'decimal', precision: 14, scale: 4, nullable: true })
   usdToFcRateSnapshot: string | null;
 

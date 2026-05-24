@@ -13,87 +13,237 @@ export interface ReceiptItem {
 export interface ReceiptData {
   readonly items: ReceiptItem[];
   readonly grandTotalFc: number;
+  /** 0 means per-item pricing — the receipt footer omits the markup line. */
   readonly markupPct: number;
+  /** Pretty date/time, already locale-formatted (e.g. "24/05/2026 14:32"). */
   readonly date: string;
+
+  /** Business name shown at the top of the receipt. Falls back to the brand. */
+  readonly businessName?: string;
+  /** @handle of the business — useful when the merchant doesn't have a brand. */
+  readonly businessHandle?: string;
+
+  /** Display name of the person who recorded the sale. */
+  readonly sellerName?: string;
+  /** @handle of the person who recorded the sale. */
   readonly sellerUsername?: string;
+
+  /** Short human-readable transaction ID. */
+  readonly receiptId?: string;
 }
 
+const BRAND = 'KMB-Talk';
+
+function formatFc(value: number): string {
+  return new Intl.NumberFormat('fr-CD').format(Math.round(value)) + ' FC';
+}
+
+/**
+ * Generates a short, human-readable receipt ID from the current timestamp.
+ * Base-36 of `Date.now()` truncated to 6 chars — visually compact and
+ * monotonically increasing inside a session. Not for unique identity; the
+ * server is the source of truth for that.
+ */
+export function generateReceiptId(): string {
+  return Date.now().toString(36).slice(-6).toUpperCase();
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Build a thermal-receipt-shaped HTML page. Width is fixed at 80mm so when
+ * sent through Android's system print or share-to-PDF, the output is a
+ * narrow, grow-to-content receipt rather than a half-empty A4. Monospaced
+ * font keeps the columns aligned the way a real receipt would print.
+ */
 function buildHtml(data: ReceiptData): string {
-  const rows = data.items
-    .map(
-      (item) =>
-        `<tr>
-          <td class="name">${item.productName}</td>
-          <td class="center">x${item.qty}</td>
-          <td class="right">${formatFc(item.unitPriceFc)}</td>
-          <td class="right bold">${formatFc(item.totalFc)}</td>
-        </tr>`,
-    )
+  const itemRows = data.items
+    .map((item) => {
+      const total = formatFc(item.totalFc);
+      const unit = formatFc(item.unitPriceFc);
+      return `
+        <div class="row item">
+          <div class="line">
+            <span class="name">${escapeHtml(item.productName)}</span>
+            <span class="total">${total}</span>
+          </div>
+          <div class="line unit">
+            <span>&nbsp;&nbsp;${item.qty} × ${unit}</span>
+          </div>
+        </div>`;
+    })
     .join('');
 
-  const header = data.sellerUsername ? `@${data.sellerUsername}` : 'Sales Receipt';
+  const businessLine = data.businessName
+    ? escapeHtml(data.businessName)
+    : data.businessHandle
+      ? `@${escapeHtml(data.businessHandle)}`
+      : '';
+  const businessHandleLine =
+    data.businessName && data.businessHandle ? `@${escapeHtml(data.businessHandle)}` : '';
+
+  const sellerLabel = data.sellerName
+    ? escapeHtml(data.sellerName)
+    : data.sellerUsername
+      ? `@${escapeHtml(data.sellerUsername)}`
+      : '';
+  const sellerHandle =
+    data.sellerName && data.sellerUsername ? `@${escapeHtml(data.sellerUsername)}` : '';
 
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
   <style>
+    @page { size: 80mm auto; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 80mm; }
     body {
-      font-family: 'Courier New', monospace;
-      font-size: 13px;
-      padding: 20px 16px;
-      max-width: 340px;
-      margin: 0 auto;
-      color: #111;
+      font-family: 'Courier New', 'Menlo', monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      padding: 6mm 4mm 8mm;
+      color: #000;
+      background: #fff;
     }
-    h1 { text-align: center; font-size: 17px; font-weight: bold; margin-bottom: 2px; }
-    .sub { text-align: center; color: #555; font-size: 11px; margin-bottom: 14px; }
-    .divider { border: none; border-top: 1px dashed #999; margin: 10px 0; }
-    .divider-solid { border: none; border-top: 1px solid #111; margin: 10px 0; }
-    table { width: 100%; border-collapse: collapse; }
-    th { font-size: 10px; text-transform: uppercase; padding: 3px 0; color: #555; text-align: left; }
-    th.center { text-align: center; }
-    th.right  { text-align: right; }
-    td { padding: 4px 0; vertical-align: top; }
-    td.name  { text-transform: capitalize; width: 44%; }
-    td.center { text-align: center; width: 10%; }
-    td.right  { text-align: right; width: 23%; }
-    td.bold { font-weight: bold; }
-    .total-row td { font-size: 15px; font-weight: bold; padding-top: 6px; }
-    .footer { text-align: center; color: #777; font-size: 10px; margin-top: 16px; }
+    .brand {
+      text-align: center;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      margin-bottom: 1mm;
+    }
+    .brand-sub {
+      text-align: center;
+      font-size: 9px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 3mm;
+    }
+    .divider {
+      border: none;
+      border-top: 1px dashed #000;
+      margin: 2.5mm 0;
+    }
+    .divider-solid {
+      border: none;
+      border-top: 2px solid #000;
+      margin: 2mm 0;
+    }
+    .business {
+      text-align: center;
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 0.5mm;
+    }
+    .business-handle {
+      text-align: center;
+      font-size: 10px;
+      color: #555;
+      margin-bottom: 2mm;
+    }
+    .meta {
+      font-size: 10.5px;
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+    }
+    .meta-row .label { color: #555; }
+    .items { margin: 0; }
+    .row.item {
+      margin: 1.2mm 0;
+    }
+    .line {
+      display: flex;
+      justify-content: space-between;
+      gap: 4mm;
+    }
+    .line .name {
+      flex: 1;
+      text-transform: capitalize;
+      word-break: break-word;
+    }
+    .line .total {
+      white-space: nowrap;
+      font-weight: 700;
+    }
+    .line.unit {
+      font-size: 10.5px;
+      color: #444;
+    }
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 15px;
+      font-weight: 800;
+      margin-top: 1mm;
+    }
+    .total-row .label {
+      letter-spacing: 2px;
+    }
+    .footer-meta {
+      font-size: 10.5px;
+      margin-top: 3mm;
+    }
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      margin-top: 3mm;
+    }
+    .thanks {
+      font-weight: 700;
+      letter-spacing: 2px;
+      margin-top: 0.5mm;
+    }
   </style>
 </head>
 <body>
-  <h1>${header}</h1>
-  <p class="sub">${data.date}</p>
+  <div class="brand">${escapeHtml(BRAND)}</div>
+  <div class="brand-sub">sales receipt</div>
+
   <hr class="divider-solid" />
-  <table>
-    <thead>
-      <tr>
-        <th>Product</th>
-        <th class="center">Qty</th>
-        <th class="right">Unit</th>
-        <th class="right">Total</th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
-  <hr class="divider-solid" />
-  <table>
-    <tr class="total-row">
-      <td colspan="3">TOTAL</td>
-      <td class="right">${formatFc(data.grandTotalFc)}</td>
-    </tr>
-  </table>
+
+  ${businessLine ? `<div class="business">${businessLine}</div>` : ''}
+  ${businessHandleLine ? `<div class="business-handle">${businessHandleLine}</div>` : ''}
+
+  <div class="meta">
+    ${data.receiptId ? `<div class="meta-row"><span class="label">Receipt #</span><span>${escapeHtml(data.receiptId)}</span></div>` : ''}
+    <div class="meta-row"><span class="label">Date</span><span>${escapeHtml(data.date)}</span></div>
+  </div>
+
   <hr class="divider" />
-  <p class="footer">${data.markupPct > 0 ? `Markup: ${data.markupPct}% &nbsp;•&nbsp; ` : ''}Thank you!</p>
+
+  <div class="items">${itemRows}</div>
+
+  <hr class="divider" />
+
+  <div class="total-row">
+    <span class="label">TOTAL</span>
+    <span>${formatFc(data.grandTotalFc)}</span>
+  </div>
+
+  <hr class="divider-solid" />
+
+  ${sellerLabel ? `<div class="footer-meta">
+    <div class="meta-row"><span class="label">Sold by</span><span>${sellerLabel}</span></div>
+    ${sellerHandle ? `<div class="meta-row"><span></span><span>${sellerHandle}</span></div>` : ''}
+  </div>` : ''}
+
+  <div class="footer">
+    ${data.markupPct > 0 ? `Markup ${data.markupPct}%` : ''}
+    <div class="thanks">★ THANK YOU ★</div>
+  </div>
 </body>
 </html>`;
-}
-
-function formatFc(value: number): string {
-  return new Intl.NumberFormat('fr-CD').format(Math.round(value)) + ' FC';
 }
 
 /**
@@ -102,21 +252,12 @@ function formatFc(value: number): string {
  *      ESC/POS bytes directly — this is the POS / quick-receipt path.
  *   2. Otherwise fall back to the Android system print dialog via expo-print,
  *      which is what every device gets out of the box.
- *
- * Errors during the Bluetooth path bubble up so the caller can show a
- * specific "couldn't reach printer — opened system dialog instead" message.
  */
 export async function printReceipt(data: ReceiptData): Promise<void> {
   const paired = usePrinterStore.getState().printer;
   if (paired) {
-    try {
-      await printReceiptToBluetooth(paired, data);
-      return;
-    } catch (err) {
-      // Bubble up to the caller (RecordSaleModal) which decides whether to
-      // open the system print dialog as a fallback, or just surface the error.
-      throw err;
-    }
+    await printReceiptToBluetooth(paired, data);
+    return;
   }
   await Print.printAsync({ html: buildHtml(data) });
 }

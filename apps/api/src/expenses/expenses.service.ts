@@ -49,7 +49,7 @@ export class ExpensesService {
 
     // Mental model: cash is FC. Every expense drains FC. For FC expenses the
     // entered amount is what's drained. For USD expenses the merchant must
-    // exchange FC for USD at the Buying Rate, so the FC actually drained is
+    // exchange FC for USD at the Current Market Rate, so the FC actually drained is
     // `amountOriginal × buyingRate`. We persist amountUsd as the System-Rate
     // value of that FC, so totalExpenses balances against totalCashReceived
     // (also booked at the System Rate).
@@ -143,11 +143,11 @@ export class ExpensesService {
       take: limit,
     });
 
-    // Display USD value is computed at the Buying Rate (lower rate). Cash is
+    // Display USD value is computed at the Current Market Rate (lower rate). Cash is
     // held as FC, so the realistic USD value of any FC outflow is what the
     // merchant would receive when exchanging that FC for USD — i.e. divided by
-    // the Buying Rate. USD-entered expenses simply display as the typed USD.
-    // Falls back to the captured system rate when no Buying Rate is configured.
+    // the Current Market Rate. USD-entered expenses simply display as the typed USD.
+    // Falls back to the captured system rate when no Current Market Rate is configured.
     const currentRate = await this.currencyService.getRate();
     const buyingRate = currentRate?.sellingRate
       ? new Decimal(currentRate.sellingRate)
@@ -201,8 +201,8 @@ export class ExpensesService {
 
   /**
    * USD value used for display on the expenses page. FC outflows convert at
-   * the current Buying Rate (the rate the merchant would actually pay if
-   * exchanging FC for USD). When no Buying Rate is configured, fall back to
+   * the Current Market Rate (the rate the merchant would actually pay if
+   * exchanging FC for USD). When no Current Market Rate is configured, fall back to
    * the row's snapshot rate, then to the current System Rate.
    */
   private toDisplayUsd(

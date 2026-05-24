@@ -65,7 +65,7 @@ export default function WithdrawalsPage() {
   const avail = availableData as AvailableWithdrawal | undefined;
   const cp = cashPositionData as CashPosition | undefined;
 
-  // USD withdrawals convert FC-on-hand at the Buying Rate (less favourable).
+  // USD withdrawals convert FC-on-hand at the Current Market Rate (less favourable).
   // Surface the smaller effective max only once the merchant starts typing an
   // amount — keeps the form quiet at rest, and lets the warning act as
   // contextual guidance the moment they're actually making a decision.
@@ -78,7 +78,7 @@ export default function WithdrawalsPage() {
     parseFloat(amount) > 0 &&
     !!systemRate && systemRate > 0 &&
     !!buyingRate && buyingRate > 0;
-  // FC actually leaving the till = entered USD × buying rate.
+  // FC actually leaving the till = entered USD × Current Market Rate.
   const fcDeducted = showUsdBuyingWarning
     ? parseFloat(amount) * buyingRate!
     : null;

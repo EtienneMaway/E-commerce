@@ -123,22 +123,6 @@ export default function RootLayout() {
             name="supplier/[id]"
             options={{ headerShown: true, title: t.screens.supplierDetail, headerBackTitle: t.screens.back }}
           />
-          <Stack.Screen
-            name="debtor/[id]"
-            options={{ headerShown: true, title: t.screens.debtorDetail, headerBackTitle: t.screens.back }}
-          />
-          <Stack.Screen
-            name="consignments"
-            options={{ headerShown: true, title: t.screens.incomingConsignments, headerBackTitle: t.screens.back }}
-          />
-          <Stack.Screen
-            name="external-contacts"
-            options={{ headerShown: true, title: t.screens.externalContacts, headerBackTitle: t.screens.back }}
-          />
-          <Stack.Screen
-            name="external-contact/[id]"
-            options={{ headerShown: true, title: t.screens.externalContactDetail, headerBackTitle: t.screens.back }}
-          />
           <Stack.Screen name="account" options={{ headerShown: false }} />
           <Stack.Screen
             name="expenses"

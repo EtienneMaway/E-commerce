@@ -71,7 +71,7 @@ export default function ExpensesScreen() {
 
   const buyingRate = rate?.sellingRate ? parseFloat(rate.sellingRate) : null;
 
-  // FC value of an expense at the current Buying Rate — the realistic amount
+  // FC value of an expense at the Current Market Rate — the realistic amount
   // of FC drained from the till for the booked USD-equivalent. Mirrors the
   // dashboard's `fmtExpenseUsdAtBuyingRate`, restricted to FC display since
   // mobile always renders FC.

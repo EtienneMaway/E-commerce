@@ -95,7 +95,7 @@ export class WithdrawalsService {
     // Mental model: cash on hand is FC. Every withdrawal drains FC from the
     // till. For FC withdrawals the entered FC amount is what's drained. For
     // USD withdrawals the merchant exchanges FC for USD at the (less-
-    // favourable) Buying Rate, so the FC actually drained is
+    // favourable) Current Market Rate, so the FC actually drained is
     // `amountUsd × buyingRate`. We persist amountUsd at the System Rate
     // value of FC drained — that keeps totalWithdrawn balanced against
     // totalCashReceived (also booked at the System Rate).
@@ -119,7 +119,7 @@ export class WithdrawalsService {
         amountUsd = amountOriginal.mul(buyingRate).div(systemRate);
         rateSnapshot = buyingRate.toFixed(4);
       } else {
-        // No buying rate configured — fall back to 1:1 with system rate (i.e.,
+        // No Current Market Rate configured — fall back to 1:1 with system rate (i.e.,
         // treat USD as USD with no spread).
         amountUsd = amountOriginal;
       }

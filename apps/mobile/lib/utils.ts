@@ -21,12 +21,16 @@ export function breakdownQuantity(totalPieces: number, piecesPerCarton: number |
 
 export function formatBreakdown(b: QuantityBreakdown): string {
   if (!b.piecesPerCarton) return `${b.totalPieces} pcs`;
-  const parts: string[] = [];
-  if (b.cartons > 0) parts.push(`${b.cartons} ctn`);
-  if (b.dozens > 0) parts.push(`${b.dozens} dz`);
-  if (b.loosePieces > 0) parts.push(`${b.loosePieces} pcs`);
-  if (parts.length === 0) parts.push('0 pcs');
-  return `${parts.join('  ')}  (${b.totalPieces} total)`;
+  // When piecesPerCarton is set, always render all three components — even
+  // zero ones — so the merchant sees at a glance how the total decomposes.
+  // Prior behaviour hid zeros and made it ambiguous whether an exact-cartons
+  // count had any leftover pieces or not.
+  const parts = [
+    `${b.cartons} ctn`,
+    `${b.dozens} dz`,
+    `${b.loosePieces} pcs`,
+  ];
+  return `${parts.join(' · ')}  (${b.totalPieces} pcs total)`;
 }
 
 /** Format a decimal string as a currency value, e.g. "1234.5057" → "$1,234.5057".

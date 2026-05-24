@@ -27,7 +27,8 @@ import { useFormatCurrency, useExchangeRate, usdToFcStr, formatFcValue } from '.
 import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
-import { printReceipt, printReceiptViaSystem, shareReceiptAsPdf, type ReceiptData } from '../../lib/receipt';
+import { printReceipt, printReceiptViaSystem, shareReceiptAsPdf, generateReceiptId, type ReceiptData } from '../../lib/receipt';
+import { usePersonaStore } from '../../store/persona.store';
 import { usePrinterStore } from '../../store/printer.store';
 
 interface Props {
@@ -322,10 +323,26 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   const offerReceipt = (
     soldItems: { item: CartItem; totalPieces: number; salePrice: string; salePriceFc: number }[],
   ): void => {
-    // Receipt is FC-native — pass per-row FC prices directly (typed by the
-    // user) so what the customer sees on the printout matches what was
-    // entered, without an extra USD-rate round-trip that can drift by 1 FC.
+    // Resolve the "business" identity based on the current persona:
+    //   - Employer mode: the receipt is on the employer's books, so they
+    //     are the business.
+    //   - Self mode: the user themselves is the business.
+    // The "seller" is always the logged-in user — the person who pressed
+    // Record Sale, regardless of persona.
+    const persona = usePersonaStore.getState().kind;
+    const isEmployerMode = persona === 'employer' && !!user?.activeEmployment;
+
+    const businessName = isEmployerMode
+      ? undefined // we don't have employer's display name on the client, so the @handle stands alone
+      : user?.name ?? undefined;
+    const businessHandle = isEmployerMode
+      ? user?.activeEmployment?.employer.username
+      : user?.username;
+
     const receiptData: ReceiptData = {
+      // Receipt is FC-native — pass per-row FC prices directly (typed by the
+      // user) so what the customer sees on the printout matches what was
+      // entered, without an extra USD-rate round-trip that can drift by 1 FC.
       items: soldItems.map(({ item, totalPieces, salePriceFc }) => ({
         productName: item.productName,
         qty: totalPieces,
@@ -340,7 +357,11 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       // this only for the footer; treat 0 as "n/a" and the printer skips it.
       markupPct: 0,
       date: new Date().toLocaleString('fr-CD'),
+      businessName,
+      businessHandle,
+      sellerName: user?.name ?? undefined,
       sellerUsername: user?.username,
+      receiptId: generateReceiptId(),
     };
 
     const handlePrint = async () => {
@@ -733,28 +754,46 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                         {/* Extra loose pieces (only when product is carton-aware) */}
                         {cartItem.piecesPerCarton ? (
                           cartItem.showExtraPieces ? (
-                            <View className="flex-row items-center gap-3 mt-2">
-                              <Text className="text-muted dark:text-slate-400 text-xs flex-shrink-0">
-                                {t.recordSaleModal.extraPiecesLabel}
+                            <View className="mt-2">
+                              <View className="flex-row items-center gap-3">
+                                <Text className="text-muted dark:text-slate-400 text-xs flex-shrink-0">
+                                  {t.recordSaleModal.extraPiecesLabel}
+                                </Text>
+                                <TextInput
+                                  value={cartItem.extraPieces}
+                                  onChangeText={(v) => {
+                                    // Strip non-digits, then clamp below pieces-per-carton.
+                                    // A value ≥ ppc would be a whole carton, so it must
+                                    // be entered as an extra carton instead.
+                                    const digits = v.replace(/[^0-9]/g, '');
+                                    const ppc = cartItem.piecesPerCarton ?? 0;
+                                    let clamped = digits;
+                                    if (ppc > 0 && digits !== '') {
+                                      const n = parseInt(digits, 10);
+                                      if (!isNaN(n) && n >= ppc) clamped = String(ppc - 1);
+                                    }
+                                    updateItem(product.productName, { extraPieces: clamped });
+                                  }}
+                                  keyboardType="number-pad"
+                                  selectTextOnFocus
+                                  placeholder="0"
+                                  placeholderTextColor="#94A3B8"
+                                  className="text-text dark:text-slate-100 font-semibold text-base w-16 text-center border-b border-border dark:border-slate-700"
+                                />
+                                <Text className="text-muted dark:text-slate-500 text-[11px]">
+                                  / {cartItem.piecesPerCarton}
+                                </Text>
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    updateItem(product.productName, { showExtraPieces: false, extraPieces: '' })
+                                  }
+                                >
+                                  <Text className="text-danger text-xs">{t.recordSaleModal.extraPiecesRemove}</Text>
+                                </TouchableOpacity>
+                              </View>
+                              <Text className="text-muted dark:text-slate-500 text-[10px] mt-1 italic">
+                                {t.recordSaleModal.extraPiecesHint(cartItem.piecesPerCarton)}
                               </Text>
-                              <TextInput
-                                value={cartItem.extraPieces}
-                                onChangeText={(v) =>
-                                  updateItem(product.productName, { extraPieces: v.replace(/[^0-9]/g, '') })
-                                }
-                                keyboardType="number-pad"
-                                selectTextOnFocus
-                                placeholder="0"
-                                placeholderTextColor="#94A3B8"
-                                className="text-text dark:text-slate-100 font-semibold text-base w-16 text-center border-b border-border dark:border-slate-700"
-                              />
-                              <TouchableOpacity
-                                onPress={() =>
-                                  updateItem(product.productName, { showExtraPieces: false, extraPieces: '' })
-                                }
-                              >
-                                <Text className="text-danger text-xs">{t.recordSaleModal.extraPiecesRemove}</Text>
-                              </TouchableOpacity>
                             </View>
                           ) : (
                             <Pressable

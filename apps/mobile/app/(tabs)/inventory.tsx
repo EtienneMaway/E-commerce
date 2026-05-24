@@ -3,7 +3,6 @@ import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
   Pressable,
   ActivityIndicator,
   RefreshControl,
@@ -14,7 +13,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { inventoryApi, consignmentsApi } from '../../lib/api';
+import { inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -22,12 +21,12 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { AddPersonalModal } from '../../components/forms/AddPersonalModal';
 import { ReceiveFromSupplierModal } from '../../components/forms/ReceiveFromSupplierModal';
-import { ConsignToDebtorModal } from '../../components/forms/ConsignToDebtorModal';
 import { RecordSaleModal } from '../../components/forms/RecordSaleModal';
 import { breakdownQuantity, formatBreakdown } from '../../lib/utils';
-import type { ProductSummary, ConsignmentRequest } from '@trading-app/types';
+import { usePersonaStore } from '../../store/persona.store';
+import type { ProductSummary } from '@trading-app/types';
 
-type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'consignDebtor' | 'recordSale';
+type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'recordSale';
 
 interface SaleTarget { productName: string; unitCost: string; }
 
@@ -136,22 +135,17 @@ export default function InventoryScreen() {
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState<Modal>('none');
   const [saleTarget, setSaleTarget] = useState<SaleTarget | null>(null);
+  // Employees acting on the employer's books shouldn't be adding products to
+  // inventory — that's an owner-only action. Hide the FAB entirely in that
+  // case. (When persona flips back to Self the FAB returns automatically.)
+  const persona = usePersonaStore((s) => s.kind);
+  const canAddProducts = persona === 'self';
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: QK.inventoryProducts,
     queryFn: () => inventoryApi.listProducts(),
     staleTime: 30_000,
   });
-
-  const { data: incomingData } = useQuery({
-    queryKey: QK.consignmentsIncoming,
-    queryFn: () => consignmentsApi.incoming(),
-    staleTime: 30_000,
-  });
-
-  const pendingCount = ((incomingData as ConsignmentRequest[] | undefined) ?? []).filter(
-    (r) => r.status === 'PENDING',
-  ).length;
 
   const products = (data as ProductSummary[] | undefined) ?? [];
 
@@ -162,6 +156,7 @@ export default function InventoryScreen() {
     : products;
 
   const openFAB = () => {
+    if (!canAddProducts) return;
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         {
@@ -169,21 +164,18 @@ export default function InventoryScreen() {
             t.common.cancel,
             t.inventory.addPersonal,
             t.inventory.receiveFromSupplier,
-            t.inventory.consignToDebtor,
           ],
           cancelButtonIndex: 0,
         },
         (idx) => {
           if (idx === 1) setModal('addPersonal');
           if (idx === 2) setModal('receiveSupplier');
-          if (idx === 3) setModal('consignDebtor');
         },
       );
     } else {
       Alert.alert(t.inventory.addStockTitle, t.inventory.addStockMessage, [
         { text: t.inventory.addPersonal, onPress: () => setModal('addPersonal') },
         { text: t.inventory.receiveFromSupplier, onPress: () => setModal('receiveSupplier') },
-        { text: t.inventory.consignToDebtor, onPress: () => setModal('consignDebtor') },
         { text: t.common.cancel, style: 'cancel' },
       ]);
     }
@@ -197,25 +189,6 @@ export default function InventoryScreen() {
   return (
     <View className="flex-1 bg-surface dark:bg-slate-900">
       <View className="px-4 pt-4"><PersonaBanner /></View>
-      {/* Pending consignments banner */}
-      {pendingCount > 0 && (
-        <Pressable
-          onPress={() => router.push('/(tabs)/consignments')}
-          className="mx-4 mt-4 bg-primary/10 border border-primary rounded-xl px-4 py-3 flex-row items-center justify-between"
-          style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
-        >
-          <View className="flex-row items-center gap-2">
-            <Text className="text-xl">📬</Text>
-            <View>
-              <Text className="text-primary font-semibold text-sm">
-                {t.inventory.pendingCount(pendingCount)}
-              </Text>
-              <Text className="text-primary/70 text-sm">{t.inventory.tapToConfirm}</Text>
-            </View>
-          </View>
-          <Text className="text-primary font-bold text-lg">›</Text>
-        </Pressable>
-      )}
 
       {/* Search bar */}
       <View className="mx-4 mt-4 mb-1">
@@ -253,27 +226,25 @@ export default function InventoryScreen() {
         }
       />
 
-      {/* FAB */}
-      <Pressable
-        onPress={openFAB}
-        className="absolute bottom-8 right-6 bg-primary w-14 h-14 rounded-full items-center justify-center shadow-lg"
-        style={({ pressed }) => ({
-          elevation: pressed ? 3 : 6,
-          transform: [{ scale: pressed ? 0.93 : 1 }],
-          opacity: pressed ? 0.9 : 1,
-        })}
-      >
-        <Text className="text-white text-3xl font-light leading-none">+</Text>
-      </Pressable>
+      {/* FAB — hidden when in Employer persona (employees can't add stock). */}
+      {canAddProducts && (
+        <Pressable
+          onPress={openFAB}
+          className="absolute bottom-8 right-6 bg-primary w-14 h-14 rounded-full items-center justify-center shadow-lg"
+          style={({ pressed }) => ({
+            elevation: pressed ? 3 : 6,
+            transform: [{ scale: pressed ? 0.93 : 1 }],
+            opacity: pressed ? 0.9 : 1,
+          })}
+        >
+          <Text className="text-white text-3xl font-light leading-none">+</Text>
+        </Pressable>
+      )}
 
       {/* Modals */}
       <AddPersonalModal visible={modal === 'addPersonal'} onClose={() => setModal('none')} />
       <ReceiveFromSupplierModal
         visible={modal === 'receiveSupplier'}
-        onClose={() => setModal('none')}
-      />
-      <ConsignToDebtorModal
-        visible={modal === 'consignDebtor'}
         onClose={() => setModal('none')}
       />
       {saleTarget && (
