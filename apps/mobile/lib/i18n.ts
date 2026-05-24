@@ -330,6 +330,13 @@ const en = {
     discountReasonRequiredMsg: 'A reason is required to discount below the standard price.',
     confirmDiscountBtn: 'Submit with reason',
     pricedBelow: (standard: string) => `Standard price: ${standard}`,
+    receiptPromptTitle: '✅ Sale recorded',
+    receiptPromptSubtitle: 'Add optional client details and print the receipt.',
+    receiptClientNameLabel: 'Client name (optional)',
+    receiptClientPhoneLabel: 'Phone number (optional)',
+    receiptPrintBtn: 'Print',
+    receiptShareBtn: 'Share PDF',
+    receiptSkipBtn: 'Skip',
   },
   paySupplierModal: {
     title: 'Pay Supplier',
@@ -523,7 +530,7 @@ const en = {
     requestAdvanceTitle: 'Request a salary advance',
     requestAdvanceSubtitle: (employer: string) =>
       `Send a request to @${employer} for an upfront payment on this month's salary.`,
-    requestAdvanceAmount: 'Amount needed (USD)',
+    requestAdvanceAmount: 'Amount needed (FC)',
     requestAdvanceReason: 'Reason (optional)',
     requestAdvanceReasonPlaceholder: 'e.g. medical emergency, school fees…',
     requestAdvanceSubmit: 'Send request',
@@ -532,6 +539,7 @@ const en = {
     requestAdvanceSuccessMsg: (amount: string, employer: string) =>
       `Your advance request for ${amount} has been sent to @${employer}. They'll see it in their dashboard.`,
     requestAdvanceInvalidAmount: 'Please enter a valid amount above 0.',
+    homeSubtitle: 'View your monthly pay, pending confirmations, and history',
   },
   printer: {
     title: 'Receipt printer',
@@ -987,6 +995,13 @@ const fr: Translations = {
     discountReasonRequiredMsg: 'Une raison est requise pour vendre en dessous du prix standard.',
     confirmDiscountBtn: 'Envoyer avec la raison',
     pricedBelow: (standard: string) => `Prix standard : ${standard}`,
+    receiptPromptTitle: '✅ Vente enregistrée',
+    receiptPromptSubtitle: 'Ajoutez les coordonnées du client (facultatif) et imprimez le reçu.',
+    receiptClientNameLabel: 'Nom du client (facultatif)',
+    receiptClientPhoneLabel: 'Numéro de téléphone (facultatif)',
+    receiptPrintBtn: 'Imprimer',
+    receiptShareBtn: 'Partager PDF',
+    receiptSkipBtn: 'Ignorer',
   },
   paySupplierModal: {
     title: 'Payer le fournisseur',
@@ -1180,7 +1195,7 @@ const fr: Translations = {
     requestAdvanceTitle: 'Demander une avance sur salaire',
     requestAdvanceSubtitle: (employer: string) =>
       `Envoyer une demande à @${employer} pour un paiement anticipé sur le salaire de ce mois.`,
-    requestAdvanceAmount: 'Montant souhaité (USD)',
+    requestAdvanceAmount: 'Montant souhaité (FC)',
     requestAdvanceReason: 'Motif (facultatif)',
     requestAdvanceReasonPlaceholder: 'ex. urgence médicale, frais scolaires…',
     requestAdvanceSubmit: 'Envoyer la demande',
@@ -1189,6 +1204,7 @@ const fr: Translations = {
     requestAdvanceSuccessMsg: (amount: string, employer: string) =>
       `Votre demande d'avance de ${amount} a été envoyée à @${employer}. Elle apparaîtra sur leur tableau de bord.`,
     requestAdvanceInvalidAmount: 'Veuillez saisir un montant supérieur à 0.',
+    homeSubtitle: 'Consultez votre salaire mensuel, les paiements en attente et l’historique',
   },
   printer: {
     title: 'Imprimante de reçus',

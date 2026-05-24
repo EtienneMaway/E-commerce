@@ -8,6 +8,17 @@ export interface ReceiptItem {
   readonly qty: number;
   readonly unitPriceFc: number;   // already converted to FC
   readonly totalFc: number;
+
+  /**
+   * Packaging breakdown — when present, prints a "{cartons} {unit} × {ppc} +
+   * {extra} pcs" line above the unit price so the customer can verify what
+   * they bought. `cartons` is the user-typed pack count; the unit label is
+   * derived from `piecesPerCarton` (12 → dozen, else carton).
+   * Omit all three for items sold as loose pieces.
+   */
+  readonly cartons?: number;
+  readonly extraPieces?: number;
+  readonly piecesPerCarton?: number | null;
 }
 
 export interface ReceiptData {
@@ -30,9 +41,40 @@ export interface ReceiptData {
 
   /** Short human-readable transaction ID. */
   readonly receiptId?: string;
+
+  /** Optional buyer details — printed when present. */
+  readonly clientName?: string;
+  readonly clientPhone?: string;
 }
 
 const BRAND = 'KMB-Talk';
+
+/**
+ * Constants printed in the footer of every receipt.
+ */
+export const RECEIPT_FOOTER = {
+  address: 'Durba Duembe, RondPoint Zima Moto',
+  phone: '+243 836 743 579',
+  thanks: 'Merci, que Dieu vous bénisse',
+} as const;
+
+/**
+ * Per-item packaging line: e.g. "3 cartons × 24 + 2 pcs" or "5 douzaines × 12".
+ * Returns empty string when there's no packaging info worth showing.
+ */
+export function formatPackagingLine(item: ReceiptItem): string {
+  const ppc = item.piecesPerCarton ?? 0;
+  const cartons = item.cartons ?? 0;
+  const extra = item.extraPieces ?? 0;
+  if (!ppc || cartons <= 0) {
+    // Loose-piece sale — the "qty × unit" line already conveys this; nothing extra.
+    return '';
+  }
+  const unit = ppc === 12 ? (cartons === 1 ? 'douzaine' : 'douzaines') : (cartons === 1 ? 'carton' : 'cartons');
+  let line = `${cartons} ${unit} × ${ppc}`;
+  if (extra > 0) line += ` + ${extra} pcs`;
+  return line;
+}
 
 function formatFc(value: number): string {
   return new Intl.NumberFormat('fr-CD').format(Math.round(value)) + ' FC';
@@ -67,12 +109,14 @@ function buildHtml(data: ReceiptData): string {
     .map((item) => {
       const total = formatFc(item.totalFc);
       const unit = formatFc(item.unitPriceFc);
+      const packaging = formatPackagingLine(item);
       return `
         <div class="row item">
           <div class="line">
             <span class="name">${escapeHtml(item.productName)}</span>
             <span class="total">${total}</span>
           </div>
+          ${packaging ? `<div class="line unit"><span>&nbsp;&nbsp;${escapeHtml(packaging)}</span></div>` : ''}
           <div class="line unit">
             <span>&nbsp;&nbsp;${item.qty} × ${unit}</span>
           </div>
@@ -218,6 +262,8 @@ function buildHtml(data: ReceiptData): string {
   <div class="meta">
     ${data.receiptId ? `<div class="meta-row"><span class="label">Receipt #</span><span>${escapeHtml(data.receiptId)}</span></div>` : ''}
     <div class="meta-row"><span class="label">Date</span><span>${escapeHtml(data.date)}</span></div>
+    ${data.clientName ? `<div class="meta-row"><span class="label">Client</span><span>${escapeHtml(data.clientName)}</span></div>` : ''}
+    ${data.clientPhone ? `<div class="meta-row"><span class="label">Tél</span><span>${escapeHtml(data.clientPhone)}</span></div>` : ''}
   </div>
 
   <hr class="divider" />
@@ -239,8 +285,10 @@ function buildHtml(data: ReceiptData): string {
   </div>` : ''}
 
   <div class="footer">
-    ${data.markupPct > 0 ? `Markup ${data.markupPct}%` : ''}
-    <div class="thanks">★ THANK YOU ★</div>
+    ${data.markupPct > 0 ? `<div>Markup ${data.markupPct}%</div>` : ''}
+    <div>${escapeHtml(RECEIPT_FOOTER.address)}</div>
+    <div>${escapeHtml(RECEIPT_FOOTER.phone)}</div>
+    <div class="thanks">${escapeHtml(RECEIPT_FOOTER.thanks)}</div>
   </div>
 </body>
 </html>`;

@@ -7,7 +7,7 @@
  * paired device's RFCOMM stream.
  */
 
-import type { ReceiptData, ReceiptItem } from './receipt';
+import { RECEIPT_FOOTER, formatPackagingLine, type ReceiptData, type ReceiptItem } from './receipt';
 
 const ENC = {
   INIT: [0x1b, 0x40],
@@ -67,8 +67,8 @@ function fc(value: number): string {
 
 function renderItem(item: ReceiptItem): number[] {
   // Line 1: product name (left) + total (right)
-  //         e.g. "Coca 33cl x3        15 000 FC"
-  // Line 2: indented "@ unit"
+  // Line 2 (optional): packaging breakdown, e.g. "3 cartons × 24 + 2 pcs"
+  // Line 3: indented per-piece "@ unit price"
   const total = fc(item.totalFc);
   const nameAndQty = `${item.productName} x${item.qty}`;
   const maxNameWidth = COLS - total.length - 1;
@@ -76,11 +76,15 @@ function renderItem(item: ReceiptItem): number[] {
     nameAndQty.length <= maxNameWidth
       ? padRight(nameAndQty, maxNameWidth) + ' ' + total
       : nameAndQty.slice(0, maxNameWidth) + ' ' + total;
-  const unitLine = `  @ ${fc(item.unitPriceFc)}`;
-  return [
-    ...ascii(nameLine), ...ENC.LF,
-    ...ascii(unitLine), ...ENC.LF,
-  ];
+
+  const out: number[] = [];
+  out.push(...ascii(nameLine), ...ENC.LF);
+
+  const packaging = formatPackagingLine(item);
+  if (packaging) out.push(...ascii('  ' + packaging), ...ENC.LF);
+
+  out.push(...ascii(`  @ ${fc(item.unitPriceFc)}`), ...ENC.LF);
+  return out;
 }
 
 /**
@@ -124,7 +128,7 @@ export function encodeReceipt(data: ReceiptData): Uint8Array {
 
   bytes.push(...ENC.LF);
 
-  // ── Meta (receipt # + date) ─────────────────────────────────────────────
+  // ── Meta (receipt # + date + optional client) ──────────────────────────
   bytes.push(...ENC.ALIGN_LEFT);
   if (data.receiptId) {
     bytes.push(...ascii(metaLine('Receipt #', data.receiptId)));
@@ -132,6 +136,14 @@ export function encodeReceipt(data: ReceiptData): Uint8Array {
   }
   bytes.push(...ascii(metaLine('Date', data.date)));
   bytes.push(...ENC.LF);
+  if (data.clientName) {
+    bytes.push(...ascii(metaLine('Client', data.clientName)));
+    bytes.push(...ENC.LF);
+  }
+  if (data.clientPhone) {
+    bytes.push(...ascii(metaLine('Tel', data.clientPhone)));
+    bytes.push(...ENC.LF);
+  }
 
   bytes.push(...divider('-'));
 
@@ -172,8 +184,13 @@ export function encodeReceipt(data: ReceiptData): Uint8Array {
     bytes.push(...ascii(`Markup ${data.markupPct}%`));
     bytes.push(...ENC.LF);
   }
+  bytes.push(...ascii(RECEIPT_FOOTER.address));
+  bytes.push(...ENC.LF);
+  bytes.push(...ascii(RECEIPT_FOOTER.phone));
+  bytes.push(...ENC.LF);
+  bytes.push(...ENC.LF);
   bytes.push(...ENC.BOLD_ON);
-  bytes.push(...ascii('* THANK YOU *'));
+  bytes.push(...ascii(RECEIPT_FOOTER.thanks));
   bytes.push(...ENC.LF);
   bytes.push(...ENC.BOLD_OFF);
 

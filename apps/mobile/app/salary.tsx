@@ -20,7 +20,8 @@ import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useAuthStore } from '../store/auth.store';
 import { useLocaleStore } from '../store/locale.store';
-import { formatCurrency, formatDate, getErrorMessage } from '../lib/utils';
+import { formatDate, getErrorMessage } from '../lib/utils';
+import { useFormatCurrency, formatFcValue } from '../lib/currency';
 import { useT } from '../lib/i18n';
 
 const STATUS_PILL: Record<SalaryPaymentStatus, string> = {
@@ -46,6 +47,7 @@ export default function SalaryScreen() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const locale = useLocaleStore((s) => s.locale);
+  const formatCurrency = useFormatCurrency();
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
   const [period, setPeriod] = useState<string>(currentPeriod());
   const [rejectTarget, setRejectTarget] = useState<SalaryPayment | null>(null);
@@ -362,6 +364,7 @@ function PaymentCard({
   formatPeriodMonth: (p: string) => string;
   t: ReturnType<typeof useT>;
 }) {
+  const formatCurrency = useFormatCurrency();
   const isPending = p.status === 'PENDING_CONFIRMATION';
   const statusLabel: Record<SalaryPaymentStatus, string> = {
     PENDING_CONFIRMATION: t.salary.statusAwaiting,
@@ -519,7 +522,7 @@ function RequestAdvanceModal({
       setSending(false);
       Alert.alert(
         t.salary.requestAdvanceSuccess,
-        t.salary.requestAdvanceSuccessMsg(formatCurrency(n.toFixed(4)), employerName),
+        t.salary.requestAdvanceSuccessMsg(formatFcValue(n), employerName),
       );
       reset();
       onClose();

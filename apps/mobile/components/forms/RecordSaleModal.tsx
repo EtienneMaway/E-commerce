@@ -111,6 +111,9 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   const [priceGuardPending, setPriceGuardPending] = useState<PriceGuardPending[]>([]);
   const [discountPending, setDiscountPending] = useState<DiscountPending[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [receiptPrompt, setReceiptPrompt] = useState<ReceiptData | null>(null);
+  const [receiptClientName, setReceiptClientName] = useState('');
+  const [receiptClientPhone, setReceiptClientPhone] = useState('');
 
   useEffect(() => {
     if (visible) {
@@ -348,6 +351,9 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         qty: totalPieces,
         unitPriceFc: salePriceFc,
         totalFc: salePriceFc * totalPieces,
+        cartons: parseInt(item.cartons, 10) || 0,
+        extraPieces: parseInt(item.extraPieces, 10) || 0,
+        piecesPerCarton: item.piecesPerCarton,
       })),
       grandTotalFc: soldItems.reduce(
         (sum, { totalPieces, salePriceFc }) => sum + salePriceFc * totalPieces,
@@ -364,26 +370,48 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       receiptId: generateReceiptId(),
     };
 
-    const handlePrint = async () => {
-      try {
-        await printReceipt(receiptData);
-      } catch (err) {
-        if (usePrinterStore.getState().printer) {
-          Alert.alert(t.printer.printFailed, getErrorMessage(err), [
-            { text: t.common.cancel, style: 'cancel' },
-            { text: t.printer.fallbackUsed, onPress: () => void printReceiptViaSystem(receiptData) },
-          ]);
-        } else {
-          Alert.alert(t.printer.printFailed, getErrorMessage(err));
-        }
-      }
-    };
+    setReceiptClientName('');
+    setReceiptClientPhone('');
+    setReceiptPrompt(receiptData);
+  };
 
-    Alert.alert('✅ Sale recorded', 'Would you like a receipt?', [
-      { text: 'Print', onPress: () => void handlePrint() },
-      { text: 'Share PDF', onPress: () => void shareReceiptAsPdf(receiptData) },
-      { text: 'Skip', style: 'cancel' },
-    ]);
+  /**
+   * Merge the typed client name/phone into the stored receipt before printing
+   * or sharing. Keeps the inputs optional — empty strings are dropped.
+   */
+  const buildPromptReceipt = (base: ReceiptData): ReceiptData => ({
+    ...base,
+    clientName: receiptClientName.trim() || undefined,
+    clientPhone: receiptClientPhone.trim() || undefined,
+  });
+
+  const handlePromptPrint = async (): Promise<void> => {
+    if (!receiptPrompt) return;
+    const data = buildPromptReceipt(receiptPrompt);
+    setReceiptPrompt(null);
+    try {
+      await printReceipt(data);
+    } catch (err) {
+      if (usePrinterStore.getState().printer) {
+        Alert.alert(t.printer.printFailed, getErrorMessage(err), [
+          { text: t.common.cancel, style: 'cancel' },
+          { text: t.printer.fallbackUsed, onPress: () => void printReceiptViaSystem(data) },
+        ]);
+      } else {
+        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      }
+    }
+  };
+
+  const handlePromptShare = (): void => {
+    if (!receiptPrompt) return;
+    const data = buildPromptReceipt(receiptPrompt);
+    setReceiptPrompt(null);
+    void shareReceiptAsPdf(data);
+  };
+
+  const handlePromptSkip = (): void => {
+    setReceiptPrompt(null);
   };
 
   /**
@@ -612,6 +640,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
   // ─── Main screen ─────────────────────────────────────────────────────────────
   return (
+    <>
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -910,5 +939,70 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         </View>
       </KeyboardAvoidingView>
     </Modal>
+
+    {/* Post-sale: capture optional client details, then print/share/skip. */}
+    <Modal
+      visible={receiptPrompt !== null}
+      transparent
+      animationType="fade"
+      onRequestClose={handlePromptSkip}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        className="flex-1 justify-center bg-black/50 px-6"
+      >
+        <View className="bg-surface dark:bg-slate-900 rounded-2xl p-5">
+          <Text className="text-text dark:text-slate-100 font-bold text-lg">
+            {t.recordSaleModal.receiptPromptTitle}
+          </Text>
+          <Text className="text-muted dark:text-slate-400 text-sm mt-1 mb-4">
+            {t.recordSaleModal.receiptPromptSubtitle}
+          </Text>
+
+          <Text className="text-text dark:text-slate-200 text-xs font-semibold mb-1">
+            {t.recordSaleModal.receiptClientNameLabel}
+          </Text>
+          <TextInput
+            value={receiptClientName}
+            onChangeText={setReceiptClientName}
+            placeholder=""
+            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-lg px-3 py-2.5 text-text dark:text-slate-100 mb-3"
+            autoCapitalize="words"
+          />
+
+          <Text className="text-text dark:text-slate-200 text-xs font-semibold mb-1">
+            {t.recordSaleModal.receiptClientPhoneLabel}
+          </Text>
+          <TextInput
+            value={receiptClientPhone}
+            onChangeText={setReceiptClientPhone}
+            placeholder="+243 …"
+            keyboardType="phone-pad"
+            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-lg px-3 py-2.5 text-text dark:text-slate-100 mb-4"
+          />
+
+          <View className="flex-row gap-2">
+            <Button
+              label={t.recordSaleModal.receiptSkipBtn}
+              variant="ghost"
+              onPress={handlePromptSkip}
+              className="flex-1"
+            />
+            <Button
+              label={t.recordSaleModal.receiptShareBtn}
+              variant="outline"
+              onPress={handlePromptShare}
+              className="flex-1"
+            />
+            <Button
+              label={t.recordSaleModal.receiptPrintBtn}
+              onPress={() => void handlePromptPrint()}
+              className="flex-1"
+            />
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+    </>
   );
 }

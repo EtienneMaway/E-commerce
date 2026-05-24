@@ -28,6 +28,9 @@ interface ProductSummary {
 export default function DashboardScreen() {
   const t = useT();
   const user = useAuthStore((s) => s.user);
+  // Show salary surfaces whenever the user has an active employment — the
+  // salary is theirs regardless of which persona they're currently acting as.
+  const isEmployee = !!user?.activeEmployment;
   const { theme, toggle } = useThemeStore();
   const formatCurrency = useFormatCurrency();
   const exchangeRate = useExchangeRate();
@@ -279,8 +282,8 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Pending salary confirmations — only in online mode */}
-      {!isOffline && pendingSalary.length > 0 && (
+      {/* Pending salary confirmations — shown to anyone with an active employment */}
+      {!isOffline && isEmployee && pendingSalary.length > 0 && (
         <Pressable
           onPress={() => router.push('/salary')}
           className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-xl px-4 py-3 mb-4 flex-row items-start gap-3"
@@ -408,7 +411,7 @@ export default function DashboardScreen() {
           {/* Expenses entry tile */}
           <Pressable
             onPress={() => router.push('/expenses')}
-            className="flex-row items-center bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4 mb-5"
+            className="flex-row items-center bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4 mb-3"
             style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
           >
             <Text className="text-2xl mr-3">🧾</Text>
@@ -418,6 +421,22 @@ export default function DashboardScreen() {
             </View>
             <Text className="text-muted dark:text-slate-500 text-xl">›</Text>
           </Pressable>
+
+          {/* Salary entry tile — shown to anyone with an active employment */}
+          {isEmployee && (
+            <Pressable
+              onPress={() => router.push('/salary')}
+              className="flex-row items-center bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4 mb-5"
+              style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
+            >
+              <Text className="text-2xl mr-3">💵</Text>
+              <View className="flex-1">
+                <Text className="text-text dark:text-slate-100 font-semibold text-base">{t.salary.title}</Text>
+                <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">{t.salary.homeSubtitle}</Text>
+              </View>
+              <Text className="text-muted dark:text-slate-500 text-xl">›</Text>
+            </Pressable>
+          )}
 
           {/* Top Suppliers */}
           {(suppliers?.length ?? 0) > 0 && (
