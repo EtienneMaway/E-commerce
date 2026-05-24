@@ -7,7 +7,7 @@ import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { UserSearchField } from './UserSearchField';
 import { getErrorMessage } from '../../lib/utils';
-import { useFormatCurrency } from '../../lib/currency';
+import { useFormatCurrency, useExchangeRate, formatFcValue } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 
 interface User { id: string; username: string; email: string | null; phone: string | null; }
@@ -18,11 +18,19 @@ export function ConsignToDebtorModal({ visible, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
+  const exchangeRate = useExchangeRate();
   const [debtor, setDebtor] = useState<User | null>(null);
   const [productQuery, setProductQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<ProductSummary | null>(null);
+  // agreedUnitPrice is user-typed FC. Converted to USD on submission.
   const [form, setForm] = useState({ quantity: '', agreedUnitPrice: '' });
   const set = (key: keyof typeof form) => (val: string) => setForm((f) => ({ ...f, [key]: val }));
+
+  const fcToUsd4dp = (fcStr: string): string => {
+    const fc = parseFloat(fcStr) || 0;
+    const rate = parseFloat(exchangeRate) || 1;
+    return (fc / rate).toFixed(4);
+  };
 
   const { data: products } = useQuery({
     queryKey: QK.inventoryProducts,
@@ -58,7 +66,7 @@ export function ConsignToDebtorModal({ visible, onClose }: Props) {
       debtorUserId: debtor!.id,
       productName: (selectedProduct?.productName ?? productQuery).trim(),
       quantity: parseInt(form.quantity, 10),
-      agreedUnitPrice: form.agreedUnitPrice,
+      agreedUnitPrice: fcToUsd4dp(form.agreedUnitPrice),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
@@ -152,16 +160,18 @@ export function ConsignToDebtorModal({ visible, onClose }: Props) {
         <Input
           label={t.consignToDebtorModal.agreedPrice}
           value={form.agreedUnitPrice}
-          onChangeText={set('agreedUnitPrice')}
-          placeholder={t.consignToDebtorModal.sellingPricePlaceholder}
-          keyboardType="decimal-pad"
+          onChangeText={(v) => set('agreedUnitPrice')(v.replace(/[^0-9]/g, ''))}
+          placeholder="0"
+          keyboardType="number-pad"
         />
 
         <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
           <Text className="text-blue-700 text-xs">
-            {t.consignToDebtorModal.debtHint(form.agreedUnitPrice && form.quantity
-              ? formatCurrency((parseFloat(form.agreedUnitPrice || '0') * parseInt(form.quantity || '0', 10)).toFixed(4))
-              : '...')}
+            {t.consignToDebtorModal.debtHint(
+              form.agreedUnitPrice && form.quantity
+                ? formatFcValue(parseFloat(form.agreedUnitPrice || '0') * parseInt(form.quantity || '0', 10))
+                : '...',
+            )}
           </Text>
         </View>
 

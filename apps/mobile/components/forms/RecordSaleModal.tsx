@@ -23,7 +23,7 @@ import {
   isDiscountReasonRequired,
   getDiscountReasonInfo,
 } from '../../lib/utils';
-import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
+import { useFormatCurrency, useExchangeRate, usdToFcStr, formatFcValue } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
@@ -43,23 +43,27 @@ interface Props {
  * `cartons` is the user-typed quantity. When `piecesPerCarton` is set the unit
  * is cartons; otherwise it's already in pieces.
  *
- * Pricing fields are strings so the user can type freely (incl. partial
- * decimals like "12."). Resolved to numbers at submit time.
+ * **All price fields are FC strings.** Mobile is FC-only — no USD ever
+ * surfaces in the UI. The API speaks USD, so prices are converted on
+ * submission via the current exchange rate.
+ *
+ * `unitCostFc` is derived once from `product.latestUnitCost` × rate at the
+ * moment the product is added to the cart (read-only reference).
  */
 interface CartItem {
   productName: string;
-  unitCost: string;
+  unitCostFc: string;        // FC, read-only reference
   piecesPerCarton: number | null;
   totalAvailable: number;
   // Quantity
   cartons: string;
   extraPieces: string;
   showExtraPieces: boolean;
-  // Pricing
-  unitPrice: string;   // per piece
-  cartonPrice: string; // derived from/to unitPrice when ppc set
-  // Standard (dashboard-set) price hint, for "default came from here" indicator
-  dashboardPrice: string;
+  // Pricing — FC
+  unitPriceFc: string;       // per piece, in FC
+  cartonPriceFc: string;     // per carton, FC (bidirectionally bound to unitPriceFc via ppc)
+  // Original dashboard-set price, in FC, for the "set in dashboard" hint.
+  dashboardPriceFc: string;
 }
 
 interface PriceGuardPending {
@@ -85,9 +89,12 @@ function totalPiecesOf(item: Pick<CartItem, 'cartons' | 'extraPieces' | 'piecesP
   return cartons;
 }
 
+/** Carton price = unit price × pieces-per-carton. Same direction regardless of currency. */
 function deriveCartonPrice(unitPrice: string, ppc: number | null): string {
   const up = parseFloat(unitPrice);
-  return !isNaN(up) && up > 0 && ppc ? (up * ppc).toFixed(4) : '';
+  if (isNaN(up) || up <= 0 || !ppc) return '';
+  // Whole-number FC for nicer display in the carton input.
+  return String(Math.round(up * ppc));
 }
 
 export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Props) {
@@ -148,8 +155,9 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
   const cartArray = Array.from(cart.values());
 
+  /** Row total in FC. */
   const computeRowTotal = (item: CartItem): number => {
-    const up = parseFloat(item.unitPrice);
+    const up = parseFloat(item.unitPriceFc);
     const tp = totalPiecesOf(item);
     if (isNaN(up) || up <= 0 || tp <= 0) return 0;
     return up * tp;
@@ -165,10 +173,14 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         return next;
       }
       const ppc = product.piecesPerCarton;
-      const unitPrice = product.latestSellingPrice ?? '';
+      // Convert the USD API values to FC for in-modal display + input. The
+      // dashboard-set selling price becomes the default; the cost is shown
+      // read-only as an FC reference.
+      const unitPriceFc = usdToFcStr(product.latestSellingPrice ?? '0', exchangeRate);
+      const unitCostFc = usdToFcStr(product.latestUnitCost ?? '0', exchangeRate);
       next.set(product.productName, {
         productName: product.productName,
-        unitCost: product.latestUnitCost ?? '0.0000',
+        unitCostFc,
         piecesPerCarton: ppc,
         totalAvailable: product.totalAvailable,
         // If product has piecesPerCarton, "cartons" starts at 1 carton.
@@ -176,9 +188,9 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         cartons: '1',
         extraPieces: '',
         showExtraPieces: false,
-        unitPrice,
-        cartonPrice: deriveCartonPrice(unitPrice, ppc),
-        dashboardPrice: unitPrice,
+        unitPriceFc,
+        cartonPriceFc: deriveCartonPrice(unitPriceFc, ppc),
+        dashboardPriceFc: unitPriceFc,
       });
       return next;
     });
@@ -204,20 +216,21 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     });
   };
 
-  const setUnitPrice = (productName: string, value: string): void => {
+  const setUnitPriceFc = (productName: string, value: string): void => {
     updateItem(productName, {
-      unitPrice: value,
-      cartonPrice: deriveCartonPrice(value, cart.get(productName)?.piecesPerCarton ?? null),
+      unitPriceFc: value,
+      cartonPriceFc: deriveCartonPrice(value, cart.get(productName)?.piecesPerCarton ?? null),
     });
   };
 
-  const setCartonPrice = (productName: string, value: string): void => {
+  const setCartonPriceFc = (productName: string, value: string): void => {
     const item = cart.get(productName);
     if (!item?.piecesPerCarton) return;
     const cp = parseFloat(value);
+    // FC values are whole numbers, so round here to keep the bound unit price tidy.
     const derivedUnit =
-      !isNaN(cp) && cp > 0 ? (cp / item.piecesPerCarton).toFixed(4) : item.unitPrice;
-    updateItem(productName, { cartonPrice: value, unitPrice: derivedUnit });
+      !isNaN(cp) && cp > 0 ? String(Math.round(cp / item.piecesPerCarton)) : item.unitPriceFc;
+    updateItem(productName, { cartonPriceFc: value, unitPriceFc: derivedUnit });
   };
 
   const handleClose = (): void => {
@@ -241,7 +254,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         return { ok: false, reason: 'extra-too-large' };
       }
     }
-    const up = parseFloat(item.unitPrice);
+    const up = parseFloat(item.unitPriceFc);
     if (isNaN(up) || up <= 0) return { ok: false, reason: 'price' };
     return { ok: true };
   };
@@ -307,21 +320,20 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   };
 
   const offerReceipt = (
-    soldItems: { item: CartItem; totalPieces: number; salePrice: string }[],
+    soldItems: { item: CartItem; totalPieces: number; salePrice: string; salePriceFc: number }[],
   ): void => {
-    const rate = parseFloat(exchangeRate) || 1;
+    // Receipt is FC-native — pass per-row FC prices directly (typed by the
+    // user) so what the customer sees on the printout matches what was
+    // entered, without an extra USD-rate round-trip that can drift by 1 FC.
     const receiptData: ReceiptData = {
-      items: soldItems.map(({ item, totalPieces, salePrice }) => {
-        const unitPriceFc = parseFloat(salePrice) * rate;
-        return {
-          productName: item.productName,
-          qty: totalPieces,
-          unitPriceFc,
-          totalFc: unitPriceFc * totalPieces,
-        };
-      }),
+      items: soldItems.map(({ item, totalPieces, salePriceFc }) => ({
+        productName: item.productName,
+        qty: totalPieces,
+        unitPriceFc: salePriceFc,
+        totalFc: salePriceFc * totalPieces,
+      })),
       grandTotalFc: soldItems.reduce(
-        (sum, { totalPieces, salePrice }) => sum + parseFloat(salePrice) * totalPieces * rate,
+        (sum, { totalPieces, salePriceFc }) => sum + salePriceFc * totalPieces,
         0,
       ),
       // Per-item pricing — no single markup applies. Receipt builder reads
@@ -353,12 +365,24 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     ]);
   };
 
-  const buildSubmitItems = (items: CartItem[]) =>
-    items.map((item) => ({
-      item,
-      totalPieces: totalPiecesOf(item),
-      salePrice: parseFloat(item.unitPrice).toFixed(4),
-    }));
+  /**
+   * Build the per-item submission payload. Converts the user-typed FC price
+   * to a USD string (4dp) for the API while keeping the FC value around for
+   * the receipt + offline cache.
+   */
+  const buildSubmitItems = (items: CartItem[]) => {
+    const rate = parseFloat(exchangeRate) || 1;
+    return items.map((item) => {
+      const salePriceFc = parseFloat(item.unitPriceFc) || 0;
+      const salePrice = (salePriceFc / rate).toFixed(4);
+      return {
+        item,
+        totalPieces: totalPiecesOf(item),
+        salePrice,
+        salePriceFc,
+      };
+    });
+  };
 
   const handleSubmit = async (): Promise<void> => {
     if (cart.size === 0) {
@@ -407,11 +431,22 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     }
   };
 
+  /** Map a CartItem to a submission payload, converting its FC unit price → USD. */
+  const itemToPayload = (item: CartItem): { salePrice: string; salePriceFc: number; totalPieces: number } => {
+    const rate = parseFloat(exchangeRate) || 1;
+    const salePriceFc = parseFloat(item.unitPriceFc) || 0;
+    return {
+      totalPieces: totalPiecesOf(item),
+      salePrice: (salePriceFc / rate).toFixed(4),
+      salePriceFc,
+    };
+  };
+
   const handleConfirmOverrides = async (): Promise<void> => {
     const inputs = priceGuardPending.map((p) => ({
       item: p.cartItem,
+      ...itemToPayload(p.cartItem),
       totalPieces: p.totalPieces,
-      salePrice: parseFloat(p.cartItem.unitPrice).toFixed(4),
       confirmedOverride: true,
     }));
     setIsSubmitting(true);
@@ -431,8 +466,8 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     }
     const inputs = discountPending.map((p) => ({
       item: p.cartItem,
+      ...itemToPayload(p.cartItem),
       totalPieces: p.totalPieces,
-      salePrice: parseFloat(p.cartItem.unitPrice).toFixed(4),
       discountReason: p.reason.trim(),
     }));
     setIsSubmitting(true);
@@ -740,20 +775,20 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                           </Text>
                         ) : null}
 
-                        {/* Price inputs */}
+                        {/* Price inputs — FC native */}
                         <View className="mt-3">
                           <Text className="text-muted dark:text-slate-400 text-xs mb-1">
                             {t.recordSaleModal.sellingPriceLabel}
                           </Text>
                           <TextInput
-                            value={cartItem.unitPrice}
-                            onChangeText={(v) => setUnitPrice(product.productName, v)}
-                            keyboardType="decimal-pad"
-                            placeholder="0.00"
+                            value={cartItem.unitPriceFc}
+                            onChangeText={(v) => setUnitPriceFc(product.productName, v.replace(/[^0-9]/g, ''))}
+                            keyboardType="number-pad"
+                            placeholder="0"
                             placeholderTextColor="#94A3B8"
                             className="bg-surface dark:bg-slate-900 border border-border dark:border-slate-700 rounded-xl px-3 py-2 text-text dark:text-slate-100 text-base"
                           />
-                          {cartItem.dashboardPrice && cartItem.unitPrice === cartItem.dashboardPrice ? (
+                          {cartItem.dashboardPriceFc && cartItem.unitPriceFc === cartItem.dashboardPriceFc ? (
                             <Text className="text-muted dark:text-slate-500 text-[11px] mt-1 italic">
                               {t.recordSaleModal.dashboardPriceHint}
                             </Text>
@@ -766,20 +801,20 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                               {t.recordSaleModal.cartonPriceLabel}
                             </Text>
                             <TextInput
-                              value={cartItem.cartonPrice}
-                              onChangeText={(v) => setCartonPrice(product.productName, v)}
-                              keyboardType="decimal-pad"
-                              placeholder="0.00"
+                              value={cartItem.cartonPriceFc}
+                              onChangeText={(v) => setCartonPriceFc(product.productName, v.replace(/[^0-9]/g, ''))}
+                              keyboardType="number-pad"
+                              placeholder="0"
                               placeholderTextColor="#94A3B8"
                               className="bg-surface dark:bg-slate-900 border border-border dark:border-slate-700 rounded-xl px-3 py-2 text-text dark:text-slate-100 text-base"
                             />
                           </View>
                         ) : null}
 
-                        {/* Below-cost warning (server-side guarded too, but this avoids the round-trip when obvious) */}
+                        {/* Below-cost warning. Both values are FC so they're directly comparable. */}
                         {(() => {
-                          const cost = parseFloat(cartItem.unitCost);
-                          const sell = parseFloat(cartItem.unitPrice);
+                          const cost = parseFloat(cartItem.unitCostFc);
+                          const sell = parseFloat(cartItem.unitPriceFc);
                           if (!isNaN(cost) && cost > 0 && !isNaN(sell) && sell > 0 && sell <= cost) {
                             return (
                               <Text className="text-danger text-[11px] mt-2">
@@ -790,13 +825,13 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                           return null;
                         })()}
 
-                        {/* Row total */}
+                        {/* Row total — pure FC, no exchange-rate conversion. */}
                         <View className="mt-3 pt-2 border-t border-border dark:border-slate-700 flex-row justify-between items-center">
                           <Text className="text-muted dark:text-slate-500 text-xs">
-                            {formatCurrency(cartItem.unitPrice || '0')} × {totalPiecesOf(cartItem)}
+                            {formatFcValue(cartItem.unitPriceFc || '0')} × {totalPiecesOf(cartItem)}
                           </Text>
                           <Text className="text-primary font-bold text-base">
-                            {formatCurrency(computeRowTotal(cartItem).toFixed(4))}
+                            {formatFcValue(computeRowTotal(cartItem))}
                           </Text>
                         </View>
                       </View>
@@ -815,7 +850,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                   {t.recordSaleModal.productsSelected(cart.size)}
                 </Text>
                 <Text className="text-text dark:text-slate-100 font-bold text-lg">
-                  {t.recordSaleModal.total(formatCurrency(grandTotal.toFixed(4)))}
+                  {t.recordSaleModal.total(formatFcValue(grandTotal))}
                 </Text>
               </View>
             )}

@@ -7,7 +7,7 @@ import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { UserSearchField } from './UserSearchField';
 import { getErrorMessage } from '../../lib/utils';
-import { useFormatCurrency } from '../../lib/currency';
+import { useExchangeRate, formatFcValue } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 
 interface User { id: string; username: string; email: string | null; phone: string | null; }
@@ -16,17 +16,24 @@ interface Props { visible: boolean; onClose: () => void; }
 export function ReceiveFromSupplierModal({ visible, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
-  const formatCurrency = useFormatCurrency();
+  const exchangeRate = useExchangeRate();
   const [supplier, setSupplier] = useState<User | null>(null);
+  // unitCost + sellingPrice are user-typed FC amounts. Converted to USD on submission.
   const [form, setForm] = useState({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '', piecesPerCarton: '' });
   const set = (key: keyof typeof form) => (val: string) => setForm((f) => ({ ...f, [key]: val }));
+
+  const fcToUsd4dp = (fcStr: string): string => {
+    const fc = parseFloat(fcStr) || 0;
+    const rate = parseFloat(exchangeRate) || 1;
+    return (fc / rate).toFixed(4);
+  };
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => inventoryApi.receiveFromSupplier({
       supplierUserId: supplier!.id,
       productName: form.productName,
-      unitCost: form.unitCost,
-      sellingPrice: form.sellingPrice,
+      unitCost: fcToUsd4dp(form.unitCost),
+      sellingPrice: fcToUsd4dp(form.sellingPrice),
       quantity: parseInt(form.quantity, 10),
       ...(form.category ? { category: form.category } : {}),
       ...(form.piecesPerCarton ? { piecesPerCarton: parseInt(form.piecesPerCarton, 10) } : {}),
@@ -61,13 +68,19 @@ export function ReceiveFromSupplierModal({ visible, onClose }: Props) {
         </View>
         <UserSearchField label={t.receiveSupplierModal.selectSupplier} selected={supplier} onSelect={setSupplier} />
         <Input label={t.receiveSupplierModal.productName} value={form.productName} onChangeText={set('productName')} placeholder={t.receiveSupplierModal.productNamePlaceholder} autoCapitalize="words" />
-        <Input label={t.receiveSupplierModal.agreedUnitCost} value={form.unitCost} onChangeText={set('unitCost')} placeholder={t.receiveSupplierModal.agreedUnitCostPlaceholder} keyboardType="decimal-pad" />
-        <Input label={t.receiveSupplierModal.sellingPrice} value={form.sellingPrice} onChangeText={set('sellingPrice')} placeholder={t.receiveSupplierModal.sellingPricePlaceholder} keyboardType="decimal-pad" />
+        <Input label={t.receiveSupplierModal.agreedUnitCost} value={form.unitCost} onChangeText={(v) => set('unitCost')(v.replace(/[^0-9]/g, ''))} placeholder="0" keyboardType="number-pad" />
+        <Input label={t.receiveSupplierModal.sellingPrice} value={form.sellingPrice} onChangeText={(v) => set('sellingPrice')(v.replace(/[^0-9]/g, ''))} placeholder="0" keyboardType="number-pad" />
         <Input label={t.receiveSupplierModal.quantity} value={form.quantity} onChangeText={set('quantity')} placeholder={t.receiveSupplierModal.quantityPlaceholder} keyboardType="number-pad" />
         <Input label={t.receiveSupplierModal.category} value={form.category} onChangeText={set('category')} placeholder={t.receiveSupplierModal.categoryPlaceholder} />
         <Input label={t.receiveSupplierModal.piecesPerCarton} value={form.piecesPerCarton} onChangeText={set('piecesPerCarton')} placeholder="e.g. 20" keyboardType="number-pad" />
         <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
-          <Text className="text-blue-700 text-xs">{t.receiveSupplierModal.debtHint(form.unitCost && form.quantity ? formatCurrency((parseFloat(form.unitCost || '0') * parseInt(form.quantity || '0', 10)).toFixed(4)) : '...')}</Text>
+          <Text className="text-blue-700 text-xs">
+            {t.receiveSupplierModal.debtHint(
+              form.unitCost && form.quantity
+                ? formatFcValue(parseFloat(form.unitCost || '0') * parseInt(form.quantity || '0', 10))
+                : '...',
+            )}
+          </Text>
         </View>
         <Button label={t.receiveSupplierModal.submit} onPress={handleSubmit} loading={isPending} />
       </ScrollView>

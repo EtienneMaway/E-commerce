@@ -40,6 +40,29 @@ export function fcToUsd(fcValue: string | number, rate: string): string {
 }
 
 /**
+ * Converts a USD value to its FC equivalent as a plain whole-number string.
+ * Use when pre-filling an FC input from a USD value returned by the API.
+ * Empty / NaN input yields ''.
+ */
+export function usdToFcStr(usdValue: string | number, rate: string): string {
+  const n = typeof usdValue === 'string' ? parseFloat(usdValue) : usdValue;
+  if (isNaN(n) || n === 0) return n === 0 ? '0' : '';
+  const r = parseFloat(rate) || 1;
+  return String(Math.round(n * r));
+}
+
+/**
+ * Formats an FC value (already in FC, NOT USD) as "1 234 FC".
+ * Pure display — does NOT multiply by an exchange rate. Use when the value
+ * is already an FC figure (e.g. from a user input that's FC-native).
+ */
+export function formatFcValue(value: string | number): string {
+  const n = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(n)) return '0 FC';
+  return new Intl.NumberFormat('fr-CD').format(Math.round(n)) + ' FC';
+}
+
+/**
  * Hook that returns the raw usdToFcRate string (falls back to '1').
  */
 export function useExchangeRate(): string {

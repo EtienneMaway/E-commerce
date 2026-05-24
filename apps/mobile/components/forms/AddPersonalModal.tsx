@@ -6,6 +6,7 @@ import { QK } from '../../lib/query-keys';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { getErrorMessage } from '../../lib/utils';
+import { useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 
 interface Props { visible: boolean; onClose: () => void; }
@@ -13,15 +14,24 @@ interface Props { visible: boolean; onClose: () => void; }
 export function AddPersonalModal({ visible, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
+  const exchangeRate = useExchangeRate();
+  // unitCost + sellingPrice are user-typed FC. Converted to USD on submission
+  // since the API speaks USD.
   const [form, setForm] = useState({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '', piecesPerCarton: '' });
 
   const set = (key: keyof typeof form) => (val: string) => setForm((f) => ({ ...f, [key]: val }));
 
+  const fcToUsd4dp = (fcStr: string): string => {
+    const fc = parseFloat(fcStr) || 0;
+    const rate = parseFloat(exchangeRate) || 1;
+    return (fc / rate).toFixed(4);
+  };
+
   const { mutate, isPending } = useMutation({
     mutationFn: () => inventoryApi.addPersonal({
       productName: form.productName,
-      unitCost: form.unitCost,
-      sellingPrice: form.sellingPrice,
+      unitCost: fcToUsd4dp(form.unitCost),
+      sellingPrice: fcToUsd4dp(form.sellingPrice),
       quantity: parseInt(form.quantity, 10),
       ...(form.category ? { category: form.category } : {}),
       ...(form.piecesPerCarton ? { piecesPerCarton: parseInt(form.piecesPerCarton, 10) } : {}),
@@ -51,8 +61,8 @@ export function AddPersonalModal({ visible, onClose }: Props) {
           <TouchableOpacity onPress={onClose}><Text className="text-primary font-medium">{t.common.cancel}</Text></TouchableOpacity>
         </View>
         <Input label={t.addPersonalModal.productName} value={form.productName} onChangeText={set('productName')} placeholder={t.addPersonalModal.productNamePlaceholder} autoCapitalize="words" />
-        <Input label={t.addPersonalModal.unitCost} value={form.unitCost} onChangeText={set('unitCost')} placeholder="25.00" keyboardType="decimal-pad" />
-        <Input label={t.addPersonalModal.sellingPrice} value={form.sellingPrice} onChangeText={set('sellingPrice')} placeholder="30.00" keyboardType="decimal-pad" />
+        <Input label={t.addPersonalModal.unitCost} value={form.unitCost} onChangeText={(v) => set('unitCost')(v.replace(/[^0-9]/g, ''))} placeholder="0" keyboardType="number-pad" />
+        <Input label={t.addPersonalModal.sellingPrice} value={form.sellingPrice} onChangeText={(v) => set('sellingPrice')(v.replace(/[^0-9]/g, ''))} placeholder="0" keyboardType="number-pad" />
         <Input label={t.addPersonalModal.quantity} value={form.quantity} onChangeText={set('quantity')} placeholder="100" keyboardType="number-pad" />
         <Input label={t.addPersonalModal.category} value={form.category} onChangeText={set('category')} placeholder={t.addPersonalModal.categoryPlaceholder} />
         <Input label={t.addPersonalModal.piecesPerCarton} value={form.piecesPerCarton} onChangeText={set('piecesPerCarton')} placeholder="e.g. 20" keyboardType="number-pad" />
