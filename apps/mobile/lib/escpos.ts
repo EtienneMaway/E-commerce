@@ -132,8 +132,10 @@ export function encodeReceipt(data: ReceiptData): Uint8Array {
 
   // Footer
   bytes.push(...ENC.ALIGN_CENTER);
-  bytes.push(...ascii(`Markup: ${data.markupPct}%`));
-  bytes.push(...ENC.LF);
+  if (data.markupPct > 0) {
+    bytes.push(...ascii(`Markup: ${data.markupPct}%`));
+    bytes.push(...ENC.LF);
+  }
   bytes.push(...ascii('Thank you!'));
   bytes.push(...ENC.LF);
 

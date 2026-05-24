@@ -146,8 +146,25 @@ export const accountApi = {
 
 // ─── Inventory ─────────────────────────────────────────────────────────────
 
+export interface ProductSummary {
+  productName: string;
+  category: string | null;
+  piecesPerCarton: number | null;
+  latestCartonPrice: string | null;
+  totalAvailable: number;
+  sourceBreakdown: {
+    personal: number;
+    supplier: number;
+    consignedIn: number;
+    consignedOut: number;
+  };
+  latestSellingPrice: string;
+  latestUnitCost: string;
+}
+
 export const inventoryApi = {
-  listProducts: () => api.get('/inventory/products').then((r) => r.data),
+  listProducts: (): Promise<ProductSummary[]> =>
+    api.get('/inventory/products').then((r) => r.data),
 
   list: (params?: { source?: string; supplierUserId?: string; category?: string; productName?: string; page?: number; limit?: number }) =>
     api.get('/inventory', { params }).then((r) => r.data),

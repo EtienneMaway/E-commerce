@@ -87,7 +87,7 @@ function buildHtml(data: ReceiptData): string {
     </tr>
   </table>
   <hr class="divider" />
-  <p class="footer">Markup: ${data.markupPct}% &nbsp;•&nbsp; Thank you!</p>
+  <p class="footer">${data.markupPct > 0 ? `Markup: ${data.markupPct}% &nbsp;•&nbsp; ` : ''}Thank you!</p>
 </body>
 </html>`;
 }

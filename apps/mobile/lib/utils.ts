@@ -109,6 +109,29 @@ export function getPriceGuardWarning(error: unknown): {
   return null;
 }
 
+/** Check if a sale was rejected because an employee tried to discount below the owner's standard price (HTTP 422). */
+export function isDiscountReasonRequired(error: unknown): boolean {
+  if (error && typeof error === 'object' && 'response' in error) {
+    const resp = (error as { response?: { status?: number; data?: { error?: string } } }).response;
+    return resp?.status === 422 && resp?.data?.error === 'DISCOUNT_REASON_REQUIRED';
+  }
+  return false;
+}
+
+/** Extract the standard price + submitted price from a DISCOUNT_REASON_REQUIRED 422. */
+export function getDiscountReasonInfo(error: unknown): {
+  standardPrice: string;
+  submittedPrice: string;
+} | null {
+  if (isDiscountReasonRequired(error)) {
+    const resp = (error as {
+      response: { data: { standardPrice: string; submittedPrice: string } };
+    }).response;
+    return { standardPrice: resp.data.standardPrice, submittedPrice: resp.data.submittedPrice };
+  }
+  return null;
+}
+
 /** Check if a login error means the account is in its soft-delete grace window (HTTP 410). */
 export function isPendingDeletionError(error: unknown): boolean {
   if (error && typeof error === 'object' && 'response' in error) {
