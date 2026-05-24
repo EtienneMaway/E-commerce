@@ -29,8 +29,8 @@ export class InitialSchema1000000000000 implements MigrationInterface {
         "outstanding_balance"  numeric(12,2)    NOT NULL DEFAULT '0.00',
         "created_at"           TIMESTAMP        NOT NULL DEFAULT now(),
         "updated_at"           TIMESTAMP        NOT NULL DEFAULT now(),
-        "owner_id"             character varying NOT NULL,
-        "supplier_user_id"     character varying NOT NULL,
+        "owner_id"             uuid NOT NULL,
+        "supplier_user_id"     uuid NOT NULL,
         CONSTRAINT "UQ_supplier_debts_owner_supplier" UNIQUE ("owner_id", "supplier_user_id"),
         CONSTRAINT "PK_supplier_debts" PRIMARY KEY ("id")
       )
@@ -53,8 +53,8 @@ export class InitialSchema1000000000000 implements MigrationInterface {
         "outstanding_balance" numeric(12,2)   NOT NULL DEFAULT '0.00',
         "created_at"         TIMESTAMP        NOT NULL DEFAULT now(),
         "updated_at"         TIMESTAMP        NOT NULL DEFAULT now(),
-        "owner_id"           character varying NOT NULL,
-        "debtor_user_id"     character varying NOT NULL,
+        "owner_id"           uuid NOT NULL,
+        "debtor_user_id"     uuid NOT NULL,
         CONSTRAINT "UQ_debtor_credits_owner_debtor" UNIQUE ("owner_id", "debtor_user_id"),
         CONSTRAINT "PK_debtor_credits" PRIMARY KEY ("id")
       )
@@ -90,11 +90,11 @@ export class InitialSchema1000000000000 implements MigrationInterface {
         "carton_price"      numeric(12,2)    DEFAULT NULL,
         "pieces_per_carton" integer          DEFAULT NULL,
         "created_at"        TIMESTAMP        NOT NULL DEFAULT now(),
-        "owner_id"          character varying NOT NULL,
+        "owner_id"          uuid NOT NULL,
         "supplier_user_id"  uuid,
-        "debtor_user_id"    character varying,
-        "supplier_debt_id"  character varying,
-        "debtor_credit_id"  character varying,
+        "debtor_user_id"    uuid,
+        "supplier_debt_id"  uuid,
+        "debtor_credit_id"  uuid,
         CONSTRAINT "PK_inventory_entries" PRIMARY KEY ("id")
       )
     `);
@@ -139,10 +139,10 @@ export class InitialSchema1000000000000 implements MigrationInterface {
         "direction"         "payments_direction_enum" NOT NULL,
         "status"            "payments_status_enum"    NOT NULL DEFAULT 'PENDING',
         "remaining_balance" numeric(12,2),
-        "paid_by_user_id"   character varying,
-        "paid_to_user_id"   character varying,
-        "supplier_debt_id"  character varying,
-        "debtor_credit_id"  character varying,
+        "paid_by_user_id"   uuid,
+        "paid_to_user_id"   uuid,
+        "supplier_debt_id"  uuid,
+        "debtor_credit_id"  uuid,
         CONSTRAINT "PK_payments" PRIMARY KEY ("id")
       )
     `);
@@ -173,8 +173,8 @@ export class InitialSchema1000000000000 implements MigrationInterface {
         "is_loss"            boolean          NOT NULL DEFAULT false,
         "created_at"         TIMESTAMP        NOT NULL DEFAULT now(),
         "updated_at"         TIMESTAMP        NOT NULL DEFAULT now(),
-        "owner_id"           character varying NOT NULL,
-        "inventory_entry_id" character varying NOT NULL,
+        "owner_id"           uuid NOT NULL,
+        "inventory_entry_id" uuid NOT NULL,
         CONSTRAINT "PK_sale_transactions" PRIMARY KEY ("id")
       )
     `);
@@ -204,8 +204,8 @@ export class InitialSchema1000000000000 implements MigrationInterface {
         "confirmed_at" TIMESTAMP,
         "created_at"   TIMESTAMP        NOT NULL DEFAULT now(),
         "updated_at"   TIMESTAMP        NOT NULL DEFAULT now(),
-        "supplier_id"  character varying NOT NULL,
-        "debtor_id"    character varying NOT NULL,
+        "supplier_id"  uuid NOT NULL,
+        "debtor_id"    uuid NOT NULL,
         CONSTRAINT "PK_consignment_requests" PRIMARY KEY ("id")
       )
     `);
@@ -226,7 +226,7 @@ export class InitialSchema1000000000000 implements MigrationInterface {
         "quantity"               integer          NOT NULL,
         "agreed_unit_price"      numeric(12,2)    NOT NULL,
         "unit_cost"              numeric(12,2)    NOT NULL,
-        "consignment_request_id" character varying NOT NULL,
+        "consignment_request_id" uuid NOT NULL,
         CONSTRAINT "PK_consignment_items" PRIMARY KEY ("id")
       )
     `);
@@ -266,7 +266,7 @@ export class InitialSchema1000000000000 implements MigrationInterface {
         "role"             "external_contacts_role_enum" NOT NULL DEFAULT 'DEBTOR',
         "debtor_balance"   numeric(12,2)    NOT NULL DEFAULT '0.00',
         "supplier_balance" numeric(12,2)    NOT NULL DEFAULT '0.00',
-        "owner_id"         character varying NOT NULL,
+        "owner_id"         uuid NOT NULL,
         "created_at"       TIMESTAMP        NOT NULL DEFAULT now(),
         "updated_at"       TIMESTAMP        NOT NULL DEFAULT now(),
         CONSTRAINT "PK_external_contacts" PRIMARY KEY ("id")
@@ -291,8 +291,8 @@ export class InitialSchema1000000000000 implements MigrationInterface {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "external_transactions" (
         "id"            uuid             NOT NULL DEFAULT gen_random_uuid(),
-        "owner_id"      character varying NOT NULL,
-        "contact_id"    character varying NOT NULL,
+        "owner_id"      uuid NOT NULL,
+        "contact_id"    uuid NOT NULL,
         "type"          "external_transactions_type_enum" NOT NULL,
         "product_name"  character varying,
         "quantity"      integer,
