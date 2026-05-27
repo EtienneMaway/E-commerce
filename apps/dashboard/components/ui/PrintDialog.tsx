@@ -8,18 +8,36 @@ import { formatMoney } from '../../lib/currency';
 import { useCurrencyStore, type DisplayCurrency } from '../../store/currency.store';
 import { openPrintWindow } from '../../lib/print';
 import { useT } from '../../lib/i18n';
+import { usePrinterStore } from '../../store/printer.store';
+import {
+  isWebBluetoothSupported,
+  printReceiptToBluetooth,
+} from '../../lib/bluetooth-printer';
+import { buildThermalReceiptHtml, type ReceiptData } from '../../lib/thermal-receipt';
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Called with a formatCurrency function bound to the chosen currency. Return HTML string. */
+  /** Standard wider HTML for browser/system print. */
   buildHtml: (formatCurrency: (v: string | number) => string) => string;
+  /**
+   * Optional thermal receipt data builder. When provided, the dialog shows
+   * a second "🖨 Thermal" action that routes to either:
+   *   - the paired Bluetooth printer (sends ESC/POS bytes directly), or
+   *   - a 80mm system-print fallback window if no printer is paired (or
+   *     the browser doesn't support Web Bluetooth).
+   * The mobile app uses the same data + encoder, so the printout matches.
+   */
+  buildReceiptData?: (rate: string) => ReceiptData;
 }
 
-export function PrintDialog({ open, onClose, buildHtml }: Props) {
+export function PrintDialog({ open, onClose, buildHtml, buildReceiptData }: Props) {
   const t = useT();
   const { displayCurrency } = useCurrencyStore();
   const [currency, setCurrency] = useState<DisplayCurrency>(displayCurrency);
+  const [thermalState, setThermalState] = useState<'idle' | 'printing' | 'error'>('idle');
+  const [thermalError, setThermalError] = useState('');
+  const pairedPrinter = usePrinterStore((s) => s.printer);
 
   const { data: rateData } = useQuery({
     queryKey: QK.exchangeRate,
@@ -34,14 +52,37 @@ export function PrintDialog({ open, onClose, buildHtml }: Props) {
   if (!open) return null;
 
   function handlePrint() {
-    // Receipts in FC look cleanest as whole numbers (clients pay in physical FC
-    // notes — no sub-unit). USD keeps the standard 4dp precision used app-wide.
     const printDp = currency === 'FC' ? 0 : 4;
     const fmt = (v: string | number) => formatMoney(v, currency, rate, printDp);
     const html = buildHtml(fmt);
     openPrintWindow(html);
     onClose();
   }
+
+  async function handleThermalPrint() {
+    if (!buildReceiptData) return;
+    const data = buildReceiptData(rate);
+    // No paired printer (or Web Bluetooth not supported) → fall back to
+    // opening the same 80mm HTML in a print window. The output matches the
+    // mobile app's expo-print fallback.
+    if (!pairedPrinter || !isWebBluetoothSupported()) {
+      openPrintWindow(buildThermalReceiptHtml(data));
+      onClose();
+      return;
+    }
+    setThermalState('printing');
+    setThermalError('');
+    try {
+      await printReceiptToBluetooth(pairedPrinter, data);
+      setThermalState('idle');
+      onClose();
+    } catch (err) {
+      setThermalState('error');
+      setThermalError(err instanceof Error ? err.message : 'Print failed');
+    }
+  }
+
+  const showThermal = !!buildReceiptData;
 
   return (
     <div
@@ -108,12 +149,42 @@ export function PrintDialog({ open, onClose, buildHtml }: Props) {
           )}
         </div>
 
-        <div className="flex gap-2">
-          <button onClick={onClose} className="btn btn-secondary flex-1">
-            {t.common.cancel}
+        {showThermal && (
+          <div
+            className="rounded-lg px-3 py-2 mb-3 text-xs"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--muted)' }}
+          >
+            {pairedPrinter
+              ? `${t.print.thermalReady} @ ${pairedPrinter.name}`
+              : t.print.thermalNoPrinter}
+          </div>
+        )}
+
+        {thermalError && (
+          <p className="text-xs mb-2" style={{ color: 'var(--danger)' }}>
+            {thermalError}
+          </p>
+        )}
+
+        <div className="flex flex-col gap-2">
+          {showThermal && (
+            <button
+              onClick={handleThermalPrint}
+              disabled={thermalState === 'printing'}
+              className="btn btn-primary w-full"
+              style={{
+                opacity: thermalState === 'printing' ? 0.6 : 1,
+                cursor: thermalState === 'printing' ? 'wait' : 'pointer',
+              }}
+            >
+              🖨️ {thermalState === 'printing' ? t.print.printing : t.print.thermalBtn}
+            </button>
+          )}
+          <button onClick={handlePrint} className="btn btn-secondary w-full">
+            {showThermal ? t.print.browserBtn : t.print.printBtn}
           </button>
-          <button onClick={handlePrint} className="btn btn-primary flex-1">
-            🖨️ {t.print.printBtn}
+          <button onClick={onClose} className="btn btn-ghost w-full">
+            {t.common.cancel}
           </button>
         </div>
       </div>

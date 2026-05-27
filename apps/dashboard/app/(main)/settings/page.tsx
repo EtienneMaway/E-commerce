@@ -9,6 +9,12 @@ import { useT } from '../../../lib/i18n';
 import { useCurrencyStore } from '../../../store/currency.store';
 import { formatMoney } from '../../../lib/currency';
 import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
+import { usePrinterStore } from '../../../store/printer.store';
+import {
+  isWebBluetoothSupported,
+  requestPrinter,
+  testPrint,
+} from '../../../lib/bluetooth-printer';
 
 export default function SettingsPage() {
   const t = useT();
@@ -297,7 +303,124 @@ export default function SettingsPage() {
             </form>
           )}
         </div>
+
+        <ThermalPrinterCard />
       </div>
+    </div>
+  );
+}
+
+function ThermalPrinterCard() {
+  const t = useT();
+  const { printer, setPrinter } = usePrinterStore();
+  const [pairState, setPairState] = useState<'idle' | 'pairing'>('idle');
+  const [testState, setTestState] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const supported = typeof window !== 'undefined' && isWebBluetoothSupported();
+
+  async function handlePair() {
+    setErrorMsg('');
+    setPairState('pairing');
+    try {
+      const p = await requestPrinter();
+      if (p) setPrinter(p);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPairState('idle');
+    }
+  }
+
+  async function handleTest() {
+    if (!printer) return;
+    setErrorMsg('');
+    setTestState('testing');
+    try {
+      await testPrint(printer);
+      setTestState('ok');
+      setTimeout(() => setTestState('idle'), 2500);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setTestState('error');
+    }
+  }
+
+  return (
+    <div className="card" style={{ padding: '24px' }}>
+      <h2 className="font-bold text-sm mb-1" style={{ color: 'var(--foreground)' }}>
+        {t.settings.printerSection}
+      </h2>
+      <p className="text-xs mb-4" style={{ color: 'var(--muted)' }}>
+        {t.settings.printerSectionSub}
+      </p>
+
+      {!supported ? (
+        <div
+          className="rounded-xl px-4 py-3 text-xs"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--muted)' }}
+        >
+          {t.settings.printerNotSupported}
+        </div>
+      ) : (
+        <>
+          {printer ? (
+            <div className="space-y-3">
+              <div
+                className="rounded-xl px-4 py-3 flex items-center justify-between gap-3"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+              >
+                <div className="min-w-0">
+                  <p className="text-xs" style={{ color: 'var(--muted)' }}>{t.settings.printerPaired}</p>
+                  <p className="font-semibold text-sm truncate" style={{ color: 'var(--foreground)' }}>
+                    🖨️ {printer.name}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={handleTest}
+                  disabled={testState === 'testing'}
+                  className="btn btn-secondary"
+                  style={{ opacity: testState === 'testing' ? 0.6 : 1 }}
+                >
+                  {testState === 'testing' ? t.settings.printerTesting : t.settings.printerTest}
+                </button>
+                <button onClick={() => setPrinter(null)} className="btn btn-ghost">
+                  {t.settings.printerForget}
+                </button>
+              </div>
+              {testState === 'ok' && (
+                <p className="text-xs" style={{ color: 'var(--success)' }}>
+                  ✓ {t.settings.printerTestOk}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div
+                className="rounded-xl px-4 py-3 text-xs"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--muted)' }}
+              >
+                {t.settings.printerNoneTitle}
+              </div>
+              <button
+                onClick={handlePair}
+                disabled={pairState === 'pairing'}
+                className="btn btn-primary"
+                style={{ opacity: pairState === 'pairing' ? 0.6 : 1 }}
+              >
+                {pairState === 'pairing' ? t.settings.printerPairing : t.settings.printerPairBtn}
+              </button>
+            </div>
+          )}
+
+          {errorMsg && (
+            <p className="text-xs mt-3" style={{ color: 'var(--danger)' }}>
+              {errorMsg}
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }

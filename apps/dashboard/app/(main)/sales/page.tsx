@@ -19,6 +19,7 @@ import { useAuthStore } from '../../../store/auth.store';
 import { useT } from '../../../lib/i18n';
 import { saleReceiptHtml } from '../../../lib/print-templates';
 import { PrintDialog } from '../../../components/ui/PrintDialog';
+import { generateReceiptId, type ReceiptData } from '../../../lib/thermal-receipt';
 
 type Period = '7d' | '30d' | '90d' | 'all';
 
@@ -144,6 +145,37 @@ export default function SalesPage() {
           formatCurrency: fmt,
           t: { title: t.print.saleReceipt, date: t.print.date, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, grandTotal: t.print.grandTotal, cartonPrice: t.print.cartonPrice, pcsPerCarton: t.print.pcsPerCarton },
         })}
+        buildReceiptData={(rate): ReceiptData => {
+          // Convert the stored USD sale into FC for the thermal receipt. The
+          // SaleTransaction only carries total pieces (no carton breakdown),
+          // so the packaging line is omitted — but the carton-tier price
+          // line still renders via piecesPerCarton, mirroring the mobile
+          // re-print look.
+          const r = parseFloat(rate) || 1;
+          if (!printRow) {
+            return { items: [], grandTotalFc: 0, markupPct: 0, date: '' };
+          }
+          const unitUsd = parseFloat(printRow.salePrice);
+          const unitFc = unitUsd * r;
+          const ppc = ppcMap.get(printRow.productName) ?? null;
+          return {
+            items: [{
+              productName: printRow.productName,
+              qty: printRow.qtySold,
+              unitPriceFc: unitFc,
+              totalFc: unitFc * printRow.qtySold,
+              piecesPerCarton: ppc,
+            }],
+            grandTotalFc: unitFc * printRow.qtySold,
+            markupPct: 0,
+            date: new Date(printRow.date).toLocaleString('fr-CD'),
+            businessName: user?.name ?? undefined,
+            businessHandle: user?.username,
+            sellerName: printRow.actor ? undefined : user?.name ?? undefined,
+            sellerUsername: printRow.actor?.username ?? user?.username,
+            receiptId: generateReceiptId(),
+          };
+        }}
       />
       <div className="page-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
         <div className="flex-1 min-w-0">
