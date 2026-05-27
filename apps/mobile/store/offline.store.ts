@@ -6,6 +6,14 @@ export interface CachedProduct {
   productName: string;
   unitCost: string;
   availableQty: number;
+  // Carton-aware fields snapshotted at the moment of going offline so the
+  // Record Sale modal can offer the same UX it does online (sell in cartons,
+  // edit carton + unit price). Optional for backwards compat with stored
+  // state from an older app version — falls back to piece-only mode.
+  piecesPerCarton?: number | null;
+  latestSellingPrice?: string;
+  latestCartonPrice?: string | null;
+  category?: string | null;
 }
 
 export interface PendingSale {
@@ -24,8 +32,14 @@ interface OfflineState {
   syncStatus: 'idle' | 'syncing' | 'error';
   lastSyncedAt: string | null;
   snapshotTakenAt: string | null;
+  // Exchange rate at the moment of going offline. The rate is administratively
+  // set on the API and doesn't fluctuate intraday, so freezing it for the
+  // duration of an offline session is correct — every FC↔USD conversion the
+  // app does while offline reads from here, never from the (failing) currency
+  // query that would otherwise fall back to '1' and silently corrupt prices.
+  snapshotRate: string | null;
 
-  enableOfflineMode: (products: CachedProduct[]) => void;
+  enableOfflineMode: (products: CachedProduct[], rate: string) => void;
   disableOfflineMode: () => void;
   recordOfflineSale: (productName: string, qtySold: number, salePrice: string) => void;
   setSyncStatus: (status: 'idle' | 'syncing' | 'error') => void;
@@ -43,12 +57,14 @@ export const useOfflineStore = create<OfflineState>()(
       syncStatus: 'idle',
       lastSyncedAt: null,
       snapshotTakenAt: null,
+      snapshotRate: null,
 
-      enableOfflineMode: (products) =>
+      enableOfflineMode: (products, rate) =>
         set({
           isOffline: true,
           cachedProducts: products,
           snapshotTakenAt: new Date().toISOString(),
+          snapshotRate: rate,
         }),
 
       disableOfflineMode: () => set({ isOffline: false }),

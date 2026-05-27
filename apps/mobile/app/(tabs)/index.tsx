@@ -3,7 +3,7 @@ import { ScrollView, View, Text, RefreshControl, TouchableOpacity, Pressable, Al
 import Constants from 'expo-constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { dashboardApi, inventoryApi, salaryPaymentsApi, type SalaryPayment } from '../../lib/api';
+import { dashboardApi, inventoryApi, salaryPaymentsApi, currencyApi, type SalaryPayment } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -21,7 +21,11 @@ import type { AlertItem } from '../../lib/notifications';
 
 interface ProductSummary {
   productName: string;
+  category: string | null;
+  piecesPerCarton: number | null;
+  latestCartonPrice: string | null;
   latestUnitCost: string;
+  latestSellingPrice: string;
   totalAvailable: number;
 }
 
@@ -107,7 +111,15 @@ export default function DashboardScreen() {
           onPress: async () => {
             setPreparingOffline(true);
             try {
-              const products = (await inventoryApi.listProducts()) as ProductSummary[];
+              // Fetch the current rate + products in parallel so the offline
+              // snapshot freezes both at the same moment. The rate is admin-
+              // set on the API and doesn't change intraday, so locking it in
+              // for the session keeps every FC display correct without
+              // re-querying.
+              const [products, rate] = await Promise.all([
+                inventoryApi.listProducts() as Promise<ProductSummary[]>,
+                currencyApi.getRate(),
+              ]);
               enableOfflineMode(
                 products
                   .filter((p) => p.totalAvailable > 0)
@@ -115,7 +127,12 @@ export default function DashboardScreen() {
                     productName: p.productName,
                     unitCost: p.latestUnitCost,
                     availableQty: p.totalAvailable,
+                    piecesPerCarton: p.piecesPerCarton,
+                    latestSellingPrice: p.latestSellingPrice,
+                    latestCartonPrice: p.latestCartonPrice,
+                    category: p.category,
                   })),
+                rate.usdToFcRate,
               );
             } catch {
               Alert.alert(t.common.error, t.home.preparingOffline);

@@ -135,18 +135,23 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     (p) => p.totalAvailable > 0,
   );
 
-  // Offline fallback uses the snapshotted cache (lacks ppc + selling price).
+  // Offline fallback uses the snapshotted cache. Newer snapshots carry the
+  // full carton-aware fields (ppc, latest selling price, latest carton price,
+  // category) so the modal offers the same UX as online — sell in cartons,
+  // edit carton + unit price, see the dashboard-set selling price as the
+  // default. Older snapshots that predate that change fall back gracefully
+  // to piece-only mode with selling price = cost.
   const products: ProductSummary[] = isOffline
     ? cachedProducts
         .filter((p) => p.availableQty > 0)
         .map((p) => ({
           productName: p.productName,
-          category: null,
-          piecesPerCarton: null,
-          latestCartonPrice: null,
+          category: p.category ?? null,
+          piecesPerCarton: p.piecesPerCarton ?? null,
+          latestCartonPrice: p.latestCartonPrice ?? null,
           totalAvailable: p.availableQty,
           sourceBreakdown: { personal: 0, supplier: 0, consignedIn: 0, consignedOut: 0 },
-          latestSellingPrice: p.unitCost,
+          latestSellingPrice: p.latestSellingPrice ?? p.unitCost,
           latestUnitCost: p.unitCost,
         }))
     : onlineProducts;
@@ -456,8 +461,13 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       for (const { item, totalPieces, salePrice } of soldItems) {
         recordOfflineSale(item.productName, totalPieces, salePrice);
       }
-      handleClose();
+      // Open the receipt prompt FIRST, then close the main modal. If the
+      // parent ever unmounts us when `visible` flips, the prompt state would
+      // be lost — offline this branch is fully synchronous so React commits
+      // everything in one render pass and the race was guaranteed. Setting
+      // the prompt before handleClose() ensures it lands first.
       offerReceipt(soldItems);
+      handleClose();
       return;
     }
 
@@ -475,8 +485,8 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       setPriceGuardPending(priceGuard);
     } else {
       invalidate();
-      handleClose();
       offerReceipt(submitInputs);
+      handleClose();
     }
   };
 
@@ -502,8 +512,8 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     await submitItems(inputs);
     setIsSubmitting(false);
     invalidate();
-    handleClose();
     offerReceipt(inputs);
+    handleClose();
   };
 
   const handleSubmitWithDiscountReasons = async (): Promise<void> => {
@@ -529,8 +539,8 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       return;
     }
     invalidate();
-    handleClose();
     offerReceipt(inputs);
+    handleClose();
   };
 
   // ── Sub-screens ─────────────────────────────────────────────────────────

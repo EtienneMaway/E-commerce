@@ -24,6 +24,7 @@ import { ReceiveFromSupplierModal } from '../../components/forms/ReceiveFromSupp
 import { RecordSaleModal } from '../../components/forms/RecordSaleModal';
 import { breakdownQuantity, formatBreakdown } from '../../lib/utils';
 import { usePersonaStore } from '../../store/persona.store';
+import { useOfflineStore } from '../../store/offline.store';
 import type { ProductSummary } from '@trading-app/types';
 
 type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'recordSale';
@@ -33,9 +34,12 @@ interface SaleTarget { productName: string; unitCost: string; }
 function ProductCard({
   item,
   onSell,
+  soldOfflinePending,
 }: {
   item: ProductSummary;
   onSell: (item: ProductSummary) => void;
+  /** Total qty sold offline for this product still awaiting sync. 0 hides the chip. */
+  soldOfflinePending: number;
 }) {
   const t = useT();
   const formatCurrency = useFormatCurrency();
@@ -90,6 +94,11 @@ function ProductCard({
               1 ctn = {item.piecesPerCarton} pcs
             </Text>
           ) : null}
+          {soldOfflinePending > 0 && (
+            <Text className="text-amber-600 dark:text-amber-400 text-xs mt-1 font-medium">
+              ⏳ {soldOfflinePending} sold · pending sync
+            </Text>
+          )}
         </View>
 
         {/* Cost · sell + source chips */}
@@ -140,14 +149,41 @@ export default function InventoryScreen() {
   // case. (When persona flips back to Self the FAB returns automatically.)
   const persona = usePersonaStore((s) => s.kind);
   const canAddProducts = persona === 'self';
+  const { isOffline, cachedProducts, pendingSales } = useOfflineStore();
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: QK.inventoryProducts,
     queryFn: () => inventoryApi.listProducts(),
     staleTime: 30_000,
+    // Don't fire the network query offline — the listing comes from the
+    // cached snapshot instead.
+    enabled: !isOffline,
   });
 
-  const products = (data as ProductSummary[] | undefined) ?? [];
+  // When offline, render from the snapshotted cache so the decremented
+  // availableQty (and the dashboard-set selling price + carton metadata
+  // captured at offline-entry) drive the listing. Sales recorded offline
+  // immediately reduce the displayed availability — preventing oversell.
+  const products: ProductSummary[] = isOffline
+    ? cachedProducts.map((p) => ({
+        productName: p.productName,
+        category: p.category ?? null,
+        piecesPerCarton: p.piecesPerCarton ?? null,
+        latestCartonPrice: p.latestCartonPrice ?? null,
+        totalAvailable: p.availableQty,
+        sourceBreakdown: { personal: 0, supplier: 0, consignedIn: 0, consignedOut: 0 },
+        latestSellingPrice: p.latestSellingPrice ?? p.unitCost,
+        latestUnitCost: p.unitCost,
+      }))
+    : (data as ProductSummary[] | undefined) ?? [];
+
+  // Aggregate offline-sold qty per product so each card can show a "sold,
+  // pending sync" chip. Only relevant while offline (or right after toggling
+  // back online but before the user has hit Sync).
+  const pendingByProduct = pendingSales.reduce<Record<string, number>>((acc, s) => {
+    acc[s.productName] = (acc[s.productName] ?? 0) + s.qtySold;
+    return acc;
+  }, {});
 
   const filtered = search.trim()
     ? products.filter((p) =>
@@ -205,7 +241,13 @@ export default function InventoryScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.productName}
-        renderItem={({ item }) => <ProductCard item={item} onSell={handleSell} />}
+        renderItem={({ item }) => (
+          <ProductCard
+            item={item}
+            onSell={handleSell}
+            soldOfflinePending={pendingByProduct[item.productName] ?? 0}
+          />
+        )}
         contentContainerClassName="px-4 pt-3 pb-32"
         refreshControl={
           <RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor="#2563EB" />
@@ -247,17 +289,22 @@ export default function InventoryScreen() {
         visible={modal === 'receiveSupplier'}
         onClose={() => setModal('none')}
       />
-      {saleTarget && (
-        <RecordSaleModal
-          visible={modal === 'recordSale'}
-          onClose={() => {
-            setModal('none');
-            setSaleTarget(null);
-          }}
-          prefilledProduct={saleTarget.productName}
-          unitCost={saleTarget.unitCost}
-        />
-      )}
+      {/* Keep RecordSaleModal mounted at all times so the post-sale receipt
+          prompt (which lives in local state inside it) survives the main
+          modal closing. Conditionally rendering on `saleTarget` used to unmount
+          the component the moment a sale was submitted, racing the
+          setReceiptPrompt call and silently dropping the prompt — visibly
+          breaking the print-after-sale flow especially offline, where the
+          submit branch is fully synchronous and the race fires every time. */}
+      <RecordSaleModal
+        visible={modal === 'recordSale'}
+        onClose={() => {
+          setModal('none');
+          setSaleTarget(null);
+        }}
+        prefilledProduct={saleTarget?.productName ?? ''}
+        unitCost={saleTarget?.unitCost ?? ''}
+      />
     </View>
   );
 }

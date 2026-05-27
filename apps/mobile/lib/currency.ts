@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { currencyApi } from './api';
 import { QK } from './query-keys';
+import { useOfflineStore } from '../store/offline.store';
 
 /**
  * Default decimal places for FC money displays on mobile. Whole numbers match
@@ -64,14 +65,24 @@ export function formatFcValue(value: string | number): string {
 
 /**
  * Hook that returns the raw usdToFcRate string (falls back to '1').
+ *
+ * When offline, prefers the rate that was snapshotted at the moment of going
+ * offline — the API rate is set administratively and doesn't fluctuate
+ * intraday, so freezing the value for the duration of an offline session
+ * yields correct FC math everywhere (cards, receipts, sale modal). Without
+ * this, the currency query would fail offline and silently fall back to '1',
+ * making the entire FC display equal the USD value.
  */
 export function useExchangeRate(): string {
+  const { isOffline, snapshotRate } = useOfflineStore();
   const { data: rateData } = useQuery({
     queryKey: QK.exchangeRate,
     queryFn: currencyApi.getRate,
     staleTime: 5 * 60_000,
     retry: false,
+    enabled: !isOffline,
   });
+  if (isOffline && snapshotRate) return snapshotRate;
   return rateData?.usdToFcRate ?? '1';
 }
 
