@@ -7,7 +7,13 @@
  * paired device's RFCOMM stream.
  */
 
-import { RECEIPT_FOOTER, formatPackagingLine, type ReceiptData, type ReceiptItem } from './receipt';
+import {
+  RECEIPT_FOOTER,
+  formatPackagingLine,
+  formatCartonInfoLine,
+  type ReceiptData,
+  type ReceiptItem,
+} from './receipt';
 
 const ENC = {
   INIT: [0x1b, 0x40],
@@ -84,6 +90,9 @@ function renderItem(item: ReceiptItem): number[] {
   if (packaging) out.push(...ascii('  ' + packaging), ...ENC.LF);
 
   out.push(...ascii(`  @ ${fc(item.unitPriceFc)}`), ...ENC.LF);
+
+  const cartonInfo = formatCartonInfoLine(item);
+  if (cartonInfo) out.push(...ascii('  ' + cartonInfo), ...ENC.LF);
   return out;
 }
 

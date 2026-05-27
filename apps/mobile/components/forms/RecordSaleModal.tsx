@@ -351,15 +351,25 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       // Receipt is FC-native — pass per-row FC prices directly (typed by the
       // user) so what the customer sees on the printout matches what was
       // entered, without an extra USD-rate round-trip that can drift by 1 FC.
-      items: soldItems.map(({ item, totalPieces, salePriceFc }) => ({
-        productName: item.productName,
-        qty: totalPieces,
-        unitPriceFc: salePriceFc,
-        totalFc: salePriceFc * totalPieces,
-        cartons: parseInt(item.cartons, 10) || 0,
-        extraPieces: parseInt(item.extraPieces, 10) || 0,
-        piecesPerCarton: item.piecesPerCarton,
-      })),
+      items: soldItems.map(({ item, totalPieces, salePriceFc }) => {
+        // Pass the merchant-typed carton price through to the receipt so the
+        // printed "X FC / ctn" matches the headline number on the quote.
+        // The cart's cartonPriceFc is bidirectionally bound to unitPriceFc
+        // via piecesPerCarton, but small rounding differences can exist when
+        // the merchant edited the carton price directly — preserve what was
+        // typed rather than re-deriving.
+        const cartonPriceFc = parseFloat(item.cartonPriceFc);
+        return {
+          productName: item.productName,
+          qty: totalPieces,
+          unitPriceFc: salePriceFc,
+          totalFc: salePriceFc * totalPieces,
+          cartons: parseInt(item.cartons, 10) || 0,
+          extraPieces: parseInt(item.extraPieces, 10) || 0,
+          piecesPerCarton: item.piecesPerCarton,
+          cartonPriceFc: isFinite(cartonPriceFc) && cartonPriceFc > 0 ? cartonPriceFc : undefined,
+        };
+      }),
       grandTotalFc: soldItems.reduce(
         (sum, { totalPieces, salePriceFc }) => sum + salePriceFc * totalPieces,
         0,

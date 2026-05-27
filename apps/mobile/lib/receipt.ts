@@ -19,6 +19,13 @@ export interface ReceiptItem {
   readonly cartons?: number;
   readonly extraPieces?: number;
   readonly piecesPerCarton?: number | null;
+  /**
+   * Optional carton price in FC. When provided alongside `piecesPerCarton`,
+   * the receipt prints a "X FC / ctn (N pcs)" line so the customer sees the
+   * carton-level pricing in addition to the per-piece price. Falls back to
+   * `unitPriceFc × piecesPerCarton` if omitted.
+   */
+  readonly cartonPriceFc?: number;
 }
 
 export interface ReceiptData {
@@ -71,9 +78,25 @@ export function formatPackagingLine(item: ReceiptItem): string {
     return '';
   }
   const unit = ppc === 12 ? (cartons === 1 ? 'douzaine' : 'douzaines') : (cartons === 1 ? 'carton' : 'cartons');
-  let line = `${cartons} ${unit} × ${ppc}`;
+  let line = `${cartons} ${unit} × ${ppc} pcs`;
   if (extra > 0) line += ` + ${extra} pcs`;
   return line;
+}
+
+/**
+ * Carton-level pricing line: e.g. "4 800 FC / ctn (24 pcs)". Renders whenever
+ * the product has a known `piecesPerCarton`, regardless of whether this
+ * particular sale was in cartons or loose pieces — the customer gets to see
+ * the carton-tier price as a reference. Uses `cartonPriceFc` if provided
+ * (matches whatever the merchant typed), otherwise derives from
+ * `unitPriceFc × piecesPerCarton`.
+ */
+export function formatCartonInfoLine(item: ReceiptItem): string {
+  const ppc = item.piecesPerCarton ?? 0;
+  if (!ppc) return '';
+  const cartonPrice = item.cartonPriceFc ?? item.unitPriceFc * ppc;
+  if (cartonPrice <= 0) return '';
+  return `${formatFc(cartonPrice)} / ctn (${ppc} pcs)`;
 }
 
 function formatFc(value: number): string {
@@ -110,6 +133,7 @@ function buildHtml(data: ReceiptData): string {
       const total = formatFc(item.totalFc);
       const unit = formatFc(item.unitPriceFc);
       const packaging = formatPackagingLine(item);
+      const cartonInfo = formatCartonInfoLine(item);
       return `
         <div class="row item">
           <div class="line">
@@ -120,6 +144,7 @@ function buildHtml(data: ReceiptData): string {
           <div class="line unit">
             <span>&nbsp;&nbsp;${item.qty} × ${unit}</span>
           </div>
+          ${cartonInfo ? `<div class="line unit"><span>&nbsp;&nbsp;${escapeHtml(cartonInfo)}</span></div>` : ''}
         </div>`;
     })
     .join('');
