@@ -69,6 +69,15 @@ export class SalesFilterDto {
   @IsUUID()
   @IsOptional()
   actorId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Free-text search across client name + phone. Mobile sales tab uses this to find a past order when the merchant remembers the buyer.',
+    example: 'mukendi',
+  })
+  @IsString()
+  @IsOptional()
+  clientQuery?: string;
 }
 
 export class TopProductsFilterDto {

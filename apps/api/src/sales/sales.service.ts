@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
+  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -15,6 +17,7 @@ import {
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
 import { PricingService } from '../pricing/pricing.service';
 import { RecordSaleDto } from './dto/record-sale.dto';
+import { UpdateSaleClientDto } from './dto/update-sale-client.dto';
 import {
   SalesFilterDto,
   SalesHistoryPeriod,
@@ -148,6 +151,9 @@ export class SalesService {
           inventoryEntryId: entry.id,
           originalUnitPrice: priceCheck.originalUnitPrice,
           discountReason: priceCheck.originalUnitPrice ? dto.discountReason ?? null : null,
+          clientName: dto.clientName?.trim() || null,
+          clientPhone: dto.clientPhone?.trim() || null,
+          receiptId: dto.receiptId?.trim() || null,
         });
         const savedSale = await manager.save(SaleTransaction, sale);
         sales.push(savedSale);
@@ -190,6 +196,14 @@ export class SalesService {
     if (filter.actorId) {
       qb.andWhere('sale.actor_id = :actorId', { actorId: filter.actorId });
     }
+    if (filter.clientQuery) {
+      // Case-insensitive match across name + phone so the merchant can search
+      // a partial name or any phone-number chunk.
+      qb.andWhere(
+        '(sale.client_name ILIKE :clientQ OR sale.client_phone ILIKE :clientQ)',
+        { clientQ: `%${filter.clientQuery.trim()}%` },
+      );
+    }
 
     const periodDateFrom = this.resolveHistoryPeriod(filter.period);
     if (periodDateFrom) {
@@ -205,6 +219,58 @@ export class SalesService {
 
     const [data, total] = await qb.getManyAndCount();
     return { data, total };
+  }
+
+  /**
+   * Attach (or update) the buyer's name + phone on a previously recorded
+   * sale. Designed for the mobile post-sale receipt prompt: the sale is
+   * created first, then if the merchant fills the optional client fields,
+   * we PATCH them in. When `receiptId` is set we update all sibling rows
+   * created by the same cart submission in one call — matching how the
+   * mobile prompt covers the whole receipt, not just one line.
+   */
+  async updateClient(
+    ctx: ActorContext,
+    saleId: string,
+    dto: UpdateSaleClientDto,
+  ): Promise<SaleTransaction[]> {
+    const ownerId = ctx.effectiveOwnerId;
+    const sale = await this.saleRepo.findOne({ where: { id: saleId } });
+    if (!sale) throw new NotFoundException('Sale not found');
+    if (sale.ownerId !== ownerId) {
+      throw new ForbiddenException('You cannot edit this sale');
+    }
+
+    const clientName = dto.clientName?.trim() || null;
+    const clientPhone = dto.clientPhone?.trim() || null;
+
+    // Group reprint: if this sale carries a receiptId, propagate the same
+    // client info across every row in the receipt so a later search by
+    // phone surfaces the whole transaction, not just one line.
+    const targets = sale.receiptId
+      ? await this.saleRepo.find({ where: { ownerId, receiptId: sale.receiptId } })
+      : [sale];
+
+    for (const t of targets) {
+      t.clientName = clientName;
+      t.clientPhone = clientPhone;
+    }
+    await this.saleRepo.save(targets);
+    return targets;
+  }
+
+  /**
+   * Returns every sale row that came out of the same cart submission. Used
+   * by the mobile sales tab's reprint flow: tap one row → reconstruct the
+   * original multi-item receipt.
+   */
+  async findByReceipt(ctx: ActorContext, receiptId: string): Promise<SaleTransaction[]> {
+    const ownerId = ctx.effectiveOwnerId;
+    return this.saleRepo.find({
+      where: { ownerId, receiptId },
+      relations: { actor: true, inventoryEntry: true },
+      order: { date: 'ASC' },
+    });
   }
 
   async topProducts(

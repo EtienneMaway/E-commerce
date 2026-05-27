@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -7,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { SalesService } from './sales.service';
 import { RecordSaleDto } from './dto/record-sale.dto';
+import { UpdateSaleClientDto } from './dto/update-sale-client.dto';
 import { SalesFilterDto, TopProductsFilterDto } from './dto/sales-filter.dto';
 import { PriceGuardWarningDto } from './dto/price-guard-warning.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -58,5 +69,35 @@ export class SalesController {
   @ApiResponse({ status: 200, description: 'Ranked product list' })
   topProducts(@CurrentActorContext() ctx: ActorContext, @Query() filter: TopProductsFilterDto) {
     return this.salesService.topProducts(ctx, filter);
+  }
+
+  @Get('by-receipt/:receiptId')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @ApiOperation({
+    summary: 'Fetch every sale row sharing a receipt id',
+    description:
+      'Reconstructs the original multi-item receipt for reprint — taps a single sales row, returns all siblings.',
+  })
+  findByReceipt(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('receiptId') receiptId: string,
+  ) {
+    return this.salesService.findByReceipt(ctx, receiptId);
+  }
+
+  @Patch(':id/client')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @ApiOperation({
+    summary: 'Attach (or update) buyer name + phone on a recorded sale',
+    description:
+      'The mobile receipt prompt captures the buyer details after the sale is recorded. ' +
+      'When the sale carries a receiptId, propagates the client info to every sibling row so the whole receipt is searchable later.',
+  })
+  updateClient(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateSaleClientDto,
+  ) {
+    return this.salesService.updateClient(ctx, id, dto);
   }
 }

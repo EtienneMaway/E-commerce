@@ -23,6 +23,15 @@ export interface PendingSale {
   salePrice: string;    // per unit, USD
   recordedAt: string;
   syncError: string | null;
+  // Buyer details captured at the post-sale receipt prompt. Sent with the
+  // initial POST when the queue drains — saves a round-trip vs the online
+  // create+PATCH pattern. Optional: if the merchant skipped the prompt
+  // these stay undefined.
+  clientName?: string;
+  clientPhone?: string;
+  // Shared across every PendingSale that came out of one cart submission so
+  // the server can group them into a single reprintable receipt.
+  receiptId?: string;
 }
 
 interface OfflineState {
@@ -41,7 +50,14 @@ interface OfflineState {
 
   enableOfflineMode: (products: CachedProduct[], rate: string) => void;
   disableOfflineMode: () => void;
-  recordOfflineSale: (productName: string, qtySold: number, salePrice: string) => void;
+  recordOfflineSale: (
+    productName: string,
+    qtySold: number,
+    salePrice: string,
+    extras?: { receiptId?: string; clientName?: string; clientPhone?: string },
+  ) => void;
+  /** Patch buyer info onto every pending sale that shares the given receiptId. */
+  attachOfflineClient: (receiptId: string, clientName?: string, clientPhone?: string) => void;
   setSyncStatus: (status: 'idle' | 'syncing' | 'error') => void;
   setLastSyncedAt: (at: string) => void;
   removeSyncedSales: (ids: string[]) => void;
@@ -69,12 +85,22 @@ export const useOfflineStore = create<OfflineState>()(
 
       disableOfflineMode: () => set({ isOffline: false }),
 
-      recordOfflineSale: (productName, qtySold, salePrice) => {
+      recordOfflineSale: (productName, qtySold, salePrice, extras) => {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         set((s) => ({
           pendingSales: [
             ...s.pendingSales,
-            { id, productName, qtySold, salePrice, recordedAt: new Date().toISOString(), syncError: null },
+            {
+              id,
+              productName,
+              qtySold,
+              salePrice,
+              recordedAt: new Date().toISOString(),
+              syncError: null,
+              receiptId: extras?.receiptId,
+              clientName: extras?.clientName,
+              clientPhone: extras?.clientPhone,
+            },
           ],
           cachedProducts: s.cachedProducts.map((p) =>
             p.productName === productName
@@ -83,6 +109,15 @@ export const useOfflineStore = create<OfflineState>()(
           ),
         }));
       },
+
+      attachOfflineClient: (receiptId, clientName, clientPhone) =>
+        set((s) => ({
+          pendingSales: s.pendingSales.map((p) =>
+            p.receiptId === receiptId
+              ? { ...p, clientName: clientName || undefined, clientPhone: clientPhone || undefined }
+              : p,
+          ),
+        })),
 
       setSyncStatus: (syncStatus) => set({ syncStatus }),
       setLastSyncedAt: (lastSyncedAt) => set({ lastSyncedAt }),

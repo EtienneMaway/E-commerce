@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
+  TextInput,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { salesApi } from '../../lib/api';
@@ -16,6 +17,7 @@ import { useFormatCurrency } from '../../lib/currency';
 import { Badge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
+import { ReprintReceiptModal } from '../../components/forms/ReprintReceiptModal';
 import { useT } from '@/lib/i18n';
 
 type View_ = 'history' | 'top';
@@ -34,6 +36,10 @@ interface SaleRow {
   isLoss: boolean;
   date: string;
   supplierUsername?: string;
+  clientName?: string | null;
+  clientPhone?: string | null;
+  receiptId?: string | null;
+  actor?: { id: string; username: string } | null;
 }
 
 interface TopProductRow {
@@ -43,12 +49,16 @@ interface TopProductRow {
   totalProfit: string;
 }
 
-function SaleCard({ item }: { item: SaleRow }) {
+function SaleCard({ item, onReprint }: { item: SaleRow; onReprint: (row: SaleRow) => void }) {
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const profitNum = parseFloat(item.profit);
   return (
-    <View className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3">
+    <Pressable
+      onPress={() => onReprint(item)}
+      className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3"
+      style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
+    >
       <View className="flex-row justify-between items-start mb-2">
         <View className="flex-1 mr-2">
           <Text className="text-text dark:text-slate-100 font-semibold text-base" numberOfLines={1}>
@@ -69,7 +79,19 @@ function SaleCard({ item }: { item: SaleRow }) {
       {item.source === 'SUPPLIER' && item.supplierUsername && (
         <Text className="text-muted dark:text-slate-500 text-sm mt-1">{t.sales.via(item.supplierUsername)}</Text>
       )}
-    </View>
+      {(item.clientName || item.clientPhone) && (
+        <View className="mt-2 pt-2 border-t border-border dark:border-slate-700 flex-row items-center gap-2 flex-wrap">
+          <Text className="text-muted dark:text-slate-500 text-xs">👤 {t.sales.clientLabel}:</Text>
+          {item.clientName && (
+            <Text className="text-text dark:text-slate-200 text-xs font-medium">{item.clientName}</Text>
+          )}
+          {item.clientPhone && (
+            <Text className="text-muted dark:text-slate-400 text-xs">{item.clientPhone}</Text>
+          )}
+        </View>
+      )}
+      <Text className="text-primary text-xs mt-2 italic">{t.sales.tapToReprint}</Text>
+    </Pressable>
   );
 }
 
@@ -111,6 +133,8 @@ export default function SalesScreen() {
   const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>('30d');
   const [topPeriod, setTopPeriod] = useState<TopPeriod>('month');
   const [rankBy, setRankBy] = useState<RankBy>('profit');
+  const [clientQuery, setClientQuery] = useState('');
+  const [reprintSource, setReprintSource] = useState<SaleRow | null>(null);
 
   const historyPeriodOptions: { label: string; value: HistoryPeriod }[] = [
     { label: t.sales.period7d, value: '7d' },
@@ -131,9 +155,17 @@ export default function SalesScreen() {
     profit: t.sales.rankProfit,
   };
 
+  // Empty string → omit the query param (no server-side filter); otherwise
+  // pass it through. React Query keeps a separate cache per (period, query)
+  // pair so swapping clears stale results without a flash.
+  const trimmedQuery = clientQuery.trim();
   const { data: salesData, isFetching: salesLoading, refetch: refetchSales } = useQuery({
-    queryKey: QK.salesHistory({ period: historyPeriod }),
-    queryFn: () => salesApi.list({ period: historyPeriod }),
+    queryKey: QK.salesHistory({ period: historyPeriod, clientQuery: trimmedQuery }),
+    queryFn: () =>
+      salesApi.list({
+        period: historyPeriod,
+        ...(trimmedQuery ? { clientQuery: trimmedQuery } : {}),
+      }),
     staleTime: 30_000,
     enabled: view === 'history',
   });
@@ -214,6 +246,19 @@ export default function SalesScreen() {
         </View>
       )}
 
+      {/* Client search — only on history view */}
+      {view === 'history' && (
+        <View className="px-4 mb-3">
+          <TextInput
+            value={clientQuery}
+            onChangeText={setClientQuery}
+            placeholder={t.sales.searchClientPlaceholder}
+            placeholderTextColor="#94a3b8"
+            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-2.5 text-text dark:text-slate-100 text-sm"
+          />
+        </View>
+      )}
+
       {/* History summary */}
       {view === 'history' && sales.length > 0 && (
         <View className="mx-4 mb-3 flex-row gap-3">
@@ -233,7 +278,7 @@ export default function SalesScreen() {
         <FlatList
           data={sales}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <SaleCard item={item} />}
+          renderItem={({ item }) => <SaleCard item={item} onReprint={setReprintSource} />}
           contentContainerClassName="px-4 pb-8"
           refreshControl={<RefreshControl refreshing={salesLoading} onRefresh={refetch} tintColor="#2563EB" />}
           ListHeaderComponent={salesLoading && sales.length === 0 ? <ActivityIndicator className="mt-12" color="#2563EB" /> : null}
@@ -258,6 +303,8 @@ export default function SalesScreen() {
           }
         />
       )}
+
+      <ReprintReceiptModal source={reprintSource} onClose={() => setReprintSource(null)} />
     </View>
   );
 }

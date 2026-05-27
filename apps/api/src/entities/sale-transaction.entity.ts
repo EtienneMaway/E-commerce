@@ -85,4 +85,21 @@ export class SaleTransaction {
   @ApiPropertyOptional({ example: 'Loyal customer', description: 'Reason the employee discounted; required when employee sells below standard' })
   @Column({ name: 'discount_reason', type: 'varchar', nullable: true })
   discountReason: string | null;
+
+  @ApiPropertyOptional({ example: 'Jean Mukendi', description: 'Buyer\'s name as captured at the receipt prompt. Lets the merchant later look the sale up by client.' })
+  @Column({ name: 'client_name', type: 'varchar', nullable: true })
+  clientName: string | null;
+
+  @ApiPropertyOptional({ example: '+243 836 743 579', description: 'Buyer\'s phone — searchable from the sales tab.' })
+  @Column({ name: 'client_phone', type: 'varchar', nullable: true })
+  clientPhone: string | null;
+
+  @ApiPropertyOptional({
+    example: 'RCP-AB12CD',
+    description:
+      'Receipt identifier shared by every sale row that came out of one cart submission. ' +
+      'Lets the mobile sales tab regroup a multi-item original receipt into a single reprint.',
+  })
+  @Column({ name: 'receipt_id', type: 'varchar', nullable: true })
+  receiptId: string | null;
 }

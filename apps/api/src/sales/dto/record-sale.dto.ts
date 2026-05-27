@@ -41,4 +41,30 @@ export class RecordSaleDto {
   @IsString()
   @IsOptional()
   discountReason?: string;
+
+  @ApiPropertyOptional({
+    example: 'Jean Mukendi',
+    description: 'Optional buyer name. Surfaced on the sales tab so the merchant can find a past order later.',
+  })
+  @IsString()
+  @IsOptional()
+  clientName?: string;
+
+  @ApiPropertyOptional({
+    example: '+243 836 743 579',
+    description: 'Optional buyer phone. Searchable from the sales tab.',
+  })
+  @IsString()
+  @IsOptional()
+  clientPhone?: string;
+
+  @ApiPropertyOptional({
+    example: 'RCP-AB12CD',
+    description:
+      'Optional client-generated receipt identifier — pass the same value for every sale row in one cart submission ' +
+      'so they can be regrouped into a single reprintable receipt later.',
+  })
+  @IsString()
+  @IsOptional()
+  receiptId?: string;
 }

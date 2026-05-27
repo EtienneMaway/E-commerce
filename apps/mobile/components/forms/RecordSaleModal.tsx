@@ -104,7 +104,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   const formatCurrency = useFormatCurrency();
   const exchangeRate = useExchangeRate();
   const user = useAuthStore((s) => s.user);
-  const { isOffline, cachedProducts, recordOfflineSale } = useOfflineStore();
+  const { isOffline, cachedProducts, recordOfflineSale, attachOfflineClient } = useOfflineStore();
 
   const [search, setSearch] = useState(prefilledProduct);
   const [cart, setCart] = useState<Map<string, CartItem>>(new Map());
@@ -114,6 +114,15 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   const [receiptPrompt, setReceiptPrompt] = useState<ReceiptData | null>(null);
   const [receiptClientName, setReceiptClientName] = useState('');
   const [receiptClientPhone, setReceiptClientPhone] = useState('');
+  // IDs of the sale rows just created by submitItems — used by the post-sale
+  // prompt to PATCH the client info onto them via salesApi.updateClient. The
+  // server is the source of truth for buyer details after this; the prompt
+  // is just a UX-friendly capture point that runs after the sale lands.
+  const [lastOnlineSaleIds, setLastOnlineSaleIds] = useState<string[]>([]);
+  // ReceiptId shared across every row of one cart submission. Generated at
+  // submit time, sent to the API with each record() / queued with each
+  // recordOfflineSale() so a later reprint can regroup the whole receipt.
+  const [lastReceiptId, setLastReceiptId] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -279,21 +288,28 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
    */
   const submitItems = async (
     items: { item: CartItem; totalPieces: number; salePrice: string; confirmedOverride?: boolean; discountReason?: string }[],
+    receiptId: string,
   ): Promise<{
     priceGuard: PriceGuardPending[];
     discount: DiscountPending[];
+    saleIds: string[];
   }> => {
     const priceGuard: PriceGuardPending[] = [];
     const discount: DiscountPending[] = [];
+    const saleIds: string[] = [];
     for (const { item, totalPieces, salePrice, confirmedOverride, discountReason } of items) {
       try {
-        await salesApi.record({
+        const sale = await salesApi.record({
           productName: item.productName,
           qtySold: totalPieces,
           salePrice,
+          receiptId,
           ...(confirmedOverride ? { confirmedOverride: true } : {}),
           ...(discountReason ? { discountReason } : {}),
         });
+        if (sale && typeof sale === 'object' && 'id' in sale && typeof sale.id === 'string') {
+          saleIds.push(sale.id);
+        }
       } catch (err) {
         if (isPriceGuardWarning(err)) {
           const w = getPriceGuardWarning(err)!;
@@ -317,7 +333,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         }
       }
     }
-    return { priceGuard, discount };
+    return { priceGuard, discount, saleIds };
   };
 
   const invalidate = (): void => {
@@ -330,6 +346,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
   const offerReceipt = (
     soldItems: { item: CartItem; totalPieces: number; salePrice: string; salePriceFc: number }[],
+    receiptId: string,
   ): void => {
     // Resolve the "business" identity based on the current persona:
     //   - Employer mode: the receipt is on the employer's books, so they
@@ -382,12 +399,42 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       businessHandle,
       sellerName: user?.name ?? undefined,
       sellerUsername: user?.username,
-      receiptId: generateReceiptId(),
+      receiptId,
     };
 
     setReceiptClientName('');
     setReceiptClientPhone('');
     setReceiptPrompt(receiptData);
+  };
+
+  /**
+   * Persists the buyer details captured at the prompt — server-side for
+   * online sales (PATCH against every just-created row) and locally in the
+   * pending-sales queue for offline ones (the queued POST will carry them
+   * when sync runs). Best-effort: failures here don't block the receipt
+   * print, since the slip already has the buyer's name on it.
+   */
+  const persistClient = (clientName: string, clientPhone: string): void => {
+    const name = clientName.trim();
+    const phone = clientPhone.trim();
+    if (!name && !phone) return; // nothing to attach
+
+    if (isOffline && lastReceiptId) {
+      attachOfflineClient(lastReceiptId, name || undefined, phone || undefined);
+      return;
+    }
+    // Online: PATCH the first row — the server propagates to siblings via
+    // receiptId. We send one request instead of N for cleaner network use.
+    const firstId = lastOnlineSaleIds[0];
+    if (!firstId) return;
+    void salesApi
+      .updateClient(firstId, {
+        clientName: name || undefined,
+        clientPhone: phone || undefined,
+      })
+      .catch(() => {
+        // best-effort — the print continues regardless
+      });
   };
 
   /**
@@ -402,6 +449,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
   const handlePromptPrint = async (): Promise<void> => {
     if (!receiptPrompt) return;
+    persistClient(receiptClientName, receiptClientPhone);
     const data = buildPromptReceipt(receiptPrompt);
     setReceiptPrompt(null);
     try {
@@ -420,12 +468,16 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
   const handlePromptShare = (): void => {
     if (!receiptPrompt) return;
+    persistClient(receiptClientName, receiptClientPhone);
     const data = buildPromptReceipt(receiptPrompt);
     setReceiptPrompt(null);
     void shareReceiptAsPdf(data);
   };
 
   const handlePromptSkip = (): void => {
+    // Persist anyway — if the merchant typed a name/phone then chose "Skip"
+    // they probably meant "don't print but save the buyer info".
+    persistClient(receiptClientName, receiptClientPhone);
     setReceiptPrompt(null);
   };
 
@@ -465,18 +517,25 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       return;
     }
 
+    // One receipt id per cart submission — every row in this batch carries
+    // it so the server can later regroup them into a single reprintable
+    // receipt. Same id is shown to the merchant on the printed slip.
+    const receiptId = generateReceiptId();
+    setLastReceiptId(receiptId);
+
     // ── Offline path ─────────────────────────────────────────────────────────
     if (isOffline) {
       const soldItems = buildSubmitItems(cartArray);
       for (const { item, totalPieces, salePrice } of soldItems) {
-        recordOfflineSale(item.productName, totalPieces, salePrice);
+        recordOfflineSale(item.productName, totalPieces, salePrice, { receiptId });
       }
+      setLastOnlineSaleIds([]);
       // Open the receipt prompt FIRST, then close the main modal. If the
       // parent ever unmounts us when `visible` flips, the prompt state would
       // be lost — offline this branch is fully synchronous so React commits
       // everything in one render pass and the race was guaranteed. Setting
       // the prompt before handleClose() ensures it lands first.
-      offerReceipt(soldItems);
+      offerReceipt(soldItems, receiptId);
       handleClose();
       return;
     }
@@ -484,8 +543,9 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     // ── Online path ───────────────────────────────────────────────────────────
     setIsSubmitting(true);
     const submitInputs = buildSubmitItems(cartArray);
-    const { priceGuard, discount } = await submitItems(submitInputs);
+    const { priceGuard, discount, saleIds } = await submitItems(submitInputs, receiptId);
     setIsSubmitting(false);
+    setLastOnlineSaleIds(saleIds);
 
     if (discount.length > 0) {
       // Discount reason flow takes priority — the items are blocked server-side
@@ -495,7 +555,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       setPriceGuardPending(priceGuard);
     } else {
       invalidate();
-      offerReceipt(submitInputs);
+      offerReceipt(submitInputs, receiptId);
       handleClose();
     }
   };
@@ -518,11 +578,14 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       totalPieces: p.totalPieces,
       confirmedOverride: true,
     }));
+    const receiptId = lastReceiptId ?? generateReceiptId();
+    setLastReceiptId(receiptId);
     setIsSubmitting(true);
-    await submitItems(inputs);
+    const { saleIds } = await submitItems(inputs, receiptId);
     setIsSubmitting(false);
+    setLastOnlineSaleIds((prev) => [...prev, ...saleIds]);
     invalidate();
-    offerReceipt(inputs);
+    offerReceipt(inputs, receiptId);
     handleClose();
   };
 
@@ -539,9 +602,12 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       totalPieces: p.totalPieces,
       discountReason: p.reason.trim(),
     }));
+    const receiptId = lastReceiptId ?? generateReceiptId();
+    setLastReceiptId(receiptId);
     setIsSubmitting(true);
-    const { priceGuard } = await submitItems(inputs);
+    const { priceGuard, saleIds } = await submitItems(inputs, receiptId);
     setIsSubmitting(false);
+    setLastOnlineSaleIds((prev) => [...prev, ...saleIds]);
     if (priceGuard.length > 0) {
       // Got a price-guard 422 on resubmit — chain into that flow.
       setDiscountPending([]);
@@ -549,7 +615,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       return;
     }
     invalidate();
-    offerReceipt(inputs);
+    offerReceipt(inputs, receiptId);
     handleClose();
   };
 

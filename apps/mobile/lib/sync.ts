@@ -25,23 +25,25 @@ export async function syncPendingSales(): Promise<SyncResult> {
   const errors: string[] = [];
 
   for (const sale of pendingSales) {
+    // Carry the buyer info and receipt grouping captured offline so the row
+    // lands on the server with the same searchable metadata an online sale
+    // would have.
+    const basePayload = {
+      productName: sale.productName,
+      qtySold: sale.qtySold,
+      salePrice: sale.salePrice,
+      clientName: sale.clientName,
+      clientPhone: sale.clientPhone,
+      receiptId: sale.receiptId,
+    };
     try {
-      await salesApi.record({
-        productName: sale.productName,
-        qtySold: sale.qtySold,
-        salePrice: sale.salePrice,
-      });
+      await salesApi.record(basePayload);
       syncedIds.push(sale.id);
     } catch (err) {
       // Price guard: auto-confirm since the user already set the markup offline
       if (isPriceGuardWarning(err)) {
         try {
-          await salesApi.record({
-            productName: sale.productName,
-            qtySold: sale.qtySold,
-            salePrice: sale.salePrice,
-            confirmedOverride: true,
-          });
+          await salesApi.record({ ...basePayload, confirmedOverride: true });
           syncedIds.push(sale.id);
           continue;
         } catch (err2) {

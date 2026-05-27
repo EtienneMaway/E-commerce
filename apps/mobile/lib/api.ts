@@ -189,14 +189,36 @@ export const inventoryApi = {
 
 export const salesApi = {
   record: (body: {
-    productName: string; qtySold: number; salePrice: string; confirmedOverride?: boolean;
+    productName: string;
+    qtySold: number;
+    salePrice: string;
+    confirmedOverride?: boolean;
+    discountReason?: string;
+    clientName?: string;
+    clientPhone?: string;
+    receiptId?: string;
   }) => api.post('/sales', body).then((r) => r.data),
 
-  list: (params?: { productName?: string; dateFrom?: string; dateTo?: string; period?: string; page?: number; limit?: number }) =>
-    api.get('/sales', { params }).then((r) => r.data),
+  list: (params?: {
+    productName?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    period?: string;
+    page?: number;
+    limit?: number;
+    clientQuery?: string;
+  }) => api.get('/sales', { params }).then((r) => r.data),
 
   topProducts: (params?: { rankBy?: 'qty' | 'revenue' | 'profit'; period?: string; dateFrom?: string; dateTo?: string }) =>
     api.get('/sales/top-products', { params }).then((r) => r.data),
+
+  /** Fetch every sale row sharing a receiptId — used to reconstruct a multi-item original receipt. */
+  byReceipt: (receiptId: string) =>
+    api.get(`/sales/by-receipt/${encodeURIComponent(receiptId)}`).then((r) => r.data),
+
+  /** Attach (or update) buyer name + phone on a sale. Propagates across the whole receipt when receiptId is set. */
+  updateClient: (saleId: string, body: { clientName?: string; clientPhone?: string }) =>
+    api.patch(`/sales/${saleId}/client`, body).then((r) => r.data),
 };
 
 // ─── Payments ──────────────────────────────────────────────────────────────
