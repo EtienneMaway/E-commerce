@@ -46,10 +46,12 @@ export default function DashboardScreen() {
     isOffline,
     pendingSales,
     syncStatus,
+    syncProgress,
     lastSyncedAt,
     snapshotTakenAt,
     enableOfflineMode,
     disableOfflineMode,
+    clearSyncErrors,
   } = useOfflineStore();
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
@@ -96,6 +98,12 @@ export default function DashboardScreen() {
     const rate = parseFloat(exchangeRate) || 1;
     return sum + parseFloat(s.salePrice) * s.qtySold * rate;
   }, 0);
+  const isSyncing = syncStatus === 'syncing';
+  const hasSyncErrors = pendingSales.some((s) => s.syncError);
+  const syncPct =
+    syncProgress && syncProgress.total > 0
+      ? Math.min(100, Math.round((syncProgress.completed / syncProgress.total) * 100))
+      : 0;
 
   const handleToggleOffline = () => {
     if (isOffline) {
@@ -145,20 +153,37 @@ export default function DashboardScreen() {
     }
   };
 
-  const handleSync = async () => {
+  const runSync = async () => {
     const result = await syncPendingSales();
     qc.invalidateQueries({ queryKey: QK.dashboard });
     qc.invalidateQueries({ queryKey: QK.inventory() });
     qc.invalidateQueries({ queryKey: QK.salesHistory() });
 
     if (result.failed === 0) {
-      Alert.alert('✅', t.home.syncDone(result.synced));
+      // Nothing to report when there was nothing to do (e.g. a no-op restart).
+      if (result.synced > 0) Alert.alert('✅', t.home.syncDone(result.synced));
     } else {
       Alert.alert(
         t.home.syncFailed(result.failed),
         result.errors.length > 0 ? `${t.home.syncErrors}\n${result.errors.join('\n')}` : undefined,
       );
     }
+  };
+
+  // Resume: continue from where it stopped — already-synced rows were removed
+  // from the queue, so this only re-attempts the remaining/failed ones.
+  const handleSync = () => {
+    if (syncStatus === 'syncing') return;
+    void runSync();
+  };
+
+  // Restart: clear stale error flags first, then re-run. Synced rows are
+  // already gone from the queue (and the server dedupes on clientSaleId), so a
+  // restart never re-sends a completed sale — it just retries the rest.
+  const handleRestart = () => {
+    if (syncStatus === 'syncing') return;
+    clearSyncErrors();
+    void runSync();
   };
 
   const snapshotLabel = snapshotTakenAt
@@ -253,39 +278,72 @@ export default function DashboardScreen() {
       {pendingCount > 0 && (
         <View className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-2xl px-4 py-3 mb-4">
           <View className="flex-row items-center justify-between mb-2">
-            <View>
+            <View className="flex-1 pr-2">
               <Text className="text-blue-700 dark:text-blue-300 font-bold text-sm">
                 🔄 {t.home.pendingSalesCount(pendingCount)}
               </Text>
               <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5">
                 {formatMoney(pendingTotalFc, '1')} total
               </Text>
-              {lastSyncedLabel && (
-                <Text className="text-blue-500 dark:text-blue-500 text-xs mt-0.5">{lastSyncedLabel}</Text>
+              {isSyncing && syncProgress ? (
+                <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5 tabular-nums">
+                  {t.home.syncProgress(syncProgress.completed, syncProgress.total, syncPct)}
+                </Text>
+              ) : (
+                lastSyncedLabel && (
+                  <Text className="text-blue-500 dark:text-blue-500 text-xs mt-0.5">{lastSyncedLabel}</Text>
+                )
               )}
             </View>
-            <TouchableOpacity
-              onPress={syncStatus === 'syncing' ? undefined : handleSync}
-              className={`px-4 py-2 rounded-xl ${syncStatus === 'syncing' ? 'bg-blue-200 dark:bg-blue-800' : 'bg-blue-600'}`}
-              activeOpacity={0.8}
-            >
-              {syncStatus === 'syncing' ? (
+
+            {/* Action area: spinner while syncing; Resume+Restart after a
+                partial failure; a single Sync button otherwise. */}
+            {isSyncing ? (
+              <View className="px-4 py-2 rounded-xl bg-blue-200 dark:bg-blue-800">
                 <ActivityIndicator size="small" color="#3b82f6" />
-              ) : (
+              </View>
+            ) : hasSyncErrors ? (
+              <View className="flex-row gap-2">
+                <TouchableOpacity
+                  onPress={handleSync}
+                  className="px-3 py-2 rounded-xl bg-blue-600"
+                  activeOpacity={0.8}
+                >
+                  <Text className="text-white font-semibold text-sm">{t.home.syncResume}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleRestart}
+                  className="px-3 py-2 rounded-xl border border-blue-400 dark:border-blue-600"
+                  activeOpacity={0.8}
+                >
+                  <Text className="text-blue-700 dark:text-blue-300 font-semibold text-sm">
+                    {t.home.syncRestart}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={handleSync}
+                className="px-4 py-2 rounded-xl bg-blue-600"
+                activeOpacity={0.8}
+              >
                 <Text className="text-white font-semibold text-sm">{t.home.syncNow}</Text>
-              )}
-            </TouchableOpacity>
+              </TouchableOpacity>
+            )}
           </View>
 
-          {/* Progress bar: synced / total */}
-          {syncStatus === 'syncing' && (
+          {/* Progress bar — real width from completed/total */}
+          {(isSyncing || (syncProgress && syncProgress.completed < syncProgress.total)) && (
             <View className="h-1.5 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden mt-1">
-              <View className="h-full bg-blue-500 rounded-full w-1/3" />
+              <View
+                className="h-full bg-blue-500 rounded-full"
+                style={{ width: `${syncPct}%` }}
+              />
             </View>
           )}
 
-          {/* Failed sales list */}
-          {pendingSales.some((s) => s.syncError) && (
+          {/* Failed sales list + retry hint */}
+          {hasSyncErrors && (
             <View className="mt-2 border-t border-blue-200 dark:border-blue-700 pt-2 gap-1">
               {pendingSales
                 .filter((s) => s.syncError)
@@ -294,6 +352,9 @@ export default function DashboardScreen() {
                     ⚠ {s.productName} ×{s.qtySold} — {s.syncError}
                   </Text>
                 ))}
+              <Text className="text-blue-500 dark:text-blue-500 text-[11px] mt-1">
+                {t.home.syncRetryHint}
+              </Text>
             </View>
           )}
         </View>

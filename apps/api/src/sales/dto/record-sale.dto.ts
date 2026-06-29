@@ -67,4 +67,15 @@ export class RecordSaleDto {
   @IsString()
   @IsOptional()
   receiptId?: string;
+
+  @ApiPropertyOptional({
+    example: '1719763200000-a1b2c',
+    description:
+      'Client-generated idempotency key from the offline sync queue. If a sale with this key already exists ' +
+      'for the owner, the server returns it unchanged instead of recording a duplicate — making retries on a ' +
+      'flaky network safe.',
+  })
+  @IsString()
+  @IsOptional()
+  clientSaleId?: string;
 }

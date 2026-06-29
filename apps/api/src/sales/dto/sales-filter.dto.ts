@@ -30,6 +30,46 @@ export enum TopProductsRankBy {
   PROFIT = 'profit',
 }
 
+/**
+ * Period presets for the sales profit summary. `today` is the calendar day;
+ * `week`/`month` are rolling windows (last 7 / last 30 days); `all` is no
+ * bound; `custom` uses dateFrom/dateTo.
+ */
+export enum SalesSummaryPeriod {
+  TODAY = 'today',
+  WEEK = 'week',
+  MONTH = 'month',
+  ALL = 'all',
+  CUSTOM = 'custom',
+}
+
+export class SalesSummaryFilterDto {
+  @ApiPropertyOptional({ enum: SalesSummaryPeriod, default: SalesSummaryPeriod.TODAY })
+  @IsEnum(SalesSummaryPeriod)
+  @IsOptional()
+  period?: SalesSummaryPeriod = SalesSummaryPeriod.TODAY;
+
+  @ApiPropertyOptional({ example: '2025-01-01', description: 'Start of range (used when period=custom)' })
+  @IsDateString()
+  @IsOptional()
+  dateFrom?: string;
+
+  @ApiPropertyOptional({ example: '2025-01-31', description: 'End of range, inclusive (used when period=custom)' })
+  @IsDateString()
+  @IsOptional()
+  dateTo?: string;
+
+  @ApiPropertyOptional({ example: 'Rice', description: 'Optional: restrict the summary to one product' })
+  @IsString()
+  @IsOptional()
+  productName?: string;
+
+  @ApiPropertyOptional({ description: 'Optional: restrict the summary to one actor (employee)' })
+  @IsUUID()
+  @IsOptional()
+  actorId?: string;
+}
+
 export class SalesFilterDto {
   @ApiPropertyOptional({ example: 'Rice' })
   @IsString()

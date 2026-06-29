@@ -14,6 +14,7 @@ import { EditSellingPriceDialog } from '../../../../components/forms/EditSelling
 import { AdjustStockDialog } from '../../../../components/forms/AdjustStockDialog';
 import { EditProductSellingPriceDialog } from '../../../../components/forms/EditProductSellingPriceDialog';
 import { RenameProductDialog } from '../../../../components/forms/RenameProductDialog';
+import { SalesProfitWidget } from '../../../../components/ui/SalesProfitWidget';
 import { useT } from '../../../../lib/i18n';
 
 interface InventoryEntry {
@@ -454,6 +455,11 @@ export default function ProductDetailPage({
           </div>
         </div>
       )}
+
+      {/* ── Sales profit for this product (today / range) ─────────── */}
+      <div className="page-content" style={{ paddingTop: 0 }}>
+        <SalesProfitWidget productName={productName} defaultPeriod="today" />
+      </div>
 
       {/* Entries table */}
       <div className="page-content">

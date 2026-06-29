@@ -188,16 +188,24 @@ export const inventoryApi = {
 // ─── Sales ─────────────────────────────────────────────────────────────────
 
 export const salesApi = {
-  record: (body: {
-    productName: string;
-    qtySold: number;
-    salePrice: string;
-    confirmedOverride?: boolean;
-    discountReason?: string;
-    clientName?: string;
-    clientPhone?: string;
-    receiptId?: string;
-  }) => api.post('/sales', body).then((r) => r.data),
+  record: (
+    body: {
+      productName: string;
+      qtySold: number;
+      salePrice: string;
+      confirmedOverride?: boolean;
+      discountReason?: string;
+      clientName?: string;
+      clientPhone?: string;
+      receiptId?: string;
+      // Idempotency key — the offline queue sends the same value on every
+      // retry so a sale committed during a dropped connection is never
+      // duplicated server-side.
+      clientSaleId?: string;
+    },
+    // Per-call overrides (offline sync uses a longer timeout for slow links).
+    config?: { timeout?: number },
+  ) => api.post('/sales', body, config).then((r) => r.data),
 
   list: (params?: {
     productName?: string;

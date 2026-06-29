@@ -102,4 +102,14 @@ export class SaleTransaction {
   })
   @Column({ name: 'receipt_id', type: 'varchar', nullable: true })
   receiptId: string | null;
+
+  @ApiPropertyOptional({
+    example: '1719763200000-a1b2c',
+    description:
+      'Client-generated idempotency key. Set by the mobile offline queue so a sale that is retried after a ' +
+      'flaky-network timeout (server committed but the response was lost) is recognised and NOT duplicated. ' +
+      'Null for online sales. Multiple rows from one split sale share the same value.',
+  })
+  @Column({ name: 'client_sale_id', type: 'varchar', nullable: true })
+  clientSaleId: string | null;
 }

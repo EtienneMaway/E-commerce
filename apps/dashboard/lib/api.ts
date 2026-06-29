@@ -232,11 +232,32 @@ export const paymentsApi = {
 
 // ─── Sales ────────────────────────────────────────────────────────────────────
 
+export interface SalesProfitSummary {
+  period: 'today' | 'week' | 'month' | 'all' | 'custom';
+  dateFrom: string | null;
+  dateTo: string | null;
+  salesCount: number;
+  totalQtySold: number;
+  totalRevenue: string;
+  totalCost: string;
+  totalProfit: string;
+}
+
 export const salesApi = {
   list: (params?: { productName?: string; period?: string; page?: number; limit?: number; actorId?: string }) =>
     api.get('/sales', { params }).then((r) => r.data),
   topProducts: (params?: { rankBy?: 'qty' | 'revenue' | 'profit'; period?: string }) =>
     api.get('/sales/top-products', { params }).then((r) => r.data),
+  // Aggregate direct-sales profit for a period (today/week/month/all) or a
+  // custom dateFrom–dateTo range: revenue vs bought price (cost) vs profit.
+  profitSummary: (params?: {
+    period?: 'today' | 'week' | 'month' | 'all' | 'custom';
+    dateFrom?: string;
+    dateTo?: string;
+    productName?: string;
+    actorId?: string;
+  }): Promise<SalesProfitSummary> =>
+    api.get('/sales/profit-summary', { params }).then((r) => r.data),
 };
 
 // ─── Currency ─────────────────────────────────────────────────────────────────

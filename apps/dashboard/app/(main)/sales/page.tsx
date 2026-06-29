@@ -23,6 +23,23 @@ import { generateReceiptId, type ReceiptData } from '../../../lib/thermal-receip
 
 type Period = '7d' | '30d' | '90d' | 'all';
 
+/**
+ * Map the sales-history period to profit-summary params. 7d/30d align exactly
+ * with the endpoint's rolling week/month windows; 90d uses a custom range.
+ */
+function summaryParams(period: Period): {
+  period: 'week' | 'month' | 'all' | 'custom';
+  dateFrom?: string;
+  dateTo?: string;
+} {
+  if (period === '7d') return { period: 'week' };
+  if (period === '30d') return { period: 'month' };
+  if (period === 'all') return { period: 'all' };
+  const from = new Date();
+  from.setDate(from.getDate() - 90);
+  return { period: 'custom', dateFrom: from.toISOString().slice(0, 10), dateTo: new Date().toISOString().slice(0, 10) };
+}
+
 interface Row {
   id: string;
   productName: string;
@@ -130,9 +147,19 @@ export default function SalesPage() {
   });
 
   const rows = ((data as { data: Row[]; total: number } | undefined)?.data) ?? [];
-  const totalRevenue = rows.reduce((s, r) => s + parseFloat(r.salePrice) * r.qtySold, 0);
-  const totalProfit = rows.reduce((s, r) => s + parseFloat(r.profit), 0);
-  const lossCount = rows.filter((r) => r.isLoss).length;
+
+  // Period totals come from the dedicated profit-summary endpoint so they cover
+  // the WHOLE period — not just the rows on the current page (which was the old
+  // bug: the header summed only the visible ~10 rows).
+  const sParams = { ...summaryParams(period), actorId: resolveActorFilter(actorFilter) };
+  const { data: summary } = useQuery({
+    queryKey: QK.salesProfitSummary(sParams),
+    queryFn: () => salesApi.profitSummary(sParams),
+    staleTime: 30_000,
+  });
+  const totalRevenue = summary ? parseFloat(summary.totalRevenue) : 0;
+  const totalProfit = summary ? parseFloat(summary.totalProfit) : 0;
+  const txnCount = summary?.salesCount ?? (data as { total: number } | undefined)?.total ?? 0;
 
   return (
     <div>
@@ -181,15 +208,12 @@ export default function SalesPage() {
         <div className="flex-1 min-w-0">
           <h1 className="page-title">{t.sales.title}</h1>
           <p className="page-sub">
-            {t.sales.transactions(rows.length)} · {t.sales.revenue}:{' '}
+            {t.sales.transactions(txnCount)} · {t.sales.revenue}:{' '}
             <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>{formatCurrency(totalRevenue.toFixed(4))}</span>
             {' '}· {t.sales.profit}:{' '}
             <span style={{ fontWeight: 600, color: totalProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
               {formatCurrency(totalProfit.toFixed(4))}
             </span>
-            {lossCount > 0 && (
-              <span style={{ color: 'var(--danger)' }}> · {t.sales.lossSales(lossCount)}</span>
-            )}
           </p>
           {/* Period + actor filters */}
           <div className="flex gap-2 mt-3 flex-wrap items-center">

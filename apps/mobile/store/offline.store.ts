@@ -34,11 +34,21 @@ export interface PendingSale {
   receiptId?: string;
 }
 
+export interface SyncProgress {
+  /** Total sales in this sync run (synced-so-far + still-remaining). */
+  total: number;
+  /** How many have been confirmed synced so far in this run. */
+  completed: number;
+}
+
 interface OfflineState {
   isOffline: boolean;
   cachedProducts: CachedProduct[];
   pendingSales: PendingSale[];
   syncStatus: 'idle' | 'syncing' | 'error';
+  // Live progress of the current/last sync run. Drives the progress bar + %.
+  // Persisted so a run interrupted by an app kill still shows where it stood.
+  syncProgress: SyncProgress | null;
   lastSyncedAt: string | null;
   snapshotTakenAt: string | null;
   // Exchange rate at the moment of going offline. The rate is administratively
@@ -59,9 +69,12 @@ interface OfflineState {
   /** Patch buyer info onto every pending sale that shares the given receiptId. */
   attachOfflineClient: (receiptId: string, clientName?: string, clientPhone?: string) => void;
   setSyncStatus: (status: 'idle' | 'syncing' | 'error') => void;
+  setSyncProgress: (progress: SyncProgress | null) => void;
   setLastSyncedAt: (at: string) => void;
   removeSyncedSales: (ids: string[]) => void;
   updateSaleError: (id: string, error: string) => void;
+  /** Wipe per-sale error flags before a "Restart" run so they can be retried fresh. */
+  clearSyncErrors: () => void;
 }
 
 export const useOfflineStore = create<OfflineState>()(
@@ -71,6 +84,7 @@ export const useOfflineStore = create<OfflineState>()(
       cachedProducts: [],
       pendingSales: [],
       syncStatus: 'idle',
+      syncProgress: null,
       lastSyncedAt: null,
       snapshotTakenAt: null,
       snapshotRate: null,
@@ -120,12 +134,17 @@ export const useOfflineStore = create<OfflineState>()(
         })),
 
       setSyncStatus: (syncStatus) => set({ syncStatus }),
+      setSyncProgress: (syncProgress) => set({ syncProgress }),
       setLastSyncedAt: (lastSyncedAt) => set({ lastSyncedAt }),
       removeSyncedSales: (ids) =>
         set((s) => ({ pendingSales: s.pendingSales.filter((p) => !ids.includes(p.id)) })),
       updateSaleError: (id, error) =>
         set((s) => ({
           pendingSales: s.pendingSales.map((p) => (p.id === id ? { ...p, syncError: error } : p)),
+        })),
+      clearSyncErrors: () =>
+        set((s) => ({
+          pendingSales: s.pendingSales.map((p) => ({ ...p, syncError: null })),
         })),
     }),
     {

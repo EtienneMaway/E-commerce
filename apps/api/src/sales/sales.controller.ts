@@ -18,7 +18,11 @@ import {
 import { SalesService } from './sales.service';
 import { RecordSaleDto } from './dto/record-sale.dto';
 import { UpdateSaleClientDto } from './dto/update-sale-client.dto';
-import { SalesFilterDto, TopProductsFilterDto } from './dto/sales-filter.dto';
+import {
+  SalesFilterDto,
+  SalesSummaryFilterDto,
+  TopProductsFilterDto,
+} from './dto/sales-filter.dto';
 import { PriceGuardWarningDto } from './dto/price-guard-warning.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
@@ -69,6 +73,23 @@ export class SalesController {
   @ApiResponse({ status: 200, description: 'Ranked product list' })
   topProducts(@CurrentActorContext() ctx: ActorContext, @Query() filter: TopProductsFilterDto) {
     return this.salesService.topProducts(ctx, filter);
+  }
+
+  @Get('profit-summary')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @ApiOperation({
+    summary: 'Aggregate direct-sales profit for a period or date range',
+    description:
+      'Returns sales count, quantity, revenue (what was sold for), cost (the bought price / COGS), ' +
+      'and profit over the chosen period (today / week / month / all) or a custom dateFrom–dateTo range. ' +
+      'Powers the dashboard "today\'s profit" and date-range profit views.',
+  })
+  @ApiResponse({ status: 200, description: 'Profit summary for the range' })
+  profitSummary(
+    @CurrentActorContext() ctx: ActorContext,
+    @Query() filter: SalesSummaryFilterDto,
+  ) {
+    return this.salesService.profitSummary(ctx, filter);
   }
 
   @Get('by-receipt/:receiptId')

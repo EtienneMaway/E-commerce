@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { dashboardApi, salesApi } from '../../../lib/api';
+import { dashboardApi, salesApi, type SalesProfitSummary } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { formatDate } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
@@ -9,6 +10,14 @@ import { KpiCard } from '../../../components/ui/KpiCard';
 import { Badge } from '../../../components/ui/Badge';
 import { TopProductsChart } from '../../../components/charts/TopProductsChart';
 import { SourcePieChart } from '../../../components/charts/SourcePieChart';
+import {
+  PeriodFilter,
+  DEFAULT_PERIOD,
+  periodReady,
+  periodToParams,
+  usePeriodLabel,
+  type PeriodState,
+} from '../../../components/ui/PeriodFilter';
 import { useT } from '../../../lib/i18n';
 
 interface Summary { totalIOwe: string; totalOwedToMe: string; netPosition: string; totalProfitAllTime: string; totalPurchaseValue: string; totalSellingValue: string; }
@@ -35,6 +44,24 @@ interface AlertItem {
 export default function DashboardPage() {
   const t = useT();
   const formatCurrency = useFormatCurrency();
+  const periodLabel = usePeriodLabel();
+
+  // Top-of-page period filter. Drives the period-sensitive cards below (sales
+  // revenue / bought price / profit). Defaults to Today; the user can switch to
+  // last 7d / 30d / all time / a custom range. Balance and inventory-snapshot
+  // cards stay all-time — they aren't period metrics.
+  const [sel, setSel] = useState<PeriodState>(DEFAULT_PERIOD);
+  const periodParams = periodToParams(sel);
+  const { data: profitSummary, isFetching: profitFetching } = useQuery({
+    queryKey: QK.salesProfitSummary(periodParams),
+    queryFn: () => salesApi.profitSummary(periodParams),
+    enabled: periodReady(sel),
+    staleTime: 30_000,
+  });
+  const ps = profitSummary as SalesProfitSummary | undefined;
+  const periodProfit = ps ? parseFloat(ps.totalProfit) : 0;
+  const profitLoading = profitFetching && !ps;
+
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: QK.dashboard,
     queryFn: () => dashboardApi.summary(),
@@ -158,14 +185,54 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── KPI cards: 3 on top, 4 on bottom ──────────────────────── */}
+        {/* ── Period filter + sales performance (driven by it) ──────── */}
+        <div className="space-y-4 anim-fade-up">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="font-bold text-sm tracking-tight" style={{ color: 'var(--foreground)' }}>
+                {t.dashboard.profitWidgetTitle}
+              </h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                {t.dashboard.profitWidgetSub} · {periodLabel(sel.period)}
+              </p>
+            </div>
+            <PeriodFilter value={sel} onChange={setSel} />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <KpiCard
+              label={t.dashboard.profitRevenue}
+              value={periodReady(sel) ? formatCurrency(ps?.totalRevenue ?? '0') : '—'}
+              icon="💵"
+              color="success"
+              sub={periodLabel(sel.period)}
+              loading={profitLoading}
+            />
+            <KpiCard
+              label={t.dashboard.profitCost}
+              value={periodReady(sel) ? formatCurrency(ps?.totalCost ?? '0') : '—'}
+              icon="🛒"
+              color="warning"
+              sub={periodLabel(sel.period)}
+              loading={profitLoading}
+            />
+            <KpiCard
+              label={t.dashboard.profitNet}
+              value={periodReady(sel) ? formatCurrency(ps?.totalProfit ?? '0') : '—'}
+              icon={periodProfit >= 0 ? '💰' : '📉'}
+              color={periodProfit >= 0 ? 'primary' : 'danger'}
+              sub={ps && periodReady(sel) ? t.dashboard.profitSalesCount(ps.salesCount) : periodLabel(sel.period)}
+              loading={profitLoading}
+            />
+          </div>
+        </div>
+
+        {/* ── Balances (all-time) ───────────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <KpiCard label={t.dashboard.iOweSuppliers} value={formatCurrency(s?.totalIOwe ?? '0')} icon="🏭" color="danger" sub={t.dashboard.outstandingSupplierDebt} loading={summaryLoading} />
           <KpiCard label={t.dashboard.debtorsOweMe} value={formatCurrency(s?.totalOwedToMe ?? '0')} icon="🤝" color="success" sub={t.dashboard.outstandingDebtorCredit} loading={summaryLoading} />
           <KpiCard label={t.dashboard.netPosition} value={formatCurrency(s?.netPosition ?? '0')} icon={net >= 0 ? '📈' : '📉'} color={net >= 0 ? 'success' : 'danger'} sub={net >= 0 ? t.dashboard.netPositive : t.dashboard.netNegative} loading={summaryLoading} />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <KpiCard label={t.dashboard.totalProfit} value={formatCurrency(s?.totalProfitAllTime ?? '0')} icon="💰" color="primary" sub={t.dashboard.allTimeSalesProfit} loading={summaryLoading} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <KpiCard
             label={t.dashboard.availableBusinessCash}
             value={formatCurrency(cp?.availableBusinessCash ?? '0')}

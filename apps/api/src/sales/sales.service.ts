@@ -22,6 +22,8 @@ import {
   SalesFilterDto,
   SalesHistoryPeriod,
   SalesPeriod,
+  SalesSummaryFilterDto,
+  SalesSummaryPeriod,
   TopProductsFilterDto,
   TopProductsRankBy,
 } from './dto/sales-filter.dto';
@@ -34,6 +36,18 @@ export interface TopProduct {
   totalRevenue: string;
   totalProfit: string;
   isLossProduct: boolean;
+}
+
+export interface SalesProfitSummary {
+  /** Echo of the resolved range so the client can label the figures. */
+  period: SalesSummaryPeriod;
+  dateFrom: string | null; // ISO; null when unbounded ("all")
+  dateTo: string | null;
+  salesCount: number; // number of sale rows in range
+  totalQtySold: number;
+  totalRevenue: string; // Σ salePrice × qty — what was sold for
+  totalCost: string; // Σ unitCost × qty — the bought price (COGS)
+  totalProfit: string; // Σ profit — revenue − cost
 }
 
 @Injectable()
@@ -54,6 +68,21 @@ export class SalesService {
   ): Promise<SaleTransaction> {
     const ownerId = ctx.effectiveOwnerId;
     const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
+
+    // Idempotency: the offline sync queue stamps each sale with a stable
+    // client-generated key. If a retry lands here after a flaky-network
+    // timeout (server already committed, but the response never reached the
+    // device), recognise the key and return the existing row instead of
+    // recording the sale twice. A split sale produces several rows sharing the
+    // same key — returning the first is enough to signal "already done".
+    const clientSaleId = dto.clientSaleId?.trim() || null;
+    if (clientSaleId) {
+      const existing = await this.saleRepo.findOne({
+        where: { ownerId, clientSaleId },
+        order: { date: 'ASC' },
+      });
+      if (existing) return existing;
+    }
 
     // Find available stock: SUPPLIER first, then CONSIGNED_IN, then PERSONAL
     const productNamePattern = ILike(dto.productName.trim().toLowerCase());
@@ -154,6 +183,7 @@ export class SalesService {
           clientName: dto.clientName?.trim() || null,
           clientPhone: dto.clientPhone?.trim() || null,
           receiptId: dto.receiptId?.trim() || null,
+          clientSaleId,
         });
         const savedSale = await manager.save(SaleTransaction, sale);
         sales.push(savedSale);
@@ -315,6 +345,99 @@ export class SalesService {
         return new Decimal(b.totalRevenue).cmp(new Decimal(a.totalRevenue));
       return new Decimal(b.totalProfit).cmp(new Decimal(a.totalProfit));
     });
+  }
+
+  /**
+   * Aggregate profit over a period or custom date range for DIRECT sales —
+   * what was sold (revenue) vs the bought price (COGS) and the profit between
+   * them. Powers the dashboard's "today's / this range's profit" view.
+   *
+   * Scope: `sale_transactions` only (consignment + external-contact profit are
+   * realized separately and excluded here, matching what a merchant means by
+   * "sales I made compared to what I bought them for").
+   */
+  async profitSummary(
+    ctx: ActorContext,
+    filter: SalesSummaryFilterDto,
+  ): Promise<SalesProfitSummary> {
+    const ownerId = ctx.effectiveOwnerId;
+    const period = filter.period ?? SalesSummaryPeriod.TODAY;
+    const { dateFrom, dateTo } = this.resolveSummaryPeriod(filter);
+
+    const qb = this.saleRepo
+      .createQueryBuilder('sale')
+      .select('COUNT(*)', 'salesCount')
+      .addSelect('COALESCE(SUM(sale.qtySold), 0)', 'totalQtySold')
+      .addSelect(
+        'COALESCE(SUM(CAST(sale.salePrice AS DECIMAL) * sale.qtySold), 0)',
+        'totalRevenue',
+      )
+      .addSelect(
+        'COALESCE(SUM(CAST(sale.unitCost AS DECIMAL) * sale.qtySold), 0)',
+        'totalCost',
+      )
+      .addSelect('COALESCE(SUM(CAST(sale.profit AS DECIMAL)), 0)', 'totalProfit')
+      .where('sale.ownerId = :ownerId', { ownerId });
+
+    if (filter.productName) {
+      qb.andWhere('sale.productName ILIKE :name', { name: `%${filter.productName}%` });
+    }
+    if (filter.actorId) {
+      qb.andWhere('sale.actor_id = :actorId', { actorId: filter.actorId });
+    }
+    if (dateFrom) qb.andWhere('sale.date >= :from', { from: dateFrom });
+    if (dateTo) qb.andWhere('sale.date <= :to', { to: dateTo });
+
+    const row = await qb.getRawOne<{
+      salesCount: string;
+      totalQtySold: string;
+      totalRevenue: string;
+      totalCost: string;
+      totalProfit: string;
+    }>();
+
+    return {
+      period,
+      dateFrom: dateFrom ? dateFrom.toISOString() : null,
+      dateTo: dateTo ? dateTo.toISOString() : null,
+      salesCount: Number(row?.salesCount ?? 0),
+      totalQtySold: Number(row?.totalQtySold ?? 0),
+      totalRevenue: new Decimal(row?.totalRevenue ?? 0).toFixed(4),
+      totalCost: new Decimal(row?.totalCost ?? 0).toFixed(4),
+      totalProfit: new Decimal(row?.totalProfit ?? 0).toFixed(4),
+    };
+  }
+
+  private resolveSummaryPeriod(filter: SalesSummaryFilterDto): {
+    dateFrom: Date | null;
+    dateTo: Date | null;
+  } {
+    const now = new Date();
+    switch (filter.period ?? SalesSummaryPeriod.TODAY) {
+      case SalesSummaryPeriod.TODAY: {
+        const start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+        return { dateFrom: start, dateTo: now };
+      }
+      case SalesSummaryPeriod.WEEK: {
+        const start = new Date(now);
+        start.setDate(now.getDate() - 7);
+        return { dateFrom: start, dateTo: now };
+      }
+      case SalesSummaryPeriod.MONTH: {
+        const start = new Date(now);
+        start.setDate(now.getDate() - 30);
+        return { dateFrom: start, dateTo: now };
+      }
+      case SalesSummaryPeriod.CUSTOM:
+        return {
+          dateFrom: filter.dateFrom ? new Date(filter.dateFrom) : null,
+          dateTo: filter.dateTo ? new Date(filter.dateTo + 'T23:59:59') : null,
+        };
+      case SalesSummaryPeriod.ALL:
+      default:
+        return { dateFrom: null, dateTo: null };
+    }
   }
 
   private resolveHistoryPeriod(period?: SalesHistoryPeriod): Date | null {
