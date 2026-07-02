@@ -1,6 +1,7 @@
-import { IsArray, IsDateString, IsEnum, IsInt, IsOptional, IsPositive, IsUUID } from 'class-validator';
+import { IsArray, IsDateString, IsEnum, IsInt, IsOptional, IsPositive } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsUuidOrSelf } from '../../common/actor-filter';
 
 export enum ActivityLogType {
   SALE = 'SALE',
@@ -34,9 +35,9 @@ export class ListActivityLogsDto {
   @IsEnum(ActivityLogType, { each: true })
   actionTypes?: ActivityLogType[];
 
-  @ApiPropertyOptional({ description: 'Filter by actor (employee user id). Omit for all actors including the owner.' })
+  @ApiPropertyOptional({ description: "Filter by actor. UUID = one employee; 'self' = the current viewer's own rows; omit for all actors including the owner." })
   @IsOptional()
-  @IsUUID()
+  @IsUuidOrSelf()
   actorId?: string;
 
   @ApiPropertyOptional({ example: '2026-04-01' })

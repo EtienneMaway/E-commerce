@@ -677,8 +677,29 @@ export const pricingApi = {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
+export interface DashboardProfitSummary {
+  period: 'today' | 'week' | 'month' | 'all' | 'custom';
+  dateFrom: string | null;
+  dateTo: string | null;
+  salesCount: number;
+  totalQtySold: number;
+  totalRevenue: string; // direct sales only
+  totalCost: string; // direct sales only
+  salesProfit: string; // direct-sales profit
+  externalProfit: string; // external-contact PAYMENT_IN profit realized in range
+  totalProfit: string; // salesProfit + externalProfit
+}
+
 export const dashboardApi = {
   summary: () => api.get('/dashboard').then((r) => r.data),
+  // Combined period profit (direct sales + external-contact payments) for the
+  // dashboard profit cards. Mirrors salesApi.profitSummary params.
+  profitSummary: (params?: {
+    period?: 'today' | 'week' | 'month' | 'all' | 'custom';
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<DashboardProfitSummary> =>
+    api.get('/dashboard/profit-summary', { params }).then((r) => r.data),
   cashPosition: () => api.get('/dashboard/cash-position').then((r) => r.data),
   suppliers: () => api.get('/dashboard/suppliers').then((r) => r.data),
   supplierDetail: (id: string) => api.get(`/dashboard/suppliers/${id}`).then((r) => r.data),

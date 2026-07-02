@@ -5,10 +5,10 @@ import {
   IsEnum,
   IsInt,
   IsOptional,
-  IsUUID,
   Min,
 } from 'class-validator';
 import { ExpenseCategory } from '../../entities';
+import { IsUuidOrSelf } from '../../common/actor-filter';
 
 export enum ExpensePeriod {
   TODAY = 'today',
@@ -46,8 +46,8 @@ export class ListExpensesQueryDto {
   @IsOptional()
   category?: ExpenseCategory;
 
-  @ApiPropertyOptional({ description: 'Filter by actor (employee). Omit for all actors.' })
-  @IsUUID()
+  @ApiPropertyOptional({ description: "Filter by actor. UUID = one employee; 'self' = the current viewer's own rows; omit for all actors." })
+  @IsUuidOrSelf()
   @IsOptional()
   actorId?: string;
 

@@ -16,6 +16,7 @@ import {
 } from '../entities';
 import { ConsignmentsModule } from '../consignments/consignments.module';
 import { CurrencyModule } from '../currency/currency.module';
+import { SalesModule } from '../sales/sales.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { CurrencyModule } from '../currency/currency.module';
     ]),
     ConsignmentsModule,
     CurrencyModule,
+    SalesModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -10,6 +10,7 @@ import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
+import { SalesSummaryFilterDto } from '../sales/dto/sales-filter.dto';
 
 @ApiTags('dashboard')
 @ApiBearerAuth('jwt')
@@ -40,6 +41,22 @@ export class DashboardController {
   @ApiResponse({ status: 200, description: 'Cash position summary' })
   getCashPosition(@CurrentActorContext() ctx: ActorContext) {
     return this.dashboardService.getCashPosition(ctx.effectiveOwnerId);
+  }
+
+  @Get('profit-summary')
+  @ApiOperation({
+    summary: 'Combined period profit (direct sales + external-contact payments)',
+    description:
+      'Period-scoped profit for the dashboard profit cards. Returns direct-sales ' +
+      'revenue/cost/profit plus external-contact PAYMENT_IN profit realized in the ' +
+      'same window, folded into totalProfit. Consignment profit is excluded.',
+  })
+  @ApiResponse({ status: 200, description: 'Combined period profit summary' })
+  getProfitSummary(
+    @CurrentActorContext() ctx: ActorContext,
+    @Query() filter: SalesSummaryFilterDto,
+  ) {
+    return this.dashboardService.getProfitSummary(ctx, filter);
   }
 
   @Get('suppliers')

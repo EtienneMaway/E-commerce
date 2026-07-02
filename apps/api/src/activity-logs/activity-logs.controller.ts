@@ -26,6 +26,6 @@ export class ActivityLogsController {
   })
   @ApiResponse({ status: 200, description: '{ data, total, byType }' })
   list(@CurrentActorContext() ctx: ActorContext, @Query() query: ListActivityLogsDto) {
-    return this.service.findAll(ctx.effectiveOwnerId, query);
+    return this.service.findAll(ctx, query);
   }
 }

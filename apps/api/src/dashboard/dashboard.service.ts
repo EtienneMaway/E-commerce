@@ -25,6 +25,10 @@ import {
 import { LOW_STOCK_THRESHOLD, OVERDUE_DAYS } from '../common/constants';
 import { ConsignmentsService } from '../consignments/consignments.service';
 import { CurrencyService } from '../currency/currency.service';
+import { SalesService } from '../sales/sales.service';
+import { SalesSummaryFilterDto } from '../sales/dto/sales-filter.dto';
+import type { ActorContext } from '../common/types/actor-context';
+import { applyActorCondToQb, resolveActorFilter } from '../common/actor-filter';
 
 export interface DashboardSummary {
   totalIOwe: string;
@@ -127,6 +131,30 @@ export interface CashPosition {
   };
 }
 
+/**
+ * Period-scoped profit for the dashboard's "today's / this range's profit"
+ * cards. Unlike the sales-only `SalesProfitSummary`, this folds external-contact
+ * profit into the headline: `totalProfit = salesProfit + externalProfit`.
+ *
+ * External-contact profit is realized on PAYMENT_IN (stored on the row) and is
+ * bounded here by the same resolved window (via `createdAt`), so cash collected
+ * today counts in today's profit. Consignment profit is NOT included — it is
+ * realized as a derived aggregate (see computeConsignmentProfits) with no
+ * per-date record, so it can't be date-scoped without separate work.
+ */
+export interface DashboardProfitSummary {
+  period: string;
+  dateFrom: string | null; // ISO; null when unbounded ("all")
+  dateTo: string | null;
+  salesCount: number; // direct-sale rows in range
+  totalQtySold: number; // direct-sale qty in range
+  totalRevenue: string; // Σ salePrice × qty — direct sales only
+  totalCost: string; // Σ unitCost × qty — direct sales only (COGS)
+  salesProfit: string; // direct-sales profit in range
+  externalProfit: string; // external PAYMENT_IN profit realized in range
+  totalProfit: string; // salesProfit + externalProfit
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
@@ -152,7 +180,61 @@ export class DashboardService {
     private readonly withdrawalRepo: Repository<Withdrawal>,
     private readonly consignmentsService: ConsignmentsService,
     private readonly currencyService: CurrencyService,
+    private readonly salesService: SalesService,
   ) {}
+
+  /**
+   * Combined period profit for the dashboard's profit cards: direct-sales
+   * profit + external-contact PAYMENT_IN profit realized in the same window.
+   *
+   * Reuses `SalesService.profitSummary` for the sales portion (and its resolved
+   * date range), then sums external profit bounded by the identical range on
+   * `createdAt`. A product-scoped call (filter.productName) skips external
+   * profit — external payments aren't tied to a single product.
+   */
+  async getProfitSummary(
+    ctx: ActorContext,
+    filter: SalesSummaryFilterDto,
+  ): Promise<DashboardProfitSummary> {
+    const ownerId = ctx.effectiveOwnerId;
+    const sales = await this.salesService.profitSummary(ctx, filter);
+
+    const salesProfit = new Decimal(sales.totalProfit);
+    let externalProfit = new Decimal(0);
+
+    // Only fold in external profit for the whole-book view. When narrowed to a
+    // product, external payments (not product-attributable) would distort it.
+    if (!filter.productName) {
+      const extQb = this.externalTxRepo
+        .createQueryBuilder('tx')
+        .select('COALESCE(SUM(CAST(tx.profit AS DECIMAL)), 0)', 'total')
+        .where('tx.ownerId = :ownerId', { ownerId })
+        .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
+        .andWhere('tx.profit IS NOT NULL');
+      applyActorCondToQb(extQb, 'tx.actor_id', resolveActorFilter(filter.actorId, ctx));
+      if (sales.dateFrom) {
+        extQb.andWhere('tx.createdAt >= :from', { from: new Date(sales.dateFrom) });
+      }
+      if (sales.dateTo) {
+        extQb.andWhere('tx.createdAt <= :to', { to: new Date(sales.dateTo) });
+      }
+      const extRow = await extQb.getRawOne<{ total: string }>();
+      externalProfit = new Decimal(extRow?.total ?? 0);
+    }
+
+    return {
+      period: sales.period,
+      dateFrom: sales.dateFrom,
+      dateTo: sales.dateTo,
+      salesCount: sales.salesCount,
+      totalQtySold: sales.totalQtySold,
+      totalRevenue: sales.totalRevenue,
+      totalCost: sales.totalCost,
+      salesProfit: salesProfit.toFixed(4),
+      externalProfit: externalProfit.toFixed(4),
+      totalProfit: salesProfit.plus(externalProfit).toFixed(4),
+    };
+  }
 
   /**
    * Computes realized consignment profit for an owner across all debtor relationships.

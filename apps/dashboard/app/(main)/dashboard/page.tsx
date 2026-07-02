@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { dashboardApi, salesApi, type SalesProfitSummary } from '../../../lib/api';
+import { dashboardApi, salesApi, type DashboardProfitSummary } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { formatDate } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
@@ -53,13 +53,14 @@ export default function DashboardPage() {
   const [sel, setSel] = useState<PeriodState>(DEFAULT_PERIOD);
   const periodParams = periodToParams(sel);
   const { data: profitSummary, isFetching: profitFetching } = useQuery({
-    queryKey: QK.salesProfitSummary(periodParams),
-    queryFn: () => salesApi.profitSummary(periodParams),
+    queryKey: QK.dashboardProfitSummary(periodParams),
+    queryFn: () => dashboardApi.profitSummary(periodParams),
     enabled: periodReady(sel),
     staleTime: 30_000,
   });
-  const ps = profitSummary as SalesProfitSummary | undefined;
+  const ps = profitSummary as DashboardProfitSummary | undefined;
   const periodProfit = ps ? parseFloat(ps.totalProfit) : 0;
+  const externalProfit = ps ? parseFloat(ps.externalProfit) : 0;
   const profitLoading = profitFetching && !ps;
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
@@ -220,7 +221,11 @@ export default function DashboardPage() {
               value={periodReady(sel) ? formatCurrency(ps?.totalProfit ?? '0') : '—'}
               icon={periodProfit >= 0 ? '💰' : '📉'}
               color={periodProfit >= 0 ? 'primary' : 'danger'}
-              sub={ps && periodReady(sel) ? t.dashboard.profitSalesCount(ps.salesCount) : periodLabel(sel.period)}
+              sub={ps && periodReady(sel)
+                ? (externalProfit !== 0
+                    ? t.dashboard.profitInclExternal(formatCurrency(ps.externalProfit))
+                    : t.dashboard.profitSalesCount(ps.salesCount))
+                : periodLabel(sel.period)}
               loading={profitLoading}
             />
           </div>

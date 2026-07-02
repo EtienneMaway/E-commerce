@@ -29,6 +29,7 @@ import {
 } from './dto/sales-filter.dto';
 import { PriceGuardWarningDto } from './dto/price-guard-warning.dto';
 import { ActorContext } from '../common/types/actor-context';
+import { applyActorCondToQb, resolveActorFilter } from '../common/actor-filter';
 
 export interface TopProduct {
   productName: string;
@@ -223,9 +224,7 @@ export class SalesService {
         name: `%${filter.productName}%`,
       });
     }
-    if (filter.actorId) {
-      qb.andWhere('sale.actor_id = :actorId', { actorId: filter.actorId });
-    }
+    applyActorCondToQb(qb, 'sale.actor_id', resolveActorFilter(filter.actorId, ctx));
     if (filter.clientQuery) {
       // Case-insensitive match across name + phone so the merchant can search
       // a partial name or any phone-number chunk.
@@ -382,9 +381,7 @@ export class SalesService {
     if (filter.productName) {
       qb.andWhere('sale.productName ILIKE :name', { name: `%${filter.productName}%` });
     }
-    if (filter.actorId) {
-      qb.andWhere('sale.actor_id = :actorId', { actorId: filter.actorId });
-    }
+    applyActorCondToQb(qb, 'sale.actor_id', resolveActorFilter(filter.actorId, ctx));
     if (dateFrom) qb.andWhere('sale.date >= :from', { from: dateFrom });
     if (dateTo) qb.andWhere('sale.date <= :to', { to: dateTo });
 

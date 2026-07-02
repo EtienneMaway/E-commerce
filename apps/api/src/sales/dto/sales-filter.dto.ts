@@ -6,9 +6,9 @@ import {
   IsOptional,
   IsPositive,
   IsString,
-  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { IsUuidOrSelf } from '../../common/actor-filter';
 
 export enum SalesPeriod {
   TODAY = 'today',
@@ -64,8 +64,8 @@ export class SalesSummaryFilterDto {
   @IsOptional()
   productName?: string;
 
-  @ApiPropertyOptional({ description: 'Optional: restrict the summary to one actor (employee)' })
-  @IsUUID()
+  @ApiPropertyOptional({ description: "Optional: restrict the summary to one actor. A UUID targets one employee; 'self' targets the current viewer's own rows; omit for all actors." })
+  @IsUuidOrSelf()
   @IsOptional()
   actorId?: string;
 }
@@ -105,8 +105,8 @@ export class SalesFilterDto {
   @IsOptional()
   limit?: number = 10;
 
-  @ApiPropertyOptional({ description: 'Filter by actor (employee). Omit for all actors.' })
-  @IsUUID()
+  @ApiPropertyOptional({ description: "Filter by actor. UUID = one employee; 'self' = the current viewer's own rows; omit for all actors." })
+  @IsUuidOrSelf()
   @IsOptional()
   actorId?: string;
 

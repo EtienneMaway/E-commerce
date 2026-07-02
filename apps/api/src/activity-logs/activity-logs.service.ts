@@ -15,6 +15,13 @@ import {
   User,
 } from '../entities';
 import { ALL_ACTIVITY_LOG_TYPES, ActivityLogType, ListActivityLogsDto } from './dto/list-activity-logs.dto';
+import type { ActorContext } from '../common/types/actor-context';
+import {
+  actorCondToWhereValue,
+  applyActorCondToQb,
+  resolveActorFilter,
+  type ActorCond,
+} from '../common/actor-filter';
 
 export interface ActivityLogEntry {
   id: string;
@@ -46,27 +53,29 @@ export class ActivityLogsService {
     @InjectRepository(InventoryEntry) private readonly entryRepo: Repository<InventoryEntry>,
   ) {}
 
-  async findAll(ownerId: string, query: ListActivityLogsDto): Promise<ActivityLogsResult> {
+  async findAll(ctx: ActorContext, query: ListActivityLogsDto): Promise<ActivityLogsResult> {
+    const ownerId = ctx.effectiveOwnerId;
+    const actor = resolveActorFilter(query.actorId, ctx);
     const types = query.actionTypes && query.actionTypes.length > 0 ? query.actionTypes : ALL_ACTIVITY_LOG_TYPES;
     const range = this.dateRange(query);
 
     const fetchers: Promise<ActivityLogEntry[]>[] = [];
-    if (types.includes(ActivityLogType.SALE)) fetchers.push(this.loadSales(ownerId, query.actorId, range));
-    if (types.includes(ActivityLogType.CONSIGNMENT)) fetchers.push(this.loadConsignmentItems(ownerId, query.actorId, range));
+    if (types.includes(ActivityLogType.SALE)) fetchers.push(this.loadSales(ownerId, actor, range));
+    if (types.includes(ActivityLogType.CONSIGNMENT)) fetchers.push(this.loadConsignmentItems(ownerId, actor, range));
     if (types.includes(ActivityLogType.EXTERNAL_PRODUCT_OUT) ||
         types.includes(ActivityLogType.EXTERNAL_PAYMENT_IN) ||
         types.includes(ActivityLogType.EXTERNAL_PRODUCT_IN) ||
         types.includes(ActivityLogType.EXTERNAL_PAYMENT_OUT)) {
-      fetchers.push(this.loadExternalTransactions(ownerId, query.actorId, range, types));
+      fetchers.push(this.loadExternalTransactions(ownerId, actor, range, types));
     }
     if (types.includes(ActivityLogType.PAYMENT_TO_SUPPLIER) ||
         types.includes(ActivityLogType.PAYMENT_FROM_DEBTOR)) {
-      fetchers.push(this.loadPayments(ownerId, query.actorId, range, types));
+      fetchers.push(this.loadPayments(ownerId, actor, range, types));
     }
-    if (types.includes(ActivityLogType.EXPENSE)) fetchers.push(this.loadExpenses(ownerId, query.actorId, range));
+    if (types.includes(ActivityLogType.EXPENSE)) fetchers.push(this.loadExpenses(ownerId, actor, range));
     if (types.includes(ActivityLogType.INVENTORY_PERSONAL_ADDED) ||
         types.includes(ActivityLogType.INVENTORY_RECEIVED_FROM_SUPPLIER)) {
-      fetchers.push(this.loadInventoryRegistrations(ownerId, query.actorId, range, types));
+      fetchers.push(this.loadInventoryRegistrations(ownerId, actor, range, types));
     }
 
     const buckets = await Promise.all(fetchers);
@@ -91,10 +100,11 @@ export class ActivityLogsService {
 
   private async loadSales(
     ownerId: string,
-    actorId: string | undefined,
+    actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
   ): Promise<ActivityLogEntry[]> {
-    const where = this.applyDate({ ownerId, ...(actorId ? { actorId } : {}) }, 'date', range);
+    const actorWhere = actorCondToWhereValue(actor);
+    const where = this.applyDate({ ownerId, ...(actorWhere !== undefined ? { actorId: actorWhere } : {}) }, 'date', range);
     const rows = await this.saleRepo.find({
       where: where as FindOptionsWhere<SaleTransaction>,
       relations: { actor: true },
@@ -117,7 +127,7 @@ export class ActivityLogsService {
 
   private async loadConsignmentItems(
     ownerId: string,
-    actorId: string | undefined,
+    actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
   ): Promise<ActivityLogEntry[]> {
     // ConsignmentItem doesn't carry the supplierId directly — join via the request.
@@ -127,7 +137,7 @@ export class ActivityLogsService {
       .leftJoinAndSelect('item.consignmentRequest', 'req')
       .leftJoinAndSelect('req.debtor', 'debtor')
       .where('req.supplierId = :ownerId', { ownerId });
-    if (actorId) qb.andWhere('item.actor_id = :actorId', { actorId });
+    applyActorCondToQb(qb, 'item.actor_id', actor);
     if (range.from) qb.andWhere('req.createdAt >= :from', { from: range.from });
     if (range.to) qb.andWhere('req.createdAt <= :to', { to: range.to });
     qb.orderBy('req.createdAt', 'DESC');
@@ -149,7 +159,7 @@ export class ActivityLogsService {
 
   private async loadExternalTransactions(
     ownerId: string,
-    actorId: string | undefined,
+    actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
     types: ActivityLogType[],
   ): Promise<ActivityLogEntry[]> {
@@ -166,7 +176,7 @@ export class ActivityLogsService {
       .leftJoinAndSelect('tx.contact', 'contact')
       .where('tx.ownerId = :ownerId', { ownerId })
       .andWhere('tx.type IN (:...txTypes)', { txTypes });
-    if (actorId) qb.andWhere('tx.actor_id = :actorId', { actorId });
+    applyActorCondToQb(qb, 'tx.actor_id', actor);
     if (range.from) qb.andWhere('tx.createdAt >= :from', { from: range.from });
     if (range.to) qb.andWhere('tx.createdAt <= :to', { to: range.to });
     qb.orderBy('tx.createdAt', 'DESC');
@@ -187,7 +197,7 @@ export class ActivityLogsService {
 
   private async loadPayments(
     ownerId: string,
-    actorId: string | undefined,
+    actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
     types: ActivityLogType[],
   ): Promise<ActivityLogEntry[]> {
@@ -211,7 +221,7 @@ export class ActivityLogsService {
           ownerId,
         },
       );
-    if (actorId) qb.andWhere('p.actor_id = :actorId', { actorId });
+    applyActorCondToQb(qb, 'p.actor_id', actor);
     if (range.from) qb.andWhere('p.created_at >= :from', { from: range.from });
     if (range.to) qb.andWhere('p.created_at <= :to', { to: range.to });
     qb.orderBy('p.created_at', 'DESC');
@@ -237,11 +247,12 @@ export class ActivityLogsService {
 
   private async loadExpenses(
     ownerId: string,
-    actorId: string | undefined,
+    actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
   ): Promise<ActivityLogEntry[]> {
     const where: FindOptionsWhere<Expense> = { ownerId };
-    if (actorId) where.actorId = actorId;
+    const actorWhere = actorCondToWhereValue(actor);
+    if (actorWhere !== undefined) where.actorId = actorWhere;
     this.applyDate(where as Record<string, unknown>, 'date', range);
     const rows = await this.expenseRepo.find({
       where,
@@ -263,7 +274,7 @@ export class ActivityLogsService {
 
   private async loadInventoryRegistrations(
     ownerId: string,
-    actorId: string | undefined,
+    actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
     types: ActivityLogType[],
   ): Promise<ActivityLogEntry[]> {
@@ -278,7 +289,7 @@ export class ActivityLogsService {
       .leftJoinAndSelect('e.supplierUser', 'supplier')
       .where('e.ownerId = :ownerId', { ownerId })
       .andWhere('e.source IN (:...sources)', { sources });
-    if (actorId) qb.andWhere('e.actor_id = :actorId', { actorId });
+    applyActorCondToQb(qb, 'e.actor_id', actor);
     if (range.from) qb.andWhere('e.createdAt >= :from', { from: range.from });
     if (range.to) qb.andWhere('e.createdAt <= :to', { to: range.to });
     qb.orderBy('e.createdAt', 'DESC');

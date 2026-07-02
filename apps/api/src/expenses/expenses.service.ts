@@ -6,6 +6,7 @@ import { Expense, ExpenseCategory, ExpenseCurrency } from '../entities';
 import { CurrencyService } from '../currency/currency.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { ActorContext } from '../common/types/actor-context';
+import { actorCondToWhereValue, resolveActorFilter } from '../common/actor-filter';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ExpensePeriod, ListExpensesQueryDto } from './dto/list-expenses-query.dto';
 
@@ -123,7 +124,8 @@ export class ExpensesService {
       where.date = LessThanOrEqual(range.to);
     }
     if (query.category) where.category = query.category;
-    if (query.actorId) where.actorId = query.actorId;
+    const actorWhere = actorCondToWhereValue(resolveActorFilter(query.actorId, ctx));
+    if (actorWhere !== undefined) where.actorId = actorWhere;
 
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
