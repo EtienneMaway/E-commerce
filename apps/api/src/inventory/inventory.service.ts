@@ -39,6 +39,10 @@ export interface ProductSummary {
   };
   latestSellingPrice: string;
   latestUnitCost: string;
+  /** Locked FC/USD rate for a mini's consigned-in stock (null for owner/full
+   *  stock). When set, the mini's app converts this product's prices to FC at
+   *  this rate instead of the live one, keeping the agreement stable. */
+  usdToFcRateSnapshot: string | null;
 }
 
 import { AddPersonalDto } from './dto/add-personal.dto';
@@ -142,6 +146,11 @@ export class InventoryService {
       const sellable = [...personal, ...supplier, ...consignedIn];
       const latestSellingPrice = sellable[0]?.sellingPrice ?? '0.0000';
       const latestUnitCost = sellable[0]?.unitCost ?? '0.0000';
+      // Locked rate for a mini's consigned-in stock (only CONSIGNED_IN lots
+      // carry one). Any non-null lot works for display; the sale re-snapshots
+      // the exact FIFO lot's rate.
+      const usdToFcRateSnapshot =
+        sellable.find((e) => e.usdToFcRateSnapshot != null)?.usdToFcRateSnapshot ?? null;
 
       summaries.push({
         productName,
@@ -157,6 +166,7 @@ export class InventoryService {
         },
         latestSellingPrice,
         latestUnitCost,
+        usdToFcRateSnapshot,
       });
     }
 
@@ -567,6 +577,33 @@ export class InventoryService {
     }
 
     entry.sellingPrice = dto.sellingPrice;
+    return this.entryRepo.save(entry);
+  }
+
+  /**
+   * Mini-employee raises the selling price on their OWN consigned-in stock.
+   * They may price at or above the agreed price they owe (unitCost) — never
+   * below, since the markup above the agreed price is the mini's profit and
+   * pricing below it would guarantee them a loss on goods they must still pay for.
+   */
+  async updateMiniSellingPrice(
+    miniId: string,
+    entryId: string,
+    dto: UpdateSellingPriceDto,
+  ): Promise<InventoryEntry> {
+    const entry = await this.entryRepo.findOne({ where: { id: entryId } });
+    if (!entry) throw new NotFoundException('Inventory entry not found');
+    if (entry.ownerId !== miniId) throw new ForbiddenException('You do not own this inventory entry');
+    if (entry.source !== InventorySource.CONSIGNED_IN) {
+      throw new BadRequestException('Mini employees can only re-price their consigned-in stock');
+    }
+    if (new Decimal(dto.sellingPrice).lt(entry.unitCost)) {
+      throw new BadRequestException(
+        `Selling price cannot be below the agreed price you owe (${entry.unitCost})`,
+      );
+    }
+
+    entry.sellingPrice = new Decimal(dto.sellingPrice).toFixed(4);
     return this.entryRepo.save(entry);
   }
 

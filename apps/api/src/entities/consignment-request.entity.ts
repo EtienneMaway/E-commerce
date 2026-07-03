@@ -37,6 +37,14 @@ export class ConsignmentRequest {
   @Column({ name: 'confirmed_at', type: 'timestamp', nullable: true })
   confirmedAt: Date | null;
 
+  @ApiPropertyOptional({
+    example: '2700.0000',
+    description:
+      "System exchange rate (FC per USD) captured when the products were given. Locks the FC value of this consignment's agreed prices so a later rate change never moves the agreement — carried onto the recipient's CONSIGNED_IN lot and every sale made from it.",
+  })
+  @Column({ name: 'usd_to_fc_rate_snapshot', type: 'decimal', precision: 14, scale: 4, nullable: true })
+  usdToFcRateSnapshot: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

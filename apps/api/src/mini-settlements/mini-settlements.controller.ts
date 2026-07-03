@@ -1,0 +1,192 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
+import type { ActorContext } from '../common/types/actor-context';
+import { MiniSettlementsService } from './mini-settlements.service';
+import { CreateMiniSettlementDto } from './dto/create-mini-settlement.dto';
+import { CreateMiniExpenseDto } from './dto/create-mini-expense.dto';
+import { MiniActivityQueryDto } from './dto/mini-activity-query.dto';
+import { MiniStatsQueryDto } from './dto/mini-stats-query.dto';
+import { MiniExpense, MiniSettlement } from '../entities';
+
+@ApiTags('mini-settlements')
+@ApiBearerAuth('jwt')
+@UseGuards(JwtAuthGuard)
+@Controller('mini-settlements')
+export class MiniSettlementsController {
+  constructor(private readonly service: MiniSettlementsService) {}
+
+  // ─── Mini employee actions ─────────────────────────────────────────────────
+
+  @Post()
+  @AllowedFor('MINI_EMPLOYEE')
+  @ApiOperation({
+    summary: 'Hand over cash + unsold returns to the owner (mini employee action)',
+    description:
+      'Creates a PENDING handover: the cash collected for sold goods (at the agreed price) plus a list of unsold items to return. Owner/full employee approves it to book the cash and re-stock the returns.',
+  })
+  @ApiResponse({ status: 201, type: MiniSettlement, description: 'Handover created with PENDING status' })
+  @ApiResponse({ status: 400, description: 'Nothing to hand over, or returning more than is unsold' })
+  create(
+    @CurrentActorContext() ctx: ActorContext,
+    @Body() dto: CreateMiniSettlementDto,
+  ): Promise<MiniSettlement> {
+    return this.service.create(ctx, dto);
+  }
+
+  @Get('outgoing')
+  @AllowedFor('MINI_EMPLOYEE')
+  @ApiOperation({ summary: 'List my handovers (mini employee action)' })
+  @ApiResponse({ status: 200, type: [MiniSettlement] })
+  findOutgoing(@CurrentActorContext() ctx: ActorContext): Promise<MiniSettlement[]> {
+    return this.service.findOutgoing(ctx);
+  }
+
+  @Get('my-balance')
+  @AllowedFor('MINI_EMPLOYEE')
+  @ApiOperation({
+    summary: 'How much the mini currently owes their employer (for the auto handover)',
+  })
+  @ApiResponse({ status: 200, description: '{ outstanding }' })
+  myBalance(@CurrentActorContext() ctx: ActorContext): Promise<{ outstanding: string }> {
+    return this.service.myBalance(ctx);
+  }
+
+  @Get('stats')
+  @AllowedFor('MINI_EMPLOYEE')
+  @ApiOperation({
+    summary:
+      'Home statistics for a mini employee (I owe / cash to hand over / profit / expenses), windowed by ?period (default: since last handover)',
+  })
+  @ApiResponse({ status: 200, description: 'MiniStats: iOwe, cashForSold, profitMade, expensesFc, window bounds' })
+  getStats(
+    @CurrentActorContext() ctx: ActorContext,
+    @Query() query: MiniStatsQueryDto,
+  ) {
+    return this.service.miniStats(ctx, query.period);
+  }
+
+  @Get('handover-preview')
+  @AllowedFor('MINI_EMPLOYEE')
+  @ApiOperation({
+    summary: 'Full handover breakdown for the mini: sold products (revenue/profit/owed), returns, cash to hand over',
+  })
+  @ApiResponse({ status: 200, description: '{ sold, returns, cashForSold, expensesFc }' })
+  handoverPreview(@CurrentActorContext() ctx: ActorContext) {
+    return this.service.handoverPreview(ctx);
+  }
+
+  // ─── Mini employee: pending expenses (FC) ──────────────────────────────────
+
+  @Post('expenses')
+  @AllowedFor('MINI_EMPLOYEE')
+  @ApiOperation({
+    summary: 'Record an expense in FC while selling (mini employee) — pending until the next handover',
+  })
+  @ApiResponse({ status: 201, type: MiniExpense })
+  @ApiResponse({ status: 400, description: 'No products currently held, or invalid amount' })
+  createExpense(
+    @CurrentActorContext() ctx: ActorContext,
+    @Body() dto: CreateMiniExpenseDto,
+  ): Promise<MiniExpense> {
+    return this.service.createExpense(ctx, dto);
+  }
+
+  @Get('expenses')
+  @AllowedFor('MINI_EMPLOYEE')
+  @ApiOperation({
+    summary:
+      'List my expenses (mini employee). Default: only pending (not-yet-handed-over). Pass ?scope=all for the full history.',
+  })
+  @ApiResponse({ status: 200, type: [MiniExpense] })
+  listExpenses(
+    @CurrentActorContext() ctx: ActorContext,
+    @Query('scope') scope?: string,
+  ): Promise<MiniExpense[]> {
+    return scope === 'all'
+      ? this.service.listAllExpenses(ctx)
+      : this.service.listPendingExpenses(ctx);
+  }
+
+  @Delete('expenses/:id')
+  @AllowedFor('MINI_EMPLOYEE')
+  @ApiOperation({ summary: 'Delete a pending expense (mini employee)' })
+  @ApiResponse({ status: 200, description: 'Deleted' })
+  @ApiResponse({ status: 400, description: 'Already part of a submitted handover' })
+  removeExpense(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    return this.service.removeExpense(ctx, id);
+  }
+
+  // ─── Owner / full employee actions ─────────────────────────────────────────
+
+  @Get('incoming')
+  @ApiOperation({ summary: 'List handovers from my mini employees (owner/full employee)' })
+  @ApiResponse({ status: 200, type: [MiniSettlement] })
+  findIncoming(@CurrentActorContext() ctx: ActorContext): Promise<MiniSettlement[]> {
+    return this.service.findIncoming(ctx);
+  }
+
+  @Get('mini/:miniUserId/activity')
+  @ApiOperation({
+    summary: 'Real-time sales + given/sold/outstanding summary for one mini employee (owner/full employee)',
+    description:
+      'Reads the mini\'s own books through the employment relationship. Sales aggregates are window-scoped (dateFrom/dateTo); debt figures are point-in-time. Poll for near-real-time monitoring.',
+  })
+  @ApiResponse({ status: 200, description: 'MiniActivity summary + per-sale rows with markup' })
+  @ApiResponse({ status: 403, description: 'Not your mini employee' })
+  miniActivity(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('miniUserId', ParseUUIDPipe) miniUserId: string,
+    @Query() query: MiniActivityQueryDto,
+  ) {
+    return this.service.miniActivity(ctx, miniUserId, query);
+  }
+
+  @Patch(':id/approve')
+  @ApiOperation({
+    summary: 'Approve a handover — book the cash and re-stock returns (owner/full employee)',
+    description:
+      'Atomically: books the cash as one DEBTOR_TO_OWNER payment (differentiated from direct sales), re-stocks returned goods to the owner as a PERSONAL lot, and reverses the mini\'s debt for the returned units.',
+  })
+  @ApiResponse({ status: 200, type: MiniSettlement, description: 'Status set to APPROVED' })
+  @ApiResponse({ status: 400, description: 'Missing credit record or returned units no longer unsold' })
+  @ApiResponse({ status: 403, description: 'Handover not addressed to you' })
+  approve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentActorContext() ctx: ActorContext,
+  ): Promise<MiniSettlement> {
+    return this.service.approve(ctx, id);
+  }
+
+  @Patch(':id/reject')
+  @ApiOperation({ summary: 'Reject a PENDING handover (owner/full employee)' })
+  @ApiResponse({ status: 200, type: MiniSettlement, description: 'Status set to REJECTED' })
+  @ApiResponse({ status: 403, description: 'Handover not addressed to you' })
+  reject(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentActorContext() ctx: ActorContext,
+  ): Promise<MiniSettlement> {
+    return this.service.reject(ctx, id);
+  }
+}

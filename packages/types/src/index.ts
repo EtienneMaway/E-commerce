@@ -63,6 +63,10 @@ export interface ProductSummary {
   };
   latestSellingPrice: string;
   latestUnitCost: string;
+  /** Locked FC/USD rate for a mini employee's consigned-in stock (null/absent
+   *  for owner/full-employee stock). When present, the mini's app converts this
+   *  product's prices to FC at this rate instead of the live rate. */
+  usdToFcRateSnapshot?: string | null;
 }
 
 export interface SupplierDebt {

@@ -42,6 +42,10 @@ export const authApi = {
     api.post('/auth/restore', body).then((r) => r.data),
 
   me: () => api.get('/auth/me').then((r) => r.data),
+
+  // Mini employee pairs with the one-time code shown to the employer at creation.
+  pairMiniEmployee: (body: { username: string; pairingCode: string }) =>
+    api.post('/auth/pair-mini-employee', body).then((r) => r.data),
 };
 
 export type PendingDeletionPayload = {
@@ -124,6 +128,7 @@ export const expensesApi = {
     category: ExpenseCategory;
     description?: string;
     date?: string;
+    clientId?: string;
   }): Promise<Expense> => api.post('/expenses', body).then((r) => r.data),
 
   delete: (id: string): Promise<void> => api.delete(`/expenses/${id}`).then(() => undefined),
@@ -160,6 +165,10 @@ export interface ProductSummary {
   };
   latestSellingPrice: string;
   latestUnitCost: string;
+  /** Locked FC/USD rate for a mini employee's consigned-in stock (null/absent
+   *  for owner/full stock). The mini's app converts this product's prices at
+   *  this rate instead of the live one. */
+  usdToFcRateSnapshot?: string | null;
 }
 
 export const inventoryApi = {
@@ -183,7 +192,156 @@ export const inventoryApi = {
     debtorUserId: string; productName: string;
     quantity: number; agreedUnitPrice: string; category?: string;
   }) => api.post('/inventory/consign', body).then((r) => r.data),
+
+  // Mini employee raises the selling price on their own consigned-in stock (>= agreed price).
+  updateMiniSellingPrice: (id: string, sellingPrice: string) =>
+    api.patch(`/inventory/${id}/mini-selling-price`, { sellingPrice }).then((r) => r.data),
 };
+
+// ─── Employments (mini-employee handshake) ───────────────────────────────────
+
+export interface EmploymentSummary {
+  id: string;
+  employerId: string;
+  employeeId: string;
+  tier: 'FULL' | 'SALES_ONLY';
+  status: 'PENDING' | 'ACTIVE' | 'REJECTED' | 'TERMINATION_REQUESTED' | 'TERMINATED';
+  employer?: { id: string; username: string; name?: string | null };
+  createdAt: string;
+}
+
+export const employmentsApi = {
+  list: (params?: { role?: 'employer' | 'employee'; status?: string }): Promise<EmploymentSummary[]> =>
+    api.get('/employments', { params }).then((r) => r.data),
+  accept: (id: string) => api.patch(`/employments/${id}/accept`).then((r) => r.data),
+  reject: (id: string) => api.patch(`/employments/${id}/reject`).then((r) => r.data),
+};
+
+// ─── Consignments (mini receives assigned products) ──────────────────────────
+
+export interface ConsignmentItemSummary {
+  id: string;
+  productName: string;
+  quantity: number;
+  agreedUnitPrice: string;
+  piecesPerCarton?: number | null;
+}
+
+export interface ConsignmentSummary {
+  id: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
+  note: string | null;
+  createdAt: string;
+  supplier?: { id: string; username: string; name?: string | null };
+  items: ConsignmentItemSummary[];
+}
+
+export const consignmentsApi = {
+  incoming: (): Promise<ConsignmentSummary[]> =>
+    api.get('/consignments/incoming').then((r) => r.data),
+  confirm: (id: string) => api.patch(`/consignments/${id}/confirm`).then((r) => r.data),
+  reject: (id: string) => api.patch(`/consignments/${id}/reject`).then((r) => r.data),
+};
+
+// ─── Mini-employee settlements (cash + returns handover) ─────────────────────
+
+export interface MiniSettlementSummary {
+  id: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  cashAmount: string;
+  note: string | null;
+  createdAt: string;
+  approvedAt: string | null;
+  items: { id: string; productName: string; quantity: number; agreedUnitPrice: string }[];
+}
+
+export const miniSettlementsApi = {
+  create: (body: {
+    cashAmount?: string;
+    cashAmountFc?: string;
+    returns?: { productName: string; quantity: number }[];
+    note?: string;
+  }) => api.post('/mini-settlements', body).then((r) => r.data),
+  outgoing: (): Promise<MiniSettlementSummary[]> =>
+    api.get('/mini-settlements/outgoing').then((r) => r.data),
+  myBalance: (): Promise<{ outstanding: string }> =>
+    api.get('/mini-settlements/my-balance').then((r) => r.data),
+  stats: (period: MiniStatsPeriod = 'since_handover'): Promise<MiniStats> =>
+    api.get('/mini-settlements/stats', { params: { period } }).then((r) => r.data),
+  handoverPreview: (): Promise<HandoverPreview> =>
+    api.get('/mini-settlements/handover-preview').then((r) => r.data),
+  createExpense: (body: {
+    amount: string; // FC
+    category: string;
+    description?: string;
+    clientId?: string;
+  }): Promise<MiniExpenseSummary> =>
+    api.post('/mini-settlements/expenses', body).then((r) => r.data),
+  listExpenses: (): Promise<MiniExpenseSummary[]> =>
+    api.get('/mini-settlements/expenses').then((r) => r.data),
+  // Full history — pending AND already-handed-over expenses.
+  listAllExpenses: (): Promise<MiniExpenseSummary[]> =>
+    api.get('/mini-settlements/expenses', { params: { scope: 'all' } }).then((r) => r.data),
+  deleteExpense: (id: string): Promise<void> =>
+    api.delete(`/mini-settlements/expenses/${id}`).then((r) => r.data),
+};
+
+export interface MiniExpenseSummary {
+  id: string;
+  amount: string; // FC
+  category: string;
+  description: string | null;
+  /** null while pending; set once a handover has claimed it. */
+  settlementId: string | null;
+  createdAt: string;
+}
+
+export type MiniStatsPeriod = 'since_handover' | 'today' | 'week' | 'month' | 'all';
+
+export interface MiniStats {
+  period: MiniStatsPeriod;
+  windowStart: string | null;
+  windowEnd: string | null;
+  lastHandoverAt: string | null;
+  /** Agreed value of consigned-in goods accepted in the window (USD). */
+  iOwe: string;
+  /** Gross owed for goods sold in the window (USD). */
+  cashForSold: string;
+  /** The mini's markup on the sold goods (USD). */
+  profitMade: string;
+  /** FC-native versions, each row at its consignment's locked rate — what the
+   *  mini's app displays so a rate change never moves them. */
+  iOweFc: string;
+  cashForSoldFc: string;
+  profitMadeFc: string;
+  /** Pending expenses in the window to deduct from the cash to hand over (FC). */
+  expensesFc: string;
+  soldUnits: number;
+}
+
+export interface HandoverPreview {
+  sold: {
+    productName: string;
+    qtySold: number;
+    piecesPerCarton: number | null;
+    revenue: string;
+    agreedValue: string;
+    profit: string;
+    agreedValueFc: string; // FC at the sale's locked rate
+    profitFc: string; // FC at the sale's locked rate
+  }[];
+  returns: { productName: string; quantity: number; piecesPerCarton: number | null }[];
+  cashForSold: string; // USD
+  profitMade: string; // USD
+  cashForSoldFc: string; // FC (each sale at its locked rate) — what the app shows
+  profitMadeFc: string; // FC
+  expensesFc: string; // FC
+  expenses: { category: string; description: string | null; amount: string }[]; // amount FC
+}
+
+export const MINI_EXPENSE_CATEGORIES = [
+  'TRANSPORT', 'MEALS', 'COMMUNICATION', 'PACKAGING', 'OTHER',
+] as const;
 
 // ─── Sales ─────────────────────────────────────────────────────────────────
 
@@ -193,6 +351,9 @@ export const salesApi = {
       productName: string;
       qtySold: number;
       salePrice: string;
+      /** FC price the customer paid — sent by minis so each deducted lot books
+       *  at its own locked consignment rate. */
+      salePriceFc?: string;
       confirmedOverride?: boolean;
       discountReason?: string;
       clientName?: string;
@@ -337,4 +498,24 @@ export const dashboardApi = {
   profitBySource: () => api.get('/dashboard/profit-by-source').then((r) => r.data),
   alerts: () => api.get('/dashboard/alerts').then((r) => r.data),
   cashPosition: (): Promise<CashPosition> => api.get('/dashboard/cash-position').then((r) => r.data),
+  profitSummary: (params?: {
+    period?: 'today' | 'week' | 'month' | 'all' | 'custom';
+    actorId?: string; // 'self' or a UUID
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<DashboardProfitSummary> =>
+    api.get('/dashboard/profit-summary', { params }).then((r) => r.data),
 };
+
+export interface DashboardProfitSummary {
+  period: string;
+  dateFrom: string | null;
+  dateTo: string | null;
+  salesCount: number;
+  totalQtySold: number;
+  totalRevenue: string;
+  totalCost: string;
+  salesProfit: string;
+  externalProfit: string;
+  totalProfit: string;
+}

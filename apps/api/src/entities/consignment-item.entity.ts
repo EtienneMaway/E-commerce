@@ -53,4 +53,8 @@ export class ConsignmentItem {
   @ApiPropertyOptional({ example: 'Bulk discount agreed by employer' })
   @Column({ name: 'discount_reason', type: 'varchar', nullable: true })
   discountReason: string | null;
+
+  @ApiPropertyOptional({ example: 20, description: 'Pieces per carton snapshotted from the source stock — lets the recipient see the carton/loose breakdown and carton price' })
+  @Column({ name: 'pieces_per_carton', type: 'int', nullable: true })
+  piecesPerCarton: number | null;
 }

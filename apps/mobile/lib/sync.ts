@@ -1,7 +1,8 @@
 import axios from 'axios';
-import { salesApi } from './api';
+import { salesApi, miniSettlementsApi, expensesApi } from './api';
 import { useOfflineStore } from '../store/offline.store';
 import { isPriceGuardWarning, getErrorMessage } from './utils';
+import type { ExpenseCategory, ExpenseCurrency } from './api';
 
 export interface SyncResult {
   synced: number;
@@ -54,21 +55,25 @@ function isRetryable(err: unknown): boolean {
 export async function syncPendingSales(): Promise<SyncResult> {
   const {
     pendingSales,
+    pendingExpenses,
     setSyncStatus,
     setSyncProgress,
     removeSyncedSales,
     updateSaleError,
+    removeSyncedExpenses,
+    updateExpenseError,
     setLastSyncedAt,
   } = useOfflineStore.getState();
 
-  if (pendingSales.length === 0) {
+  if (pendingSales.length === 0 && pendingExpenses.length === 0) {
     setSyncProgress(null);
     return { synced: 0, failed: 0, errors: [] };
   }
 
   setSyncStatus('syncing');
 
-  const total = pendingSales.length;
+  // Progress spans sales + expenses so the banner shows the whole sync run.
+  const total = pendingSales.length + pendingExpenses.length;
   let completed = 0;
   setSyncProgress({ total, completed });
 
@@ -139,6 +144,54 @@ export async function syncPendingSales(): Promise<SyncResult> {
       const msg = `${sale.productName}: ${getErrorMessage(lastError)}`;
       errors.push(msg);
       updateSaleError(sale.id, msg);
+    }
+  }
+
+  // ── Pending expenses (owner/full-employee "normal" + mini-employee FC).
+  // Retried like sales; the server dedupes on clientId (= queue id), so retries
+  // never double-book. ──
+  for (const exp of pendingExpenses) {
+    let ok = false;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS && !ok; attempt++) {
+      try {
+        if (exp.kind === 'normal') {
+          await expensesApi.create({
+            amount: exp.amount,
+            currency: (exp.currency ?? 'FC') as ExpenseCurrency,
+            category: exp.category as ExpenseCategory,
+            description: exp.description,
+            date: exp.date,
+            clientId: exp.id,
+          });
+        } else {
+          await miniSettlementsApi.createExpense({
+            amount: exp.amount,
+            category: exp.category,
+            description: exp.description,
+            clientId: exp.id,
+          });
+        }
+        ok = true;
+      } catch (err) {
+        if (!isRetryable(err) || attempt === MAX_ATTEMPTS) {
+          lastError = err;
+          break;
+        }
+        lastError = err;
+        const backoff = Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);
+        await delay(backoff + Math.floor(Math.random() * 300));
+      }
+    }
+    if (ok) {
+      removeSyncedExpenses([exp.id]);
+      syncedCount += 1;
+      completed += 1;
+      setSyncProgress({ total, completed });
+    } else {
+      const msg = `Expense: ${getErrorMessage(lastError)}`;
+      errors.push(msg);
+      updateExpenseError(exp.id, msg);
     }
   }
 

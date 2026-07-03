@@ -14,6 +14,7 @@ import { useAuthStore } from '../../../store/auth.store';
 import { formatCurrency, formatDate, getErrorMessage } from '../../../lib/utils';
 import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { UserSearchInput } from '../../../components/ui/UserSearchInput';
 import { useT, type Translations } from '../../../lib/i18n';
 
 type TabKey = 'active' | 'sent' | 'received' | 'archive';
@@ -74,7 +75,6 @@ export default function EmployeesPage() {
   const t = useT();
   const [tab, setTab] = useState<TabKey>('active');
   const [showHire, setShowHire] = useState(false);
-  const [showMini, setShowMini] = useState(false);
   const [showExternal, setShowExternal] = useState(false);
   const isCurrentlyEmployee = !!user?.activeEmployment;
 
@@ -124,13 +124,6 @@ export default function EmployeesPage() {
               {t.employees.externalEmployee}
             </button>
             <button
-              onClick={() => setShowMini(true)}
-              className="px-4 py-2 rounded-lg text-sm font-medium border"
-              style={{ borderColor: 'rgba(99,102,241,0.4)', color: '#818CF8' }}
-            >
-              {t.employees.miniEmployee}
-            </button>
-            <button
               onClick={() => setShowHire(true)}
               className="px-4 py-2 rounded-lg text-sm font-medium text-white"
               style={{ background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)' }}
@@ -170,7 +163,6 @@ export default function EmployeesPage() {
       )}
 
       {showHire && <HireModal onClose={() => setShowHire(false)} qc={qc} />}
-      {showMini && <MiniEmployeeModal onClose={() => setShowMini(false)} qc={qc} />}
       {showExternal && <ExternalEmployeeModal onClose={() => setShowExternal(false)} qc={qc} />}
     </div>
   );
@@ -360,11 +352,11 @@ function ActionBtn({ label, onClick, disabled, primary }: { label: string; onCli
 
 function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof useQueryClient> }) {
   const t = useT();
-  const [emailOrPhone, setEmailOrPhone] = useState('');
+  const [selected, setSelected] = useState<{ id: string; username: string } | null>(null);
   const [tier, setTier] = useState<EmploymentTier>('FULL');
 
   const create = useMutation({
-    mutationFn: () => employmentsApi.create({ emailOrPhone, tier }),
+    mutationFn: () => employmentsApi.create({ employeeUserId: selected!.id, tier }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.employments() });
       onClose();
@@ -374,15 +366,12 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
   return (
     <ModalShell onClose={onClose} title={t.employees.hireTitle}>
       <div className="space-y-3">
-        <Field label={t.employees.fieldEmailOrPhone}>
-          <input
-            value={emailOrPhone}
-            onChange={(e) => setEmailOrPhone(e.target.value)}
-            className="w-full px-3 py-2 rounded-md border bg-transparent"
-            style={{ borderColor: 'rgba(127,127,127,0.3)' }}
-            placeholder="alice@example.com or +24399…"
-          />
-        </Field>
+        <UserSearchInput
+          label={t.employees.fieldEmployee}
+          value={selected}
+          onChange={setSelected}
+          placeholder={t.employees.searchUserPlaceholder}
+        />
         <Field label={t.employees.fieldTier}>
           <select
             value={tier}
@@ -394,6 +383,7 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
             <option value="SALES_ONLY">{t.employees.tierMiniDescription}</option>
           </select>
         </Field>
+        <p className="text-xs opacity-60">{t.employees.hireInviteHint}</p>
         {!!create.error && (
           <div className="text-xs" style={{ color: '#EF4444' }}>{getErrorMessage(create.error)}</div>
         )}
@@ -403,7 +393,7 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
           </button>
           <button
             onClick={() => create.mutate()}
-            disabled={!emailOrPhone || create.isPending}
+            disabled={!selected || create.isPending}
             className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
             style={{ background: '#6366F1' }}
           >
@@ -411,78 +401,6 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
           </button>
         </div>
       </div>
-    </ModalShell>
-  );
-}
-
-function MiniEmployeeModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof useQueryClient> }) {
-  const t = useT();
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [result, setResult] = useState<{ username: string; pairingCode: string } | null>(null);
-
-  const create = useMutation({
-    mutationFn: () => employmentsApi.createMiniEmployee({ name, phone: phone || undefined }),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: QK.employments() });
-      setResult({ username: res.employee.username, pairingCode: res.pairingCode });
-    },
-  });
-
-  return (
-    <ModalShell onClose={onClose} title={t.employees.miniTitle}>
-      {result ? (
-        <div className="space-y-3">
-          <p className="text-sm">{t.employees.miniCreatedMessage}</p>
-          <div className="p-3 rounded-md" style={{ background: 'rgba(99,102,241,0.1)' }}>
-            <Row label={t.employees.fieldUsername} value={result.username} mono />
-            <Row label={t.employees.fieldPairingCode} value={result.pairingCode} mono />
-          </div>
-          <p className="text-xs opacity-70">{t.employees.miniPairingHint}</p>
-          <div className="flex justify-end pt-2">
-            <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm text-white" style={{ background: '#6366F1' }}>
-              {t.employees.done}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <Field label={t.employees.fieldDisplayName}>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 rounded-md border bg-transparent"
-              style={{ borderColor: 'rgba(127,127,127,0.3)' }}
-              placeholder="Alice K."
-            />
-          </Field>
-          <Field label={t.employees.fieldPhoneOptional}>
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="w-full px-3 py-2 rounded-md border bg-transparent"
-              style={{ borderColor: 'rgba(127,127,127,0.3)' }}
-              placeholder="+24399…"
-            />
-          </Field>
-          {!!create.error && (
-            <div className="text-xs" style={{ color: '#EF4444' }}>{getErrorMessage(create.error)}</div>
-          )}
-          <div className="flex justify-end gap-2 pt-2">
-            <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm" style={{ border: '1px solid rgba(127,127,127,0.3)' }}>
-              {t.employees.cancel}
-            </button>
-            <button
-              onClick={() => create.mutate()}
-              disabled={!name || create.isPending}
-              className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
-              style={{ background: '#6366F1' }}
-            >
-              {t.employees.create}
-            </button>
-          </div>
-        </div>
-      )}
     </ModalShell>
   );
 }

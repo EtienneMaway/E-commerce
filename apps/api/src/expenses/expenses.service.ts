@@ -38,6 +38,15 @@ export class ExpensesService {
     const ownerId = ctx.effectiveOwnerId;
     const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
 
+    // Idempotent for offline retries: a resend of an already-committed expense
+    // (response lost on a flaky link) is matched here rather than duplicated.
+    if (dto.clientId) {
+      const existing = await this.expenseRepo.findOne({
+        where: { ownerId, clientId: dto.clientId },
+      });
+      if (existing) return existing;
+    }
+
     const amountOriginal = new Decimal(dto.amount);
     if (amountOriginal.lte(0)) {
       throw new BadRequestException('Amount must be greater than zero');
@@ -107,6 +116,7 @@ export class ExpensesService {
       description: dto.description ?? null,
       usdToFcRateSnapshot: rateSnapshot,
       date: requestedDate,
+      clientId: dto.clientId ?? null,
     });
     return this.expenseRepo.save(expense);
   }

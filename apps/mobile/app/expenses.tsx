@@ -24,7 +24,10 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
 import { AddExpenseModal } from '../components/forms/AddExpenseModal';
+import { MiniExpensesView } from '../components/MiniExpensesView';
 import { formatDate, getErrorMessage } from '../lib/utils';
+import { useOfflineStore } from '../store/offline.store';
+import { useAuthStore } from '../store/auth.store';
 import { useT } from '../lib/i18n';
 
 type FilterKey = 'all' | 'today' | 'week' | 'month' | 'lastN';
@@ -32,6 +35,16 @@ type FilterKey = 'all' | 'today' | 'week' | 'month' | 'lastN';
 const PAGE_SIZE = 20;
 
 export default function ExpensesScreen() {
+  // Mini employees have their own expense system (MiniExpense, FC, tied to
+  // handovers) and no access to the owner/full-employee `/expenses` endpoints,
+  // so they get a dedicated history view + "+". Branch before any other hooks so
+  // each body owns its own consistent hook order.
+  const isActiveMini = useAuthStore((s) => s.user?.activeEmployment?.tier) === 'SALES_ONLY';
+  if (isActiveMini) return <MiniExpensesView />;
+  return <OwnerExpensesScreen />;
+}
+
+function OwnerExpensesScreen() {
   const t = useT();
   const qc = useQueryClient();
 
@@ -52,14 +65,18 @@ export default function ExpensesScreen() {
     return p;
   }, [filter, categoryFilter, page]);
 
+  const isOffline = useOfflineStore((s) => s.isOffline);
+
   const { data: listData, isLoading, refetch, isRefetching } = useQuery({
     queryKey: QK.expenses(listParams),
     queryFn: () => expensesApi.list(listParams),
+    enabled: !isOffline,
   });
 
   const { data: cash } = useQuery({
     queryKey: QK.cashPosition,
     queryFn: dashboardApi.cashPosition,
+    enabled: !isOffline,
   });
 
   const { data: rate } = useQuery({
@@ -104,6 +121,9 @@ export default function ExpensesScreen() {
 
   const catLabel = (c: ExpenseCategory): string =>
     (t.expenses as unknown as Record<string, string>)[`cat${c}`] ?? c;
+
+  // Expenses recorded offline (queued, not yet synced to the server).
+  const pendingOffline = useOfflineStore((s) => s.pendingExpenses).filter((e) => e.kind === 'normal');
 
   const filterTabs: { key: FilterKey; label: string }[] = [
     { key: 'today', label: t.expenses.filterToday },
@@ -231,6 +251,30 @@ export default function ExpensesScreen() {
                 <Text className="text-text dark:text-slate-200 text-sm">{catLabel(c.category)}</Text>
                 <Text className="text-text dark:text-slate-100 font-semibold text-sm">
                   {fmtAtBuyingRate(c.totalUsd)}
+                </Text>
+              </View>
+            ))}
+          </Card>
+        )}
+
+        {/* Queued offline — recorded but not yet synced */}
+        {pendingOffline.length > 0 && (
+          <Card className="mt-4 border border-blue-300 dark:border-blue-800">
+            <Text className="text-blue-600 dark:text-blue-400 text-xs font-semibold uppercase tracking-wide mb-2">
+              🔄 {t.expenses.pendingSyncLabel(pendingOffline.length)}
+            </Text>
+            {pendingOffline.map((e) => (
+              <View key={e.id} className="flex-row justify-between py-1.5">
+                <View className="flex-1 pr-3">
+                  <Text className="text-text dark:text-slate-200 text-sm">{catLabel(e.category as ExpenseCategory)}</Text>
+                  {e.description ? (
+                    <Text className="text-muted dark:text-slate-400 text-xs" numberOfLines={1}>{e.description}</Text>
+                  ) : null}
+                </View>
+                <Text className="text-text dark:text-slate-100 font-semibold text-sm">
+                  {e.currency === 'USD'
+                    ? `$${e.amount}`
+                    : `${new Intl.NumberFormat('fr-CD').format(parseFloat(e.amount))} FC`}
                 </Text>
               </View>
             ))}

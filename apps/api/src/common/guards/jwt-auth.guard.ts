@@ -49,16 +49,40 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const rawHeader = req.headers['x-acting-as'];
     const actingAs = (Array.isArray(rawHeader) ? rawHeader[0] : rawHeader)?.toLowerCase();
 
-    const employment =
-      actingAs === 'self'
-        ? null
-        : await this.employmentsService.findActiveAsEmployee(user.id);
+    // `X-Acting-As: self` lets a FULL employee who also runs their own business
+    // ignore the employment and act on their own books as OWNER. A mini-employee
+    // is not a standalone owner — they must always resolve to MINI_EMPLOYEE tier
+    // (restricted, on their own consigned books), so the 'self' escape hatch is
+    // ignored for them to prevent privilege escalation to OWNER.
+    //
+    // "Mini" covers both legacy synthetic accounts (`isMiniEmployee`) AND any
+    // user with an active SALES_ONLY employment (existing users hired as minis,
+    // where `isMiniEmployee` is false). Without the SALES_ONLY check a new mini
+    // sending `self` would resolve to OWNER and 403 on every mini-only endpoint
+    // (handover-preview, my-balance, expenses) even though their sales/stock sit
+    // on their own books — surfacing as a spurious "nothing to hand over".
+    const activeEmployment = await this.employmentsService.findActiveAsEmployee(
+      user.id,
+    );
+    const isMini =
+      user.isMiniEmployee ||
+      activeEmployment?.tier === EmploymentTier.SALES_ONLY;
+    const employment = actingAs === 'self' && !isMini ? null : activeEmployment;
+
+    const tier: ActorTier = employment
+      ? employment.tier === EmploymentTier.SALES_ONLY
+        ? 'MINI_EMPLOYEE'
+        : 'FULL_EMPLOYEE'
+      : 'OWNER';
 
     const ctx: ActorContext = employment
       ? {
           actorId: user.id,
-          effectiveOwnerId: employment.employerId,
-          tier: employment.tier === EmploymentTier.SALES_ONLY ? 'MINI_EMPLOYEE' : 'FULL_EMPLOYEE',
+          // Mini-employees operate on their OWN books: the employer consigns
+          // stock to them (CONSIGNED_IN lands on the mini's books), they sell it
+          // and settle by handover. Full employees operate on the employer's books.
+          effectiveOwnerId: tier === 'MINI_EMPLOYEE' ? user.id : employment.employerId,
+          tier,
           employment,
         }
       : {

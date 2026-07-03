@@ -21,6 +21,9 @@ import {
   Employment,
   ProductPrice,
   SalaryPayment,
+  MiniSettlement,
+  MiniSettlementItem,
+  MiniExpense,
 } from './entities';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -38,6 +41,7 @@ import { EmploymentsModule } from './employments/employments.module';
 import { SalaryPaymentsModule } from './salary-payments/salary-payments.module';
 import { PricingModule } from './pricing/pricing.module';
 import { ActivityLogsModule } from './activity-logs/activity-logs.module';
+import { MiniSettlementsModule } from './mini-settlements/mini-settlements.module';
 
 @Module({
   imports: [
@@ -68,8 +72,15 @@ import { ActivityLogsModule } from './activity-logs/activity-logs.module';
           Employment,
           ProductPrice,
           SalaryPayment,
+          MiniSettlement,
+          MiniSettlementItem,
+          MiniExpense,
         ],
-        synchronize: config.get<string>('NODE_ENV') !== 'production',
+        // Synchronize is OFF everywhere (including dev). All schema changes go
+        // through migrations, so development exercises the exact same migration
+        // path as production — no auto-sync drift that could mask a broken or
+        // non-idempotent migration until it fails in prod.
+        synchronize: false,
         migrations: [__dirname + '/database/migrations/*.{ts,js}'],
         logging: config.get<string>('NODE_ENV') === 'development',
       }),
@@ -95,6 +106,7 @@ import { ActivityLogsModule } from './activity-logs/activity-logs.module';
     SalaryPaymentsModule,
     PricingModule,
     ActivityLogsModule,
+    MiniSettlementsModule,
   ],
   providers: [
     // Apply throttle guard globally

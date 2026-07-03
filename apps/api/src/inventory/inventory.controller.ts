@@ -27,6 +27,9 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get('products')
+  // Minis operate on their own books (effectiveOwnerId = own id) and must be
+  // able to browse their consigned-in stock to sell/re-price it.
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
   @ApiOperation({ summary: 'Get aggregated product list — one entry per unique product name' })
   @ApiResponse({ status: 200, description: 'Array of ProductSummary objects' })
   getProducts(@CurrentActorContext() ctx: ActorContext) {
@@ -34,6 +37,7 @@ export class InventoryController {
   }
 
   @Get()
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
   @ApiOperation({ summary: 'List all inventory entries for the authenticated user' })
   @ApiResponse({ status: 200, description: 'Array of inventory entries' })
   findAll(@CurrentActorContext() ctx: ActorContext, @Query() filter: InventoryFilterDto) {
@@ -122,9 +126,29 @@ export class InventoryController {
     return this.inventoryService.updateSellingPrice(ctx.effectiveOwnerId, id, dto);
   }
 
-  @Post(':entryId/adjust')
+  @Patch(':id/mini-selling-price')
+  @AllowedFor('MINI_EMPLOYEE')
   @ApiOperation({
-    summary: 'Manually adjust stock for an inventory entry with a typed reason',
+    summary: 'Mini employee raises the selling price on their own consigned-in stock',
+    description:
+      'Mini-employee only. The new price must be at or above the agreed price they owe (the entry unit cost); the markup above it is the mini\'s profit.',
+  })
+  @ApiResponse({ status: 200, description: 'Selling price updated' })
+  @ApiResponse({ status: 400, description: 'Entry is not CONSIGNED_IN, or price below the agreed price' })
+  @ApiResponse({ status: 403, description: 'Entry does not belong to you' })
+  @ApiResponse({ status: 404, description: 'Entry not found' })
+  updateMiniSellingPrice(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateSellingPriceDto,
+  ) {
+    return this.inventoryService.updateMiniSellingPrice(ctx.effectiveOwnerId, id, dto);
+  }
+
+  @Post(':entryId/adjust')
+  @AllowedFor('OWNER')
+  @ApiOperation({
+    summary: 'Manually adjust stock for an inventory entry with a typed reason (owner only)',
     description:
       'Records a stock movement (audit ledger) and updates quantity_remaining. ' +
       'SUPPLIER_RETURN also reduces the linked supplier debt. ' +

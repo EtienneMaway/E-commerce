@@ -17,4 +17,12 @@ export const QK = {
     ['salary-payments', 'summary', employmentId, periodMonth] as const,
   expenses: (params?: object) => ['expenses', params ?? {}] as const,
   cashPosition: ['dashboard', 'cash-position'] as const,
+  employments: (filters?: object) => ['employments', filters] as const,
+  consignmentsIncoming: ['consignments', 'incoming'] as const,
+  miniSettlementsOutgoing: ['mini-settlements', 'outgoing'] as const,
+  miniExpenses: ['mini-settlements', 'expenses'] as const,
+  miniExpensesAll: ['mini-settlements', 'expenses', 'all'] as const,
+  miniBalance: ['mini-settlements', 'my-balance'] as const,
+  miniStats: (period: string) => ['mini-settlements', 'stats', period] as const,
+  profitSummary: (params?: object) => ['dashboard', 'profit-summary', params ?? {}] as const,
 } as const;

@@ -21,8 +21,8 @@ export class ConsignmentItemDto {
   @IsPositive()
   quantity: number;
 
-  @ApiProperty({ example: '32.00', description: 'Agreed price per unit the debtor will owe' })
-  @IsDecimal({ decimal_digits: '0,2' })
+  @ApiProperty({ example: '32.0000', description: 'Agreed price per unit the debtor will owe' })
+  @IsDecimal({ decimal_digits: '1,4' })
   agreedUnitPrice: string;
 
   @ApiPropertyOptional({ description: 'Required (employee only) when below owner\'s standard price' })

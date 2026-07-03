@@ -46,11 +46,11 @@ export class EmploymentsController {
 
   @Post('mini-employee')
   @ApiOperation({
-    summary: 'Create a mini-employee account + active employment',
+    summary: 'Create a mini-employee account + PENDING employment',
     description:
-      'Returns a one-time pairing code shown to the employer. The employee uses this code on the mobile app to obtain a JWT. The code is not stored in plaintext.',
+      'Returns a one-time pairing code shown to the employer. The employee uses this code on the mobile app to obtain a JWT, then accepts the invite (PATCH /employments/:id/accept) to activate. The code is not stored in plaintext.',
   })
-  @ApiResponse({ status: 201, description: 'Mini employee created and immediately ACTIVE' })
+  @ApiResponse({ status: 201, description: 'Mini employee created; employment is PENDING until the employee accepts on the app' })
   createMiniEmployee(@CurrentUser() user: User, @Body() dto: CreateMiniEmployeeDto) {
     return this.service.createMiniEmployee(user.id, dto);
   }

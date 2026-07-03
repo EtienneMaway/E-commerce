@@ -11,7 +11,11 @@ import { StatCard } from '../../components/ui/StatCard';
 import { Card } from '../../components/ui/Card';
 import { PersonaSwitcher } from '../../components/ui/PersonaSwitcher';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
+import { MiniEmployeeHome } from '../../components/MiniEmployeeHome';
+import { MiniHomeStats } from '../../components/MiniHomeStats';
+import { EmployeeActivityStats } from '../../components/EmployeeActivityStats';
 import { useAuthStore } from '../../store/auth.store';
+import { usePersonaStore } from '../../store/persona.store';
 import { useThemeStore } from '../../store/theme.store';
 import { useLocaleStore } from '../../store/locale.store';
 import { useOfflineStore } from '../../store/offline.store';
@@ -35,6 +39,12 @@ export default function DashboardScreen() {
   // Show salary surfaces whenever the user has an active employment — the
   // salary is theirs regardless of which persona they're currently acting as.
   const isEmployee = !!user?.activeEmployment;
+  // A mini (SALES_ONLY) employee sees their own handover-oriented stats instead
+  // of the owner dashboard cards. A FULL employee sees the owner cards plus a
+  // self-scoped "my activity" card while acting on the employer's books.
+  const isMini = user?.activeEmployment?.tier === 'SALES_ONLY';
+  const isFullEmployee = user?.activeEmployment?.tier === 'FULL';
+  const persona = usePersonaStore((s) => s.kind);
   const { theme, toggle } = useThemeStore();
   const formatCurrency = useFormatCurrency();
   const exchangeRate = useExchangeRate();
@@ -45,6 +55,7 @@ export default function DashboardScreen() {
   const {
     isOffline,
     pendingSales,
+    pendingExpenses,
     syncStatus,
     syncProgress,
     lastSyncedAt,
@@ -54,29 +65,32 @@ export default function DashboardScreen() {
     clearSyncErrors,
   } = useOfflineStore();
 
+  // The owner-oriented dashboard endpoints (summary, suppliers, alerts, cash
+  // position) are owner/full-employee only — a mini would 403. Minis render
+  // their own figures via MiniHomeStats, so skip these queries for them.
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: QK.dashboard,
     queryFn: dashboardApi.summary,
-    enabled: !isOffline,
+    enabled: !isOffline && !isMini,
   });
 
   const { data: suppliers } = useQuery({
     queryKey: QK.suppliers,
     queryFn: dashboardApi.suppliers,
-    enabled: !isOffline,
+    enabled: !isOffline && !isMini,
   });
 
   const { data: alertsData } = useQuery({
     queryKey: QK.alerts,
     queryFn: dashboardApi.alerts,
     staleTime: 5 * 60_000,
-    enabled: !isOffline,
+    enabled: !isOffline && !isMini,
   });
 
   const { data: cashData } = useQuery({
     queryKey: QK.cashPosition,
     queryFn: dashboardApi.cashPosition,
-    enabled: !isOffline,
+    enabled: !isOffline && !isMini,
     staleTime: 30_000,
   });
 
@@ -92,14 +106,16 @@ export default function DashboardScreen() {
   const alerts = (alertsData as AlertItem[] | undefined) ?? [];
   const lowStockItems = alerts.filter((a) => a.type === 'low_stock');
 
-  // Pending sales stats for sync banner
+  // Pending sales + expenses stats for sync banner
   const pendingCount = pendingSales.length;
+  const pendingExpenseCount = pendingExpenses.length;
   const pendingTotalFc = pendingSales.reduce((sum, s) => {
     const rate = parseFloat(exchangeRate) || 1;
     return sum + parseFloat(s.salePrice) * s.qtySold * rate;
   }, 0);
   const isSyncing = syncStatus === 'syncing';
-  const hasSyncErrors = pendingSales.some((s) => s.syncError);
+  const hasSyncErrors =
+    pendingSales.some((s) => s.syncError) || pendingExpenses.some((e) => e.syncError);
   const syncPct =
     syncProgress && syncProgress.total > 0
       ? Math.min(100, Math.round((syncProgress.completed / syncProgress.total) * 100))
@@ -158,6 +174,8 @@ export default function DashboardScreen() {
     qc.invalidateQueries({ queryKey: QK.dashboard });
     qc.invalidateQueries({ queryKey: QK.inventory() });
     qc.invalidateQueries({ queryKey: QK.salesHistory() });
+    // Minis: their home stats depend on synced sales + expenses.
+    qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] });
 
     if (result.failed === 0) {
       // Nothing to report when there was nothing to do (e.g. a no-op restart).
@@ -199,7 +217,16 @@ export default function DashboardScreen() {
       className="flex-1 bg-surface dark:bg-slate-900"
       contentContainerClassName="px-4 pt-14 pb-8"
       refreshControl={
-        <RefreshControl refreshing={isRefetching} onRefresh={refetch} enabled={!isOffline} />
+        <RefreshControl
+          refreshing={isRefetching}
+          onRefresh={() => {
+            // For minis the dashboard query is disabled, so refetch() is a no-op;
+            // invalidate their stats explicitly so pull-to-refresh still works.
+            if (isMini) qc.invalidateQueries({ queryKey: ['mini-settlements'] });
+            else void refetch();
+          }}
+          enabled={!isOffline}
+        />
       }
     >
       {/* Header */}
@@ -208,7 +235,7 @@ export default function DashboardScreen() {
           <Text className="text-2xl font-bold text-text dark:text-slate-100">{t.home.title}</Text>
           <View className="flex-row items-center gap-2 mt-0.5">
             <Text className="text-muted dark:text-slate-500 text-sm">@{user?.username}</Text>
-            <PersonaSwitcher />
+            {user?.activeEmployment?.tier !== 'SALES_ONLY' && <PersonaSwitcher />}
           </View>
         </View>
         <View className="flex-row items-center gap-3">
@@ -274,17 +301,24 @@ export default function DashboardScreen() {
         )}
       </TouchableOpacity>
 
-      {/* Sync banner — shown whenever there are pending sales */}
-      {pendingCount > 0 && (
+      {/* Sync banner — shown whenever there are pending sales or expenses */}
+      {(pendingCount > 0 || pendingExpenseCount > 0) && (
         <View className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-2xl px-4 py-3 mb-4">
           <View className="flex-row items-center justify-between mb-2">
             <View className="flex-1 pr-2">
               <Text className="text-blue-700 dark:text-blue-300 font-bold text-sm">
-                🔄 {t.home.pendingSalesCount(pendingCount)}
+                🔄 {pendingCount > 0 ? t.home.pendingSalesCount(pendingCount) : t.home.pendingSyncTitle}
               </Text>
-              <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5">
-                {formatMoney(pendingTotalFc, '1')} total
-              </Text>
+              {pendingCount > 0 && (
+                <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5">
+                  {formatMoney(pendingTotalFc, '1')} total
+                </Text>
+              )}
+              {pendingExpenseCount > 0 && (
+                <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5">
+                  🧾 {t.home.pendingExpensesCount(pendingExpenseCount)}
+                </Text>
+              )}
               {isSyncing && syncProgress ? (
                 <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5 tabular-nums">
                   {t.home.syncProgress(syncProgress.completed, syncProgress.total, syncPct)}
@@ -342,7 +376,7 @@ export default function DashboardScreen() {
             </View>
           )}
 
-          {/* Failed sales list + retry hint */}
+          {/* Failed sales + expenses list + retry hint */}
           {hasSyncErrors && (
             <View className="mt-2 border-t border-blue-200 dark:border-blue-700 pt-2 gap-1">
               {pendingSales
@@ -350,6 +384,13 @@ export default function DashboardScreen() {
                 .map((s) => (
                   <Text key={s.id} className="text-red-500 text-xs">
                     ⚠ {s.productName} ×{s.qtySold} — {s.syncError}
+                  </Text>
+                ))}
+              {pendingExpenses
+                .filter((e) => e.syncError)
+                .map((e) => (
+                  <Text key={e.id} className="text-red-500 text-xs">
+                    ⚠ 🧾 {e.amount} — {e.syncError}
                   </Text>
                 ))}
               <Text className="text-blue-500 dark:text-blue-500 text-[11px] mt-1">
@@ -421,9 +462,28 @@ export default function DashboardScreen() {
           <Text className="text-amber-500 dark:text-amber-500 text-xs text-center mt-1">
             Go to the Sales tab to record sales offline
           </Text>
+
+          <Pressable
+            onPress={() => router.push('/expenses')}
+            className="mt-4 self-stretch flex-row items-center bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-xl px-4 py-3"
+            style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
+          >
+            <Text className="text-2xl mr-3">🧾</Text>
+            <View className="flex-1">
+              <Text className="text-text dark:text-slate-100 font-semibold text-sm">{t.expenses.title}</Text>
+              <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">{t.home.recordExpenseOffline}</Text>
+            </View>
+            <Text className="text-muted dark:text-slate-500 text-lg">›</Text>
+          </Pressable>
         </View>
       ) : (
         <>
+          {isMini ? (
+            /* Mini employee: handover-oriented stats (cash to hand over, I owe,
+               profit) scoped to their current cycle, with a date filter. */
+            <MiniHomeStats />
+          ) : (
+          <>
           {/* Net Position */}
           <Card className="mb-3">
             <Text className="text-muted dark:text-slate-500 text-sm font-medium uppercase tracking-wide mb-1">{t.home.netPosition}</Text>
@@ -486,6 +546,16 @@ export default function DashboardScreen() {
             className="mb-6"
           />
 
+          {/* Full employee acting on the employer's books: their own scoped
+              activity, on top of the shared owner cards above. */}
+          {isFullEmployee && persona === 'employer' && <EmployeeActivityStats />}
+          </>
+          )}
+
+          {/* Mini-employee actions (Receive products, Hand over) — placed
+              below the statistics and directly above the Expenses tile. */}
+          <MiniEmployeeHome />
+
           {/* Expenses entry tile */}
           <Pressable
             onPress={() => router.push('/expenses')}
@@ -516,8 +586,9 @@ export default function DashboardScreen() {
             </Pressable>
           )}
 
-          {/* Top Suppliers */}
-          {(suppliers?.length ?? 0) > 0 && (
+          {/* Top Suppliers — owner/full-employee only; a mini's only "supplier"
+              is their employer, already surfaced as "I owe". */}
+          {!isMini && (suppliers?.length ?? 0) > 0 && (
             <View className="mb-5">
               <Text className="text-text dark:text-slate-100 font-semibold text-lg mb-2">{t.home.topSuppliers}</Text>
               {(suppliers as Array<{ supplierUserId: string; supplierUsername: string; outstandingBalance: string }>)

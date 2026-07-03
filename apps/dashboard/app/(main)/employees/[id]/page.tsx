@@ -7,16 +7,22 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Employment,
   EmploymentParty,
+  MiniSettlement,
   SalaryPayment,
   SalaryPaymentStatus,
   employmentsApi,
+  miniSettlementsApi,
   salaryPaymentsApi,
+  currencyApi,
 } from '../../../../lib/api';
 import { QK } from '../../../../lib/query-keys';
 import { useOwnerOnlyPage } from '../../../../hooks/use-owner-only';
 import { useConfirm } from '../../../../components/ui/ConfirmDialog';
+import { SendConsignmentDialog } from '../../../../components/forms/SendConsignmentDialog';
 import { useT, type Translations } from '../../../../lib/i18n';
 import { useLocaleStore } from '../../../../store/locale.store';
+import { useCurrencyStore } from '../../../../store/currency.store';
+import { useFormatCurrency } from '../../../../lib/currency';
 import { formatCurrency, formatDate, getErrorMessage } from '../../../../lib/utils';
 
 const STATUS_COLORS: Record<SalaryPaymentStatus, { bg: string; fg: string }> = {
@@ -63,6 +69,7 @@ export default function EmployeePayrollPage() {
   const [period, setPeriod] = useState<string>(currentPeriodMonth());
   const [periodFilter, setPeriodFilter] = useState<'current' | 'all'>('current');
   const [showRecord, setShowRecord] = useState(false);
+  const [tab, setTab] = useState<'profile' | 'activities' | 'salary'>('profile');
 
   const { data: employment, isLoading: loadingEmp } = useQuery({
     queryKey: QK.employmentDetail(employmentId),
@@ -111,7 +118,9 @@ export default function EmployeePayrollPage() {
   const isClosed =
     employment.status === 'TERMINATED' || employment.status === 'REJECTED';
   const isExternal = !!employee?.isExternalEmployee;
+  const isMini = employment.tier === 'SALES_ONLY' && !isExternal && !!employee?.id;
   const displayName = employee?.name?.trim() || employee?.username || t.employees.title.slice(0, -1);
+  const activeTab = tab === 'activities' && !isMini ? 'profile' : tab;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -159,84 +168,105 @@ export default function EmployeePayrollPage() {
         )}
       </div>
 
-      <ProfilePanel
-        employmentId={employment.id}
-        employee={employee}
-        isExternal={isExternal}
-        disabled={isClosed}
-        onChange={invalidate}
-      />
-
-      <div className="mt-6">
-        <SalaryPanel employment={employment} onChange={invalidate} disabled={isClosed} />
-      </div>
-
-      <div className="mt-6 p-5 rounded-xl border" style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}>
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-          <div>
-            <h2 className="font-semibold">{t.employees.payrollSection} · {formatPeriodMonth(period)}</h2>
-            <p className="text-xs opacity-60 mt-1">{t.employees.payrollHint}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="month"
-              value={period}
-              onChange={(e) => setPeriod(e.target.value || currentPeriodMonth())}
-              className="px-3 py-1.5 rounded-md border bg-transparent text-sm"
-              style={{ borderColor: 'rgba(127,127,127,0.3)', colorScheme: 'dark' }}
-            />
-            <button
-              onClick={() => setShowRecord(true)}
-              disabled={isClosed || !employment.payrollActive || !employment.monthlyPay}
-              className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
-              style={{ background: '#6366F1' }}
-            >
-              {t.employees.recordPayment}
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <SummaryCard label={t.employees.monthlyTarget} value={summary?.monthlyPay ? formatCurrency(summary.monthlyPay) : '—'} />
-          <SummaryCard label={t.employees.paidConfirmed} value={formatCurrency(summary?.paidConfirmed ?? '0')} accent="#10B981" />
-          <SummaryCard label={t.employees.pendingConfirmation} value={formatCurrency(summary?.pendingConfirmation ?? '0')} accent="#F59E0B" />
-          <SummaryCard
-            label={t.employees.balanceRemaining}
-            value={summary?.balanceRemaining ? formatCurrency(summary.balanceRemaining) : '—'}
-            accent="#818CF8"
-          />
-        </div>
-      </div>
-
-      <div className="mt-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">{t.employees.paymentHistory}</h2>
-          <div className="flex gap-1 text-xs">
-            <FilterPill active={periodFilter === 'current'} onClick={() => setPeriodFilter('current')}>
-              {formatPeriodMonth(period)}
-            </FilterPill>
-            <FilterPill active={periodFilter === 'all'} onClick={() => setPeriodFilter('all')}>
-              {t.employees.allTime}
-            </FilterPill>
-          </div>
-        </div>
-
-        {loadingPayments ? (
-          <div className="text-sm opacity-60 p-6 text-center">{t.employees.loading}</div>
-        ) : !payments?.length ? (
-          <div className="text-sm opacity-60 p-6 text-center rounded-xl border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
-            {periodFilter === 'current'
-              ? t.employees.noPaymentsForPeriod(formatPeriodMonth(period))
-              : t.employees.noPaymentsYet}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {payments.map((p) => (
-              <PaymentRow key={p.id} payment={p} onChange={invalidate} />
-            ))}
-          </div>
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+        <TabButton active={activeTab === 'profile'} onClick={() => setTab('profile')}>{t.employees.tabProfile}</TabButton>
+        {isMini && (
+          <TabButton active={activeTab === 'activities'} onClick={() => setTab('activities')}>{t.employees.tabActivities}</TabButton>
         )}
+        <TabButton active={activeTab === 'salary'} onClick={() => setTab('salary')}>{t.employees.tabSalary}</TabButton>
       </div>
+
+      {activeTab === 'profile' && (
+        <ProfilePanel
+          employmentId={employment.id}
+          employee={employee}
+          isExternal={isExternal}
+          disabled={isClosed}
+          onChange={invalidate}
+        />
+      )}
+
+      {activeTab === 'activities' && isMini && employee?.id && (
+        <MiniOversight
+          miniUserId={employee.id}
+          miniUsername={employee.username}
+          canGive={!isClosed}
+        />
+      )}
+
+      {activeTab === 'salary' && (
+        <>
+          <SalaryPanel employment={employment} onChange={invalidate} disabled={isClosed} />
+
+          <div className="mt-6 p-5 rounded-xl border" style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+              <div>
+                <h2 className="font-semibold">{t.employees.payrollSection} · {formatPeriodMonth(period)}</h2>
+                <p className="text-xs opacity-60 mt-1">{t.employees.payrollHint}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="month"
+                  value={period}
+                  onChange={(e) => setPeriod(e.target.value || currentPeriodMonth())}
+                  className="px-3 py-1.5 rounded-md border bg-transparent text-sm"
+                  style={{ borderColor: 'rgba(127,127,127,0.3)', colorScheme: 'dark' }}
+                />
+                <button
+                  onClick={() => setShowRecord(true)}
+                  disabled={isClosed || !employment.payrollActive || !employment.monthlyPay}
+                  className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
+                  style={{ background: '#6366F1' }}
+                >
+                  {t.employees.recordPayment}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <SummaryCard label={t.employees.monthlyTarget} value={summary?.monthlyPay ? formatCurrency(summary.monthlyPay) : '—'} />
+              <SummaryCard label={t.employees.paidConfirmed} value={formatCurrency(summary?.paidConfirmed ?? '0')} accent="#10B981" />
+              <SummaryCard label={t.employees.pendingConfirmation} value={formatCurrency(summary?.pendingConfirmation ?? '0')} accent="#F59E0B" />
+              <SummaryCard
+                label={t.employees.balanceRemaining}
+                value={summary?.balanceRemaining ? formatCurrency(summary.balanceRemaining) : '—'}
+                accent="#818CF8"
+              />
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold">{t.employees.paymentHistory}</h2>
+              <div className="flex gap-1 text-xs">
+                <FilterPill active={periodFilter === 'current'} onClick={() => setPeriodFilter('current')}>
+                  {formatPeriodMonth(period)}
+                </FilterPill>
+                <FilterPill active={periodFilter === 'all'} onClick={() => setPeriodFilter('all')}>
+                  {t.employees.allTime}
+                </FilterPill>
+              </div>
+            </div>
+
+            {loadingPayments ? (
+              <div className="text-sm opacity-60 p-6 text-center">{t.employees.loading}</div>
+            ) : !payments?.length ? (
+              <div className="text-sm opacity-60 p-6 text-center rounded-xl border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+                {periodFilter === 'current'
+                  ? t.employees.noPaymentsForPeriod(formatPeriodMonth(period))
+                  : t.employees.noPaymentsYet}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {payments.map((p) => (
+                  <PaymentRow key={p.id} payment={p} onChange={invalidate} />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {showRecord && (
         <RecordPaymentModal
@@ -446,6 +476,369 @@ function EditProfileModal({
   );
 }
 
+function MiniOversight({
+  miniUserId,
+  miniUsername,
+  canGive,
+}: {
+  miniUserId: string;
+  miniUsername: string;
+  canGive: boolean;
+}) {
+  const t = useT();
+  const qc = useQueryClient();
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [giveOpen, setGiveOpen] = useState(false);
+  const [subTab, setSubTab] = useState<'sales' | 'handovers'>('sales');
+
+  // A mini's figures are locked to each batch's give-time rate, so the FC toggle
+  // shows the server's locked-FC values (NOT a live conversion). USD comes
+  // straight from the ledger. Outstanding is a live balance → standard formatter.
+  const displayCurrency = useCurrencyStore((s) => s.displayCurrency);
+  const fmtLive = useFormatCurrency();
+  const fcStr = (n: number): string =>
+    new Intl.NumberFormat('fr-CD').format(Math.trunc(Number.isFinite(n) ? n : 0)) + ' FC';
+  /** Currency-aware: FC mode uses the server's locked-FC value; USD mode the ledger USD. */
+  const money = (usd: string, fc: string): string =>
+    displayCurrency === 'FC' ? fcStr(parseFloat(fc) || 0) : formatCurrency(usd);
+  /** For rows where only the batch rate is known: FC = usd × locked rate. */
+  const moneyAtRate = (usd: string, rate: string | null): string => {
+    if (displayCurrency !== 'FC') return formatCurrency(usd);
+    if (!rate) return formatCurrency(usd); // pre-snapshot: no locked rate to apply
+    return fcStr((parseFloat(usd) || 0) * (parseFloat(rate) || 0));
+  };
+  const fmtRate = (rate: string | null): string =>
+    rate ? `1$ = ${new Intl.NumberFormat('fr-CD').format(Math.trunc(parseFloat(rate) || 0))} FC` : '—';
+
+  const params = useMemo(() => {
+    const p: { dateFrom?: string; dateTo?: string } = {};
+    if (from) p.dateFrom = from;
+    if (to) p.dateTo = to;
+    return p;
+  }, [from, to]);
+
+  const { data: activity, isLoading } = useQuery({
+    queryKey: QK.miniActivity(miniUserId, params),
+    queryFn: () => miniSettlementsApi.miniActivity(miniUserId, params),
+    enabled: !!miniUserId,
+    refetchInterval: 15_000,
+  });
+
+  const { data: handovers } = useQuery({
+    queryKey: QK.miniSettlementsIncoming,
+    queryFn: () => miniSettlementsApi.incoming(),
+    refetchInterval: 15_000,
+  });
+
+  // Live rate — only a fallback for legacy handovers with no locked-FC snapshot.
+  const { data: rateData } = useQuery({
+    queryKey: ['currency', 'rate'],
+    queryFn: () => currencyApi.getRate(),
+    staleTime: 5 * 60_000,
+  });
+  const liveRate = parseFloat(rateData?.usdToFcRate ?? '1') || 1;
+  const pending = (handovers ?? []).filter(
+    (h) => h.miniId === miniUserId && h.status === 'PENDING',
+  );
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['mini-settlements'] });
+    qc.invalidateQueries({ queryKey: QK.dashboard });
+  };
+
+  const inputCls = 'px-2 py-1 rounded-md border bg-transparent text-sm';
+  const inputStyle = { borderColor: 'rgba(127,127,127,0.3)', colorScheme: 'dark' as const };
+
+  return (
+    <div
+      className="p-5 rounded-xl border"
+      style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}
+    >
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+        <div>
+          <h2 className="font-semibold flex items-center gap-2">
+            {t.employees.miniOversightTitle}
+            <span
+              className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+              style={{ background: 'rgba(16,185,129,0.15)', color: '#10B981' }}
+            >
+              ● {t.employees.miniLive}
+            </span>
+          </h2>
+          <p className="text-xs opacity-60 mt-1 max-w-xl">{t.employees.miniOversightHint}</p>
+        </div>
+        <button
+          onClick={() => setGiveOpen(true)}
+          disabled={!canGive}
+          className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
+          style={{ background: '#6366F1' }}
+        >
+          {t.employees.miniGiveProducts}
+        </button>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
+        <SummaryCard label={t.employees.miniGiven} value={money(activity?.givenInPeriod ?? '0', activity?.givenInPeriodFc ?? '0')} />
+        <SummaryCard
+          label={t.employees.miniSold}
+          value={money(activity?.soldAtSalePrice ?? '0', activity?.soldAtSalePriceFc ?? '0')}
+          accent="#10B981"
+        />
+        <SummaryCard label={t.employees.miniMarkup} value={money(activity?.markup ?? '0', activity?.markupFc ?? '0')} accent="#818CF8" />
+        <SummaryCard label={t.employees.miniOutstanding} value={fmtLive(activity?.outstanding ?? '0')} accent="#F59E0B" />
+        <SummaryCard label={t.employees.miniStillOut} value={`${activity?.stillOutUnits ?? 0}`} />
+      </div>
+
+      {/* Date-range filter */}
+      <div className="flex items-center gap-2 mt-4 text-xs">
+        <span className="opacity-70">{t.employees.miniFrom}</span>
+        <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className={inputCls} style={inputStyle} />
+        <span className="opacity-70">{t.employees.miniTo}</span>
+        <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={inputCls} style={inputStyle} />
+        {(from || to) && (
+          <button onClick={() => { setFrom(''); setTo(''); }} className="opacity-60 hover:opacity-100 underline">
+            {t.employees.miniClear}
+          </button>
+        )}
+      </div>
+
+      {/* Sub-tabs: items & live sales · handovers */}
+      <div className="flex gap-1 mt-5 border-b" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+        <TabButton active={subTab === 'sales'} onClick={() => setSubTab('sales')}>{t.employees.subTabSales}</TabButton>
+        <TabButton active={subTab === 'handovers'} onClick={() => setSubTab('handovers')}>
+          {t.employees.subTabHandovers}{pending.length > 0 ? ` (${pending.length})` : ''}
+        </TabButton>
+      </div>
+
+      {subTab === 'sales' && (
+        <>
+      {/* What was given (per consignment) */}
+      <div className="mt-4">
+        <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#818CF8' }}>{t.employees.miniGivenTitle}</h3>
+        {!activity?.given.length ? (
+          <div className="text-sm opacity-60 p-4 text-center rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+            {t.employees.miniGivenEmpty}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs opacity-60 text-left">
+                  <th className="py-1.5 pr-3 font-medium">{t.employees.miniColProduct}</th>
+                  <th className="py-1.5 pr-3 font-medium text-right">{t.employees.miniColGiven}</th>
+                  <th className="py-1.5 pr-3 font-medium text-right">{t.employees.miniColRate}</th>
+                  <th className="py-1.5 pr-3 font-medium text-right">{t.employees.miniColValue}</th>
+                  <th className="py-1.5 font-medium text-right">{t.employees.miniColDate}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activity.given.map((g, i) => (
+                  <tr key={i} className="border-t" style={{ borderColor: 'rgba(127,127,127,0.1)' }}>
+                    <td className="py-1.5 pr-3 capitalize">{g.productName}</td>
+                    <td className="py-1.5 pr-3 text-right">{g.quantity}</td>
+                    <td className="py-1.5 pr-3 text-right opacity-60 whitespace-nowrap">{fmtRate(g.usdToFcRateSnapshot)}</td>
+                    <td className="py-1.5 pr-3 text-right opacity-80">
+                      {money(String((parseFloat(g.agreedUnitPrice) || 0) * g.quantity), g.agreedValueFc)}
+                    </td>
+                    <td className="py-1.5 text-right opacity-60 whitespace-nowrap">{formatDate(g.date)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Live sales feed */}
+      <div className="mt-4">
+        <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#818CF8' }}>{t.employees.miniSalesFeed}</h3>
+        {isLoading ? (
+          <div className="text-sm opacity-60 p-4 text-center">{t.employees.loading}</div>
+        ) : !activity?.sales.length ? (
+          <div className="text-sm opacity-60 p-4 text-center rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+            {t.employees.miniNoSales}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs opacity-60 text-left">
+                  <th className="py-1.5 pr-3 font-medium">{t.employees.miniColProduct}</th>
+                  <th className="py-1.5 pr-3 font-medium text-right">{t.employees.miniColQty}</th>
+                  <th className="py-1.5 pr-3 font-medium text-right">{t.employees.miniColAgreed}</th>
+                  <th className="py-1.5 pr-3 font-medium text-right">{t.employees.miniColSold}</th>
+                  <th className="py-1.5 pr-3 font-medium text-right">{t.employees.miniColMarkup}</th>
+                  <th className="py-1.5 font-medium text-right">{t.employees.miniColDate}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activity.sales.map((s) => {
+                  const up = Number(s.markup) > 0;
+                  return (
+                    <tr key={s.id} className="border-t" style={{ borderColor: 'rgba(127,127,127,0.1)' }}>
+                      <td className="py-1.5 pr-3 capitalize">{s.productName}</td>
+                      <td className="py-1.5 pr-3 text-right">{s.qtySold}</td>
+                      <td className="py-1.5 pr-3 text-right opacity-70">{moneyAtRate(s.agreedUnitPrice, s.usdToFcRateSnapshot)}</td>
+                      <td className="py-1.5 pr-3 text-right">{moneyAtRate(s.salePrice, s.usdToFcRateSnapshot)}</td>
+                      <td className="py-1.5 pr-3 text-right" style={{ color: up ? '#10B981' : undefined }}>
+                        {up ? '+' : ''}{moneyAtRate(s.markup, s.usdToFcRateSnapshot)}
+                      </td>
+                      <td className="py-1.5 text-right opacity-60 whitespace-nowrap">{formatDate(s.date)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+        </>
+      )}
+
+      {subTab === 'handovers' && (
+      <div className="mt-4">
+        <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#818CF8' }}>
+          {t.employees.miniPendingHandovers}
+          {pending.length > 0 && <span className="ml-1 opacity-60">({pending.length})</span>}
+        </h3>
+        {pending.length === 0 ? (
+          <div className="text-xs opacity-60 p-3 text-center rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+            {t.employees.miniNoHandovers}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {pending.map((h) => (
+              <HandoverRow key={h.id} handover={h} onChange={invalidate} liveRate={liveRate} />
+            ))}
+          </div>
+        )}
+      </div>
+      )}
+
+      <SendConsignmentDialog
+        open={giveOpen}
+        onClose={() => { setGiveOpen(false); invalidate(); }}
+        fixedDebtor={{ id: miniUserId, username: miniUsername }}
+        heading={t.employees.miniEntrust}
+        submitLabel={t.employees.miniEntrust}
+      />
+    </div>
+  );
+}
+
+function HandoverRow({ handover, onChange, liveRate }: { handover: MiniSettlement; onChange: () => void; liveRate: number }) {
+  const t = useT();
+  const approveM = useMutation({
+    mutationFn: () => miniSettlementsApi.approve(handover.id),
+    onSuccess: onChange,
+  });
+  const rejectM = useMutation({
+    mutationFn: () => miniSettlementsApi.reject(handover.id),
+    onSuccess: onChange,
+  });
+  const busy = approveM.isPending || rejectM.isPending;
+  const err = approveM.error || rejectM.error;
+
+  // Reconciliation: what the mini accounted for splits into the cash to receive
+  // (for goods sold) and the standing value of the items coming back unsold.
+  //   given = to receive + standing
+  const standing = handover.items.reduce(
+    (s, it) => s + (parseFloat(it.agreedUnitPrice) || 0) * it.quantity,
+    0,
+  );
+  const receive = parseFloat(handover.cashAmount) || 0;
+  const given = receive + standing;
+
+  // Expenses the mini claimed on this handover (FC-native). They reduce the
+  // physical cash handed over and book as the owner's expenses on approval.
+  const expenses = handover.expenses ?? [];
+  const expensesFc = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  const fcStr = (n: number): string =>
+    new Intl.NumberFormat('fr-CD').format(Math.trunc(Number.isFinite(n) ? n : 0)) + ' FC';
+
+  // Net pay = sold-in-FC (locked rates) − expenses. This is the physical cash
+  // the owner actually receives from this handover. Falls back to a live-rate
+  // conversion only for legacy handovers with no locked-FC snapshot.
+  const soldFc = handover.cashAmountFc != null ? parseFloat(handover.cashAmountFc) : receive * liveRate;
+  const netPayFc = Math.max(0, soldFc - expensesFc);
+
+  return (
+    <div className="p-3 rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          {/* Given = To receive (cash) + Standing (returns value) */}
+          <div className="flex items-center gap-x-4 gap-y-1 flex-wrap">
+            <span className="inline-flex items-baseline gap-1.5">
+              <span className="text-xs opacity-60">{t.employees.miniHoGiven}</span>
+              <span className="font-semibold">{formatCurrency(given.toFixed(4))}</span>
+            </span>
+            <span className="inline-flex items-baseline gap-1.5">
+              <span className="text-xs opacity-60">{t.employees.miniHoReceive}</span>
+              <span className="font-semibold" style={{ color: '#10B981' }}>{formatCurrency(receive.toFixed(4))}</span>
+            </span>
+            <span className="inline-flex items-baseline gap-1.5">
+              <span className="text-xs opacity-60">{t.employees.miniHoStanding}</span>
+              <span className="font-semibold" style={{ color: '#F59E0B' }}>{formatCurrency(standing.toFixed(4))}</span>
+            </span>
+            <span className="text-xs opacity-50">· {formatDate(handover.createdAt)}</span>
+          </div>
+          {handover.items.length > 0 && (
+            <div className="text-xs opacity-70 mt-1">
+              {t.employees.miniReturns}: {handover.items.map((it) => `${it.quantity}× ${it.productName}`).join(', ')}
+            </div>
+          )}
+          {expenses.length > 0 && (
+            <div className="text-xs mt-1.5">
+              <span className="opacity-60">{t.employees.miniHoExpenses}: </span>
+              <span className="font-medium" style={{ color: '#EF4444' }}>{fcStr(expensesFc)}</span>
+              <span className="opacity-60"> · {t.employees.miniHoExpensesHint}</span>
+              <ul className="mt-0.5 ml-1 space-y-0.5">
+                {expenses.map((e) => (
+                  <li key={e.id} className="opacity-70 capitalize">
+                    {e.category.toLowerCase()}
+                    {e.description ? ` · ${e.description}` : ''} — {fcStr(parseFloat(e.amount) || 0)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {handover.note && <div className="text-xs opacity-60 mt-1 italic">{handover.note}</div>}
+          {!!err && <div className="text-xs mt-1" style={{ color: '#EF4444' }}>{getErrorMessage(err)}</div>}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => approveM.mutate()}
+            disabled={busy}
+            className="px-3 py-1.5 rounded-md text-xs font-medium text-white disabled:opacity-50"
+            style={{ background: '#10B981' }}
+          >
+            {approveM.isPending ? t.employees.miniApproving : t.employees.miniApprove}
+          </button>
+          <button
+            onClick={() => rejectM.mutate()}
+            disabled={busy}
+            className="px-3 py-1.5 rounded-md text-xs disabled:opacity-50"
+            style={{ border: '1px solid rgba(239,68,68,0.4)', color: '#F87171' }}
+          >
+            {rejectM.isPending ? t.employees.miniRejecting : t.employees.miniReject}
+          </button>
+        </div>
+      </div>
+
+      {/* Net pay — what the owner physically receives (sold in FC − expenses).
+          Sits at the bottom-right below the actions; wraps to its own line on
+          small screens. */}
+      <div className="flex justify-end items-baseline gap-1.5 mt-2 pt-2 border-t" style={{ borderColor: 'rgba(127,127,127,0.12)' }}>
+        <span className="text-xs opacity-60">{t.employees.miniNetPay}:</span>
+        <span className="font-bold" style={{ color: '#10B981' }}>{fcStr(netPayFc)}</span>
+      </div>
+    </div>
+  );
+}
+
 function SummaryCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div className="p-3 rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
@@ -454,6 +847,21 @@ function SummaryCard({ label, value, accent }: { label: string; value: string; a
         {value}
       </div>
     </div>
+  );
+}
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-4 py-2 text-sm font-medium transition-colors"
+      style={{
+        color: active ? '#818CF8' : 'rgba(127,127,127,0.8)',
+        borderBottom: active ? '2px solid #818CF8' : '2px solid transparent',
+      }}
+    >
+      {children}
+    </button>
   );
 }
 

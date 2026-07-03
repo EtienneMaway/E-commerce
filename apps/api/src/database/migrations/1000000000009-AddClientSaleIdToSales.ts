@@ -11,10 +11,10 @@ export class AddClientSaleIdToSales1000000000009 implements MigrationInterface {
     // produces several rows sharing the same key, so the index only speeds the
     // lookup — the dedup is "does any row with this key already exist?".
     await queryRunner.query(
-      `ALTER TABLE "sale_transactions" ADD COLUMN "client_sale_id" VARCHAR NULL`,
+      `ALTER TABLE "sale_transactions" ADD COLUMN IF NOT EXISTS "client_sale_id" VARCHAR NULL`,
     );
     await queryRunner.query(
-      `CREATE INDEX "idx_sale_transactions_client_sale_id" ON "sale_transactions" ("owner_id", "client_sale_id") WHERE "client_sale_id" IS NOT NULL`,
+      `CREATE INDEX IF NOT EXISTS "idx_sale_transactions_client_sale_id" ON "sale_transactions" ("owner_id", "client_sale_id") WHERE "client_sale_id" IS NOT NULL`,
     );
   }
 

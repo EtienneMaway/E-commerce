@@ -15,19 +15,21 @@ import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
-import { useFormatCurrency } from '../../lib/currency';
+import { useFormatCurrency, useExchangeRate, formatMoney } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { AddPersonalModal } from '../../components/forms/AddPersonalModal';
 import { ReceiveFromSupplierModal } from '../../components/forms/ReceiveFromSupplierModal';
 import { RecordSaleModal } from '../../components/forms/RecordSaleModal';
+import { EditMiniPriceModal } from '../../components/forms/EditMiniPriceModal';
 import { breakdownQuantity, formatBreakdown } from '../../lib/utils';
 import { usePersonaStore } from '../../store/persona.store';
+import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
 import type { ProductSummary } from '@trading-app/types';
 
-type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'recordSale';
+type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'recordSale' | 'editPrice';
 
 interface SaleTarget { productName: string; unitCost: string; }
 
@@ -43,6 +45,12 @@ function ProductCard({
 }) {
   const t = useT();
   const formatCurrency = useFormatCurrency();
+  const exchangeRate = useExchangeRate();
+  // A mini's consigned stock displays its prices at the consignment's locked
+  // rate (carried on the product), so a live-rate change never shifts them.
+  const isMini = useAuthStore((s) => s.user?.activeEmployment?.tier === 'SALES_ONLY');
+  const money = (v: string) =>
+    isMini && item.usdToFcRateSnapshot ? formatMoney(v, item.usdToFcRateSnapshot) : formatCurrency(v);
   const isLowStock = item.totalAvailable > 0 && item.totalAvailable <= 5;
   const isOutOfStock = item.totalAvailable === 0;
   const bd = breakdownQuantity(item.totalAvailable, item.piecesPerCarton);
@@ -105,7 +113,7 @@ function ProductCard({
         <View className="items-end">
           <Text className="text-muted dark:text-slate-500 text-sm">{t.inventory.costSell}</Text>
           <Text className="text-text dark:text-slate-100 text-sm font-medium">
-            {formatCurrency(item.latestUnitCost)} · {formatCurrency(item.latestSellingPrice)}
+            {money(item.latestUnitCost)} · {money(item.latestSellingPrice)}
           </Text>
           <View className="flex-row gap-1.5 mt-1.5 flex-wrap justify-end">
             {item.sourceBreakdown.personal > 0 && (
@@ -144,11 +152,16 @@ export default function InventoryScreen() {
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState<Modal>('none');
   const [saleTarget, setSaleTarget] = useState<SaleTarget | null>(null);
+  const [priceTarget, setPriceTarget] = useState<string | null>(null);
   // Employees acting on the employer's books shouldn't be adding products to
   // inventory — that's an owner-only action. Hide the FAB entirely in that
   // case. (When persona flips back to Self the FAB returns automatically.)
   const persona = usePersonaStore((s) => s.kind);
-  const canAddProducts = persona === 'self';
+  // A mini is identified by a Sales-only employment (covers both legacy synthetic
+  // minis and normal users who accepted a sales-only invite).
+  const isMini = useAuthStore((s) => s.user?.activeEmployment?.tier === 'SALES_ONLY');
+  // Minis manage a consigned pool: no add-stock FAB, but they can re-price.
+  const canAddProducts = persona === 'self' && !isMini;
   const { isOffline, cachedProducts, pendingSales } = useOfflineStore();
 
   const { data, isFetching, refetch } = useQuery({
@@ -218,6 +231,27 @@ export default function InventoryScreen() {
   };
 
   const handleSell = (item: ProductSummary) => {
+    // Minis can sell OR re-price their consigned stock — offer the choice.
+    if (isMini) {
+      Alert.alert(item.productName, undefined, [
+        {
+          text: t.miniEmployee.actionSell,
+          onPress: () => {
+            setSaleTarget({ productName: item.productName, unitCost: item.latestUnitCost });
+            setModal('recordSale');
+          },
+        },
+        {
+          text: t.miniEmployee.actionEditPrice,
+          onPress: () => {
+            setPriceTarget(item.productName);
+            setModal('editPrice');
+          },
+        },
+        { text: t.common.cancel, style: 'cancel' },
+      ]);
+      return;
+    }
     setSaleTarget({ productName: item.productName, unitCost: item.latestUnitCost });
     setModal('recordSale');
   };
@@ -304,6 +338,14 @@ export default function InventoryScreen() {
         }}
         prefilledProduct={saleTarget?.productName ?? ''}
         unitCost={saleTarget?.unitCost ?? ''}
+      />
+      <EditMiniPriceModal
+        visible={modal === 'editPrice'}
+        onClose={() => {
+          setModal('none');
+          setPriceTarget(null);
+        }}
+        productName={priceTarget ?? ''}
       />
     </View>
   );

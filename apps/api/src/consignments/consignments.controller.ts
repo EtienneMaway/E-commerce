@@ -15,6 +15,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AllowedFor } from '../common/decorators/allowed-for.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 import { ConsignmentsService } from './consignments.service';
@@ -64,6 +65,7 @@ export class ConsignmentsController {
   // ─── Debtor actions ────────────────────────────────────────────────────────
 
   @Get('incoming')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
   @ApiOperation({ summary: 'List all consignment requests sent to the current user (as debtor)' })
   @ApiResponse({ status: 200, type: [ConsignmentRequest] })
   findIncoming(@CurrentActorContext() ctx: ActorContext): Promise<ConsignmentRequest[]> {
@@ -71,6 +73,7 @@ export class ConsignmentsController {
   }
 
   @Patch(':id/confirm')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
   @ApiOperation({
     summary: 'Confirm receipt of a consignment (debtor action)',
     description:
@@ -87,6 +90,7 @@ export class ConsignmentsController {
   }
 
   @Patch(':id/reject')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
   @ApiOperation({ summary: 'Reject a PENDING consignment request (debtor action)' })
   @ApiResponse({ status: 200, type: ConsignmentRequest, description: 'Status set to REJECTED' })
   @ApiResponse({ status: 400, description: 'Request is not PENDING' })

@@ -11,7 +11,7 @@ import { ExpenseCategory, ExpenseCurrency } from '../../entities';
 
 export class CreateExpenseDto {
   @ApiProperty({ example: '25.00', description: 'Amount in the chosen currency' })
-  @IsDecimal({ decimal_digits: '1,4' })
+  @IsDecimal({ decimal_digits: '0,4' })
   amount: string;
 
   @ApiProperty({ enum: ExpenseCurrency, example: ExpenseCurrency.USD })
@@ -35,4 +35,9 @@ export class CreateExpenseDto {
   @IsDateString()
   @IsOptional()
   date?: string;
+
+  @ApiPropertyOptional({ description: 'Client-generated idempotency key for offline sync dedup' })
+  @IsString()
+  @IsOptional()
+  clientId?: string;
 }

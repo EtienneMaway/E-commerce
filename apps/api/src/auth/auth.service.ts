@@ -122,7 +122,9 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.pairingCode, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid pairing credentials');
 
-    const employment = await this.employmentsService.findActiveAsEmployee(user.id);
+    // Allow pairing while the invite is still PENDING so the mini can accept it
+    // on the app; only a rejected/terminated employment blocks pairing.
+    const employment = await this.employmentsService.findOpenAsEmployee(user.id);
     if (!employment) {
       throw new ForbiddenException('This mini-employee account is no longer active');
     }

@@ -5,13 +5,13 @@ export class AddUserSoftDelete1000000000007 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "users" ADD COLUMN "deleted_at" TIMESTAMP NULL`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "deleted_at" TIMESTAMP NULL`,
     );
     await queryRunner.query(
-      `ALTER TABLE "users" ADD COLUMN "anonymized_at" TIMESTAMP NULL`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "anonymized_at" TIMESTAMP NULL`,
     );
     await queryRunner.query(
-      `CREATE INDEX "idx_users_deleted_at" ON "users" ("deleted_at") WHERE "deleted_at" IS NOT NULL`,
+      `CREATE INDEX IF NOT EXISTS "idx_users_deleted_at" ON "users" ("deleted_at") WHERE "deleted_at" IS NOT NULL`,
     );
   }
 

@@ -21,3 +21,6 @@ export {
 export { Employment, EmploymentTier, EmploymentStatus } from './employment.entity';
 export { ProductPrice } from './product-price.entity';
 export { SalaryPayment, SalaryPaymentStatus } from './salary-payment.entity';
+export { MiniSettlement, MiniSettlementStatus } from './mini-settlement.entity';
+export { MiniSettlementItem } from './mini-settlement-item.entity';
+export { MiniExpense } from './mini-expense.entity';

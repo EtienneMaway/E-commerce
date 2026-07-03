@@ -107,6 +107,12 @@ export default function LoginScreen() {
           <Text className="text-primary font-semibold">{t.auth.signUpLink}</Text>
         </Link>
       </View>
+
+      <View className="flex-row justify-center mt-3">
+        <Link href="/(auth)/pair">
+          <Text className="text-primary font-semibold">{t.miniEmployee.pairLink}</Text>
+        </Link>
+      </View>
     </ScrollView>
   );
 }

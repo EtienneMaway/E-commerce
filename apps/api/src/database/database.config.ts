@@ -19,6 +19,9 @@ import {
   Employment,
   ProductPrice,
   SalaryPayment,
+  MiniSettlement,
+  MiniSettlementItem,
+  MiniExpense,
 } from '../entities';
 
 dotenv.config();
@@ -44,6 +47,9 @@ export const AppDataSource = new DataSource({
     Employment,
     ProductPrice,
     SalaryPayment,
+    MiniSettlement,
+    MiniSettlementItem,
+    MiniExpense,
   ],
   migrations: [__dirname + '/migrations/*.{ts,js}'],
   synchronize: false,

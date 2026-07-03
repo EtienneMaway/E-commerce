@@ -63,6 +63,14 @@ export class InventoryEntry {
   @Column({ name: 'pieces_per_carton', type: 'int', nullable: true, default: null })
   piecesPerCarton: number | null;
 
+  @ApiPropertyOptional({
+    example: '2700.0000',
+    description:
+      "Locked FC/USD rate for CONSIGNED_IN lots given to a mini employee — snapshotted from the consignment at confirm time. A mini converts this lot's USD figures to FC at this rate (not the live rate), so the agreement stays intact when the rate changes. Null for owner/full-employee stock (they use the live rate).",
+  })
+  @Column({ name: 'usd_to_fc_rate_snapshot', type: 'decimal', precision: 14, scale: 4, nullable: true, default: null })
+  usdToFcRateSnapshot: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

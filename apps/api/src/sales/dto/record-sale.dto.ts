@@ -25,6 +25,18 @@ export class RecordSaleDto {
   salePrice: string;
 
   @ApiPropertyOptional({
+    example: '80000',
+    description:
+      'FC price per unit the customer paid. Sent by a mini employee so each ' +
+      'deducted lot converts this to USD at ITS OWN locked consignment rate — ' +
+      'a sale straddling two batches given at different rates is booked exactly ' +
+      'per batch. Ignored for lots without a locked rate (owner/full stock).',
+  })
+  @IsDecimal({ decimal_digits: '1,4' })
+  @IsOptional()
+  salePriceFc?: string;
+
+  @ApiPropertyOptional({
     example: true,
     description:
       'Must be true to confirm a sale below cost price after receiving the 422 warning',

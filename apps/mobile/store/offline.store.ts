@@ -34,6 +34,21 @@ export interface PendingSale {
   receiptId?: string;
 }
 
+export interface PendingExpense {
+  id: string;
+  /** 'mini' → mini-employee handover expense (FC); 'normal' → owner/full-employee expense. */
+  kind: 'mini' | 'normal';
+  amount: string;
+  category: string;
+  /** Normal expenses only — mini expenses are always FC. */
+  currency?: 'USD' | 'FC';
+  description?: string;
+  /** Normal expenses only — ISO date. */
+  date?: string;
+  recordedAt: string;
+  syncError: string | null;
+}
+
 export interface SyncProgress {
   /** Total sales in this sync run (synced-so-far + still-remaining). */
   total: number;
@@ -45,6 +60,7 @@ interface OfflineState {
   isOffline: boolean;
   cachedProducts: CachedProduct[];
   pendingSales: PendingSale[];
+  pendingExpenses: PendingExpense[];
   syncStatus: 'idle' | 'syncing' | 'error';
   // Live progress of the current/last sync run. Drives the progress bar + %.
   // Persisted so a run interrupted by an app kill still shows where it stood.
@@ -68,12 +84,24 @@ interface OfflineState {
   ) => void;
   /** Patch buyer info onto every pending sale that shares the given receiptId. */
   attachOfflineClient: (receiptId: string, clientName?: string, clientPhone?: string) => void;
+  /** Queue a mini-employee expense (FC) for sync — used online-fail or offline. */
+  recordOfflineExpense: (amount: string, category: string, description?: string) => void;
+  /** Queue an owner/full-employee expense for sync when offline. */
+  recordOfflineNormalExpense: (
+    amount: string,
+    currency: 'USD' | 'FC',
+    category: string,
+    description?: string,
+    date?: string,
+  ) => void;
   setSyncStatus: (status: 'idle' | 'syncing' | 'error') => void;
   setSyncProgress: (progress: SyncProgress | null) => void;
   setLastSyncedAt: (at: string) => void;
   removeSyncedSales: (ids: string[]) => void;
   updateSaleError: (id: string, error: string) => void;
-  /** Wipe per-sale error flags before a "Restart" run so they can be retried fresh. */
+  removeSyncedExpenses: (ids: string[]) => void;
+  updateExpenseError: (id: string, error: string) => void;
+  /** Wipe per-row error flags before a "Restart" run so they can be retried fresh. */
   clearSyncErrors: () => void;
 }
 
@@ -83,6 +111,7 @@ export const useOfflineStore = create<OfflineState>()(
       isOffline: false,
       cachedProducts: [],
       pendingSales: [],
+      pendingExpenses: [],
       syncStatus: 'idle',
       syncProgress: null,
       lastSyncedAt: null,
@@ -133,6 +162,26 @@ export const useOfflineStore = create<OfflineState>()(
           ),
         })),
 
+      recordOfflineExpense: (amount, category, description) => {
+        const id = `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        set((s) => ({
+          pendingExpenses: [
+            ...s.pendingExpenses,
+            { id, kind: 'mini', amount, category, description, recordedAt: new Date().toISOString(), syncError: null },
+          ],
+        }));
+      },
+
+      recordOfflineNormalExpense: (amount, currency, category, description, date) => {
+        const id = `nexp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        set((s) => ({
+          pendingExpenses: [
+            ...s.pendingExpenses,
+            { id, kind: 'normal', amount, currency, category, description, date, recordedAt: new Date().toISOString(), syncError: null },
+          ],
+        }));
+      },
+
       setSyncStatus: (syncStatus) => set({ syncStatus }),
       setSyncProgress: (syncProgress) => set({ syncProgress }),
       setLastSyncedAt: (lastSyncedAt) => set({ lastSyncedAt }),
@@ -142,9 +191,16 @@ export const useOfflineStore = create<OfflineState>()(
         set((s) => ({
           pendingSales: s.pendingSales.map((p) => (p.id === id ? { ...p, syncError: error } : p)),
         })),
+      removeSyncedExpenses: (ids) =>
+        set((s) => ({ pendingExpenses: s.pendingExpenses.filter((p) => !ids.includes(p.id)) })),
+      updateExpenseError: (id, error) =>
+        set((s) => ({
+          pendingExpenses: s.pendingExpenses.map((p) => (p.id === id ? { ...p, syncError: error } : p)),
+        })),
       clearSyncErrors: () =>
         set((s) => ({
           pendingSales: s.pendingSales.map((p) => ({ ...p, syncError: null })),
+          pendingExpenses: s.pendingExpenses.map((p) => ({ ...p, syncError: null })),
         })),
     }),
     {

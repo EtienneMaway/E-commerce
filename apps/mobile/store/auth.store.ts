@@ -9,6 +9,7 @@ interface UserProfile {
   email: string | null;
   phone: string | null;
   name?: string | null;
+  isMiniEmployee?: boolean;
   createdAt: string;
   activeEmployment?: {
     id: string;

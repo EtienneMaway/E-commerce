@@ -215,6 +215,95 @@ export const consignmentsApi = {
   cancel: (id: string) => api.patch(`/consignments/${id}/cancel`).then((r) => r.data),
 };
 
+// ─── Mini-employee settlements & activity ───────────────────────────────────────
+
+export interface MiniSettlementItem {
+  id: string;
+  productName: string;
+  quantity: number;
+  agreedUnitPrice: string;
+  unitCost: string | null;
+}
+
+export interface MiniSettlement {
+  id: string;
+  ownerId: string;
+  miniId: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  cashAmount: string;
+  /** FC value of the sold cash at the batches' locked rates (null pre-snapshot). */
+  cashAmountFc: string | null;
+  note: string | null;
+  paymentId: string | null;
+  actorId: string | null;
+  createdAt: string;
+  approvedAt: string | null;
+  items: MiniSettlementItem[];
+  /** Expenses (FC) the mini claimed on this handover — deducted from the cash
+   *  they physically hand over and booked as the owner's expenses on approval. */
+  expenses?: { id: string; amount: string; category: string; description: string | null }[];
+  mini?: EmploymentParty;
+  owner?: EmploymentParty;
+}
+
+export interface MiniActivitySale {
+  id: string;
+  productName: string;
+  qtySold: number;
+  salePrice: string;
+  agreedUnitPrice: string;
+  markup: string;
+  /** The batch's locked FC/USD rate this sale was booked at (null pre-snapshot). */
+  usdToFcRateSnapshot: string | null;
+  date: string;
+}
+
+export interface MiniActivity {
+  miniUserId: string;
+  miniUsername: string;
+  dateFrom: string | null;
+  dateTo: string | null;
+  givenInPeriod: string;
+  givenUnitsInPeriod: number;
+  given: {
+    productName: string;
+    quantity: number;
+    agreedUnitPrice: string;
+    /** The rate this batch was consigned at + its value in FC at that rate. */
+    usdToFcRateSnapshot: string | null;
+    agreedValueFc: string;
+    date: string;
+  }[];
+  outstanding: string;
+  totalCreditGiven: string;
+  totalReceived: string;
+  stillOutUnits: number;
+  soldUnits: number;
+  soldAtSalePrice: string;
+  soldAtAgreedPrice: string;
+  markup: string;
+  /** FC-native aggregates, each row at its batch's locked rate (for the FC toggle). */
+  givenInPeriodFc: string;
+  soldAtSalePriceFc: string;
+  soldAtAgreedPriceFc: string;
+  markupFc: string;
+  sales: MiniActivitySale[];
+}
+
+export const miniSettlementsApi = {
+  incoming: (): Promise<MiniSettlement[]> =>
+    api.get('/mini-settlements/incoming').then((r) => r.data),
+  approve: (id: string): Promise<MiniSettlement> =>
+    api.patch(`/mini-settlements/${id}/approve`).then((r) => r.data),
+  reject: (id: string): Promise<MiniSettlement> =>
+    api.patch(`/mini-settlements/${id}/reject`).then((r) => r.data),
+  miniActivity: (
+    miniUserId: string,
+    params?: { dateFrom?: string; dateTo?: string },
+  ): Promise<MiniActivity> =>
+    api.get(`/mini-settlements/mini/${miniUserId}/activity`, { params }).then((r) => r.data),
+};
+
 // ─── Payments ─────────────────────────────────────────────────────────────────
 
 export const paymentsApi = {

@@ -112,4 +112,12 @@ export class SaleTransaction {
   })
   @Column({ name: 'client_sale_id', type: 'varchar', nullable: true })
   clientSaleId: string | null;
+
+  @ApiPropertyOptional({
+    example: '2700.0000',
+    description:
+      "Locked FC/USD rate copied from the CONSIGNED_IN lot when a mini employee sold it. The mini's app converts this sale's USD figures (agreed value owed, markup) to FC at this rate — so what they owe and their profit stay fixed against later rate changes. Null for owner/full-employee sales.",
+  })
+  @Column({ name: 'usd_to_fc_rate_snapshot', type: 'decimal', precision: 14, scale: 4, nullable: true })
+  usdToFcRateSnapshot: string | null;
 }

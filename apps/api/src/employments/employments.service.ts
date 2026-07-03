@@ -98,12 +98,14 @@ export class EmploymentsService {
     });
     const savedUser = await this.userRepo.save(user);
 
+    // Created PENDING: the mini pairs on the mobile app with the code below, then
+    // accepts the invite there (→ ACTIVE). Only then do they operate on their own
+    // books. Mirrors the full-employee handshake, but stays mobile-only.
     const employment = this.employmentRepo.create({
       employerId,
       employeeId: savedUser.id,
       tier: EmploymentTier.SALES_ONLY,
-      status: EmploymentStatus.ACTIVE,
-      acceptedAt: new Date(),
+      status: EmploymentStatus.PENDING,
     });
     const savedEmployment = await this.employmentRepo.save(employment);
 
@@ -368,6 +370,26 @@ export class EmploymentsService {
       where: {
         employeeId,
         status: In([EmploymentStatus.ACTIVE, EmploymentStatus.TERMINATION_REQUESTED]),
+      },
+      relations: { employer: true },
+    });
+  }
+
+  /**
+   * Like {@link findActiveAsEmployee} but also matches a PENDING invite. Used by
+   * mini-employee pairing: a freshly-created mini is PENDING and must be able to
+   * pair (obtain a JWT) so they can accept the invite on the app. The request
+   * guard still uses findActiveAsEmployee, so a PENDING mini can't yet operate.
+   */
+  async findOpenAsEmployee(employeeId: string): Promise<Employment | null> {
+    return this.employmentRepo.findOne({
+      where: {
+        employeeId,
+        status: In([
+          EmploymentStatus.PENDING,
+          EmploymentStatus.ACTIVE,
+          EmploymentStatus.TERMINATION_REQUESTED,
+        ]),
       },
       relations: { employer: true },
     });

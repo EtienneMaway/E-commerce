@@ -28,6 +28,11 @@ export class CurrencyController {
   constructor(private readonly currencyService: CurrencyService) {}
 
   @Get('rate')
+  // Every tier needs to read the rate to convert/display FC — mini employees
+  // included (their app converts FC↔USD and renders all money in FC). Without
+  // this the mini's client falls back to a 1:1 rate and shows USD-magnitude
+  // figures (e.g. "210 FC" instead of "210 000 FC").
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
   @ApiOperation({ summary: 'Get the current system-wide USD → FC exchange rate' })
   @ApiResponse({ status: 200, description: 'Current exchange rate' })
   @ApiResponse({ status: 404, description: 'No rate set yet' })

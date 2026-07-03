@@ -8,6 +8,8 @@ import { useT } from '../../lib/i18n';
 interface UserOption {
   id: string;
   username: string;
+  email?: string | null;
+  phone?: string | null;
 }
 
 interface Props {
@@ -109,10 +111,15 @@ export function UserSearchInput({ label, value, onChange, placeholder }: Props) 
                   <button
                     type="button"
                     onMouseDown={() => select(u)}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 transition-colors"
+                    className="w-full px-3 py-2 text-left hover:bg-slate-100 transition-colors"
                     style={{ color: 'var(--foreground)' }}
                   >
-                    @{u.username}
+                    <span className="text-sm">@{u.username}</span>
+                    {(u.email || u.phone) && (
+                      <span className="block text-xs" style={{ color: 'var(--muted)' }}>
+                        {[u.email, u.phone].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}

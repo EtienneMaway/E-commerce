@@ -72,6 +72,12 @@ export class Expense {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
+  @ApiPropertyOptional({
+    description: 'Client-generated idempotency key. Set by the mobile offline queue so an expense retried after a flaky-network timeout is recognised and not duplicated. Null for online entries.',
+  })
+  @Column({ name: 'client_id', type: 'varchar', nullable: true })
+  clientId: string | null;
+
   @ApiPropertyOptional({ description: 'Employee who registered this expense on owner\'s behalf' })
   @Column({ name: 'actor_id', type: 'uuid', nullable: true })
   actorId: string | null;

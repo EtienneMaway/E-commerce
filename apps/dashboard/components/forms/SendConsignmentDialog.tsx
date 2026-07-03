@@ -40,6 +40,11 @@ interface ItemRow {
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** When set, the recipient is locked to this user (e.g. giving to a mini employee) and the search box is hidden. */
+  fixedDebtor?: { id: string; username: string };
+  /** Optional heading + submit label override (e.g. "Entrust products" for the mini-employee flow). */
+  heading?: string;
+  submitLabel?: string;
 }
 
 const EMPTY_ITEM: ItemRow = {
@@ -62,10 +67,10 @@ function getTotalPieces(cartonQty: number, ppc: number | null, extraPieces: stri
   return cartonQty;
 }
 
-export function SendConsignmentDialog({ open, onClose }: Props) {
+export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, submitLabel }: Props) {
   const t = useT();
   const qc = useQueryClient();
-  const [debtor, setDebtor] = useState<UserOption | null>(null);
+  const [debtor, setDebtor] = useState<UserOption | null>(fixedDebtor ?? null);
   const [note, setNote] = useState('');
   const [items, setItems] = useState<ItemRow[]>([{ ...EMPTY_ITEM }]);
   const [error, setError] = useState('');
@@ -96,10 +101,12 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
   const toUsd = useCallback(
     (value: string): string => {
       if (!value) return value;
-      if (!isFC || !systemRate) return value;
       const n = parseFloat(value);
       if (isNaN(n) || n <= 0) return value;
-      return (n / systemRate).toFixed(4);
+      // Always emit a 4-decimal string: the API's @IsDecimal({ decimal_digits:
+      // '1,4' }) rejects whole numbers like "32" (zero decimal digits).
+      const usd = isFC && systemRate ? n / systemRate : n;
+      return usd.toFixed(4);
     },
     [isFC, systemRate],
   );
@@ -277,7 +284,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.consignmentsOutgoing });
-      setDebtor(null);
+      setDebtor(fixedDebtor ?? null);
       setNote('');
       setItems([{ ...EMPTY_ITEM }]);
       setError('');
@@ -320,7 +327,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)' }}>
       <div className="w-full max-w-lg rounded-2xl p-6 shadow-xl overflow-y-auto" style={{ background: 'var(--card)', maxHeight: '90vh' }}>
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold" style={{ color: 'var(--foreground)' }}>{t.sendConsignment.title}</h2>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--foreground)' }}>{heading ?? t.sendConsignment.title}</h2>
           <button onClick={onClose} style={{ color: 'var(--muted)' }}>✕</button>
         </div>
 
@@ -359,7 +366,14 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
             <p className="text-xs" style={{ color: 'var(--warning)' }}>{t.sendConsignment.noSystemRate}</p>
           )}
 
-          <UserSearchInput label={t.sendConsignment.debtor} value={debtor} onChange={setDebtor} placeholder={t.userSearch.placeholder} />
+          {fixedDebtor ? (
+            <div>
+              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--foreground)' }}>{t.sendConsignment.debtor}</label>
+              <div className="px-3 py-2 rounded-lg text-sm" style={{ background: 'rgba(127,127,127,0.1)', color: 'var(--foreground)' }}>@{fixedDebtor.username}</div>
+            </div>
+          ) : (
+            <UserSearchInput label={t.sendConsignment.debtor} value={debtor} onChange={setDebtor} placeholder={t.userSearch.placeholder} />
+          )}
 
           <div>
             <label className="block text-xs font-semibold mb-1 uppercase tracking-wide" style={{ color: 'var(--muted)' }}>{t.sendConsignment.note}</label>
@@ -554,7 +568,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                               placeholder="Carton price"
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="0.0001"
                               className="input w-full"
                             />
                           </div>
@@ -567,7 +581,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                             placeholder={t.sendConsignment.pricePlaceholder}
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="0.0001"
                             className="input w-full"
                           />
                         </div>
@@ -583,7 +597,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                           placeholder={t.sendConsignment.unitCost}
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="0.0001"
                           className="input w-full"
                         />
                         <div>
@@ -617,7 +631,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                               placeholder="Carton price"
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="0.0001"
                               className="input w-full"
                             />
                           </div>
@@ -632,7 +646,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
                             placeholder={t.sendConsignment.pricePlaceholder}
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="0.0001"
                             className="input w-full"
                           />
                         </div>
@@ -741,7 +755,7 @@ export function SendConsignmentDialog({ open, onClose }: Props) {
             disabled={mutation.isPending || !canSubmit}
             className="btn btn-primary flex-1"
           >
-            {mutation.isPending ? t.sendConsignment.submitting : t.sendConsignment.submit}
+            {mutation.isPending ? t.sendConsignment.submitting : (submitLabel ?? t.sendConsignment.submit)}
           </button>
         </div>
       </div>

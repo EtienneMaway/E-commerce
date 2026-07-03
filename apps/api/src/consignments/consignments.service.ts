@@ -21,6 +21,7 @@ import {
 import { CreateConsignmentDto } from './dto/create-consignment.dto';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
 import { PricingService } from '../pricing/pricing.service';
+import { CurrencyService } from '../currency/currency.service';
 import { ActorContext } from '../common/types/actor-context';
 
 @Injectable()
@@ -39,6 +40,7 @@ export class ConsignmentsService {
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
     private readonly pricingService: PricingService,
+    private readonly currencyService: CurrencyService,
   ) {}
 
   // ─── Supplier: create a consignment request ────────────────────────────────
@@ -72,6 +74,7 @@ export class ConsignmentsService {
 
       const stockEntries = await this.getStockEntriesSorted(supplierId, dto_item.productName);
       const unitCost = stockEntries[0]?.unitCost ?? priceCheck.effectiveUnitPrice;
+      const piecesPerCarton = stockEntries[0]?.piecesPerCarton ?? null;
 
       itemEntities.push(
         this.itemRepo.create({
@@ -82,15 +85,23 @@ export class ConsignmentsService {
           actorId,
           originalUnitPrice: priceCheck.originalUnitPrice,
           discountReason: priceCheck.originalUnitPrice ? dto_item.discountReason ?? null : null,
+          piecesPerCarton,
         }),
       );
     }
+
+    // Lock the FC/USD rate at give-time. Carried onto the recipient's
+    // CONSIGNED_IN lot at confirm and every sale from it, so a mini employee's
+    // agreement (what they owe) never shifts when the system rate later changes.
+    const rateRow = await this.currencyService.getRate();
+    const usdToFcRateSnapshot = rateRow?.usdToFcRate ?? null;
 
     const request = this.requestRepo.create({
       supplierId,
       debtorId: dto.debtorUserId,
       status: ConsignmentStatus.PENDING,
       note: dto.note ?? null,
+      usdToFcRateSnapshot,
       items: itemEntities,
     });
 
@@ -223,13 +234,19 @@ export class ConsignmentsService {
           category: null,
           quantityOriginal: item.quantity,
           quantityRemaining: item.quantity,
+          piecesPerCarton: item.piecesPerCarton,
+          // Same locked rate as the recipient's lot — lets the owner's dashboard
+          // show what was given at the rate of that batch, in USD and FC.
+          usdToFcRateSnapshot: request.usdToFcRateSnapshot,
           debtorUserId: request.debtorId,
           debtorCreditId: savedCredit.id,
           actorId: null,
         });
         await manager.save(InventoryEntry, supplierEntry);
 
-        // Debtor-side CONSIGNED_IN entry — actor is whoever confirmed.
+        // Debtor-side CONSIGNED_IN entry — actor is whoever confirmed. Carries
+        // the consignment's locked rate so a mini recipient converts this lot's
+        // USD figures to FC at the give-time rate, not the live one.
         const debtorEntry = manager.create(InventoryEntry, {
           ownerId: request.debtorId,
           source: InventorySource.CONSIGNED_IN,
@@ -239,6 +256,8 @@ export class ConsignmentsService {
           category: null,
           quantityOriginal: item.quantity,
           quantityRemaining: item.quantity,
+          piecesPerCarton: item.piecesPerCarton,
+          usdToFcRateSnapshot: request.usdToFcRateSnapshot,
           supplierUserId: request.supplierId,
           supplierDebtId: savedDebt.id,
           actorId,

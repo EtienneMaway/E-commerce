@@ -23,7 +23,7 @@ import {
   isDiscountReasonRequired,
   getDiscountReasonInfo,
 } from '../../lib/utils';
-import { useFormatCurrency, useExchangeRate, usdToFcStr, formatFcValue } from '../../lib/currency';
+import { useFormatCurrency, useExchangeRate, usdToFcStr, formatFcValue, formatMoney } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
@@ -56,6 +56,10 @@ interface CartItem {
   unitCostFc: string;        // FC, read-only reference
   piecesPerCarton: number | null;
   totalAvailable: number;
+  /** FC/USD rate to convert THIS product's prices. For a mini it's the
+   *  consignment's locked rate (so the agreement stays fixed); otherwise the
+   *  live rate. Captured when the product is added so submit + display agree. */
+  rate: string;
   // Quantity
   cartons: string;
   extraPieces: string;
@@ -104,6 +108,12 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   const formatCurrency = useFormatCurrency();
   const exchangeRate = useExchangeRate();
   const user = useAuthStore((s) => s.user);
+  // A mini converts each product's prices at its consignment's locked rate, not
+  // the live rate — so a rate change never shifts the agreed prices or what they
+  // enter/owe. Owner/full employees always use the live rate.
+  const isMini = user?.activeEmployment?.tier === 'SALES_ONLY';
+  const rateForProduct = (p: Pick<ProductSummary, 'usdToFcRateSnapshot'>): string =>
+    isMini && p.usdToFcRateSnapshot ? p.usdToFcRateSnapshot : exchangeRate;
   const { isOffline, cachedProducts, recordOfflineSale, attachOfflineClient } = useOfflineStore();
 
   const [search, setSearch] = useState(prefilledProduct);
@@ -191,16 +201,18 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         return next;
       }
       const ppc = product.piecesPerCarton;
-      // Convert the USD API values to FC for in-modal display + input. The
-      // dashboard-set selling price becomes the default; the cost is shown
-      // read-only as an FC reference.
-      const unitPriceFc = usdToFcStr(product.latestSellingPrice ?? '0', exchangeRate);
-      const unitCostFc = usdToFcStr(product.latestUnitCost ?? '0', exchangeRate);
+      // Convert the USD API values to FC for in-modal display + input at this
+      // product's rate (locked for a mini). The dashboard-set selling price
+      // becomes the default; the cost is shown read-only as an FC reference.
+      const rate = rateForProduct(product);
+      const unitPriceFc = usdToFcStr(product.latestSellingPrice ?? '0', rate);
+      const unitCostFc = usdToFcStr(product.latestUnitCost ?? '0', rate);
       next.set(product.productName, {
         productName: product.productName,
         unitCostFc,
         piecesPerCarton: ppc,
         totalAvailable: product.totalAvailable,
+        rate,
         // If product has piecesPerCarton, "cartons" starts at 1 carton.
         // Otherwise quantity is in raw pieces, starting at 1.
         cartons: '1',
@@ -287,7 +299,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
    * Errors that aren't recoverable are alerted inline.
    */
   const submitItems = async (
-    items: { item: CartItem; totalPieces: number; salePrice: string; confirmedOverride?: boolean; discountReason?: string }[],
+    items: { item: CartItem; totalPieces: number; salePrice: string; salePriceFc?: number; confirmedOverride?: boolean; discountReason?: string }[],
     receiptId: string,
   ): Promise<{
     priceGuard: PriceGuardPending[];
@@ -297,12 +309,15 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     const priceGuard: PriceGuardPending[] = [];
     const discount: DiscountPending[] = [];
     const saleIds: string[] = [];
-    for (const { item, totalPieces, salePrice, confirmedOverride, discountReason } of items) {
+    for (const { item, totalPieces, salePrice, salePriceFc, confirmedOverride, discountReason } of items) {
       try {
         const sale = await salesApi.record({
           productName: item.productName,
           qtySold: totalPieces,
           salePrice,
+          // Minis send the FC price so the server books each deducted lot at its
+          // own locked rate (exact across batches given at different rates).
+          ...(isMini && salePriceFc ? { salePriceFc: salePriceFc.toFixed(4) } : {}),
           receiptId,
           ...(confirmedOverride ? { confirmedOverride: true } : {}),
           ...(discountReason ? { discountReason } : {}),
@@ -342,6 +357,8 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     qc.invalidateQueries({ queryKey: QK.salesHistory() });
     qc.invalidateQueries({ queryKey: QK.dashboard });
     qc.invalidateQueries({ queryKey: QK.cashPosition });
+    // Mini employees: refresh their home stats (cash to hand over, I owe, profit).
+    qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] });
   };
 
   const offerReceipt = (
@@ -487,8 +504,11 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
    * the receipt + offline cache.
    */
   const buildSubmitItems = (items: CartItem[]) => {
-    const rate = parseFloat(exchangeRate) || 1;
     return items.map((item) => {
+      // Convert at THIS item's rate (a mini's locked consignment rate, or live),
+      // so the USD stored on the sale reproduces the entered FC exactly at that
+      // same rate later.
+      const rate = parseFloat(item.rate) || 1;
       const salePriceFc = parseFloat(item.unitPriceFc) || 0;
       const salePrice = (salePriceFc / rate).toFixed(4);
       return {
@@ -560,9 +580,10 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     }
   };
 
-  /** Map a CartItem to a submission payload, converting its FC unit price → USD. */
+  /** Map a CartItem to a submission payload, converting its FC unit price → USD
+   *  at the item's rate (a mini's locked consignment rate, or live). */
   const itemToPayload = (item: CartItem): { salePrice: string; salePriceFc: number; totalPieces: number } => {
-    const rate = parseFloat(exchangeRate) || 1;
+    const rate = parseFloat(item.rate) || 1;
     const salePriceFc = parseFloat(item.unitPriceFc) || 0;
     return {
       totalPieces: totalPiecesOf(item),
@@ -809,10 +830,10 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                         </Text>
                         <View className="flex-row flex-wrap gap-x-3 mt-1">
                           <Text className="text-muted dark:text-slate-500 text-xs">
-                            {t.recordSaleModal.costPerUnit(formatCurrency(product.latestUnitCost))}
+                            {t.recordSaleModal.costPerUnit(formatMoney(product.latestUnitCost, rateForProduct(product)))}
                           </Text>
                           <Text className="text-success text-xs font-semibold">
-                            {t.recordSaleModal.sellAt(formatCurrency(product.latestSellingPrice))}
+                            {t.recordSaleModal.sellAt(formatMoney(product.latestSellingPrice, rateForProduct(product)))}
                           </Text>
                           <Text className="text-muted dark:text-slate-500 text-xs">
                             {t.recordSaleModal.inStock(product.totalAvailable)}

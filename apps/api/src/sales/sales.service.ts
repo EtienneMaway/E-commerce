@@ -151,6 +151,11 @@ export class SalesService {
       throw new UnprocessableEntityException(warning);
     }
 
+    // A mini sends the FC price the customer paid so each deducted lot books at
+    // its OWN locked rate — a sale straddling two batches given at different
+    // rates is exact per batch. Null for owner/full sales (single USD price).
+    const salePriceFc = dto.salePriceFc ? new Decimal(dto.salePriceFc) : null;
+
     return this.dataSource.transaction(async (manager) => {
       const sales: SaleTransaction[] = [];
       let remaining = dto.qtySold;
@@ -160,7 +165,14 @@ export class SalesService {
 
         const deduct = Math.min(entry.quantityRemaining, remaining);
         const entryCost = new Decimal(entry.unitCost);
-        const entryProfit = effectiveSalePrice.minus(entryCost).mul(deduct);
+        // Per-lot USD sale price: when the mini supplied an FC price AND this lot
+        // carries a locked rate, convert at that rate; otherwise use the single
+        // USD price. Keeps profit/owed exact per batch.
+        const lotSalePrice =
+          salePriceFc && entry.usdToFcRateSnapshot
+            ? salePriceFc.div(new Decimal(entry.usdToFcRateSnapshot))
+            : effectiveSalePrice;
+        const entryProfit = lotSalePrice.minus(entryCost).mul(deduct);
         const qtyBeforeDeduct = entry.quantityRemaining;
 
         entry.quantityRemaining -= deduct;
@@ -175,10 +187,14 @@ export class SalesService {
           supplierUserId: entry.supplierUserId,
           qtySold: deduct,
           unitCost: entryCost.toFixed(4),
-          salePrice: effectiveSalePrice.toFixed(4),
+          salePrice: lotSalePrice.toFixed(4),
           profit: entryProfit.toFixed(4),
           isLoss: entryProfit.lt(0),
           inventoryEntryId: entry.id,
+          // Carry the lot's locked rate (set only on a mini's CONSIGNED_IN
+          // stock) so this sale's owed value + markup convert to FC at the
+          // consignment's give-time rate, not the live one.
+          usdToFcRateSnapshot: entry.usdToFcRateSnapshot ?? null,
           originalUnitPrice: priceCheck.originalUnitPrice,
           discountReason: priceCheck.originalUnitPrice ? dto.discountReason ?? null : null,
           clientName: dto.clientName?.trim() || null,

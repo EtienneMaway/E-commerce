@@ -10,6 +10,7 @@ import {
 import { ConsignmentsService } from './consignments.service';
 import { ConsignmentsController } from './consignments.controller';
 import { StockMovementsModule } from '../stock-movements/stock-movements.module';
+import { CurrencyModule } from '../currency/currency.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { StockMovementsModule } from '../stock-movements/stock-movements.module'
       DebtorCredit,
     ]),
     StockMovementsModule,
+    CurrencyModule,
   ],
   controllers: [ConsignmentsController],
   providers: [ConsignmentsService],

@@ -1,0 +1,124 @@
+import { Modal, ScrollView, View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { consignmentsApi, type ConsignmentSummary } from '../../lib/api';
+import { QK } from '../../lib/query-keys';
+import { useFormatCurrency } from '../../lib/currency';
+import { breakdownQuantity, formatBreakdown, getErrorMessage } from '../../lib/utils';
+import { useT } from '../../lib/i18n';
+
+interface Props {
+  visible: boolean;
+  onClose: () => void;
+}
+
+/**
+ * Mini-employee inbox of products the owner has assigned to them. Confirming a
+ * consignment moves the stock onto the mini's own books (CONSIGNED_IN) and
+ * records what they now owe; rejecting has no effect.
+ */
+export function ReceiveConsignmentModal({ visible, onClose }: Props) {
+  const t = useT();
+  const qc = useQueryClient();
+  const formatCurrency = useFormatCurrency();
+
+  const { data, isLoading } = useQuery({
+    queryKey: QK.consignmentsIncoming,
+    queryFn: consignmentsApi.incoming,
+    enabled: visible,
+    staleTime: 15_000,
+  });
+  const pending = ((data as ConsignmentSummary[] | undefined) ?? []).filter((c) => c.status === 'PENDING');
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: QK.consignmentsIncoming });
+    qc.invalidateQueries({ queryKey: QK.inventoryProducts });
+    qc.invalidateQueries({ queryKey: QK.inventory() });
+    // Accepting products raises "I owe" and the balance on the mini's home stats.
+    qc.invalidateQueries({ queryKey: QK.miniBalance });
+    qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] });
+  };
+
+  const confirmM = useMutation({
+    mutationFn: (id: string) => consignmentsApi.confirm(id),
+    onSuccess: invalidate,
+    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+  });
+  const rejectM = useMutation({
+    mutationFn: (id: string) => consignmentsApi.reject(id),
+    onSuccess: invalidate,
+    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+  });
+  const busy = confirmM.isPending || rejectM.isPending;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <ScrollView className="flex-1 bg-surface dark:bg-slate-900" contentContainerClassName="px-6 py-8">
+        <View className="flex-row justify-between items-center mb-2">
+          <Text className="text-xl font-bold text-text dark:text-slate-100">{t.miniEmployee.receiveTitle}</Text>
+          <TouchableOpacity onPress={onClose}>
+            <Text className="text-primary font-medium">{t.common.cancel}</Text>
+          </TouchableOpacity>
+        </View>
+        <Text className="text-muted dark:text-slate-500 text-sm mb-5">{t.miniEmployee.receiveSubtitle}</Text>
+
+        {isLoading ? (
+          <ActivityIndicator className="mt-8" />
+        ) : pending.length === 0 ? (
+          <Text className="text-muted dark:text-slate-500 text-center mt-10">{t.miniEmployee.receiveEmpty}</Text>
+        ) : (
+          pending.map((c) => (
+            <View
+              key={c.id}
+              className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4 mb-3"
+            >
+              <Text className="text-text dark:text-slate-100 font-semibold">
+                {t.miniEmployee.receiveFrom} @{c.supplier?.username ?? '—'}
+              </Text>
+              {c.note ? <Text className="text-muted dark:text-slate-500 text-xs mt-0.5 italic">{c.note}</Text> : null}
+              <View className="mt-2 gap-1">
+                {c.items.map((it) => {
+                  const ppc = it.piecesPerCarton ?? null;
+                  const bd = breakdownQuantity(it.quantity, ppc);
+                  // Show the carton price (unit price × pieces/carton) when carton
+                  // info exists; otherwise the per-piece price. FC at system rate.
+                  const priceValue = ppc
+                    ? (parseFloat(it.agreedUnitPrice) * ppc).toFixed(4)
+                    : it.agreedUnitPrice;
+                  const priceSuffix = ppc ? t.miniEmployee.perCarton : t.miniEmployee.perPiece;
+                  return (
+                    <View key={it.id} className="flex-row justify-between">
+                      <Text className="text-text dark:text-slate-200 text-sm capitalize">
+                        {formatBreakdown(bd)} · {it.productName}
+                      </Text>
+                      <Text className="text-muted dark:text-slate-400 text-sm">
+                        {formatCurrency(priceValue)} {priceSuffix}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <View className="flex-row gap-2 mt-3">
+                <TouchableOpacity
+                  onPress={() => confirmM.mutate(c.id)}
+                  disabled={busy}
+                  className="flex-1 bg-success rounded-xl py-2.5 items-center"
+                  style={{ opacity: busy ? 0.5 : 1 }}
+                >
+                  <Text className="text-white font-semibold text-sm">{t.miniEmployee.receiveConfirm}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => rejectM.mutate(c.id)}
+                  disabled={busy}
+                  className="px-4 rounded-xl py-2.5 items-center justify-center border border-danger"
+                  style={{ opacity: busy ? 0.5 : 1 }}
+                >
+                  <Text className="text-danger font-semibold text-sm">{t.miniEmployee.receiveReject}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </Modal>
+  );
+}
