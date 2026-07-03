@@ -198,11 +198,16 @@ export default function InventoryScreen() {
     return acc;
   }, {});
 
-  const filtered = search.trim()
+  const searched = search.trim()
     ? products.filter((p) =>
         p.productName.toLowerCase().includes(search.trim().toLowerCase()),
       )
     : products;
+  // A mini only ever holds consigned stock; once a product is fully sold and/or
+  // returned at handover it's gone from their books — hide these empty shells so
+  // the list clears after a handover. Owners keep out-of-stock rows (they
+  // restock the same product), so only filter for minis.
+  const filtered = isMini ? searched.filter((p) => p.totalAvailable > 0) : searched;
 
   const openFAB = () => {
     if (!canAddProducts) return;

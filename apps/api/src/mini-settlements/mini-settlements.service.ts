@@ -99,8 +99,9 @@ export interface MiniStats {
   windowEnd: string | null;
   /** When the mini last handed over (ISO) — powers the "since your last handover" notice. */
   lastHandoverAt: string | null;
-  /** Agreed value of consigned-in products the mini accepted within the window
-   *  (Σ agreed price × qty) — "what I owe" for goods not yet handed over, USD. */
+  /** Agreed value of consigned-in products the mini STILL HOLDS within the
+   *  window (Σ agreed price × quantityRemaining) — "what I owe" for goods not
+   *  yet handed over, USD. Clears once a cycle is fully sold/returned. */
   iOwe: string;
   /** Total owed for goods sold in the window (Σ agreed price × qty), USD — the
    *  gross cash the mini must hand over before deducting expenses. */
@@ -352,10 +353,13 @@ export class MiniSettlementsService {
       soldUnits += s.qtySold;
     }
 
-    // I OWE: agreed value of consigned-in stock the mini accepted within the
-    // window (CONSIGNED_IN.unitCost = the agreed price they owe). For the
-    // default since-handover window this equals their outstanding cycle debt.
-    // Each lot's FC value converts at its own locked rate.
+    // I OWE: agreed value of consigned-in stock the mini STILL HOLDS
+    // (CONSIGNED_IN.unitCost = the agreed price they owe). Uses
+    // quantityRemaining, not quantityOriginal — as goods are sold or returned at
+    // handover the lot's remaining drops, so once a cycle is fully handed over
+    // (everything sold or returned) every lot is 0 and I OWE clears. You can't
+    // owe for what you've already reimbursed. Each lot's FC value converts at
+    // its own locked rate.
     const inQb = this.entryRepo
       .createQueryBuilder('e')
       .where('e.owner_id = :miniId', { miniId })
@@ -365,7 +369,8 @@ export class MiniSettlementsService {
     let iOwe = new Decimal(0);
     let iOweFc = new Decimal(0);
     for (const e of inEntries) {
-      const agreed = new Decimal(e.unitCost).mul(e.quantityOriginal);
+      if (e.quantityRemaining <= 0) continue;
+      const agreed = new Decimal(e.unitCost).mul(e.quantityRemaining);
       iOwe = iOwe.plus(agreed);
       iOweFc = iOweFc.plus(fcOf(agreed, e.usdToFcRateSnapshot));
     }
