@@ -676,13 +676,20 @@ export class MiniSettlementsService {
             `Mini employee no longer has ${qty} unsold "${item.productName}" (has ${available})`,
           );
         }
+        // Reverse the debt at each lot's OWN agreed price as we FIFO-deduct.
+        // Returned units can span batches consigned at different agreed prices
+        // (multi-batch, same product); valuing them all at a single snapshot
+        // price leaves a residual so "Owes you" never fully clears even though
+        // no goods remain. Accumulating per-lot keeps the debt exact.
         let remaining = qty;
+        let returnValueDec = new Decimal(0);
         for (const entry of miniEntries) {
           if (remaining === 0) break;
           const deduct = Math.min(entry.quantityRemaining, remaining);
           const before = entry.quantityRemaining;
           entry.quantityRemaining -= deduct;
           remaining -= deduct;
+          returnValueDec = returnValueDec.plus(new Decimal(entry.unitCost).mul(deduct));
           await manager.save(InventoryEntry, entry);
           await this.stockMovements.record(manager, {
             ownerId: miniId,
@@ -772,8 +779,9 @@ export class MiniSettlementsService {
 
         // Debt reversal: the mini no longer owes for the returned units. Reduce
         // both totalCreditGiven and outstanding so the invariant holds
-        // (outstanding = totalCreditGiven − totalReceived).
-        const returnValue = new Decimal(item.agreedUnitPrice).mul(qty).toFixed(4);
+        // (outstanding = totalCreditGiven − totalReceived). Value is the per-lot
+        // sum accumulated above, not a single snapshot price.
+        const returnValue = returnValueDec.toFixed(4);
         credit.totalCreditGiven = new Decimal(credit.totalCreditGiven).minus(returnValue).toFixed(4);
         credit.outstandingBalance = new Decimal(credit.outstandingBalance).minus(returnValue).toFixed(4);
         if (debt) {
@@ -864,7 +872,12 @@ export class MiniSettlementsService {
     }
 
     const from = query.dateFrom ? new Date(query.dateFrom) : null;
-    const to = query.dateTo ? new Date(query.dateTo + 'T23:59:59.999') : null;
+    // Accept both a date-only bound (YYYY-MM-DD → end of that day) and a full
+    // ISO timestamp — the dashboard's handover-window navigator passes precise
+    // cycle boundaries (a handover's approval instant), not just a calendar day.
+    const to = query.dateTo
+      ? new Date(query.dateTo.includes('T') ? query.dateTo : query.dateTo + 'T23:59:59.999')
+      : null;
 
     // Sales the mini recorded on their own books within the window.
     const saleQb = this.saleRepo
@@ -918,6 +931,8 @@ export class MiniSettlementsService {
       .where('e.owner_id = :ownerId', { ownerId })
       .andWhere('e.source = :src', { src: InventorySource.CONSIGNED_OUT })
       .andWhere('e.debtor_user_id = :miniUserId', { miniUserId });
+    // "What you gave" shares the selected window with the sales feed — the
+    // dashboard navigator scopes both to one handover cycle at a time.
     if (from) givenQb.andWhere('e.created_at >= :from', { from });
     if (to) givenQb.andWhere('e.created_at <= :to', { to });
     givenQb.orderBy('e.created_at', 'DESC');

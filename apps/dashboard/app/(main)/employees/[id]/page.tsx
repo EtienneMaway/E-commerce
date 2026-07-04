@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -487,10 +487,17 @@ function MiniOversight({
 }) {
   const t = useT();
   const qc = useQueryClient();
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  // Activity is scoped to one handover cycle at a time, navigated with prev/next
+  // arrows. navOffset = how many cycles back from the current (open) one: 0 =
+  // current cycle (since the last approved handover), 1 = the cycle the last
+  // handover settled, and so on.
+  const [navOffset, setNavOffset] = useState(0);
   const [giveOpen, setGiveOpen] = useState(false);
   const [subTab, setSubTab] = useState<'sales' | 'handovers'>('sales');
+  // Both activity tables paginate at 5 rows; pages reset whenever the selected
+  // cycle changes (see the effect once cycleIdx is known).
+  const [givenPage, setGivenPage] = useState(0);
+  const [salesPage, setSalesPage] = useState(0);
 
   // A mini's figures are locked to each batch's give-time rate, so the FC toggle
   // shows the server's locked-FC values (NOT a live conversion). USD comes
@@ -511,12 +518,39 @@ function MiniOversight({
   const fmtRate = (rate: string | null): string =>
     rate ? `1$ = ${new Intl.NumberFormat('fr-CD').format(Math.trunc(parseFloat(rate) || 0))} FC` : '—';
 
+  const { data: handovers } = useQuery({
+    queryKey: QK.miniSettlementsIncoming,
+    queryFn: () => miniSettlementsApi.incoming(),
+    refetchInterval: 15_000,
+  });
+
+  // Handover cycles: approved handovers split this mini's timeline into windows.
+  // Ascending approval instants are the cycle boundaries; there are (n + 1)
+  // cycles — n closed ones each ending at a handover, plus the open current one.
+  const boundaries = useMemo(
+    () =>
+      (handovers ?? [])
+        .filter((h) => h.miniId === miniUserId && h.status === 'APPROVED' && h.approvedAt)
+        .map((h) => new Date(h.approvedAt as string).getTime())
+        .sort((a, b) => a - b),
+    [handovers, miniUserId],
+  );
+  const cycleCount = boundaries.length; // = number of closed cycles; current index = cycleCount
+  const clampedOffset = Math.min(navOffset, cycleCount); // can't go older than the first cycle
+  const cycleIdx = cycleCount - clampedOffset; // 0 = oldest cycle … cycleCount = current
+  const isCurrentCycle = cycleIdx === cycleCount;
+  // The selected window: (from, to]. from = previous handover instant (+1ms so
+  // it's exclusive, matching handover settlement), to = this cycle's closing
+  // handover (null = open/now for the current cycle).
+  const windowFromMs = cycleIdx === 0 ? null : boundaries[cycleIdx - 1] + 1;
+  const windowToMs = cycleIdx < cycleCount ? boundaries[cycleIdx] : null;
+
   const params = useMemo(() => {
     const p: { dateFrom?: string; dateTo?: string } = {};
-    if (from) p.dateFrom = from;
-    if (to) p.dateTo = to;
+    if (windowFromMs != null) p.dateFrom = new Date(windowFromMs).toISOString();
+    if (windowToMs != null) p.dateTo = new Date(windowToMs).toISOString();
     return p;
-  }, [from, to]);
+  }, [windowFromMs, windowToMs]);
 
   const { data: activity, isLoading } = useQuery({
     queryKey: QK.miniActivity(miniUserId, params),
@@ -525,11 +559,23 @@ function MiniOversight({
     refetchInterval: 15_000,
   });
 
-  const { data: handovers } = useQuery({
-    queryKey: QK.miniSettlementsIncoming,
-    queryFn: () => miniSettlementsApi.incoming(),
-    refetchInterval: 15_000,
-  });
+  // Reset both tables to page 1 when the cycle window changes.
+  useEffect(() => {
+    setGivenPage(0);
+    setSalesPage(0);
+  }, [cycleIdx]);
+
+  // Paginate the two activity tables at 5 rows each (clamped so a shrinking list
+  // — e.g. after a background refetch — never strands you on an empty page).
+  const PAGE_SIZE = 5;
+  const givenRows = activity?.given ?? [];
+  const givenPageCount = Math.max(1, Math.ceil(givenRows.length / PAGE_SIZE));
+  const givenClamped = Math.min(givenPage, givenPageCount - 1);
+  const givenSlice = givenRows.slice(givenClamped * PAGE_SIZE, givenClamped * PAGE_SIZE + PAGE_SIZE);
+  const salesRows = activity?.sales ?? [];
+  const salesPageCount = Math.max(1, Math.ceil(salesRows.length / PAGE_SIZE));
+  const salesClamped = Math.min(salesPage, salesPageCount - 1);
+  const salesSlice = salesRows.slice(salesClamped * PAGE_SIZE, salesClamped * PAGE_SIZE + PAGE_SIZE);
 
   // Live rate — only a fallback for legacy handovers with no locked-FC snapshot.
   const { data: rateData } = useQuery({
@@ -541,14 +587,24 @@ function MiniOversight({
   const pending = (handovers ?? []).filter(
     (h) => h.miniId === miniUserId && h.status === 'PENDING',
   );
+  // Full handover history for this mini, newest first — every settlement they've
+  // ever submitted, each carrying its own status flag (pending/approved/
+  // rejected). Tells the owner exactly what the mini has worked through so far.
+  const allHandovers = (handovers ?? [])
+    .filter((h) => h.miniId === miniUserId)
+    .slice()
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // Boundary for "already handed over": the most recent approved handover's
+  // timestamp. Sales on/before it were settled in a handover; sales after it
+  // are the current, un-handed-over cycle. 0 = no approved handover yet.
+  const lastApprovedAt = (handovers ?? [])
+    .filter((h) => h.miniId === miniUserId && h.status === 'APPROVED' && h.approvedAt)
+    .reduce<number>((max, h) => Math.max(max, new Date(h.approvedAt as string).getTime()), 0);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['mini-settlements'] });
     qc.invalidateQueries({ queryKey: QK.dashboard });
   };
-
-  const inputCls = 'px-2 py-1 rounded-md border bg-transparent text-sm';
-  const inputStyle = { borderColor: 'rgba(127,127,127,0.3)', colorScheme: 'dark' as const };
 
   return (
     <div
@@ -583,7 +639,10 @@ function MiniOversight({
         <SummaryCard label={t.employees.miniGiven} value={money(activity?.givenInPeriod ?? '0', activity?.givenInPeriodFc ?? '0')} />
         <SummaryCard
           label={t.employees.miniSold}
-          value={money(activity?.soldAtSalePrice ?? '0', activity?.soldAtSalePriceFc ?? '0')}
+          // The agreed value of what sold — i.e. the cash the mini must hand over
+          // for it — NOT the customer-facing sale price. The mini's markup lives
+          // in "Their markup" so the two don't double-count.
+          value={money(activity?.soldAtAgreedPrice ?? '0', activity?.soldAtAgreedPriceFc ?? '0')}
           accent="#10B981"
         />
         <SummaryCard label={t.employees.miniMarkup} value={money(activity?.markup ?? '0', activity?.markupFc ?? '0')} accent="#818CF8" />
@@ -591,17 +650,52 @@ function MiniOversight({
         <SummaryCard label={t.employees.miniStillOut} value={`${activity?.stillOutUnits ?? 0}`} />
       </div>
 
-      {/* Date-range filter */}
-      <div className="flex items-center gap-2 mt-4 text-xs">
-        <span className="opacity-70">{t.employees.miniFrom}</span>
-        <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className={inputCls} style={inputStyle} />
-        <span className="opacity-70">{t.employees.miniTo}</span>
-        <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={inputCls} style={inputStyle} />
-        {(from || to) && (
-          <button onClick={() => { setFrom(''); setTo(''); }} className="opacity-60 hover:opacity-100 underline">
-            {t.employees.miniClear}
-          </button>
-        )}
+      {/* Handover-cycle navigator — steps the whole activity view through one
+          settlement window at a time (previous = older cycle, next = newer). */}
+      <div className="flex items-center justify-center gap-3 mt-4 text-xs">
+        {(() => {
+          const prevEnabled = cycleIdx !== 0;
+          const nextEnabled = !isCurrentCycle;
+          // Clickable arrows get an indigo accent (border + tint + text) so it's
+          // obvious which direction you can still navigate; the end of the range
+          // reads as a muted, plainly-disabled button.
+          const navStyle = (enabled: boolean) =>
+            enabled
+              ? { borderColor: 'rgba(99,102,241,0.5)', color: '#818CF8', background: 'rgba(99,102,241,0.08)' }
+              : { borderColor: 'rgba(127,127,127,0.25)' };
+          return (
+        <>
+        <button
+          onClick={() => setNavOffset((o) => Math.min(cycleCount, o + 1))}
+          disabled={!prevEnabled}
+          className="px-2.5 py-1 rounded-md border font-medium transition-colors disabled:opacity-30 disabled:font-normal"
+          style={navStyle(prevEnabled)}
+        >
+          ← {t.employees.miniCyclePrev}
+        </button>
+        <div className="text-center min-w-[10rem]">
+          <div className="font-medium">
+            {isCurrentCycle
+              ? t.employees.miniCycleCurrent
+              : `${t.employees.miniCycleWord} ${cycleIdx + 1} / ${cycleCount + 1}`}
+          </div>
+          <div className="opacity-60">
+            {windowFromMs != null ? formatDate(new Date(windowFromMs).toISOString()) : t.employees.miniCycleStart}
+            {' → '}
+            {windowToMs != null ? formatDate(new Date(windowToMs).toISOString()) : t.employees.miniCycleNow}
+          </div>
+        </div>
+        <button
+          onClick={() => setNavOffset((o) => Math.max(0, o - 1))}
+          disabled={!nextEnabled}
+          className="px-2.5 py-1 rounded-md border font-medium transition-colors disabled:opacity-30 disabled:font-normal"
+          style={navStyle(nextEnabled)}
+        >
+          {t.employees.miniCycleNext} →
+        </button>
+        </>
+          );
+        })()}
       </div>
 
       {/* Sub-tabs: items & live sales · handovers */}
@@ -634,8 +728,8 @@ function MiniOversight({
                 </tr>
               </thead>
               <tbody>
-                {activity.given.map((g, i) => (
-                  <tr key={i} className="border-t" style={{ borderColor: 'rgba(127,127,127,0.1)' }}>
+                {givenSlice.map((g, i) => (
+                  <tr key={givenClamped * PAGE_SIZE + i} className="border-t" style={{ borderColor: 'rgba(127,127,127,0.1)' }}>
                     <td className="py-1.5 pr-3 capitalize">{g.productName}</td>
                     <td className="py-1.5 pr-3 text-right">{g.quantity}</td>
                     <td className="py-1.5 pr-3 text-right opacity-60 whitespace-nowrap">{fmtRate(g.usdToFcRateSnapshot)}</td>
@@ -647,6 +741,14 @@ function MiniOversight({
                 ))}
               </tbody>
             </table>
+            <Pager
+              page={givenClamped}
+              pageCount={givenPageCount}
+              total={givenRows.length}
+              pageSize={PAGE_SIZE}
+              onPrev={() => setGivenPage((p) => Math.max(0, p - 1))}
+              onNext={() => setGivenPage((p) => Math.min(givenPageCount - 1, p + 1))}
+            />
           </div>
         )}
       </div>
@@ -674,11 +776,29 @@ function MiniOversight({
                 </tr>
               </thead>
               <tbody>
-                {activity.sales.map((s) => {
+                {salesSlice.map((s) => {
                   const up = Number(s.markup) > 0;
+                  // A sale dated on/before the last approved handover has already
+                  // been settled — flag it so the owner can tell reconciled sales
+                  // apart from the current, still-owed cycle at a glance.
+                  const handedOver =
+                    lastApprovedAt > 0 && new Date(s.date).getTime() <= lastApprovedAt;
                   return (
                     <tr key={s.id} className="border-t" style={{ borderColor: 'rgba(127,127,127,0.1)' }}>
-                      <td className="py-1.5 pr-3 capitalize">{s.productName}</td>
+                      <td className="py-1.5 pr-3 capitalize">
+                        <span className="inline-flex items-center gap-1.5">
+                          {s.productName}
+                          {handedOver && (
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap"
+                              style={{ background: 'rgba(16,185,129,0.15)', color: '#10B981' }}
+                              title={t.employees.miniHandedOverHint}
+                            >
+                              ✓ {t.employees.miniHandedOver}
+                            </span>
+                          )}
+                        </span>
+                      </td>
                       <td className="py-1.5 pr-3 text-right">{s.qtySold}</td>
                       <td className="py-1.5 pr-3 text-right opacity-70">{moneyAtRate(s.agreedUnitPrice, s.usdToFcRateSnapshot)}</td>
                       <td className="py-1.5 pr-3 text-right">{moneyAtRate(s.salePrice, s.usdToFcRateSnapshot)}</td>
@@ -691,6 +811,14 @@ function MiniOversight({
                 })}
               </tbody>
             </table>
+            <Pager
+              page={salesClamped}
+              pageCount={salesPageCount}
+              total={salesRows.length}
+              pageSize={PAGE_SIZE}
+              onPrev={() => setSalesPage((p) => Math.max(0, p - 1))}
+              onNext={() => setSalesPage((p) => Math.min(salesPageCount - 1, p + 1))}
+            />
           </div>
         )}
       </div>
@@ -701,16 +829,18 @@ function MiniOversight({
       {subTab === 'handovers' && (
       <div className="mt-4">
         <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#818CF8' }}>
-          {t.employees.miniPendingHandovers}
-          {pending.length > 0 && <span className="ml-1 opacity-60">({pending.length})</span>}
+          {t.employees.miniHandoverHistory}
+          {pending.length > 0 && (
+            <span className="ml-1 opacity-60">· {pending.length} {t.employees.miniHoPendingSuffix}</span>
+          )}
         </h3>
-        {pending.length === 0 ? (
+        {allHandovers.length === 0 ? (
           <div className="text-xs opacity-60 p-3 text-center rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
             {t.employees.miniNoHandovers}
           </div>
         ) : (
           <div className="space-y-2">
-            {pending.map((h) => (
+            {allHandovers.map((h) => (
               <HandoverRow key={h.id} handover={h} onChange={invalidate} liveRate={liveRate} />
             ))}
           </div>
@@ -741,6 +871,16 @@ function HandoverRow({ handover, onChange, liveRate }: { handover: MiniSettlemen
   });
   const busy = approveM.isPending || rejectM.isPending;
   const err = approveM.error || rejectM.error;
+
+  // Only pending handovers are actionable; approved/rejected render read-only
+  // with their status flag so the row doubles as history.
+  const isPending = handover.status === 'PENDING';
+  const statusMeta: Record<MiniSettlement['status'], { bg: string; fg: string; label: string }> = {
+    PENDING: { bg: 'rgba(245,158,11,0.15)', fg: '#F59E0B', label: t.employees.miniHoStatusPending },
+    APPROVED: { bg: 'rgba(16,185,129,0.15)', fg: '#10B981', label: t.employees.miniHoStatusApproved },
+    REJECTED: { bg: 'rgba(239,68,68,0.15)', fg: '#EF4444', label: t.employees.miniHoStatusRejected },
+  };
+  const st = statusMeta[handover.status] ?? statusMeta.PENDING;
 
   // Reconciliation: what the mini accounted for splits into the cash to receive
   // (for goods sold) and the standing value of the items coming back unsold.
@@ -784,6 +924,9 @@ function HandoverRow({ handover, onChange, liveRate }: { handover: MiniSettlemen
               <span className="font-semibold" style={{ color: '#F59E0B' }}>{formatCurrency(standing.toFixed(4))}</span>
             </span>
             <span className="text-xs opacity-50">· {formatDate(handover.createdAt)}</span>
+            {handover.status === 'APPROVED' && handover.approvedAt && (
+              <span className="text-xs opacity-50">· {t.employees.miniHoApprovedOn} {formatDate(handover.approvedAt)}</span>
+            )}
           </div>
           {handover.items.length > 0 && (
             <div className="text-xs opacity-70 mt-1">
@@ -808,32 +951,75 @@ function HandoverRow({ handover, onChange, liveRate }: { handover: MiniSettlemen
           {handover.note && <div className="text-xs opacity-60 mt-1 italic">{handover.note}</div>}
           {!!err && <div className="text-xs mt-1" style={{ color: '#EF4444' }}>{getErrorMessage(err)}</div>}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => approveM.mutate()}
-            disabled={busy}
-            className="px-3 py-1.5 rounded-md text-xs font-medium text-white disabled:opacity-50"
-            style={{ background: '#10B981' }}
+        <div className="flex flex-col items-end gap-2">
+          <span
+            className="px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap"
+            style={{ background: st.bg, color: st.fg }}
           >
-            {approveM.isPending ? t.employees.miniApproving : t.employees.miniApprove}
-          </button>
-          <button
-            onClick={() => rejectM.mutate()}
-            disabled={busy}
-            className="px-3 py-1.5 rounded-md text-xs disabled:opacity-50"
-            style={{ border: '1px solid rgba(239,68,68,0.4)', color: '#F87171' }}
-          >
-            {rejectM.isPending ? t.employees.miniRejecting : t.employees.miniReject}
-          </button>
+            {st.label}
+          </span>
+          {isPending && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => approveM.mutate()}
+                disabled={busy}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-white disabled:opacity-50"
+                style={{ background: '#10B981' }}
+              >
+                {approveM.isPending ? t.employees.miniApproving : t.employees.miniApprove}
+              </button>
+              <button
+                onClick={() => rejectM.mutate()}
+                disabled={busy}
+                className="px-3 py-1.5 rounded-md text-xs disabled:opacity-50"
+                style={{ border: '1px solid rgba(239,68,68,0.4)', color: '#F87171' }}
+              >
+                {rejectM.isPending ? t.employees.miniRejecting : t.employees.miniReject}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Net pay — what the owner physically receives (sold in FC − expenses).
           Sits at the bottom-right below the actions; wraps to its own line on
-          small screens. */}
-      <div className="flex justify-end items-baseline gap-1.5 mt-2 pt-2 border-t" style={{ borderColor: 'rgba(127,127,127,0.12)' }}>
-        <span className="text-xs opacity-60">{t.employees.miniNetPay}:</span>
-        <span className="font-bold" style={{ color: '#10B981' }}>{fcStr(netPayFc)}</span>
+          small screens. Hidden for rejected handovers (no cash changed hands). */}
+      {handover.status !== 'REJECTED' && (
+        <div className="flex justify-end items-baseline gap-1.5 mt-2 pt-2 border-t" style={{ borderColor: 'rgba(127,127,127,0.12)' }}>
+          <span className="text-xs opacity-60">{t.employees.miniNetPay}:</span>
+          <span className="font-bold" style={{ color: '#10B981' }}>{fcStr(netPayFc)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Pager({
+  page,
+  pageCount,
+  total,
+  pageSize,
+  onPrev,
+  onNext,
+}: {
+  page: number;
+  pageCount: number;
+  total: number;
+  pageSize: number;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  if (pageCount <= 1) return null; // a single page (≤ pageSize rows) needs no controls
+  const start = page * pageSize + 1;
+  const end = Math.min(total, (page + 1) * pageSize);
+  const btn = 'px-2 py-0.5 rounded border disabled:opacity-30';
+  return (
+    <div className="flex items-center justify-between mt-2 text-xs opacity-70">
+      <span className="tabular-nums">{start}–{end} / {total}</span>
+      <div className="flex items-center gap-2">
+        <button onClick={onPrev} disabled={page === 0} className={btn} style={{ borderColor: 'rgba(127,127,127,0.3)' }}>←</button>
+        <span className="tabular-nums">{page + 1} / {pageCount}</span>
+        <button onClick={onNext} disabled={page >= pageCount - 1} className={btn} style={{ borderColor: 'rgba(127,127,127,0.3)' }}>→</button>
       </div>
     </div>
   );

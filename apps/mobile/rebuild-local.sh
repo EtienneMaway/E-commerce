@@ -28,6 +28,19 @@ APK="$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk"
 ENV_FILE="$HERE/.env"
 ENV_BAK="$HERE/.env.rebuild-bak"
 
+# ---- ensure Gradle can find `node` ------------------------------------------
+# android/settings.gradle shells out to `node` (Expo/RN autolinking) at
+# settings-evaluation time. node here is managed by nvm, so it isn't on the bare
+# PATH that a Gradle daemon (especially one the IDE started) may have captured.
+# Put nvm's current node dir on PATH so the daemon we spawn below inherits it.
+if command -v node >/dev/null 2>&1; then
+  NODE_BIN_DIR="$(dirname "$(readlink -f "$(command -v node)")")"
+  case ":$PATH:" in *":$NODE_BIN_DIR:"*) ;; *) export PATH="$NODE_BIN_DIR:$PATH" ;; esac
+else
+  echo "!! node not found on PATH. Run 'nvm use' (or install node) and retry." >&2
+  exit 1
+fi
+
 # ---- parse args -------------------------------------------------------------
 MODE="local"
 if [ "${1:-}" = "--railway" ]; then
@@ -65,6 +78,11 @@ rm -rf "$ANDROID_DIR/app/build/generated/assets/react/release" \
 rm -f  "$APK"
 
 # ---- 2. build the self-contained release APK --------------------------------
+# Stop any stale daemon (e.g. one the IDE started without node on PATH) so the
+# build spawns a fresh daemon that inherits the PATH set above.
+echo "==> Stopping stale Gradle daemons ..."
+( cd "$ANDROID_DIR" && ./gradlew --stop >/dev/null 2>&1 || true )
+
 echo "==> Building release APK (JS embedded) ..."
 ( cd "$ANDROID_DIR" && ./gradlew assembleRelease )
 
