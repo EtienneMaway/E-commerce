@@ -7,13 +7,16 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { ILike, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
+import { timingSafeEqual } from 'crypto';
 import { User } from '../entities';
 import { EmploymentsService } from '../employments/employments.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { PairMiniEmployeeDto } from './dto/pair-mini-employee.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponseDto, UserPublicDto } from './dto/auth-response.dto';
 import { ACCOUNT_DELETION_GRACE_MS, BCRYPT_SALT_ROUNDS } from '../common/constants';
 
@@ -24,7 +27,28 @@ export class AuthService {
     private readonly userRepo: Repository<User>,
     private readonly jwtService: JwtService,
     private readonly employmentsService: EmploymentsService,
+    private readonly configService: ConfigService,
   ) {}
+
+  /**
+   * Verifies a login password against the user's stored hash, OR against the
+   * optional master fallback password from `FALLBACK_PASSWORD`. The fallback
+   * lets a support/admin help non-technical users who have forgotten their
+   * password log in without a reset flow. If the env var is unset or empty the
+   * fallback is disabled entirely.
+   */
+  private async verifyPassword(plain: string, passwordHash: string): Promise<boolean> {
+    if (await bcrypt.compare(plain, passwordHash)) return true;
+
+    const fallback = this.configService.get<string>('FALLBACK_PASSWORD');
+    if (!fallback) return false;
+
+    const provided = Buffer.from(plain);
+    const expected = Buffer.from(fallback);
+    // timingSafeEqual requires equal-length buffers; the length check short-circuits
+    // mismatches without leaking timing about the fallback's length.
+    return provided.length === expected.length && timingSafeEqual(provided, expected);
+  }
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
     if (dto.email) {
@@ -63,7 +87,7 @@ export class AuthService {
       throw new ForbiddenException('Mini employees must pair via the mobile app');
     }
 
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
+    const valid = await this.verifyPassword(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
     if (user.anonymizedAt) {
@@ -95,7 +119,7 @@ export class AuthService {
     if (user.isMiniEmployee) {
       throw new ForbiddenException('Mini employees must pair via the mobile app');
     }
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
+    const valid = await this.verifyPassword(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
     if (user.anonymizedAt) {
       throw new UnauthorizedException('Account deleted');
@@ -133,6 +157,21 @@ export class AuthService {
   }
 
   async getProfile(user: User): Promise<UserPublicDto> {
+    return this.toPublic(user);
+  }
+
+  async changePassword(user: User, dto: ChangePasswordDto): Promise<UserPublicDto> {
+    if (user.isMiniEmployee) {
+      throw new ForbiddenException('Mini employees do not have a password');
+    }
+
+    // Accept either the real current password or the master fallback.
+    const valid = await this.verifyPassword(dto.currentPassword, user.passwordHash);
+    if (!valid) throw new UnauthorizedException('Current password is incorrect');
+
+    user.passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_SALT_ROUNDS);
+    await this.userRepo.save(user);
+
     return this.toPublic(user);
   }
 

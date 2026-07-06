@@ -48,6 +48,8 @@ export const authApi = {
   register: (body: { username: string; email?: string; phone?: string; password: string }) =>
     api.post('/auth/register', body).then((r) => r.data),
   me: () => api.get('/auth/me').then((r) => r.data),
+  changePassword: (body: { currentPassword: string; newPassword: string }) =>
+    api.patch('/auth/password', body).then((r) => r.data),
 };
 
 // ─── Users ────────────────────────────────────────────────────────────────────

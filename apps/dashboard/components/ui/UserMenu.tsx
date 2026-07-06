@@ -7,6 +7,7 @@ import { useCurrencyStore } from '../../store/currency.store';
 import { useLocaleStore, type Locale } from '../../store/locale.store';
 import { useThemeStore } from '../../store/theme.store';
 import { useT } from '../../lib/i18n';
+import { ChangePasswordDialog } from './ChangePasswordDialog';
 
 const LOCALES: { value: Locale; flag: string; short: string }[] = [
   { value: 'en', flag: '🇬🇧', short: 'EN' },
@@ -41,6 +42,7 @@ export function UserMenu() {
   const { displayCurrency, toggle: toggleCurrency } = useCurrencyStore();
   const { theme, toggle: toggleTheme } = useThemeStore();
   const [open, setOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -213,6 +215,23 @@ export function UserMenu() {
             <span>{theme === 'dark' ? t.nav.lightMode : t.nav.darkMode}</span>
           </button>
 
+          {/* Update password */}
+          <button
+            onClick={() => { setOpen(false); setPasswordOpen(true); }}
+            className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors"
+            style={{ color: 'var(--foreground)', borderBottom: '1px solid var(--border)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+          >
+            <span style={{ color: 'var(--muted)' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0110 0v4" />
+              </svg>
+            </span>
+            <span>{t.nav.updatePassword}</span>
+          </button>
+
           {/* Sign out */}
           <button
             onClick={handleSignOut}
@@ -230,6 +249,8 @@ export function UserMenu() {
           </button>
         </div>
       )}
+
+      <ChangePasswordDialog open={passwordOpen} onClose={() => setPasswordOpen(false)} />
     </div>
   );
 }
