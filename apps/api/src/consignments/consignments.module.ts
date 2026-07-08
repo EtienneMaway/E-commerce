@@ -6,6 +6,8 @@ import {
   User,
   InventoryEntry,
   DebtorCredit,
+  ProductGroup,
+  ProductVariant,
 } from '../entities';
 import { ConsignmentsService } from './consignments.service';
 import { ConsignmentsController } from './consignments.controller';
@@ -20,6 +22,8 @@ import { CurrencyModule } from '../currency/currency.module';
       User,
       InventoryEntry,
       DebtorCredit,
+      ProductGroup,
+      ProductVariant,
     ]),
     StockMovementsModule,
     CurrencyModule,

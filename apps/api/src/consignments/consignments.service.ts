@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, ILike, Repository } from 'typeorm';
+import { DataSource, ILike, In, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import {
   ConsignmentItem,
@@ -14,6 +14,8 @@ import {
   DebtorCredit,
   InventoryEntry,
   InventorySource,
+  ProductGroup,
+  ProductVariant,
   StockMovementReason,
   SupplierDebt,
   User,
@@ -37,11 +39,33 @@ export class ConsignmentsService {
     private readonly entryRepo: Repository<InventoryEntry>,
     @InjectRepository(DebtorCredit)
     private readonly debtorCreditRepo: Repository<DebtorCredit>,
+    @InjectRepository(ProductGroup)
+    private readonly groupRepo: Repository<ProductGroup>,
+    @InjectRepository(ProductVariant)
+    private readonly variantRepo: Repository<ProductVariant>,
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
     private readonly pricingService: PricingService,
     private readonly currencyService: CurrencyService,
   ) {}
+
+  /**
+   * SUPPLIER + PERSONAL where-clause for an owner's sellable stock, matched by
+   * size (variantId) when given, else by product name — mirrors
+   * sales.service.fetchSellableLots.
+   */
+  private stockWhere(
+    ownerId: string,
+    key: { productName?: string; variantId?: string | null },
+  ): Array<Record<string, unknown>> {
+    const base = key.variantId
+      ? { variantId: key.variantId }
+      : { productName: ILike((key.productName ?? '').trim().toLowerCase()) };
+    return [
+      { ownerId, ...base, source: InventorySource.SUPPLIER },
+      { ownerId, ...base, source: InventorySource.PERSONAL },
+    ];
+  }
 
   // ─── Supplier: create a consignment request ────────────────────────────────
 
@@ -58,27 +82,46 @@ export class ConsignmentsService {
     // Soft-validate stock + apply pricing rule per item
     const itemEntities: ConsignmentItem[] = [];
     for (const dto_item of dto.items) {
-      const available = await this.countAvailableStock(supplierId, dto_item.productName);
+      // Sized products: resolve the size and derive the (group) product name +
+      // carton composition from it. Simple products stay name-keyed.
+      let variant: ProductVariant | null = null;
+      let group: ProductGroup | null = null;
+      if (dto_item.variantId) {
+        variant = await this.variantRepo.findOne({ where: { id: dto_item.variantId } });
+        if (!variant) throw new NotFoundException('Size not found');
+        group = await this.groupRepo.findOne({ where: { id: variant.groupId } });
+      }
+      const productName = (group?.name ?? dto_item.productName).trim().toLowerCase();
+      const key = variant ? { variantId: variant.id } : { productName };
+
+      const available = await this.countAvailableStock(supplierId, key);
       if (available < dto_item.quantity) {
         throw new BadRequestException(
-          `Insufficient stock for "${dto_item.productName}". Available: ${available}, requested: ${dto_item.quantity}`,
+          `Insufficient stock for "${productName}". Available: ${available}, requested: ${dto_item.quantity}`,
         );
       }
 
       const priceCheck = await this.pricingService.applyEmployeePriceRule({
         ctx,
-        productName: dto_item.productName,
+        productName,
         submittedUnitPrice: dto_item.agreedUnitPrice,
         discountReason: dto_item.discountReason,
+        // Sized products enforce the size's own standard price (null for the
+        // owner, whose action always passes through).
+        standardPrice: variant ? variant.sellingPrice : undefined,
       });
 
-      const stockEntries = await this.getStockEntriesSorted(supplierId, dto_item.productName);
+      const stockEntries = await this.getStockEntriesSorted(supplierId, key);
       const unitCost = stockEntries[0]?.unitCost ?? priceCheck.effectiveUnitPrice;
-      const piecesPerCarton = stockEntries[0]?.piecesPerCarton ?? null;
+      const piecesPerCarton = variant
+        ? variant.piecesPerCarton
+        : stockEntries[0]?.piecesPerCarton ?? null;
 
       itemEntities.push(
         this.itemRepo.create({
-          productName: dto_item.productName.trim().toLowerCase(),
+          productName,
+          variantId: variant?.id ?? null,
+          groupId: variant?.groupId ?? null,
           quantity: dto_item.quantity,
           agreedUnitPrice: priceCheck.effectiveUnitPrice,
           unitCost,
@@ -111,21 +154,44 @@ export class ConsignmentsService {
   // ─── Debtor: view incoming consignments ────────────────────────────────────
 
   async findIncoming(ctx: ActorContext): Promise<ConsignmentRequest[]> {
-    return this.requestRepo.find({
+    const requests = await this.requestRepo.find({
       where: { debtorId: ctx.effectiveOwnerId },
       relations: { supplier: true, items: { actor: true } },
       order: { createdAt: 'DESC' },
     });
+    await this.attachVariantLabels(requests);
+    return requests;
   }
 
   // ─── Supplier: view outgoing consignments ──────────────────────────────────
 
   async findOutgoing(ctx: ActorContext): Promise<ConsignmentRequest[]> {
-    return this.requestRepo.find({
+    const requests = await this.requestRepo.find({
       where: { supplierId: ctx.effectiveOwnerId },
       relations: { debtor: true, items: { actor: true } },
       order: { createdAt: 'DESC' },
     });
+    await this.attachVariantLabels(requests);
+    return requests;
+  }
+
+  /** Resolve each sized item's size label (transient, for display). */
+  private async attachVariantLabels(requests: ConsignmentRequest[]): Promise<void> {
+    const ids = [
+      ...new Set(
+        requests.flatMap((r) =>
+          (r.items ?? []).map((i) => i.variantId).filter((v): v is string => !!v),
+        ),
+      ),
+    ];
+    if (ids.length === 0) return;
+    const variants = await this.variantRepo.find({ where: { id: In(ids) } });
+    const labels = new Map(variants.map((v) => [v.id, v.label]));
+    for (const r of requests) {
+      for (const it of r.items ?? []) {
+        if (it.variantId) it.variantLabel = labels.get(it.variantId) ?? null;
+      }
+    }
   }
 
   // ─── Debtor: confirm reception (atomic) ───────────────────────────────────
@@ -148,10 +214,10 @@ export class ConsignmentsService {
     return this.dataSource.transaction(async (manager) => {
       for (const item of request.items) {
         const stockEntries = await manager.find(InventoryEntry, {
-          where: [
-            { ownerId: request.supplierId, productName: ILike(item.productName), source: InventorySource.SUPPLIER },
-            { ownerId: request.supplierId, productName: ILike(item.productName), source: InventorySource.PERSONAL },
-          ],
+          where: this.stockWhere(request.supplierId, {
+            productName: item.productName,
+            variantId: item.variantId,
+          }),
           order: { createdAt: 'ASC' },
         });
 
@@ -229,6 +295,8 @@ export class ConsignmentsService {
           ownerId: request.supplierId,
           source: InventorySource.CONSIGNED_OUT,
           productName: item.productName,
+          groupId: item.groupId,
+          variantId: item.variantId,
           unitCost: item.unitCost,
           sellingPrice: item.agreedUnitPrice,
           category: null,
@@ -251,6 +319,8 @@ export class ConsignmentsService {
           ownerId: request.debtorId,
           source: InventorySource.CONSIGNED_IN,
           productName: item.productName,
+          groupId: item.groupId,
+          variantId: item.variantId,
           unitCost: item.agreedUnitPrice,
           sellingPrice: item.agreedUnitPrice,
           category: null,
@@ -305,22 +375,20 @@ export class ConsignmentsService {
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
-  async countAvailableStock(ownerId: string, productName: string): Promise<number> {
-    const entries = await this.entryRepo.find({
-      where: [
-        { ownerId, productName: ILike(productName.trim().toLowerCase()), source: InventorySource.SUPPLIER },
-        { ownerId, productName: ILike(productName.trim().toLowerCase()), source: InventorySource.PERSONAL },
-      ],
-    });
+  async countAvailableStock(
+    ownerId: string,
+    key: { productName?: string; variantId?: string | null },
+  ): Promise<number> {
+    const entries = await this.entryRepo.find({ where: this.stockWhere(ownerId, key) });
     return entries.reduce((sum, e) => sum + e.quantityRemaining, 0);
   }
 
-  private async getStockEntriesSorted(ownerId: string, productName: string): Promise<InventoryEntry[]> {
+  private async getStockEntriesSorted(
+    ownerId: string,
+    key: { productName?: string; variantId?: string | null },
+  ): Promise<InventoryEntry[]> {
     const entries = await this.entryRepo.find({
-      where: [
-        { ownerId, productName: ILike(productName.trim().toLowerCase()), source: InventorySource.SUPPLIER },
-        { ownerId, productName: ILike(productName.trim().toLowerCase()), source: InventorySource.PERSONAL },
-      ],
+      where: this.stockWhere(ownerId, key),
       order: { createdAt: 'ASC' },
     });
     return [

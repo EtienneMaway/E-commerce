@@ -21,7 +21,10 @@ export class SaleTransaction {
   @Column({ name: 'product_name' })
   productName: string;
 
-  @ApiProperty({ example: 'SUPPLIER', description: 'Stock source: PERSONAL or SUPPLIER' })
+  @ApiProperty({
+    example: 'SUPPLIER',
+    description: 'Stock source: PERSONAL or SUPPLIER',
+  })
   @Column()
   source: string;
 
@@ -41,11 +44,17 @@ export class SaleTransaction {
   @Column({ name: 'sale_price', type: 'decimal', precision: 14, scale: 4 })
   salePrice: string;
 
-  @ApiProperty({ example: '50.00', description: '(salePrice - unitCost) × qtySold' })
+  @ApiProperty({
+    example: '50.00',
+    description: '(salePrice - unitCost) × qtySold',
+  })
   @Column({ type: 'decimal', precision: 14, scale: 4 })
   profit: string;
 
-  @ApiProperty({ example: false, description: 'True when sold below cost price' })
+  @ApiProperty({
+    example: false,
+    description: 'True when sold below cost price',
+  })
   @Column({ name: 'is_loss', default: false })
   isLoss: boolean;
 
@@ -70,7 +79,10 @@ export class SaleTransaction {
   @JoinColumn({ name: 'inventory_entry_id' })
   inventoryEntry: InventoryEntry;
 
-  @ApiPropertyOptional({ description: 'Employee who performed this sale on the owner\'s behalf; null when owner-performed' })
+  @ApiPropertyOptional({
+    description:
+      "Employee who performed this sale on the owner's behalf; null when owner-performed",
+  })
   @Column({ name: 'actor_id', type: 'uuid', nullable: true })
   actorId: string | null;
 
@@ -78,19 +90,40 @@ export class SaleTransaction {
   @JoinColumn({ name: 'actor_id' })
   actor: User | null;
 
-  @ApiPropertyOptional({ example: '32.00', description: 'Owner\'s standard unit price at sale time; set only when employee discounted' })
-  @Column({ name: 'original_unit_price', type: 'decimal', precision: 14, scale: 4, nullable: true })
+  @ApiPropertyOptional({
+    example: '32.00',
+    description:
+      "Owner's standard unit price at sale time; set only when employee discounted",
+  })
+  @Column({
+    name: 'original_unit_price',
+    type: 'decimal',
+    precision: 14,
+    scale: 4,
+    nullable: true,
+  })
   originalUnitPrice: string | null;
 
-  @ApiPropertyOptional({ example: 'Loyal customer', description: 'Reason the employee discounted; required when employee sells below standard' })
+  @ApiPropertyOptional({
+    example: 'Loyal customer',
+    description:
+      'Reason the employee discounted; required when employee sells below standard',
+  })
   @Column({ name: 'discount_reason', type: 'varchar', nullable: true })
   discountReason: string | null;
 
-  @ApiPropertyOptional({ example: 'Jean Mukendi', description: 'Buyer\'s name as captured at the receipt prompt. Lets the merchant later look the sale up by client.' })
+  @ApiPropertyOptional({
+    example: 'Jean Mukendi',
+    description:
+      "Buyer's name as captured at the receipt prompt. Lets the merchant later look the sale up by client.",
+  })
   @Column({ name: 'client_name', type: 'varchar', nullable: true })
   clientName: string | null;
 
-  @ApiPropertyOptional({ example: '+243 836 743 579', description: 'Buyer\'s phone — searchable from the sales tab.' })
+  @ApiPropertyOptional({
+    example: '+243 836 743 579',
+    description: "Buyer's phone — searchable from the sales tab.",
+  })
   @Column({ name: 'client_phone', type: 'varchar', nullable: true })
   clientPhone: string | null;
 
@@ -118,6 +151,35 @@ export class SaleTransaction {
     description:
       "Locked FC/USD rate copied from the CONSIGNED_IN lot when a mini employee sold it. The mini's app converts this sale's USD figures (agreed value owed, markup) to FC at this rate — so what they owe and their profit stay fixed against later rate changes. Null for owner/full-employee sales.",
   })
-  @Column({ name: 'usd_to_fc_rate_snapshot', type: 'decimal', precision: 14, scale: 4, nullable: true })
+  @Column({
+    name: 'usd_to_fc_rate_snapshot',
+    type: 'decimal',
+    precision: 14,
+    scale: 4,
+    nullable: true,
+  })
   usdToFcRateSnapshot: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Size (ProductVariant) sold, for sized products; null for simple products',
+  })
+  @Column({ name: 'variant_id', type: 'uuid', nullable: true })
+  variantId: string | null;
+
+  @ApiPropertyOptional({
+    example: 'large',
+    description:
+      'Snapshot of the size label at sale time (receipt/history stability)',
+  })
+  @Column({ name: 'variant_label', type: 'varchar', nullable: true })
+  variantLabel: string | null;
+
+  @ApiPropertyOptional({
+    example: 'uuid-v4',
+    description:
+      'Groups the per-size rows that make up one whole-carton sale. Shared by every size row of one carton sale; null for individual piece sales.',
+  })
+  @Column({ name: 'carton_sale_id', type: 'uuid', nullable: true })
+  cartonSaleId: string | null;
 }

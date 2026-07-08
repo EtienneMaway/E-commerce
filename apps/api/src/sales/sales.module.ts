@@ -2,12 +2,22 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SalesController } from './sales.controller';
 import { SalesService } from './sales.service';
-import { InventoryEntry, SaleTransaction } from '../entities';
+import {
+  InventoryEntry,
+  ProductGroup,
+  ProductVariant,
+  SaleTransaction,
+} from '../entities';
 import { StockMovementsModule } from '../stock-movements/stock-movements.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SaleTransaction, InventoryEntry]),
+    TypeOrmModule.forFeature([
+      SaleTransaction,
+      InventoryEntry,
+      ProductGroup,
+      ProductVariant,
+    ]),
     StockMovementsModule,
   ],
   controllers: [SalesController],

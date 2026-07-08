@@ -15,6 +15,15 @@ interface UserOption {
   username: string;
 }
 
+interface ProductVariant {
+  variantId: string;
+  label: string;
+  unitCost: string;
+  sellingPrice: string;
+  piecesPerCarton: number;
+  available: number;
+}
+
 interface ProductSummary {
   productName: string;
   latestUnitCost: string;
@@ -22,10 +31,33 @@ interface ProductSummary {
   latestCartonPrice: string | null;
   piecesPerCarton: number | null;
   totalAvailable: number;
+  kind?: 'simple' | 'group';
+  groupId?: string;
+  cartonSellingPrice?: string | null;
+  variants?: ProductVariant[];
+}
+
+/** A pickable option — a simple product, or a whole sized-product carton (group). */
+interface PickOption {
+  key: string;
+  productName: string;
+  variantId: string | null;
+  label: string;
+  unitCost: string;
+  sellingPrice: string;
+  piecesPerCarton: number | null;
+  available: number;
+  // Whole-carton (group) options:
+  isGroup?: boolean;
+  groupId?: string;
+  cartonSellingPrice?: string | null;
+  groupVariants?: ProductVariant[];
 }
 
 interface ItemRow {
   productName: string;
+  variantId: string | null;
+  variantLabel: string | null;
   quantity: string;
   extraPieces: string;
   showExtraPieces: boolean;
@@ -35,6 +67,17 @@ interface ItemRow {
   unitCost: string;
   markupPct: number;
   piecesPerCarton: number | null;
+  // Set when giving a whole carton of a sized product. `cartonPrice` holds the
+  // per-carton price the mini owes; `quantity` holds the number of cartons.
+  groupId: string | null;
+  groupVariants: ProductVariant[] | null;
+}
+
+/** Full cartons assemblable from a group's per-size stock. */
+function cartonsAvailableOf(variants: ProductVariant[]): number {
+  const gating = variants.filter((v) => v.piecesPerCarton > 0);
+  if (gating.length === 0) return 0;
+  return Math.min(...gating.map((v) => Math.floor(v.available / v.piecesPerCarton)));
 }
 
 interface Props {
@@ -49,6 +92,8 @@ interface Props {
 
 const EMPTY_ITEM: ItemRow = {
   productName: '',
+  variantId: null,
+  variantLabel: null,
   quantity: '',
   extraPieces: '',
   showExtraPieces: false,
@@ -58,6 +103,8 @@ const EMPTY_ITEM: ItemRow = {
   unitCost: '',
   markupPct: 25,
   piecesPerCarton: null,
+  groupId: null,
+  groupVariants: null,
 };
 
 /** Compute total pieces from cartons + optional extra loose pieces */
@@ -161,37 +208,116 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
     setEntryCurrency(next);
   };
 
-  const getFilteredProducts = (query: string): ProductSummary[] =>
-    (products as ProductSummary[] | undefined)?.filter((p) =>
-      p.productName.includes(query.toLowerCase().trim())
-    ) ?? [];
+  // Sized products are offered as a single "whole carton" option (all sizes
+  // together); simple products stay a single option.
+  const getFilteredProducts = (query: string): PickOption[] => {
+    const q = query.toLowerCase().trim();
+    const out: PickOption[] = [];
+    for (const p of (products as ProductSummary[] | undefined) ?? []) {
+      if (!p.productName.includes(q)) continue;
+      if (p.kind === 'group' && p.variants?.length && p.groupId) {
+        // A sized product is given as a WHOLE carton (all sizes together).
+        out.push({
+          key: 'g:' + p.groupId,
+          productName: p.productName,
+          variantId: null,
+          label: p.productName,
+          unitCost: p.latestUnitCost,
+          sellingPrice: p.latestSellingPrice,
+          piecesPerCarton: null,
+          available: cartonsAvailableOf(p.variants),
+          isGroup: true,
+          groupId: p.groupId,
+          cartonSellingPrice: p.cartonSellingPrice ?? null,
+          groupVariants: p.variants,
+        });
+      } else {
+        out.push({
+          key: p.productName,
+          productName: p.productName,
+          variantId: null,
+          label: p.productName,
+          unitCost: p.latestUnitCost,
+          sellingPrice: p.latestSellingPrice,
+          piecesPerCarton: p.piecesPerCarton,
+          available: p.totalAvailable,
+        });
+      }
+    }
+    return out;
+  };
 
   const deriveCartonPrice = (unitPrice: string, ppc: number | null): string => {
     const up = parseFloat(unitPrice);
     return !isNaN(up) && up > 0 && ppc ? (up * ppc).toFixed(4) : '';
   };
 
-  const selectProduct = (i: number, p: ProductSummary) => {
+  const selectProduct = (i: number, p: PickOption) => {
     setItems((prev) =>
       prev.map((row, idx) => {
         if (idx !== i) return row;
+        // Whole-carton (sized) product: give all sizes together. cartonPrice
+        // holds the per-carton price the mini owes (default = the group's carton
+        // price, else the combined size value).
+        if (p.isGroup) {
+          const combinedUsd = (p.groupVariants ?? []).reduce(
+            (s, v) => s + parseFloat(v.sellingPrice) * v.piecesPerCarton,
+            0,
+          );
+          const defaultCartonUsd =
+            p.cartonSellingPrice && parseFloat(p.cartonSellingPrice) > 0
+              ? p.cartonSellingPrice
+              : combinedUsd.toFixed(4);
+          return {
+            ...row,
+            productName: p.productName,
+            variantId: null,
+            variantLabel: null,
+            groupId: p.groupId ?? null,
+            groupVariants: p.groupVariants ?? null,
+            quantity: '',
+            cartonPrice: fromUsd(defaultCartonUsd),
+            agreedUnitPrice: '',
+            unitCost: '',
+            piecesPerCarton: null,
+            priceMode: 'manual',
+          };
+        }
         // Backend values are USD; convert to active currency for editing.
-        const unitCost = fromUsd(p.latestUnitCost);
+        const unitCost = fromUsd(p.unitCost);
         const agreedUnitPrice =
           row.priceMode === 'pct' && parseFloat(unitCost) > 0
             ? (parseFloat(unitCost) * (1 + row.markupPct / 100)).toFixed(4)
-            : fromUsd(p.latestSellingPrice);
+            : fromUsd(p.sellingPrice);
         const ppc = p.piecesPerCarton;
         const cartonPrice = deriveCartonPrice(agreedUnitPrice, ppc);
-        return { ...row, productName: p.productName, unitCost, agreedUnitPrice, cartonPrice, piecesPerCarton: ppc };
+        return {
+          ...row,
+          productName: p.productName,
+          variantId: p.variantId,
+          variantLabel: p.variantId ? p.label : null,
+          groupId: null,
+          groupVariants: null,
+          unitCost,
+          agreedUnitPrice,
+          cartonPrice,
+          piecesPerCarton: ppc,
+        };
       })
     );
     setFocusedItemIndex(null);
   };
 
+  const setGroupCartonPrice = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setItems((prev) => prev.map((row, idx) => (idx === i ? { ...row, cartonPrice: e.target.value } : row)));
+
   const setProductName = (i: number, value: string) => {
     setItems((prev) =>
-      prev.map((row, idx) => (idx === i ? { ...row, productName: value } : row))
+      prev.map((row, idx) =>
+        idx === i
+          ? { ...row, productName: value, variantId: null, variantLabel: null, groupId: null, groupVariants: null }
+          : row,
+      )
     );
   };
 
@@ -276,11 +402,38 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
       consignmentsApi.create({
         debtorUserId: debtor!.id,
         ...(note.trim() ? { note: note.trim() } : {}),
-        items: items.map((it) => ({
-          productName: it.productName.trim(),
-          quantity: getTotalPieces(Number(it.quantity), it.piecesPerCarton, it.extraPieces),
-          agreedUnitPrice: toUsd(it.agreedUnitPrice),
-        })),
+        // A whole-carton (group) row expands to one item per size: quantity =
+        // cartons × the size's pieces-per-carton, and the per-carton price the
+        // mini owes is split across the sizes by their selling-price share.
+        items: items.flatMap((it) => {
+          if (it.groupId && it.groupVariants) {
+            const cartons = parseInt(it.quantity, 10) || 0;
+            const cartonUsd = parseFloat(toUsd(it.cartonPrice)) || 0;
+            const totalStd = it.groupVariants.reduce(
+              (s, v) => s + parseFloat(v.sellingPrice) * v.piecesPerCarton,
+              0,
+            );
+            return it.groupVariants
+              .filter((v) => v.piecesPerCarton > 0)
+              .map((v) => ({
+                productName: it.productName.trim(),
+                variantId: v.variantId,
+                quantity: cartons * v.piecesPerCarton,
+                agreedUnitPrice: (totalStd > 0
+                  ? (cartonUsd * parseFloat(v.sellingPrice)) / totalStd
+                  : parseFloat(v.sellingPrice)
+                ).toFixed(4),
+              }));
+          }
+          return [
+            {
+              productName: it.productName.trim(),
+              quantity: getTotalPieces(Number(it.quantity), it.piecesPerCarton, it.extraPieces),
+              agreedUnitPrice: toUsd(it.agreedUnitPrice),
+              ...(it.variantId ? { variantId: it.variantId } : {}),
+            },
+          ];
+        }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.consignmentsOutgoing });
@@ -314,12 +467,39 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
     !hasInvalidExtraPieces &&
     (!isFC || canUseFC) &&
     items.every((it) => {
+      if (it.groupId) {
+        const cartons = parseInt(it.quantity, 10) || 0;
+        return !!it.productName.trim() && cartons > 0 && parseFloat(it.cartonPrice) > 0;
+      }
       const totalPcs = getTotalPieces(parseInt(it.quantity, 10), it.piecesPerCarton, it.extraPieces);
       return it.productName.trim() &&
         totalPcs > 0 &&
         it.agreedUnitPrice &&
         parseFloat(it.agreedUnitPrice) > 0;
     });
+
+  // Grand-total helpers that treat a whole-carton (group) row and a simple row
+  // uniformly (values in the active entry currency).
+  const rowPieces = (it: ItemRow): number => {
+    if (it.groupId && it.groupVariants) {
+      const cartons = parseInt(it.quantity, 10) || 0;
+      return cartons * it.groupVariants.reduce((s, v) => s + v.piecesPerCarton, 0);
+    }
+    return getTotalPieces(parseInt(it.quantity, 10), it.piecesPerCarton, it.extraPieces);
+  };
+  const rowTotal = (it: ItemRow): number => {
+    if (it.groupId) {
+      const cartons = parseInt(it.quantity, 10) || 0;
+      return cartons * (parseFloat(it.cartonPrice) || 0);
+    }
+    const price = parseFloat(it.agreedUnitPrice) || 0;
+    const pieces = getTotalPieces(parseInt(it.quantity, 10), it.piecesPerCarton, it.extraPieces);
+    return price > 0 && pieces > 0 ? price * pieces : 0;
+  };
+  const rowHasValue = (it: ItemRow): boolean =>
+    it.groupId
+      ? parseInt(it.quantity, 10) > 0 && parseFloat(it.cartonPrice) > 0
+      : parseFloat(it.agreedUnitPrice) > 0 && parseInt(it.quantity, 10) > 0;
 
   if (!open) return null;
 
@@ -423,10 +603,10 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
                           >
                             {suggestions.map((p) => {
                               const sPpc = p.piecesPerCarton;
-                              const sCartons = sPpc ? Math.floor(p.totalAvailable / sPpc) : null;
+                              const sCartons = sPpc ? Math.floor(p.available / sPpc) : null;
                               return (
                                 <div
-                                  key={p.productName}
+                                  key={p.key}
                                   onMouseDown={(e) => { e.preventDefault(); selectProduct(i, p); }}
                                   className="px-3 py-2 cursor-pointer border-b last:border-b-0"
                                   style={{ borderColor: 'var(--border)' }}
@@ -434,7 +614,7 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
                                   onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--card)')}
                                 >
                                   <div className="text-sm font-medium capitalize" style={{ color: 'var(--foreground)' }}>
-                                    {p.productName}
+                                    {p.label}
                                     {sPpc && (
                                       <span className="text-xs font-normal ml-1" style={{ color: 'var(--muted)' }}>
                                         ({sPpc} pcs/carton)
@@ -443,13 +623,15 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
                                   </div>
                                   <div className="flex justify-between text-xs" style={{ color: 'var(--muted)' }}>
                                     <span>
-                                      {fmtPrice(fromUsd(p.latestUnitCost))} cost
-                                      {sPpc ? <> · {fmtPrice(fromUsd((parseFloat(p.latestSellingPrice) * sPpc).toFixed(4)))}/carton</> : null}
+                                      {fmtPrice(fromUsd(p.unitCost))} cost
+                                      {sPpc ? <> · {fmtPrice(fromUsd((parseFloat(p.sellingPrice) * sPpc).toFixed(4)))}/carton</> : null}
                                     </span>
                                     <span>
-                                      {sCartons != null
-                                        ? <>{sCartons} cartons ({p.totalAvailable} pcs)</>
-                                        : <>{p.totalAvailable} {t.sendConsignment.inStock}</>
+                                      {p.isGroup
+                                        ? <>{p.available} cartons</>
+                                        : sCartons != null
+                                        ? <>{sCartons} cartons ({p.available} pcs)</>
+                                        : <>{p.available} {t.sendConsignment.inStock}</>
                                       }
                                     </span>
                                   </div>
@@ -458,12 +640,17 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
                             })}
                           </div>
                         )}
+                        {item.variantLabel && (
+                          <div className="text-xs mt-1 font-medium capitalize" style={{ color: 'var(--primary)' }}>
+                            {item.variantLabel}
+                          </div>
+                        )}
                       </div>
                       <div style={{ flex: 1 }}>
                         <input
                           value={item.quantity}
                           onChange={setQuantity(i)}
-                          placeholder={ppc ? 'Cartons' : t.sendConsignment.qtyPlaceholder}
+                          placeholder={item.groupId || ppc ? 'Cartons' : t.sendConsignment.qtyPlaceholder}
                           type="number"
                           min={ppc && item.showExtraPieces ? '0' : '1'}
                           className="input w-full"
@@ -516,6 +703,59 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
                       )}
                     </div>
 
+                    {item.groupId && item.groupVariants ? (
+                      (() => {
+                        const gv = item.groupVariants;
+                        const cAvail = cartonsAvailableOf(gv);
+                        const cartons = parseInt(item.quantity, 10) || 0;
+                        const cartonUsd = parseFloat(toUsd(item.cartonPrice)) || 0;
+                        const totalStd = gv.reduce((s, v) => s + parseFloat(v.sellingPrice) * v.piecesPerCarton, 0);
+                        const exceeds = cartons > cAvail;
+                        return (
+                          <div className="space-y-2">
+                            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                              Available: <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{cAvail} cartons</span>
+                              {exceeds && <span style={{ color: 'var(--danger)' }}> — exceeds stock</span>}
+                            </p>
+                            <div>
+                              <label className="block text-xs mb-1" style={{ color: 'var(--muted)' }}>
+                                Price the mini owes per carton
+                              </label>
+                              <input
+                                value={item.cartonPrice}
+                                onChange={setGroupCartonPrice(i)}
+                                placeholder="0.00"
+                                type="number"
+                                min="0"
+                                step="0.0001"
+                                className="input w-full"
+                              />
+                            </div>
+                            {cartons > 0 && (
+                              <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                                {gv.map((v) => {
+                                  const pieces = cartons * v.piecesPerCarton;
+                                  const allocUsd = totalStd > 0 ? (cartonUsd * parseFloat(v.sellingPrice)) / totalStd : parseFloat(v.sellingPrice);
+                                  return (
+                                    <div key={v.variantId} className="flex justify-between py-0.5">
+                                      <span className="capitalize" style={{ color: 'var(--foreground)' }}>
+                                        {v.label}<span style={{ color: 'var(--muted)' }}> · {pieces} pcs</span>
+                                      </span>
+                                      <span style={{ color: 'var(--muted)' }}>owes {fmtPrice(fromUsd(allocUsd.toFixed(4)))}/pc</span>
+                                    </div>
+                                  );
+                                })}
+                                <div className="flex justify-between pt-1 mt-1 border-t font-semibold" style={{ borderColor: 'var(--border)' }}>
+                                  <span style={{ color: 'var(--foreground)' }}>{cartons} carton{cartons > 1 ? 's' : ''}</span>
+                                  <span style={{ color: 'var(--success)' }}>{fmtPrice(fromUsd((cartonUsd * cartons).toFixed(4)))}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <>
                     {/* Stock info */}
                     {matchedProduct && ppc && (
                       <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>
@@ -688,6 +928,8 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
                         )}
                       </div>
                     )}
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -696,28 +938,27 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
         </div>
 
         {/* Grand total */}
-        {items.some((it) => parseFloat(it.agreedUnitPrice) > 0 && parseInt(it.quantity, 10) > 0) && (
+        {items.some(rowHasValue) && (
           <div className="rounded-xl border p-3 mt-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
             <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--muted)' }}>Summary</div>
             {items.map((it, i) => {
+              if (!rowHasValue(it)) return null;
+              const pieces = rowPieces(it);
               const q = parseInt(it.quantity, 10);
-              const price = parseFloat(it.agreedUnitPrice);
-              if (isNaN(price) || price <= 0) return null;
-              const ppc = it.piecesPerCarton;
-              const pieces = getTotalPieces(q, ppc, it.extraPieces);
-              if (isNaN(pieces) || pieces <= 0) return null;
               const extra = parseInt(it.extraPieces, 10) || 0;
-              const lineTotal = price * pieces;
+              const cartonword = it.groupId
+                ? `${q} carton${q > 1 ? 's' : ''} (${pieces} pcs)`
+                : it.piecesPerCarton
+                ? `${q > 0 ? `${q} carton${q > 1 ? 's' : ''}` : ''}${extra > 0 ? `${q > 0 ? ' + ' : ''}${extra} pcs` : ''} (${pieces} pcs)`
+                : `${pieces} pcs`;
               return (
                 <div key={i} className="flex justify-between text-xs py-0.5">
                   <span style={{ color: 'var(--foreground)' }}>
                     <span className="capitalize">{it.productName}</span>
                     {' '}
-                    <span style={{ color: 'var(--muted)' }}>
-                      {ppc ? <>{q > 0 ? `${q} carton${q > 1 ? 's' : ''}` : ''}{extra > 0 ? `${q > 0 ? ' + ' : ''}${extra} pcs` : ''} ({pieces} pcs)</> : <>{pieces} pcs</>}
-                    </span>
+                    <span style={{ color: 'var(--muted)' }}>{cartonword}</span>
                   </span>
-                  <span className="font-medium" style={{ color: 'var(--foreground)' }}>{fmtPrice(lineTotal.toFixed(4))}</span>
+                  <span className="font-medium" style={{ color: 'var(--foreground)' }}>{fmtPrice(rowTotal(it).toFixed(4))}</span>
                 </div>
               );
             })}
@@ -725,22 +966,11 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
               <span style={{ color: 'var(--foreground)' }}>
                 Grand Total
                 <span className="font-normal text-xs ml-1" style={{ color: 'var(--muted)' }}>
-                  ({items.reduce((s, it) => {
-                    const q = parseInt(it.quantity, 10);
-                    return s + getTotalPieces(q, it.piecesPerCarton, it.extraPieces);
-                  }, 0)} pcs)
+                  ({items.reduce((s, it) => s + rowPieces(it), 0)} pcs)
                 </span>
               </span>
               <span style={{ color: 'var(--success)' }}>
-                {fmtPrice(
-                  items.reduce((s, it) => {
-                    const q = parseInt(it.quantity, 10);
-                    const price = parseFloat(it.agreedUnitPrice);
-                    const pieces = getTotalPieces(q, it.piecesPerCarton, it.extraPieces);
-                    if (isNaN(pieces) || pieces <= 0 || isNaN(price) || price <= 0) return s;
-                    return s + price * pieces;
-                  }, 0).toFixed(4)
-                )}
+                {fmtPrice(items.reduce((s, it) => s + rowTotal(it), 0).toFixed(4))}
               </span>
             </div>
           </div>

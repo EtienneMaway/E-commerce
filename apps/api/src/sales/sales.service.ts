@@ -7,10 +7,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, ILike, Repository } from 'typeorm';
+import { randomUUID } from 'crypto';
 import Decimal from 'decimal.js';
 import {
   InventoryEntry,
   InventorySource,
+  ProductGroup,
+  ProductVariant,
   SaleTransaction,
   StockMovementReason,
 } from '../entities';
@@ -39,6 +42,28 @@ export interface TopProduct {
   isLossProduct: boolean;
 }
 
+/**
+ * Split a carton's effective price across its sizes, pro-rata by each size's
+ * standalone selling-price share, so the per-piece prices sum back to the carton
+ * price while preserving the ratio between sizes. Returns one per-piece USD price
+ * per gating size, in the same order.
+ */
+export function allocateCartonUnitPrices(
+  cartonUnitPrice: Decimal,
+  gating: { sellingPrice: string; piecesPerCarton: number }[],
+): Decimal[] {
+  const total = gating.reduce(
+    (acc, v) => acc.plus(new Decimal(v.sellingPrice).mul(v.piecesPerCarton)),
+    new Decimal(0),
+  );
+  if (total.lte(0)) {
+    throw new BadRequestException(
+      'Cannot allocate carton price — sizes have no selling price',
+    );
+  }
+  return gating.map((v) => cartonUnitPrice.mul(v.sellingPrice).div(total));
+}
+
 export interface SalesProfitSummary {
   /** Echo of the resolved range so the client can label the figures. */
   period: SalesSummaryPeriod;
@@ -58,6 +83,10 @@ export class SalesService {
     private readonly saleRepo: Repository<SaleTransaction>,
     @InjectRepository(InventoryEntry)
     private readonly entryRepo: Repository<InventoryEntry>,
+    @InjectRepository(ProductGroup)
+    private readonly groupRepo: Repository<ProductGroup>,
+    @InjectRepository(ProductVariant)
+    private readonly variantRepo: Repository<ProductVariant>,
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
     private readonly pricingService: PricingService,
@@ -85,26 +114,73 @@ export class SalesService {
       if (existing) return existing;
     }
 
-    // Find available stock: SUPPLIER first, then CONSIGNED_IN, then PERSONAL
-    const productNamePattern = ILike(dto.productName.trim().toLowerCase());
+    const base = { ownerId, actorId, clientSaleId };
+    return dto.carton
+      ? this.recordCartonSale(ctx, dto, base)
+      : this.recordSingleSale(ctx, dto, base);
+  }
 
-    const [supplierEntries, consignedInEntries, personalEntries] = await Promise.all([
+  /** Ordered sellable lots (SUPPLIER → CONSIGNED_IN → PERSONAL, FIFO within each). */
+  private async fetchSellableLots(
+    ownerId: string,
+    key: { productName?: string; variantId?: string },
+  ): Promise<InventoryEntry[]> {
+    const match = key.variantId
+      ? { variantId: key.variantId }
+      : { productName: ILike((key.productName ?? '').trim().toLowerCase()) };
+
+    const bySource = (source: InventorySource) =>
       this.entryRepo.find({
-        where: { ownerId, productName: productNamePattern, source: InventorySource.SUPPLIER },
+        where: { ownerId, ...match, source },
         order: { createdAt: 'ASC' },
-      }),
-      this.entryRepo.find({
-        where: { ownerId, productName: productNamePattern, source: InventorySource.CONSIGNED_IN },
-        order: { createdAt: 'ASC' },
-      }),
-      this.entryRepo.find({
-        where: { ownerId, productName: productNamePattern, source: InventorySource.PERSONAL },
-        order: { createdAt: 'ASC' },
-      }),
+      });
+
+    const [supplier, consignedIn, personal] = await Promise.all([
+      bySource(InventorySource.SUPPLIER),
+      bySource(InventorySource.CONSIGNED_IN),
+      bySource(InventorySource.PERSONAL),
     ]);
-
-    const allEntries = [...supplierEntries, ...consignedInEntries, ...personalEntries].filter(
+    return [...supplier, ...consignedIn, ...personal].filter(
       (e) => e.quantityRemaining > 0,
+    );
+  }
+
+  /**
+   * A simple product sale, or a single-size sale of a sized product. Unchanged
+   * behavior for simple products; when `variantId` is set, stock is looked up by
+   * size and the sale rows are tagged with the variant.
+   */
+  private async recordSingleSale(
+    ctx: ActorContext,
+    dto: RecordSaleDto,
+    base: {
+      ownerId: string;
+      actorId: string | null;
+      clientSaleId: string | null;
+    },
+  ): Promise<SaleTransaction> {
+    const { ownerId, actorId, clientSaleId } = base;
+
+    const qtySold = dto.qtySold;
+    if (!qtySold || qtySold <= 0) {
+      throw new BadRequestException(
+        'qtySold is required for a non-carton sale',
+      );
+    }
+
+    let variant: ProductVariant | null = null;
+    if (dto.variantId) {
+      variant = await this.variantRepo.findOne({
+        where: { id: dto.variantId },
+      });
+      if (!variant) throw new BadRequestException('Size not found');
+    }
+
+    const allEntries = await this.fetchSellableLots(
+      ownerId,
+      dto.variantId
+        ? { variantId: dto.variantId }
+        : { productName: dto.productName },
     );
 
     if (allEntries.length === 0) {
@@ -117,28 +193,36 @@ export class SalesService {
       (sum, e) => sum + e.quantityRemaining,
       0,
     );
-    if (totalAvailable < dto.qtySold) {
+    if (totalAvailable < qtySold) {
       throw new BadRequestException(
-        `Insufficient stock. Available: ${totalAvailable}, requested: ${dto.qtySold}`,
+        `Insufficient stock. Available: ${totalAvailable}, requested: ${qtySold}`,
       );
     }
 
-    // Apply employee pricing rule (cap or require discount reason).
-    // Owner-performed sales pass through unchanged.
+    // Apply employee pricing rule (cap or require discount reason). Owner sales
+    // pass through. For a sized product the standard is the size's own price
+    // (null for a mini, who keeps their markup); for a simple product the rule
+    // falls back to the name-based ProductPrice lookup.
     const priceCheck = await this.pricingService.applyEmployeePriceRule({
       ctx,
       productName: dto.productName,
       submittedUnitPrice: dto.salePrice,
       discountReason: dto.discountReason,
+      standardPrice: variant
+        ? ctx.tier === 'MINI_EMPLOYEE'
+          ? null
+          : variant.sellingPrice
+        : undefined,
     });
     const effectiveSalePrice = new Decimal(priceCheck.effectiveUnitPrice);
 
     // Price guard — uses unit cost of the first entry to be deducted.
-    const firstEntry = allEntries[0];
-    const unitCost = new Decimal(firstEntry.unitCost);
-
+    const unitCost = new Decimal(allEntries[0].unitCost);
     if (effectiveSalePrice.lte(unitCost) && !dto.confirmedOverride) {
-      const potentialLoss = unitCost.minus(effectiveSalePrice).mul(dto.qtySold).toFixed(4);
+      const potentialLoss = unitCost
+        .minus(effectiveSalePrice)
+        .mul(qtySold)
+        .toFixed(4);
       const warning: PriceGuardWarningDto = {
         warning: true,
         costPrice: unitCost.toFixed(4),
@@ -158,16 +242,13 @@ export class SalesService {
 
     return this.dataSource.transaction(async (manager) => {
       const sales: SaleTransaction[] = [];
-      let remaining = dto.qtySold;
+      let remaining = qtySold;
 
       for (const entry of allEntries) {
         if (remaining === 0) break;
 
         const deduct = Math.min(entry.quantityRemaining, remaining);
         const entryCost = new Decimal(entry.unitCost);
-        // Per-lot USD sale price: when the mini supplied an FC price AND this lot
-        // carries a locked rate, convert at that rate; otherwise use the single
-        // USD price. Keeps profit/owed exact per batch.
         const lotSalePrice =
           salePriceFc && entry.usdToFcRateSnapshot
             ? salePriceFc.div(new Decimal(entry.usdToFcRateSnapshot))
@@ -191,16 +272,17 @@ export class SalesService {
           profit: entryProfit.toFixed(4),
           isLoss: entryProfit.lt(0),
           inventoryEntryId: entry.id,
-          // Carry the lot's locked rate (set only on a mini's CONSIGNED_IN
-          // stock) so this sale's owed value + markup convert to FC at the
-          // consignment's give-time rate, not the live one.
           usdToFcRateSnapshot: entry.usdToFcRateSnapshot ?? null,
           originalUnitPrice: priceCheck.originalUnitPrice,
-          discountReason: priceCheck.originalUnitPrice ? dto.discountReason ?? null : null,
+          discountReason: priceCheck.originalUnitPrice
+            ? (dto.discountReason ?? null)
+            : null,
           clientName: dto.clientName?.trim() || null,
           clientPhone: dto.clientPhone?.trim() || null,
           receiptId: dto.receiptId?.trim() || null,
           clientSaleId,
+          variantId: variant?.id ?? null,
+          variantLabel: variant?.label ?? null,
         });
         const savedSale = await manager.save(SaleTransaction, sale);
         sales.push(savedSale);
@@ -210,6 +292,172 @@ export class SalesService {
           entry,
           reason: StockMovementReason.SALE,
           qty: deduct,
+          qtyBefore: qtyBeforeDeduct,
+          saleTransactionId: savedSale.id,
+        });
+      }
+
+      return sales[0];
+    });
+  }
+
+  /**
+   * Sell one or more WHOLE cartons of a sized product at the group's discounted
+   * carton price. Deducts the carton composition across every size (each size
+   * SUPPLIER → CONSIGNED_IN → PERSONAL FIFO), allocates the carton price across
+   * sizes pro-rata by standalone price, and books one SaleTransaction per lot,
+   * all sharing a cartonSaleId. The price guard fires at the carton TOTAL, not
+   * per size — a discounted carton legitimately prices some sizes below their
+   * standalone price.
+   */
+  private async recordCartonSale(
+    ctx: ActorContext,
+    dto: RecordSaleDto,
+    base: {
+      ownerId: string;
+      actorId: string | null;
+      clientSaleId: string | null;
+    },
+  ): Promise<SaleTransaction> {
+    const { ownerId, actorId, clientSaleId } = base;
+
+    if (!dto.groupId) {
+      throw new BadRequestException('groupId is required for a carton sale');
+    }
+    const cartonQty = dto.cartonQty ?? 1;
+
+    const group = await this.groupRepo.findOne({
+      where: { id: dto.groupId },
+      relations: { variants: true },
+    });
+    if (!group) throw new BadRequestException('Product group not found');
+    if (group.cartonSellingPrice == null) {
+      throw new BadRequestException(
+        'Whole-carton selling is not enabled for this product',
+      );
+    }
+
+    // The carton composition = sizes with a positive pieces-per-carton.
+    const gating = (group.variants ?? [])
+      .filter((v) => !v.archived && v.piecesPerCarton > 0)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    if (gating.length === 0) {
+      throw new BadRequestException('This product has no carton composition');
+    }
+
+    // Employee pricing rule against the group carton price (null standard for a
+    // mini so their carton markup is theirs to keep).
+    const priceCheck = await this.pricingService.applyEmployeePriceRule({
+      ctx,
+      productName: group.name,
+      submittedUnitPrice: dto.salePrice,
+      discountReason: dto.discountReason,
+      standardPrice:
+        ctx.tier === 'MINI_EMPLOYEE' ? null : group.cartonSellingPrice,
+    });
+    const cartonUnitPrice = new Decimal(priceCheck.effectiveUnitPrice); // per one carton
+    const allocated = allocateCartonUnitPrices(cartonUnitPrice, gating);
+
+    // Build the deduction plan and total cost before committing so the price
+    // guard sees the exact cost of the lots that will actually be drained.
+    interface LotDeduction {
+      entry: InventoryEntry;
+      deduct: number;
+      allocatedUnitPrice: Decimal;
+      variant: ProductVariant;
+    }
+    const plan: LotDeduction[] = [];
+    let totalCost = new Decimal(0);
+
+    for (let i = 0; i < gating.length; i++) {
+      const variant = gating[i];
+      const need = variant.piecesPerCarton * cartonQty;
+      const lots = await this.fetchSellableLots(ownerId, {
+        variantId: variant.id,
+      });
+      const available = lots.reduce((s, e) => s + e.quantityRemaining, 0);
+      if (available < need) {
+        throw new BadRequestException(
+          `Insufficient stock for size "${variant.label}". Need ${need}, have ${available}.`,
+        );
+      }
+      let remaining = need;
+      for (const lot of lots) {
+        if (remaining === 0) break;
+        const deduct = Math.min(lot.quantityRemaining, remaining);
+        remaining -= deduct;
+        totalCost = totalCost.plus(new Decimal(lot.unitCost).mul(deduct));
+        plan.push({
+          entry: lot,
+          deduct,
+          allocatedUnitPrice: allocated[i],
+          variant,
+        });
+      }
+    }
+
+    // Carton-level price guard: warn only if the whole carton is at/under cost.
+    const revenue = cartonUnitPrice.mul(cartonQty);
+    if (revenue.lte(totalCost) && !dto.confirmedOverride) {
+      const potentialLoss = totalCost.minus(revenue).toFixed(4);
+      const warning: PriceGuardWarningDto = {
+        warning: true,
+        costPrice: totalCost.toFixed(4),
+        potentialLoss,
+        message:
+          `Selling ${cartonQty} carton(s) at ${revenue.toFixed(4)} is at or below total cost of ${totalCost.toFixed(4)}. ` +
+          `You will lose ${potentialLoss} total. ` +
+          `Send confirmedOverride: true to proceed.`,
+      };
+      throw new UnprocessableEntityException(warning);
+    }
+
+    const cartonSaleId = randomUUID();
+
+    return this.dataSource.transaction(async (manager) => {
+      const sales: SaleTransaction[] = [];
+
+      for (const p of plan) {
+        const lotCost = new Decimal(p.entry.unitCost);
+        const profit = p.allocatedUnitPrice.minus(lotCost).mul(p.deduct);
+        const qtyBeforeDeduct = p.entry.quantityRemaining;
+
+        p.entry.quantityRemaining -= p.deduct;
+        await manager.save(InventoryEntry, p.entry);
+
+        const sale = manager.create(SaleTransaction, {
+          ownerId,
+          actorId,
+          productName: p.entry.productName,
+          source: p.entry.source,
+          supplierUserId: p.entry.supplierUserId,
+          qtySold: p.deduct,
+          unitCost: lotCost.toFixed(4),
+          salePrice: p.allocatedUnitPrice.toFixed(4),
+          profit: profit.toFixed(4),
+          isLoss: profit.lt(0),
+          inventoryEntryId: p.entry.id,
+          usdToFcRateSnapshot: p.entry.usdToFcRateSnapshot ?? null,
+          originalUnitPrice: priceCheck.originalUnitPrice,
+          discountReason: priceCheck.originalUnitPrice
+            ? (dto.discountReason ?? null)
+            : null,
+          clientName: dto.clientName?.trim() || null,
+          clientPhone: dto.clientPhone?.trim() || null,
+          receiptId: dto.receiptId?.trim() || null,
+          clientSaleId,
+          variantId: p.variant.id,
+          variantLabel: p.variant.label,
+          cartonSaleId,
+        });
+        const savedSale = await manager.save(SaleTransaction, sale);
+        sales.push(savedSale);
+
+        await this.stockMovements.record(manager, {
+          ownerId,
+          entry: p.entry,
+          reason: StockMovementReason.SALE,
+          qty: p.deduct,
           qtyBefore: qtyBeforeDeduct,
           saleTransactionId: savedSale.id,
         });
@@ -240,7 +488,11 @@ export class SalesService {
         name: `%${filter.productName}%`,
       });
     }
-    applyActorCondToQb(qb, 'sale.actor_id', resolveActorFilter(filter.actorId, ctx));
+    applyActorCondToQb(
+      qb,
+      'sale.actor_id',
+      resolveActorFilter(filter.actorId, ctx),
+    );
     if (filter.clientQuery) {
       // Case-insensitive match across name + phone so the merchant can search
       // a partial name or any phone-number chunk.
@@ -258,7 +510,9 @@ export class SalesService {
         qb.andWhere('sale.date >= :from', { from: new Date(filter.dateFrom) });
       }
       if (filter.dateTo) {
-        qb.andWhere('sale.date <= :to', { to: new Date(filter.dateTo + 'T23:59:59') });
+        qb.andWhere('sale.date <= :to', {
+          to: new Date(filter.dateTo + 'T23:59:59'),
+        });
       }
     }
 
@@ -293,7 +547,9 @@ export class SalesService {
     // client info across every row in the receipt so a later search by
     // phone surfaces the whole transaction, not just one line.
     const targets = sale.receiptId
-      ? await this.saleRepo.find({ where: { ownerId, receiptId: sale.receiptId } })
+      ? await this.saleRepo.find({
+          where: { ownerId, receiptId: sale.receiptId },
+        })
       : [sale];
 
     for (const t of targets) {
@@ -309,7 +565,10 @@ export class SalesService {
    * by the mobile sales tab's reprint flow: tap one row → reconstruct the
    * original multi-item receipt.
    */
-  async findByReceipt(ctx: ActorContext, receiptId: string): Promise<SaleTransaction[]> {
+  async findByReceipt(
+    ctx: ActorContext,
+    receiptId: string,
+  ): Promise<SaleTransaction[]> {
     const ownerId = ctx.effectiveOwnerId;
     return this.saleRepo.find({
       where: { ownerId, receiptId },
@@ -329,7 +588,10 @@ export class SalesService {
       .createQueryBuilder('sale')
       .select('sale.productName', 'productName')
       .addSelect('SUM(sale.qtySold)', 'totalQtySold')
-      .addSelect('SUM(CAST(sale.salePrice AS DECIMAL) * sale.qtySold)', 'totalRevenue')
+      .addSelect(
+        'SUM(CAST(sale.salePrice AS DECIMAL) * sale.qtySold)',
+        'totalRevenue',
+      )
       .addSelect('SUM(CAST(sale.profit AS DECIMAL))', 'totalProfit')
       .where('sale.ownerId = :ownerId', { ownerId })
       .groupBy('sale.productName');
@@ -391,13 +653,22 @@ export class SalesService {
         'COALESCE(SUM(CAST(sale.unitCost AS DECIMAL) * sale.qtySold), 0)',
         'totalCost',
       )
-      .addSelect('COALESCE(SUM(CAST(sale.profit AS DECIMAL)), 0)', 'totalProfit')
+      .addSelect(
+        'COALESCE(SUM(CAST(sale.profit AS DECIMAL)), 0)',
+        'totalProfit',
+      )
       .where('sale.ownerId = :ownerId', { ownerId });
 
     if (filter.productName) {
-      qb.andWhere('sale.productName ILIKE :name', { name: `%${filter.productName}%` });
+      qb.andWhere('sale.productName ILIKE :name', {
+        name: `%${filter.productName}%`,
+      });
     }
-    applyActorCondToQb(qb, 'sale.actor_id', resolveActorFilter(filter.actorId, ctx));
+    applyActorCondToQb(
+      qb,
+      'sale.actor_id',
+      resolveActorFilter(filter.actorId, ctx),
+    );
     if (dateFrom) qb.andWhere('sale.date >= :from', { from: dateFrom });
     if (dateTo) qb.andWhere('sale.date <= :to', { to: dateTo });
 
@@ -456,9 +727,12 @@ export class SalesService {
   private resolveHistoryPeriod(period?: SalesHistoryPeriod): Date | null {
     if (!period || period === SalesHistoryPeriod.ALL) return null;
     const now = new Date();
-    const days = period === SalesHistoryPeriod.SEVEN_DAYS ? 7
-      : period === SalesHistoryPeriod.THIRTY_DAYS ? 30
-      : 90;
+    const days =
+      period === SalesHistoryPeriod.SEVEN_DAYS
+        ? 7
+        : period === SalesHistoryPeriod.THIRTY_DAYS
+          ? 30
+          : 90;
     const from = new Date(now);
     from.setDate(now.getDate() - days);
     return from;

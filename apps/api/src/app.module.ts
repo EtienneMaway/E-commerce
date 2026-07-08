@@ -24,6 +24,8 @@ import {
   MiniSettlement,
   MiniSettlementItem,
   MiniExpense,
+  ProductGroup,
+  ProductVariant,
 } from './entities';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -42,6 +44,7 @@ import { SalaryPaymentsModule } from './salary-payments/salary-payments.module';
 import { PricingModule } from './pricing/pricing.module';
 import { ActivityLogsModule } from './activity-logs/activity-logs.module';
 import { MiniSettlementsModule } from './mini-settlements/mini-settlements.module';
+import { ProductGroupsModule } from './product-groups/product-groups.module';
 
 @Module({
   imports: [
@@ -75,6 +78,8 @@ import { MiniSettlementsModule } from './mini-settlements/mini-settlements.modul
           MiniSettlement,
           MiniSettlementItem,
           MiniExpense,
+          ProductGroup,
+          ProductVariant,
         ],
         // Synchronize is OFF everywhere (including dev). All schema changes go
         // through migrations, so development exercises the exact same migration
@@ -107,6 +112,7 @@ import { MiniSettlementsModule } from './mini-settlements/mini-settlements.modul
     PricingModule,
     ActivityLogsModule,
     MiniSettlementsModule,
+    ProductGroupsModule,
   ],
   providers: [
     // Apply throttle guard globally

@@ -50,10 +50,24 @@ export interface InventoryEntry {
   debtorUser?: Pick<User, 'id' | 'username'>;
 }
 
+/** One size of a sized (carton-with-variants) product, inside a ProductSummary. */
+export interface ProductVariantSummary {
+  variantId: string;
+  label: string;
+  unitCost: string;
+  sellingPrice: string;
+  piecesPerCarton: number;
+  available: number;
+  /** Locked FC/USD rate for a mini's consigned-in stock of this size. */
+  usdToFcRateSnapshot?: string | null;
+}
+
 export interface ProductSummary {
   productName: string;
   category: string | null;
   piecesPerCarton: number | null;
+  /** Purchase price for one full carton — present on the mobile copy; optional here. */
+  latestCartonPrice?: string | null;
   totalAvailable: number;
   sourceBreakdown: {
     personal: number;
@@ -67,6 +81,17 @@ export interface ProductSummary {
    *  for owner/full-employee stock). When present, the mini's app converts this
    *  product's prices to FC at this rate instead of the live rate. */
   usdToFcRateSnapshot?: string | null;
+  /** Discriminates a normal flat-price product from a sized/carton group.
+   *  Absent-safe: existing consumers that ignore these fields keep working. */
+  kind?: 'simple' | 'group';
+  /** Sized products only — the ProductGroup id. */
+  groupId?: string;
+  /** Sized products only — discounted whole-carton price (null disables carton selling). */
+  cartonSellingPrice?: string | null;
+  /** Sized products only — how many full cartons can be assembled from stock. */
+  cartonsAvailable?: number;
+  /** Sized products only — the per-size breakdown. */
+  variants?: ProductVariantSummary[];
 }
 
 export interface SupplierDebt {

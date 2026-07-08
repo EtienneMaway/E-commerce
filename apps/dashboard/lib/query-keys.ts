@@ -5,6 +5,8 @@ export const QK = {
   cashPosition: ['dashboard', 'cash-position'] as const,
   inventoryProducts: ['inventory', 'products'] as const,
   inventory: (filters?: object) => ['inventory', filters] as const,
+  productGroups: ['product-groups'] as const,
+  productGroup: (id: string) => ['product-groups', id] as const,
   salesHistory: (filters?: object) => ['sales', 'history', filters] as const,
   topProducts: (filters?: object) => ['sales', 'top-products', filters] as const,
   salesProfitSummary: (filters?: object) => ['sales', 'profit-summary', filters] as const,

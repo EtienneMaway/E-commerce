@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, ILike, IsNull, Repository } from 'typeorm';
+import { DataSource, ILike, In, IsNull, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import {
   DebtorCredit,
@@ -22,6 +22,7 @@ import {
   Payment,
   PaymentDirection,
   PaymentStatus,
+  ProductVariant,
   SaleTransaction,
   StockMovementReason,
   SupplierDebt,
@@ -48,6 +49,9 @@ export interface MiniActivitySale {
 
 export interface HandoverSoldLine {
   productName: string;
+  /** Size, for sized products — null on simple products. */
+  variantId: string | null;
+  variantLabel: string | null;
   qtySold: number;
   /** Pieces per carton for this product (null if it isn't cartoned) — lets the
    *  client render the sold quantity in cartons/dozens/loose pieces. */
@@ -70,6 +74,9 @@ export interface HandoverExpenseLine {
 
 export interface HandoverReturnLine {
   productName: string;
+  /** Size, for sized products — null on simple products. Sent back on handover. */
+  variantId: string | null;
+  variantLabel: string | null;
   quantity: number;
   piecesPerCarton: number | null;
 }
@@ -182,7 +189,17 @@ export class MiniSettlementsService {
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
     private readonly currencyService: CurrencyService,
+    @InjectRepository(ProductVariant)
+    private readonly variantRepo: Repository<ProductVariant>,
   ) {}
+
+  /** Resolve size labels for a set of variant ids in one query (id → label). */
+  private async variantLabels(variantIds: (string | null | undefined)[]): Promise<Map<string, string>> {
+    const ids = [...new Set(variantIds.filter((v): v is string => !!v))];
+    if (ids.length === 0) return new Map();
+    const rows = await this.variantRepo.find({ where: { id: In(ids) } });
+    return new Map(rows.map((r) => [r.id, r.label]));
+  }
 
   // ─── Mini employee: initiate a handover (cash + unsold returns) ────────────
 
@@ -202,13 +219,15 @@ export class MiniSettlementsService {
       throw new BadRequestException('Nothing to hand over — provide cash and/or returned items');
     }
 
+    const labels = await this.variantLabels(returns.map((r) => r.variantId));
     const items: MiniSettlementItem[] = [];
     for (const r of returns) {
       const productName = r.productName.trim().toLowerCase();
-      const entries = await this.entryRepo.find({
-        where: { ownerId: miniId, productName: ILike(productName), source: InventorySource.CONSIGNED_IN },
-        order: { createdAt: 'ASC' },
-      });
+      // Sized products match the unsold lots by size; simple products by name.
+      const where = r.variantId
+        ? { ownerId: miniId, variantId: r.variantId, source: InventorySource.CONSIGNED_IN }
+        : { ownerId: miniId, productName: ILike(productName), source: InventorySource.CONSIGNED_IN };
+      const entries = await this.entryRepo.find({ where, order: { createdAt: 'ASC' } });
       const available = entries
         .filter((e) => e.quantityRemaining > 0)
         .reduce((sum, e) => sum + e.quantityRemaining, 0);
@@ -223,6 +242,8 @@ export class MiniSettlementsService {
       items.push(
         this.itemRepo.create({
           productName,
+          variantId: r.variantId ?? null,
+          variantLabel: r.variantId ? labels.get(r.variantId) ?? null : null,
           quantity: r.quantity,
           agreedUnitPrice,
           unitCost: null,
@@ -440,11 +461,16 @@ export class MiniSettlementsService {
     // lots can be null (pre-carton-size migration) while newer ones carry it, so
     // a plain "first lot wins" would wrongly report the product as uncartoned
     // and render sold/returns in bare pieces.
-    const ppcByProduct = new Map<string, number>();
+    // Identity key: sized products key by size (variantId); simple by name — so
+    // different sizes of one group don't collapse into a single row.
+    const keyOf = (variantId: string | null | undefined, productName: string) =>
+      variantId ?? productName;
+    const retLabels = await this.variantLabels(inEntries.map((e) => e.variantId));
+
+    const ppcByKey = new Map<string, number>();
     for (const e of inEntries) {
-      if (e.piecesPerCarton != null && !ppcByProduct.has(e.productName)) {
-        ppcByProduct.set(e.productName, e.piecesPerCarton);
-      }
+      const k = keyOf(e.variantId, e.productName);
+      if (e.piecesPerCarton != null && !ppcByKey.has(k)) ppcByKey.set(k, e.piecesPerCarton);
     }
 
     // Live rate — fallback for any pre-snapshot sale rows. Each sale's FC value
@@ -457,6 +483,9 @@ export class MiniSettlementsService {
     const soldMap = new Map<
       string,
       {
+        productName: string;
+        variantId: string | null;
+        variantLabel: string | null;
         qtySold: number;
         revenue: Decimal;
         agreedValue: Decimal;
@@ -466,9 +495,13 @@ export class MiniSettlementsService {
       }
     >();
     for (const s of sales) {
+      const k = keyOf(s.variantId, s.productName);
       const cur =
-        soldMap.get(s.productName) ??
+        soldMap.get(k) ??
         {
+          productName: s.productName,
+          variantId: s.variantId ?? null,
+          variantLabel: s.variantLabel ?? null,
           qtySold: 0,
           revenue: new Decimal(0),
           agreedValue: new Decimal(0),
@@ -484,12 +517,14 @@ export class MiniSettlementsService {
       cur.profit = cur.profit.plus(profit);
       cur.agreedValueFc = cur.agreedValueFc.plus(fcOf(agreed, s.usdToFcRateSnapshot));
       cur.profitFc = cur.profitFc.plus(fcOf(profit, s.usdToFcRateSnapshot));
-      soldMap.set(s.productName, cur);
+      soldMap.set(k, cur);
     }
-    const sold: HandoverSoldLine[] = [...soldMap.entries()].map(([productName, v]) => ({
-      productName,
+    const sold: HandoverSoldLine[] = [...soldMap.entries()].map(([k, v]) => ({
+      productName: v.productName,
+      variantId: v.variantId,
+      variantLabel: v.variantLabel,
       qtySold: v.qtySold,
-      piecesPerCarton: ppcByProduct.get(productName) ?? null,
+      piecesPerCarton: ppcByKey.get(k) ?? null,
       revenue: v.revenue.toFixed(4),
       agreedValue: v.agreedValue.toFixed(4),
       profit: v.profit.toFixed(4),
@@ -511,15 +546,23 @@ export class MiniSettlementsService {
 
     // Unsold units still held, grouped by product. Carton size comes from the
     // shared ppcByProduct map (any non-null lot) so returns and sold agree.
-    const retMap = new Map<string, number>();
+    const retMap = new Map<
+      string,
+      { productName: string; variantId: string | null; quantity: number }
+    >();
     for (const e of inEntries) {
       if (e.quantityRemaining <= 0) continue;
-      retMap.set(e.productName, (retMap.get(e.productName) ?? 0) + e.quantityRemaining);
+      const k = keyOf(e.variantId, e.productName);
+      const cur = retMap.get(k) ?? { productName: e.productName, variantId: e.variantId ?? null, quantity: 0 };
+      cur.quantity += e.quantityRemaining;
+      retMap.set(k, cur);
     }
-    const returns: HandoverReturnLine[] = [...retMap.entries()].map(([productName, quantity]) => ({
-      productName,
-      quantity,
-      piecesPerCarton: ppcByProduct.get(productName) ?? null,
+    const returns: HandoverReturnLine[] = [...retMap.entries()].map(([k, v]) => ({
+      productName: v.productName,
+      variantId: v.variantId,
+      variantLabel: v.variantId ? retLabels.get(v.variantId) ?? null : null,
+      quantity: v.quantity,
+      piecesPerCarton: ppcByKey.get(k) ?? null,
     }));
 
     const pendingExp = await this.miniExpenseRepo.find({
@@ -662,11 +705,16 @@ export class MiniSettlementsService {
       // ── Returns: unsold goods flow back to the owner's sellable stock ──
       for (const item of settlement.items) {
         const qty = item.quantity;
+        // Sized products match every lookup by size (variantId); simple by name.
+        const bySource = (ownerIdArg: string, source: InventorySource, extra: Record<string, unknown> = {}) =>
+          item.variantId
+            ? { ownerId: ownerIdArg, variantId: item.variantId, source, ...extra }
+            : { ownerId: ownerIdArg, productName: ILike(item.productName), source, ...extra };
 
         // Mini side: deduct the returned qty from their CONSIGNED_IN stock (FIFO).
         const miniEntries = (
           await manager.find(InventoryEntry, {
-            where: { ownerId: miniId, productName: ILike(item.productName), source: InventorySource.CONSIGNED_IN },
+            where: bySource(miniId, InventorySource.CONSIGNED_IN),
             order: { createdAt: 'ASC' },
           })
         ).filter((e) => e.quantityRemaining > 0);
@@ -703,12 +751,7 @@ export class MiniSettlementsService {
         // Owner side: wind down the CONSIGNED_OUT tracking entries (FIFO, best-effort).
         const ownerOut = (
           await manager.find(InventoryEntry, {
-            where: {
-              ownerId,
-              productName: ILike(item.productName),
-              source: InventorySource.CONSIGNED_OUT,
-              debtorUserId: miniId,
-            },
+            where: bySource(ownerId, InventorySource.CONSIGNED_OUT, { debtorUserId: miniId }),
             order: { createdAt: 'ASC' },
           })
         ).filter((e) => e.quantityRemaining > 0);
@@ -728,12 +771,12 @@ export class MiniSettlementsService {
         // lot, then SUPPLIER; only fall back to a fresh lot if the owner has
         // none (rare — they must have held it to consign it).
         let restockLot = await manager.findOne(InventoryEntry, {
-          where: { ownerId, productName: ILike(item.productName), source: InventorySource.PERSONAL },
+          where: bySource(ownerId, InventorySource.PERSONAL),
           order: { createdAt: 'DESC' },
         });
         if (!restockLot) {
           restockLot = await manager.findOne(InventoryEntry, {
-            where: { ownerId, productName: ILike(item.productName), source: InventorySource.SUPPLIER },
+            where: bySource(ownerId, InventorySource.SUPPLIER),
             order: { createdAt: 'DESC' },
           });
         }
@@ -747,6 +790,7 @@ export class MiniSettlementsService {
         } else {
           // No existing lot — recreate one at the owner's original cost. Use the
           // cost (not the mini's agreed price) as the selling-price placeholder.
+          // Carry the group/size tags so a sized return re-groups correctly.
           const ownerCost = ownerOut[0]?.unitCost ?? item.agreedUnitPrice;
           qtyBefore = 0;
           restockLot = await manager.save(
@@ -755,11 +799,14 @@ export class MiniSettlementsService {
               ownerId,
               source: InventorySource.PERSONAL,
               productName: item.productName,
+              groupId: item.variantId ? ownerOut[0]?.groupId ?? null : null,
+              variantId: item.variantId ?? null,
               unitCost: ownerCost,
               sellingPrice: ownerCost,
               category: null,
               quantityOriginal: qty,
               quantityRemaining: qty,
+              piecesPerCarton: ownerOut[0]?.piecesPerCarton ?? null,
               actorId,
             }),
           );

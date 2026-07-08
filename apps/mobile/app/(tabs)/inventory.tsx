@@ -23,13 +23,14 @@ import { AddPersonalModal } from '../../components/forms/AddPersonalModal';
 import { ReceiveFromSupplierModal } from '../../components/forms/ReceiveFromSupplierModal';
 import { RecordSaleModal } from '../../components/forms/RecordSaleModal';
 import { EditMiniPriceModal } from '../../components/forms/EditMiniPriceModal';
+import { SellSizedProductModal } from '../../components/forms/SellSizedProductModal';
 import { breakdownQuantity, formatBreakdown } from '../../lib/utils';
 import { usePersonaStore } from '../../store/persona.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
 import type { ProductSummary } from '@trading-app/types';
 
-type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'recordSale' | 'editPrice';
+type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'recordSale' | 'editPrice' | 'sellSized';
 
 interface SaleTarget { productName: string; unitCost: string; }
 
@@ -51,6 +52,10 @@ function ProductCard({
   const isMini = useAuthStore((s) => s.user?.activeEmployment?.tier === 'SALES_ONLY');
   const money = (v: string) =>
     isMini && item.usdToFcRateSnapshot ? formatMoney(v, item.usdToFcRateSnapshot) : formatCurrency(v);
+  const isGroup = item.kind === 'group';
+  const groupRate = isMini && item.usdToFcRateSnapshot ? item.usdToFcRateSnapshot : exchangeRate;
+  const variantMoney = (vt: { sellingPrice: string; usdToFcRateSnapshot?: string | null }) =>
+    formatMoney(vt.sellingPrice, isMini && vt.usdToFcRateSnapshot ? vt.usdToFcRateSnapshot : groupRate);
   const isLowStock = item.totalAvailable > 0 && item.totalAvailable <= 5;
   const isOutOfStock = item.totalAvailable === 0;
   const bd = breakdownQuantity(item.totalAvailable, item.piecesPerCarton);
@@ -82,63 +87,107 @@ function ProductCard({
       )}
 
       {/* Stock + prices row */}
-      <View className="flex-row justify-between items-end mt-2">
-        {/* Available breakdown */}
-        <View>
-          <Text className="text-muted dark:text-slate-500 text-sm mb-0.5">{t.inventory.available}</Text>
-          <Text
-            className={`text-base font-bold ${
-              isOutOfStock
-                ? 'text-muted dark:text-slate-500'
-                : isLowStock
-                ? 'text-danger'
-                : 'text-text dark:text-slate-100'
-            }`}
-          >
-            {formatBreakdown(bd)}
-          </Text>
-          {item.piecesPerCarton ? (
-            <Text className="text-muted dark:text-slate-500 text-sm">
-              1 ctn = {item.piecesPerCarton} pcs
-            </Text>
-          ) : null}
-          {soldOfflinePending > 0 && (
-            <Text className="text-amber-600 dark:text-amber-400 text-xs mt-1 font-medium">
-              ⏳ {soldOfflinePending} sold · pending sync
-            </Text>
-          )}
+      {isGroup ? (
+        <View className="mt-2">
+          <View className="flex-row justify-between items-start">
+            <View>
+              <Text className="text-muted dark:text-slate-500 text-sm mb-0.5">{t.inventory.available}</Text>
+              <Text
+                className={`text-base font-bold ${
+                  isOutOfStock ? 'text-muted dark:text-slate-500' : 'text-text dark:text-slate-100'
+                }`}
+              >
+                {t.sizedSale.cartonsAvailable(item.cartonsAvailable ?? 0)}
+              </Text>
+              <Text className="text-muted dark:text-slate-500 text-sm">{item.totalAvailable} pcs</Text>
+              {soldOfflinePending > 0 && (
+                <Text className="text-amber-600 dark:text-amber-400 text-xs mt-1 font-medium">
+                  ⏳ {soldOfflinePending} sold · pending sync
+                </Text>
+              )}
+            </View>
+            {item.cartonSellingPrice ? (
+              <View className="items-end">
+                <Text className="text-muted dark:text-slate-500 text-sm">{t.sizedSale.cartonPrice}</Text>
+                <Text className="text-text dark:text-slate-100 text-sm font-semibold">
+                  {money(item.cartonSellingPrice)}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          {/* Per-size prices */}
+          <View className="mt-2 gap-1">
+            {(item.variants ?? []).map((v) => (
+              <View key={v.variantId} className="flex-row justify-between items-center">
+                <Text className="text-muted dark:text-slate-500 text-sm capitalize">
+                  {v.label} · {v.available} pcs
+                </Text>
+                <Text className="text-text dark:text-slate-100 text-sm font-medium">
+                  {variantMoney(v)}
+                </Text>
+              </View>
+            ))}
+          </View>
         </View>
-
-        {/* Cost · sell + source chips */}
-        <View className="items-end">
-          <Text className="text-muted dark:text-slate-500 text-sm">{t.inventory.costSell}</Text>
-          <Text className="text-text dark:text-slate-100 text-sm font-medium">
-            {money(item.latestUnitCost)} · {money(item.latestSellingPrice)}
-          </Text>
-          <View className="flex-row gap-1.5 mt-1.5 flex-wrap justify-end">
-            {item.sourceBreakdown.personal > 0 && (
-              <Text className="text-sm bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5">
-                P: {item.sourceBreakdown.personal}
+      ) : (
+        <View className="flex-row justify-between items-end mt-2">
+          {/* Available breakdown */}
+          <View>
+            <Text className="text-muted dark:text-slate-500 text-sm mb-0.5">{t.inventory.available}</Text>
+            <Text
+              className={`text-base font-bold ${
+                isOutOfStock
+                  ? 'text-muted dark:text-slate-500'
+                  : isLowStock
+                  ? 'text-danger'
+                  : 'text-text dark:text-slate-100'
+              }`}
+            >
+              {formatBreakdown(bd)}
+            </Text>
+            {item.piecesPerCarton ? (
+              <Text className="text-muted dark:text-slate-500 text-sm">
+                1 ctn = {item.piecesPerCarton} pcs
               </Text>
-            )}
-            {item.sourceBreakdown.supplier > 0 && (
-              <Text className="text-sm bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 rounded px-1.5 py-0.5">
-                S: {item.sourceBreakdown.supplier}
-              </Text>
-            )}
-            {item.sourceBreakdown.consignedIn > 0 && (
-              <Text className="text-sm bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 rounded px-1.5 py-0.5">
-                IN: {item.sourceBreakdown.consignedIn}
-              </Text>
-            )}
-            {item.sourceBreakdown.consignedOut > 0 && (
-              <Text className="text-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded px-1.5 py-0.5">
-                OUT: {item.sourceBreakdown.consignedOut}
+            ) : null}
+            {soldOfflinePending > 0 && (
+              <Text className="text-amber-600 dark:text-amber-400 text-xs mt-1 font-medium">
+                ⏳ {soldOfflinePending} sold · pending sync
               </Text>
             )}
           </View>
+
+          {/* Cost · sell + source chips */}
+          <View className="items-end">
+            <Text className="text-muted dark:text-slate-500 text-sm">{t.inventory.costSell}</Text>
+            <Text className="text-text dark:text-slate-100 text-sm font-medium">
+              {money(item.latestUnitCost)} · {money(item.latestSellingPrice)}
+            </Text>
+            <View className="flex-row gap-1.5 mt-1.5 flex-wrap justify-end">
+              {item.sourceBreakdown.personal > 0 && (
+                <Text className="text-sm bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5">
+                  P: {item.sourceBreakdown.personal}
+                </Text>
+              )}
+              {item.sourceBreakdown.supplier > 0 && (
+                <Text className="text-sm bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 rounded px-1.5 py-0.5">
+                  S: {item.sourceBreakdown.supplier}
+                </Text>
+              )}
+              {item.sourceBreakdown.consignedIn > 0 && (
+                <Text className="text-sm bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 rounded px-1.5 py-0.5">
+                  IN: {item.sourceBreakdown.consignedIn}
+                </Text>
+              )}
+              {item.sourceBreakdown.consignedOut > 0 && (
+                <Text className="text-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded px-1.5 py-0.5">
+                  OUT: {item.sourceBreakdown.consignedOut}
+                </Text>
+              )}
+            </View>
+          </View>
         </View>
-      </View>
+      )}
 
       <Text className="text-muted dark:text-slate-500 text-sm mt-2 italic">
         {t.inventory.longPressToSell}
@@ -153,6 +202,7 @@ export default function InventoryScreen() {
   const [modal, setModal] = useState<Modal>('none');
   const [saleTarget, setSaleTarget] = useState<SaleTarget | null>(null);
   const [priceTarget, setPriceTarget] = useState<string | null>(null);
+  const [sizedTarget, setSizedTarget] = useState<ProductSummary | null>(null);
   // Employees acting on the employer's books shouldn't be adding products to
   // inventory — that's an owner-only action. Hide the FAB entirely in that
   // case. (When persona flips back to Self the FAB returns automatically.)
@@ -236,6 +286,33 @@ export default function InventoryScreen() {
   };
 
   const handleSell = (item: ProductSummary) => {
+    // Sized (carton-with-sizes) products use a dedicated modal for carton/size selling.
+    if (item.kind === 'group') {
+      if (isMini) {
+        Alert.alert(item.productName, undefined, [
+          {
+            text: t.miniEmployee.actionSell,
+            onPress: () => {
+              setSizedTarget(item);
+              setModal('sellSized');
+            },
+          },
+          {
+            text: t.miniEmployee.actionEditPrice,
+            onPress: () => {
+              setSizedTarget(item);
+              setPriceTarget(item.productName);
+              setModal('editPrice');
+            },
+          },
+          { text: t.common.cancel, style: 'cancel' },
+        ]);
+        return;
+      }
+      setSizedTarget(item);
+      setModal('sellSized');
+      return;
+    }
     // Minis can sell OR re-price their consigned stock — offer the choice.
     if (isMini) {
       Alert.alert(item.productName, undefined, [
@@ -249,6 +326,7 @@ export default function InventoryScreen() {
         {
           text: t.miniEmployee.actionEditPrice,
           onPress: () => {
+            setSizedTarget(null);
             setPriceTarget(item.productName);
             setModal('editPrice');
           },
@@ -349,8 +427,20 @@ export default function InventoryScreen() {
         onClose={() => {
           setModal('none');
           setPriceTarget(null);
+          setSizedTarget(null);
         }}
         productName={priceTarget ?? ''}
+        variants={sizedTarget?.variants?.map((v) => ({ variantId: v.variantId, label: v.label }))}
+        groupId={sizedTarget?.groupId}
+        cartonSellingPrice={sizedTarget?.cartonSellingPrice}
+      />
+      <SellSizedProductModal
+        visible={modal === 'sellSized'}
+        onClose={() => {
+          setModal('none');
+          setSizedTarget(null);
+        }}
+        group={sizedTarget}
       />
     </View>
   );

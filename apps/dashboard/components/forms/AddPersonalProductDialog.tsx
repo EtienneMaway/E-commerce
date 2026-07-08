@@ -48,6 +48,8 @@ interface ExistingProduct {
   latestCartonPrice: string | null;
   latestUnitCost: string;
   latestSellingPrice: string;
+  /** 'group' = a sized/composite product — excluded from the simple-product picker. */
+  kind?: 'simple' | 'group';
 }
 
 interface ItemForm {
@@ -316,7 +318,7 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
                 showRemove={items.length > 1}
                 onUpdate={(patch) => updateItem(i, patch)}
                 onRemove={() => removeItem(i)}
-                existingProducts={existingProducts ?? []}
+                existingProducts={(existingProducts ?? []).filter((p) => p.kind !== 'group')}
                 focused={focusedItemIndex === i}
                 onFocus={() => setFocusedItemIndex(i)}
                 onBlur={() => setTimeout(() => {

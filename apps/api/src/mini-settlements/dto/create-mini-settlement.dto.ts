@@ -8,6 +8,7 @@ import {
   IsPositive,
   IsString,
   IsDecimal,
+  IsUUID,
   ValidateNested,
 } from 'class-validator';
 
@@ -15,6 +16,11 @@ export class MiniSettlementReturnItemDto {
   @ApiProperty({ example: 'rice 50kg' })
   @IsString()
   productName: string;
+
+  @ApiPropertyOptional({ description: 'Size (ProductVariant) being returned, for sized products' })
+  @IsUUID()
+  @IsOptional()
+  variantId?: string;
 
   @ApiProperty({ example: 5, description: 'Unsold units being returned' })
   @IsInt()

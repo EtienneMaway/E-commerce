@@ -115,6 +115,7 @@ describe('MiniSettlementsService.approve', () => {
       dataSource as never,
       stockMovements as never,
       currencyService as never,
+      {} as never, // variantRepo
     );
 
     return { service, credit, debt, settlement, savedPayments, miniInEntry, ownerOutEntry, manager };
@@ -222,6 +223,7 @@ describe('MiniSettlementsService.approve', () => {
     const service = new MiniSettlementsService(
       settlementRepo as never, {} as never, {} as never, {} as never, {} as never,
       {} as never, {} as never, {} as never, dataSource as never, stockMovements as never, currencyService as never,
+      {} as never, // variantRepo
     );
 
     await service.approve(ctx, 'settle-1');

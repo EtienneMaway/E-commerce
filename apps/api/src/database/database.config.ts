@@ -22,6 +22,8 @@ import {
   MiniSettlement,
   MiniSettlementItem,
   MiniExpense,
+  ProductGroup,
+  ProductVariant,
 } from '../entities';
 
 dotenv.config();
@@ -50,6 +52,8 @@ export const AppDataSource = new DataSource({
     MiniSettlement,
     MiniSettlementItem,
     MiniExpense,
+    ProductGroup,
+    ProductVariant,
   ],
   migrations: [__dirname + '/migrations/*.{ts,js}'],
   synchronize: false,
