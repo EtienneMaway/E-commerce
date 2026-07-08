@@ -120,6 +120,28 @@ export class SalesService {
       : this.recordSingleSale(ctx, dto, base);
   }
 
+  /**
+   * Decide what to record for `originalUnitPrice` / `discountReason` on a sale
+   * row. The employee pricing rule's captured original (an employee selling
+   * below the owner's standard) takes precedence; otherwise fall back to a
+   * client-supplied `originalUnitPrice` (a quantity discount applied by an owner
+   * or mini, whom the rule passes through). A reason is stored only when there
+   * is a captured original.
+   */
+  private resolveDiscountCapture(
+    ruleOriginal: string | null,
+    dto: RecordSaleDto,
+  ): { originalUnitPrice: string | null; discountReason: string | null } {
+    const dtoOriginal = dto.originalUnitPrice?.trim()
+      ? new Decimal(dto.originalUnitPrice).toFixed(4)
+      : null;
+    const originalUnitPrice = ruleOriginal ?? dtoOriginal;
+    const discountReason = originalUnitPrice
+      ? dto.discountReason?.trim() || null
+      : null;
+    return { originalUnitPrice, discountReason };
+  }
+
   /** Ordered sellable lots (SUPPLIER → CONSIGNED_IN → PERSONAL, FIFO within each). */
   private async fetchSellableLots(
     ownerId: string,
@@ -216,6 +238,15 @@ export class SalesService {
     });
     const effectiveSalePrice = new Decimal(priceCheck.effectiveUnitPrice);
 
+    // Preserve the pre-discount price on the row. The employee pricing rule
+    // captures it when an employee sells below the owner's standard; for a
+    // client-applied quantity ("group of prices") discount the client sends it
+    // explicitly, since the rule passes owner sales (and mini markups) through.
+    const {
+      originalUnitPrice: resolvedOriginal,
+      discountReason: resolvedReason,
+    } = this.resolveDiscountCapture(priceCheck.originalUnitPrice, dto);
+
     // Price guard — uses unit cost of the first entry to be deducted.
     const unitCost = new Decimal(allEntries[0].unitCost);
     if (effectiveSalePrice.lte(unitCost) && !dto.confirmedOverride) {
@@ -273,10 +304,8 @@ export class SalesService {
           isLoss: entryProfit.lt(0),
           inventoryEntryId: entry.id,
           usdToFcRateSnapshot: entry.usdToFcRateSnapshot ?? null,
-          originalUnitPrice: priceCheck.originalUnitPrice,
-          discountReason: priceCheck.originalUnitPrice
-            ? (dto.discountReason ?? null)
-            : null,
+          originalUnitPrice: resolvedOriginal,
+          discountReason: resolvedReason,
           clientName: dto.clientName?.trim() || null,
           clientPhone: dto.clientPhone?.trim() || null,
           receiptId: dto.receiptId?.trim() || null,
@@ -357,6 +386,10 @@ export class SalesService {
     });
     const cartonUnitPrice = new Decimal(priceCheck.effectiveUnitPrice); // per one carton
     const allocated = allocateCartonUnitPrices(cartonUnitPrice, gating);
+    const {
+      originalUnitPrice: resolvedOriginal,
+      discountReason: resolvedReason,
+    } = this.resolveDiscountCapture(priceCheck.originalUnitPrice, dto);
 
     // Build the deduction plan and total cost before committing so the price
     // guard sees the exact cost of the lots that will actually be drained.
@@ -438,10 +471,8 @@ export class SalesService {
           isLoss: profit.lt(0),
           inventoryEntryId: p.entry.id,
           usdToFcRateSnapshot: p.entry.usdToFcRateSnapshot ?? null,
-          originalUnitPrice: priceCheck.originalUnitPrice,
-          discountReason: priceCheck.originalUnitPrice
-            ? (dto.discountReason ?? null)
-            : null,
+          originalUnitPrice: resolvedOriginal,
+          discountReason: resolvedReason,
           clientName: dto.clientName?.trim() || null,
           clientPhone: dto.clientPhone?.trim() || null,
           receiptId: dto.receiptId?.trim() || null,

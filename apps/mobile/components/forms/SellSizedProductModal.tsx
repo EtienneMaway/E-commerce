@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, ScrollView, View, Text, Pressable, TextInput, Alert } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ProductSummary, ProductVariantSummary } from '@trading-app/types';
-import { salesApi } from '../../lib/api';
+import { salesApi, quantityDiscountsApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import {
+  resolveQuantityDiscountPercent,
+  quantityTierFor,
+  clampPercent,
+  type QuantityTier,
+} from '../../lib/quantity-discount';
 import { useExchangeRate, formatMoney } from '../../lib/currency';
 import { generateReceiptId } from '../../lib/receipt';
 import { getErrorMessage, isPriceGuardWarning, getPriceGuardWarning } from '../../lib/utils';
@@ -43,6 +49,17 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
   // Carton selling price (FC) the mini charges — editable so they can profit.
   const [cartonPriceFc, setCartonPriceFc] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Quantity ("group of prices") discount — by-size sales only (carton sales
+  // already carry the discounted carton price, so it doesn't stack there).
+  const [applyDiscount, setApplyDiscount] = useState(false);
+  const [discountPctOverride, setDiscountPctOverride] = useState('');
+
+  const { data: qdConfig } = useQuery({
+    queryKey: QK.quantityDiscounts,
+    queryFn: quantityDiscountsApi.get,
+    staleTime: 5 * 60_000,
+    enabled: visible,
+  });
 
   // Reset each time a different product opens; default to whichever mode is sellable.
   useEffect(() => {
@@ -51,6 +68,8 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
     setQty(1);
     setSelectedVariantId(variants.find((v) => v.available > 0)?.variantId ?? null);
     setSubmitting(false);
+    setApplyDiscount(false);
+    setDiscountPctOverride('');
     // Default the carton price to the dashboard's carton selling price (or the
     // combined size prices if none), in FC at the locked rate. Editable below.
     const gRate =
@@ -77,13 +96,39 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
   const cartonPriceFcNum = parseFloat(cartonPriceFc) || 0;
   const effectiveCartonUsd = cartonPriceFcNum / (parseFloat(groupRate) || 1);
 
+  // Size-mode quantity discount. Carton sales never stack it (they already use
+  // the discounted carton price), so this is computed for `size` mode only.
+  const sizeAutoPct = resolveQuantityDiscountPercent(
+    clampedQty,
+    selected?.piecesPerCarton,
+    qdConfig,
+  );
+  const sizeDiscountPct =
+    mode === 'size' && applyDiscount
+      ? discountPctOverride.trim() !== ''
+        ? clampPercent(parseFloat(discountPctOverride))
+        : sizeAutoPct
+      : 0;
+  const sizeTier: QuantityTier | null = quantityTierFor(
+    clampedQty,
+    selected?.piecesPerCarton,
+    qdConfig,
+  );
+  const sizeBaseUsd = selected ? parseFloat(selected.sellingPrice) : 0;
+  const sizeUnitUsd = sizeDiscountPct > 0 ? sizeBaseUsd * (1 - sizeDiscountPct / 100) : sizeBaseUsd;
+
   const lineTotalUsd =
-    mode === 'carton'
-      ? effectiveCartonUsd * clampedQty
-      : selected
-        ? parseFloat(selected.sellingPrice) * clampedQty
-        : 0;
+    mode === 'carton' ? effectiveCartonUsd * clampedQty : sizeUnitUsd * clampedQty;
   const lineRate = mode === 'carton' ? groupRate : selected ? rateFor(selected) : groupRate;
+
+  const tierName = (tier: QuantityTier | null): string =>
+    tier === 'carton'
+      ? t.recordSaleModal.qdTierCarton
+      : tier === 'dozen'
+        ? t.recordSaleModal.qdTierDozen
+        : tier === 'half_dozen'
+          ? t.recordSaleModal.qdTierHalfDozen
+          : '';
 
   async function submit(confirmedOverride = false) {
     if (!group) return;
@@ -103,14 +148,24 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
         });
       } else {
         if (!selected) return;
-        const priceUsd = parseFloat(selected.sellingPrice);
         const r = parseFloat(rateFor(selected)) || 1;
+        // sizeUnitUsd is the discounted per-piece price when a quantity discount
+        // applies; sizeBaseUsd is the pre-discount standard, stored for history.
+        const unitUsd = sizeUnitUsd;
+        const reason =
+          sizeDiscountPct > 0
+            ? sizeTier
+              ? `${t.recordSaleModal.qdReasonPrefix}: ${tierName(sizeTier)} (${sizeDiscountPct}%)`
+              : `${t.recordSaleModal.qdReasonPrefix} (${sizeDiscountPct}%)`
+            : undefined;
         await salesApi.record({
           productName: group.productName,
           variantId: selected.variantId,
           qtySold: clampedQty,
-          salePrice: priceUsd.toFixed(4),
-          ...(isMini ? { salePriceFc: Math.round(priceUsd * r).toFixed(4) } : {}),
+          salePrice: unitUsd.toFixed(4),
+          ...(isMini ? { salePriceFc: Math.round(unitUsd * r).toFixed(4) } : {}),
+          ...(sizeDiscountPct > 0 ? { originalUnitPrice: sizeBaseUsd.toFixed(4) } : {}),
+          ...(reason ? { discountReason: reason } : {}),
           receiptId,
           ...(confirmedOverride ? { confirmedOverride: true } : {}),
         });
@@ -277,6 +332,62 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
                 <Text className="text-text dark:text-slate-100 text-xl">+</Text>
               </Pressable>
             </View>
+          </View>
+        )}
+
+        {/* Quantity discount — by-size sales only */}
+        {canSubmit && mode === 'size' && qdConfig?.enabled && (
+          <View className="rounded-xl border border-border dark:border-slate-700 px-4 py-3 mb-4">
+            <Pressable
+              onPress={() => setApplyDiscount((v) => !v)}
+              className="flex-row items-center justify-between"
+            >
+              <Text className="text-text dark:text-slate-100 text-sm font-medium flex-1 mr-2">
+                {t.recordSaleModal.qdToggle}
+              </Text>
+              <View
+                className={`w-11 h-6 rounded-full px-0.5 justify-center ${
+                  applyDiscount ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
+                }`}
+              >
+                <View
+                  className={`w-5 h-5 rounded-full bg-white ${applyDiscount ? 'self-end' : 'self-start'}`}
+                />
+              </View>
+            </Pressable>
+
+            {applyDiscount &&
+              (sizeAutoPct <= 0 && !discountPctOverride.trim() ? (
+                <Text className="text-muted dark:text-slate-500 text-[11px] mt-2">
+                  {t.recordSaleModal.qdNotQualified}
+                </Text>
+              ) : (
+                <View className="mt-2">
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-muted dark:text-slate-400 text-xs flex-1">
+                      {sizeTier
+                        ? t.recordSaleModal.qdTierApplied(tierName(sizeTier))
+                        : t.recordSaleModal.qdCustom}
+                    </Text>
+                    <TextInput
+                      value={discountPctOverride}
+                      onChangeText={(v) => setDiscountPctOverride(v.replace(/[^0-9.]/g, ''))}
+                      keyboardType="decimal-pad"
+                      placeholder={String(sizeAutoPct)}
+                      placeholderTextColor="#94A3B8"
+                      selectTextOnFocus
+                      className="text-text dark:text-slate-100 font-semibold text-base w-14 text-center border-b border-border dark:border-slate-700"
+                    />
+                    <Text className="text-muted dark:text-slate-500 text-sm">%</Text>
+                  </View>
+                  <Text className="text-success text-[11px] mt-1.5">
+                    {t.recordSaleModal.qdPreview(
+                      sizeDiscountPct,
+                      formatMoney(sizeUnitUsd.toString(), lineRate),
+                    )}
+                  </Text>
+                </View>
+              ))}
           </View>
         )}
 

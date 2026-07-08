@@ -38,6 +38,7 @@ export const QK = {
   salarySummary: (employmentId: string, periodMonth?: string) =>
     ['salary-payments', 'summary', employmentId, periodMonth ?? 'current'] as const,
   pricing: ['pricing'] as const,
+  quantityDiscounts: ['quantity-discounts'] as const,
   activityLogs: (filters?: object) => ['activity-logs', filters] as const,
   miniSettlementsIncoming: ['mini-settlements', 'incoming'] as const,
   miniActivity: (miniUserId: string, filters?: object) =>

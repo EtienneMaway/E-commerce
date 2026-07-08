@@ -11,6 +11,7 @@ export const QK = {
   alerts: ['dashboard', 'alerts'] as const,
   userSearch: (q: string) => ['users', 'search', q] as const,
   exchangeRate: ['currency', 'rate'] as const,
+  quantityDiscounts: ['quantity-discounts'] as const,
   salaryPaymentsPending: ['salary-payments', 'pending'] as const,
   salaryHistory: ['salary-payments', 'history'] as const,
   salarySummary: (employmentId: string, periodMonth: string) =>

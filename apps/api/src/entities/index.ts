@@ -26,3 +26,4 @@ export { MiniSettlementItem } from './mini-settlement-item.entity';
 export { MiniExpense } from './mini-expense.entity';
 export { ProductGroup } from './product-group.entity';
 export { ProductVariant } from './product-variant.entity';
+export { QuantityDiscount } from './quantity-discount.entity';

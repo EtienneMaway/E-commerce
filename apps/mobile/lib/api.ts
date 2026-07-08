@@ -402,6 +402,9 @@ export const salesApi = {
       cartonQty?: number;
       confirmedOverride?: boolean;
       discountReason?: string;
+      /** Pre-discount unit price (USD) to store on the row — sent when a
+       *  quantity ("group of prices") discount was applied. */
+      originalUnitPrice?: string;
       clientName?: string;
       clientPhone?: string;
       receiptId?: string;
@@ -457,6 +460,21 @@ export const currencyApi = {
             updatedAt: string;
           },
       ),
+};
+
+// ─── Quantity discounts ("group of prices") ──────────────────────────────────
+
+export interface QuantityDiscountConfig {
+  enabled: boolean;
+  halfDozenPercent: string;
+  dozenPercent: string;
+  cartonPercent: string;
+  updatedAt: string | null;
+}
+
+export const quantityDiscountsApi = {
+  get: (): Promise<QuantityDiscountConfig> =>
+    api.get('/quantity-discounts').then((r) => r.data),
 };
 
 // ─── Salary Payments ───────────────────────────────────────────────────────

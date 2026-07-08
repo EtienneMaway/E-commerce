@@ -254,3 +254,91 @@ describe('SalesService.recordSale — whole-carton sale', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('SalesService.recordSale — quantity discount capture (single sale)', () => {
+  function build(lot: Partial<InventoryEntry> & { source: InventorySource }) {
+    const savedSales: SaleTransaction[] = [];
+    const manager = {
+      save: jest.fn(async (Entity: unknown, obj: Record<string, unknown>) => {
+        if (Entity === SaleTransaction) {
+          if (!obj.id) obj.id = `sale-${savedSales.length + 1}`;
+          savedSales.push(obj as unknown as SaleTransaction);
+        }
+        return obj;
+      }),
+      create: jest.fn((_E: unknown, obj: Record<string, unknown>) => ({ ...obj })),
+    };
+    const entryRepo = {
+      find: jest.fn(async (o: { where: { source: InventorySource } }) =>
+        o.where.source === lot.source ? [lot] : [],
+      ),
+    };
+    const saleRepo = { findOne: jest.fn(async () => null) };
+    const dataSource = {
+      transaction: jest.fn(async (cb: (m: typeof manager) => Promise<unknown>) => cb(manager)),
+    };
+    const stockMovements = { record: jest.fn(async () => ({})) };
+    // Owner passes through the employee rule: it never captures an original.
+    const pricingService = {
+      applyEmployeePriceRule: jest.fn(async (args: { submittedUnitPrice: string }) => ({
+        effectiveUnitPrice: new Decimal(args.submittedUnitPrice).toFixed(4),
+        standardPrice: null,
+        capped: false,
+        originalUnitPrice: null,
+      })),
+    };
+    const service = new SalesService(
+      saleRepo as never,
+      entryRepo as never,
+      { findOne: jest.fn(async () => null) } as never,
+      { findOne: jest.fn(async () => null) } as never,
+      dataSource as never,
+      stockMovements as never,
+      pricingService as never,
+    );
+    return { service, savedSales };
+  }
+
+  it('stores the client-sent originalUnitPrice + reason for an owner discount', async () => {
+    const { service, savedSales } = build({
+      id: 'e1',
+      productName: 'rice',
+      source: InventorySource.PERSONAL,
+      unitCost: '3.0000',
+      quantityRemaining: 50,
+    });
+
+    const result = await service.recordSale(ownerCtx, {
+      productName: 'rice',
+      qtySold: 12,
+      salePrice: '5.0000', // already-discounted price the client computed
+      originalUnitPrice: '6.0000', // pre-discount
+      discountReason: 'Quantity discount: dozen (5%)',
+    } as never);
+
+    expect(savedSales).toHaveLength(1);
+    expect(result.salePrice).toBe('5.0000');
+    expect(result.originalUnitPrice).toBe('6.0000');
+    expect(result.discountReason).toBe('Quantity discount: dozen (5%)');
+    expect(result.profit).toBe('24.0000'); // (5-3)×12
+  });
+
+  it('stores no original/reason when no discount is sent', async () => {
+    const { service, savedSales } = build({
+      id: 'e1',
+      productName: 'rice',
+      source: InventorySource.PERSONAL,
+      unitCost: '3.0000',
+      quantityRemaining: 50,
+    });
+
+    await service.recordSale(ownerCtx, {
+      productName: 'rice',
+      qtySold: 3,
+      salePrice: '6.0000',
+    } as never);
+
+    expect(savedSales[0].originalUnitPrice).toBeNull();
+    expect(savedSales[0].discountReason).toBeNull();
+  });
+});

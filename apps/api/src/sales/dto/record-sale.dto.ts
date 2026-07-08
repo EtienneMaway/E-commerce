@@ -103,6 +103,19 @@ export class RecordSaleDto {
   discountReason?: string;
 
   @ApiPropertyOptional({
+    example: '32.00',
+    description:
+      'Pre-discount unit price to record on the sale for the receipt/history. ' +
+      'Sent when the client applied a quantity ("group of prices") discount so ' +
+      'the original price is preserved even for owner sales (which the employee ' +
+      'pricing rule does not capture). Ignored when the employee pricing rule ' +
+      'already captured an original price.',
+  })
+  @IsDecimal({ decimal_digits: '1,4' })
+  @IsOptional()
+  originalUnitPrice?: string;
+
+  @ApiPropertyOptional({
     example: 'Jean Mukendi',
     description:
       'Optional buyer name. Surfaced on the sales tab so the merchant can find a past order later.',

@@ -855,6 +855,28 @@ export const pricingApi = {
   delete: (id: string): Promise<void> => api.delete(`/pricing/${id}`),
 };
 
+// ─── Quantity discounts ("group of prices") ────────────────────────────────────
+
+export interface QuantityDiscountConfig {
+  enabled: boolean;
+  halfDozenPercent: string;
+  dozenPercent: string;
+  cartonPercent: string;
+  updatedAt: string | null;
+}
+
+export const quantityDiscountsApi = {
+  get: (): Promise<QuantityDiscountConfig> =>
+    api.get('/quantity-discounts').then((r) => r.data),
+  update: (body: {
+    enabled: boolean;
+    halfDozenPercent: number;
+    dozenPercent: number;
+    cartonPercent: number;
+  }): Promise<QuantityDiscountConfig> =>
+    api.put('/quantity-discounts', body).then((r) => r.data),
+};
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export interface DashboardProfitSummary {
