@@ -1340,7 +1340,7 @@ const fr: Translations = {
     receiptPrintBtn: 'Imprimer',
     receiptShareBtn: 'Partager PDF',
     receiptSkipBtn: 'Ignorer',
-    qdToggle: 'Appliquer la remise sur quantité',
+    qdToggle: 'Appliquer la quantité discount',
     qdNotQualified: 'Ajoutez des pièces pour atteindre un palier de remise (à partir de 6).',
     qdCustom: 'Remise personnalisée',
     qdTierApplied: (tier: string) => `Remise ${tier}`,

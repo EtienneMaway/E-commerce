@@ -96,29 +96,43 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
   const cartonPriceFcNum = parseFloat(cartonPriceFc) || 0;
   const effectiveCartonUsd = cartonPriceFcNum / (parseFloat(groupRate) || 1);
 
-  // Size-mode quantity discount. Carton sales never stack it (they already use
-  // the discounted carton price), so this is computed for `size` mode only.
-  const sizeAutoPct = resolveQuantityDiscountPercent(
-    clampedQty,
-    selected?.piecesPerCarton,
+  // Quantity ("group of prices") discount — CARTON mode only. Individual sizes
+  // are single products, so a by-size sale never gets a quantity discount; the
+  // discount applies to whole-carton purchases. The tier is resolved from the
+  // total pieces in the carton sale (cartonQty × pieces-across-all-sizes), so a
+  // whole carton naturally lands on the carton tier.
+  const piecesPerCartonTotal = variants
+    .filter((v) => v.piecesPerCarton > 0)
+    .reduce((s, v) => s + v.piecesPerCarton, 0);
+  const cartonTotalPieces = clampedQty * piecesPerCartonTotal;
+  const cartonAutoPct = resolveQuantityDiscountPercent(
+    cartonTotalPieces,
+    piecesPerCartonTotal,
     qdConfig,
   );
-  const sizeDiscountPct =
-    mode === 'size' && applyDiscount
+  const cartonDiscountPct =
+    mode === 'carton' && applyDiscount
       ? discountPctOverride.trim() !== ''
         ? clampPercent(parseFloat(discountPctOverride))
-        : sizeAutoPct
+        : cartonAutoPct
       : 0;
-  const sizeTier: QuantityTier | null = quantityTierFor(
-    clampedQty,
-    selected?.piecesPerCarton,
+  const cartonTier: QuantityTier | null = quantityTierFor(
+    cartonTotalPieces,
+    piecesPerCartonTotal,
     qdConfig,
   );
-  const sizeBaseUsd = selected ? parseFloat(selected.sellingPrice) : 0;
-  const sizeUnitUsd = sizeDiscountPct > 0 ? sizeBaseUsd * (1 - sizeDiscountPct / 100) : sizeBaseUsd;
+  // Discount applies on top of the (editable) carton price.
+  const discountedCartonUsd =
+    cartonDiscountPct > 0 ? effectiveCartonUsd * (1 - cartonDiscountPct / 100) : effectiveCartonUsd;
+  const discountedCartonFcNum =
+    cartonDiscountPct > 0 ? Math.round(cartonPriceFcNum * (1 - cartonDiscountPct / 100)) : cartonPriceFcNum;
 
   const lineTotalUsd =
-    mode === 'carton' ? effectiveCartonUsd * clampedQty : sizeUnitUsd * clampedQty;
+    mode === 'carton'
+      ? discountedCartonUsd * clampedQty
+      : selected
+        ? parseFloat(selected.sellingPrice) * clampedQty
+        : 0;
   const lineRate = mode === 'carton' ? groupRate : selected ? rateFor(selected) : groupRate;
 
   const tierName = (tier: QuantityTier | null): string =>
@@ -136,36 +150,38 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
     setSubmitting(true);
     try {
       if (mode === 'carton') {
+        // Apply any quantity discount to the (editable) carton price. The
+        // pre-discount carton price + reason ride along so history records them.
+        const reason =
+          cartonDiscountPct > 0
+            ? cartonTier
+              ? `${t.recordSaleModal.qdReasonPrefix}: ${tierName(cartonTier)} (${cartonDiscountPct}%)`
+              : `${t.recordSaleModal.qdReasonPrefix} (${cartonDiscountPct}%)`
+            : undefined;
         await salesApi.record({
           productName: group.productName,
           carton: true,
           groupId: group.groupId,
           cartonQty: clampedQty,
-          salePrice: effectiveCartonUsd.toFixed(4),
-          ...(isMini ? { salePriceFc: cartonPriceFcNum.toFixed(4) } : {}),
+          salePrice: discountedCartonUsd.toFixed(4),
+          ...(isMini ? { salePriceFc: discountedCartonFcNum.toFixed(4) } : {}),
+          ...(cartonDiscountPct > 0 ? { originalUnitPrice: effectiveCartonUsd.toFixed(4) } : {}),
+          ...(reason ? { discountReason: reason } : {}),
           receiptId,
           ...(confirmedOverride ? { confirmedOverride: true } : {}),
         });
       } else {
+        // By-size sale: an individual size is a single product — no quantity
+        // discount applies here (it's a carton-level bulk incentive).
         if (!selected) return;
+        const priceUsd = parseFloat(selected.sellingPrice);
         const r = parseFloat(rateFor(selected)) || 1;
-        // sizeUnitUsd is the discounted per-piece price when a quantity discount
-        // applies; sizeBaseUsd is the pre-discount standard, stored for history.
-        const unitUsd = sizeUnitUsd;
-        const reason =
-          sizeDiscountPct > 0
-            ? sizeTier
-              ? `${t.recordSaleModal.qdReasonPrefix}: ${tierName(sizeTier)} (${sizeDiscountPct}%)`
-              : `${t.recordSaleModal.qdReasonPrefix} (${sizeDiscountPct}%)`
-            : undefined;
         await salesApi.record({
           productName: group.productName,
           variantId: selected.variantId,
           qtySold: clampedQty,
-          salePrice: unitUsd.toFixed(4),
-          ...(isMini ? { salePriceFc: Math.round(unitUsd * r).toFixed(4) } : {}),
-          ...(sizeDiscountPct > 0 ? { originalUnitPrice: sizeBaseUsd.toFixed(4) } : {}),
-          ...(reason ? { discountReason: reason } : {}),
+          salePrice: priceUsd.toFixed(4),
+          ...(isMini ? { salePriceFc: Math.round(priceUsd * r).toFixed(4) } : {}),
           receiptId,
           ...(confirmedOverride ? { confirmedOverride: true } : {}),
         });
@@ -335,8 +351,8 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
           </View>
         )}
 
-        {/* Quantity discount — by-size sales only */}
-        {canSubmit && mode === 'size' && qdConfig?.enabled && (
+        {/* Quantity discount — whole-carton sales only (sizes are single products) */}
+        {canSubmit && mode === 'carton' && qdConfig?.enabled && (
           <View className="rounded-xl border border-border dark:border-slate-700 px-4 py-3 mb-4">
             <Pressable
               onPress={() => setApplyDiscount((v) => !v)}
@@ -357,7 +373,7 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
             </Pressable>
 
             {applyDiscount &&
-              (sizeAutoPct <= 0 && !discountPctOverride.trim() ? (
+              (cartonAutoPct <= 0 && !discountPctOverride.trim() ? (
                 <Text className="text-muted dark:text-slate-500 text-[11px] mt-2">
                   {t.recordSaleModal.qdNotQualified}
                 </Text>
@@ -365,15 +381,15 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
                 <View className="mt-2">
                   <View className="flex-row items-center gap-2">
                     <Text className="text-muted dark:text-slate-400 text-xs flex-1">
-                      {sizeTier
-                        ? t.recordSaleModal.qdTierApplied(tierName(sizeTier))
+                      {cartonTier
+                        ? t.recordSaleModal.qdTierApplied(tierName(cartonTier))
                         : t.recordSaleModal.qdCustom}
                     </Text>
                     <TextInput
                       value={discountPctOverride}
                       onChangeText={(v) => setDiscountPctOverride(v.replace(/[^0-9.]/g, ''))}
                       keyboardType="decimal-pad"
-                      placeholder={String(sizeAutoPct)}
+                      placeholder={String(cartonAutoPct)}
                       placeholderTextColor="#94A3B8"
                       selectTextOnFocus
                       className="text-text dark:text-slate-100 font-semibold text-base w-14 text-center border-b border-border dark:border-slate-700"
@@ -381,10 +397,8 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
                     <Text className="text-muted dark:text-slate-500 text-sm">%</Text>
                   </View>
                   <Text className="text-success text-[11px] mt-1.5">
-                    {t.recordSaleModal.qdPreview(
-                      sizeDiscountPct,
-                      formatMoney(sizeUnitUsd.toString(), lineRate),
-                    )}
+                    −{cartonDiscountPct}% → {formatMoney(discountedCartonUsd.toString(), groupRate)}{' '}
+                    {t.sizedSale.perCarton}
                   </Text>
                 </View>
               ))}
