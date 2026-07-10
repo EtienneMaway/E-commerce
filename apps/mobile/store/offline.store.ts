@@ -32,6 +32,11 @@ export interface PendingSale {
   // Shared across every PendingSale that came out of one cart submission so
   // the server can group them into a single reprintable receipt.
   receiptId?: string;
+  // Quantity ("group of prices") discount metadata, when one was applied. The
+  // `salePrice` above is already the discounted per-unit USD; these preserve
+  // the pre-discount price + reason so the replayed sale records identically.
+  originalUnitPrice?: string;
+  discountReason?: string;
 }
 
 export interface PendingExpense {
@@ -80,7 +85,13 @@ interface OfflineState {
     productName: string,
     qtySold: number,
     salePrice: string,
-    extras?: { receiptId?: string; clientName?: string; clientPhone?: string },
+    extras?: {
+      receiptId?: string;
+      clientName?: string;
+      clientPhone?: string;
+      originalUnitPrice?: string;
+      discountReason?: string;
+    },
   ) => void;
   /** Patch buyer info onto every pending sale that shares the given receiptId. */
   attachOfflineClient: (receiptId: string, clientName?: string, clientPhone?: string) => void;
@@ -143,6 +154,8 @@ export const useOfflineStore = create<OfflineState>()(
               receiptId: extras?.receiptId,
               clientName: extras?.clientName,
               clientPhone: extras?.clientPhone,
+              originalUnitPrice: extras?.originalUnitPrice,
+              discountReason: extras?.discountReason,
             },
           ],
           cachedProducts: s.cachedProducts.map((p) =>

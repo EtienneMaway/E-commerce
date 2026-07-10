@@ -92,6 +92,10 @@ export async function syncPendingSales(): Promise<SyncResult> {
       clientPhone: sale.clientPhone,
       receiptId: sale.receiptId,
       clientSaleId: sale.id,
+      // Preserve any quantity-discount metadata so the replayed sale records
+      // the pre-discount price + reason exactly as the offline sale intended.
+      ...(sale.originalUnitPrice ? { originalUnitPrice: sale.originalUnitPrice } : {}),
+      ...(sale.discountReason ? { discountReason: sale.discountReason } : {}),
     };
 
     let lastError: unknown = null;

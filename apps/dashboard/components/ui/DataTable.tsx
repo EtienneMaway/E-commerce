@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { Pagination } from './Pagination';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface Column<T = any> {
@@ -18,14 +19,17 @@ interface Props<T> {
   keyField: keyof T;
   searchPlaceholder?: string;
   searchFields?: (keyof T)[];
+  /** When set, paginate client-side with this many rows per page. */
+  pageSize?: number;
 }
 
 export function DataTable<T extends object>({
-  columns, data, keyField, searchPlaceholder = 'Search...', searchFields = [],
+  columns, data, keyField, searchPlaceholder = 'Search...', searchFields = [], pageSize,
 }: Props<T>) {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return data;
@@ -54,6 +58,12 @@ export function DataTable<T extends object>({
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortDir('asc'); }
   };
+
+  // Pagination — reset to page 1 on a new search, and clamp if rows shrink.
+  const totalPages = pageSize ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1;
+  useEffect(() => { setPage(1); }, [search]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+  const visible = pageSize ? sorted.slice((page - 1) * pageSize, page * pageSize) : sorted;
 
   return (
     <div className="anim-fade-up">
@@ -119,7 +129,7 @@ export function DataTable<T extends object>({
                 </td>
               </tr>
             ) : (
-              sorted.map((row, i) => (
+              visible.map((row, i) => (
                 <tr
                   key={String((row as Record<string, unknown>)[keyField as string])}
                   className="data-table-row"
@@ -136,6 +146,15 @@ export function DataTable<T extends object>({
           </tbody>
         </table>
       </div>
+      {pageSize && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={sorted.length}
+          pageSize={pageSize}
+          onChange={setPage}
+        />
+      )}
       {sorted.length > 0 && (
         <p className="text-xs mt-2 font-medium" style={{ color: 'var(--muted)' }}>
           {sorted.length} row{sorted.length !== 1 ? 's' : ''}

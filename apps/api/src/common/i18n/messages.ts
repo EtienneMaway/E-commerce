@@ -173,6 +173,79 @@ export const FR_TRANSLATIONS: Translation[] = [
     fr: () => 'Aucune relation débiteur trouvée',
   },
 
+  // ─── Sized products (carton with variants) ───────────────────────────────
+  {
+    pattern: /^Size not found$/,
+    fr: () => 'Taille introuvable',
+  },
+  {
+    pattern: /^Product group not found$/,
+    fr: () => 'Groupe de produits introuvable',
+  },
+  {
+    pattern: /^A product group named "(.+)" already exists$/,
+    fr: (m) => `Un groupe de produits nommé "${m[1]}" existe déjà`,
+  },
+  {
+    pattern: /^A simple product named "(.+)" already exists\. Choose a different name\.$/,
+    fr: (m) => `Un produit simple nommé "${m[1]}" existe déjà. Choisissez un autre nom.`,
+  },
+  {
+    pattern: /^A sized product named "(.+)" already exists\. Add stock from the sized-product form instead\.$/,
+    fr: (m) =>
+      `Un produit à tailles nommé "${m[1]}" existe déjà. Ajoutez le stock depuis le formulaire de produit à tailles.`,
+  },
+  {
+    pattern: /^Size "(.+)" already exists in this group$/,
+    fr: (m) => `La taille "${m[1]}" existe déjà dans ce groupe`,
+  },
+  {
+    pattern: /^Duplicate size labels in the group$/,
+    fr: () => 'Étiquettes de taille en double dans le groupe',
+  },
+  {
+    pattern: /^Cannot remove a size that still has (\d+) pieces in stock/,
+    fr: (m) =>
+      `Impossible de retirer une taille qui a encore ${m[1]} pièces en stock. Vendez-la ou ajustez-la à zéro d'abord.`,
+  },
+  {
+    pattern: /^Whole-carton selling is not enabled for this product$/,
+    fr: () => "La vente au carton complet n'est pas activée pour ce produit",
+  },
+  {
+    pattern: /^This product has no carton composition$/,
+    fr: () => "Ce produit n'a pas de composition de carton",
+  },
+  {
+    pattern: /^groupId is required for a carton sale$/,
+    fr: () => 'groupId est requis pour une vente au carton',
+  },
+  {
+    pattern: /^qtySold is required for a non-carton sale$/,
+    fr: () => 'qtySold est requis pour une vente hors carton',
+  },
+  {
+    pattern: /^Insufficient stock for size "(.+)"\. Need (\d+), have (\d+)\.$/,
+    fr: (m) => `Stock insuffisant pour la taille "${m[1]}". Besoin de ${m[2]}, disponible ${m[3]}.`,
+  },
+  {
+    pattern: /^Cannot allocate carton price/,
+    fr: () => "Impossible de répartir le prix du carton — les tailles n'ont pas de prix de vente",
+  },
+  {
+    pattern: /^Carton selling price must be higher than the carton buying price$/,
+    fr: () => 'Le prix de vente du carton doit être supérieur au prix d’achat du carton',
+  },
+  {
+    pattern: /^Group rename is not supported while there is active consigned/,
+    fr: () =>
+      'Le renommage du groupe est impossible tant que du stock consigné actif existe. Réglez ces consignations d’abord.',
+  },
+  {
+    pattern: /^Another product already uses the name "(.+)"/,
+    fr: (m) => `Un autre produit utilise déjà le nom "${m[1]}". Choisissez un autre nom.`,
+  },
+
   // ─── Validation (class-validator) ────────────────────────────────────────
   {
     pattern: /^Forbidden resource$/i,

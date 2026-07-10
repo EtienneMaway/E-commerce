@@ -75,27 +75,87 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
                 {t.miniEmployee.receiveFrom} @{c.supplier?.username ?? '—'}
               </Text>
               {c.note ? <Text className="text-muted dark:text-slate-500 text-xs mt-0.5 italic">{c.note}</Text> : null}
-              <View className="mt-2 gap-1">
-                {c.items.map((it) => {
-                  const ppc = it.piecesPerCarton ?? null;
-                  const bd = breakdownQuantity(it.quantity, ppc);
-                  // Show the carton price (unit price × pieces/carton) when carton
-                  // info exists; otherwise the per-piece price. FC at system rate.
-                  const priceValue = ppc
-                    ? (parseFloat(it.agreedUnitPrice) * ppc).toFixed(4)
-                    : it.agreedUnitPrice;
-                  const priceSuffix = ppc ? t.miniEmployee.perCarton : t.miniEmployee.perPiece;
+              <View className="mt-2 gap-2">
+                {(() => {
+                  // Composite (sized) items share a groupId — show them as ONE
+                  // product with a carton count + per-size composition, instead
+                  // of "N cartons" on every size. Simple items render as before.
+                  const composite = new Map<string, typeof c.items>();
+                  const simpleItems: typeof c.items = [];
+                  for (const it of c.items) {
+                    if (it.groupId) {
+                      const arr = composite.get(it.groupId) ?? [];
+                      arr.push(it);
+                      composite.set(it.groupId, arr);
+                    } else {
+                      simpleItems.push(it);
+                    }
+                  }
+
                   return (
-                    <View key={it.id} className="flex-row justify-between">
-                      <Text className="text-text dark:text-slate-200 text-sm capitalize">
-                        {formatBreakdown(bd)} · {it.productName}
-                      </Text>
-                      <Text className="text-muted dark:text-slate-400 text-sm">
-                        {formatCurrency(priceValue)} {priceSuffix}
-                      </Text>
-                    </View>
+                    <>
+                      {[...composite.entries()].map(([gid, items]) => {
+                        const name = items[0].productName;
+                        const cartons = Math.min(
+                          ...items.map((i) => Math.floor(i.quantity / (i.piecesPerCarton || 1))),
+                        );
+                        const owed = items.reduce(
+                          (s, i) => s + parseFloat(i.agreedUnitPrice) * i.quantity,
+                          0,
+                        );
+                        return (
+                          <View key={gid} className="border-t border-border dark:border-slate-700 pt-2">
+                            <View className="flex-row justify-between items-center">
+                              <Text className="text-text dark:text-slate-100 font-semibold capitalize">
+                                {name}
+                              </Text>
+                              <Text className="text-xs rounded px-2 py-0.5 bg-surface dark:bg-slate-900 text-text dark:text-slate-200">
+                                {t.sizedSale.cartonCount(cartons)}
+                              </Text>
+                            </View>
+                            {items.map((it) => (
+                              <View key={it.id} className="flex-row justify-between mt-0.5">
+                                <Text className="text-muted dark:text-slate-400 text-sm capitalize">
+                                  {it.variantLabel ?? '—'}
+                                </Text>
+                                <Text className="text-muted dark:text-slate-500 text-xs">
+                                  {t.sizedSale.perCartonPieces(it.piecesPerCarton || 1)} · {it.quantity} pcs
+                                </Text>
+                              </View>
+                            ))}
+                            <View className="flex-row justify-between mt-1">
+                              <Text className="text-muted dark:text-slate-500 text-xs">
+                                {t.sizedSale.owed}
+                              </Text>
+                              <Text className="text-text dark:text-slate-100 text-sm font-medium">
+                                {formatCurrency(owed.toString())}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+
+                      {simpleItems.map((it) => {
+                        const ppc = it.piecesPerCarton ?? null;
+                        const bd = breakdownQuantity(it.quantity, ppc);
+                        const priceValue = ppc
+                          ? (parseFloat(it.agreedUnitPrice) * ppc).toFixed(4)
+                          : it.agreedUnitPrice;
+                        const priceSuffix = ppc ? t.miniEmployee.perCarton : t.miniEmployee.perPiece;
+                        return (
+                          <View key={it.id} className="flex-row justify-between">
+                            <Text className="text-text dark:text-slate-200 text-sm capitalize">
+                              {formatBreakdown(bd)} · {it.productName}
+                            </Text>
+                            <Text className="text-muted dark:text-slate-400 text-sm">
+                              {formatCurrency(priceValue)} {priceSuffix}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </>
                   );
-                })}
+                })()}
               </View>
               <View className="flex-row gap-2 mt-3">
                 <TouchableOpacity

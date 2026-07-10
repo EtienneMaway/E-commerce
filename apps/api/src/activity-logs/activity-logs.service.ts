@@ -115,9 +115,9 @@ export class ActivityLogsService {
       type: ActivityLogType.SALE,
       timestamp: s.date.toISOString(),
       actor: s.actor ? { id: s.actor.id, username: s.actor.username } : null,
-      summary: `Sold ${s.qtySold}× ${cap(s.productName)} @ ${s.salePrice}${
-        s.isLoss ? ' (loss)' : ''
-      }`,
+      summary: `Sold ${s.qtySold}× ${cap(s.productName)}${
+        s.variantLabel ? ` (${s.variantLabel})` : ''
+      } @ ${s.salePrice}${s.isLoss ? ' (loss)' : ''}`,
       amount: String(Number(s.salePrice) * s.qtySold),
       productName: s.productName,
       resourceId: s.id,

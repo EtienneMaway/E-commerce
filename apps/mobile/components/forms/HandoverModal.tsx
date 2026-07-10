@@ -51,7 +51,13 @@ export function HandoverModal({ visible, onClose }: Props) {
           ? { cashAmount: cashForSoldUsd.toFixed(4), cashAmountFc: cashForSoldFc.toFixed(4) }
           : {}),
         ...(returns.length > 0
-          ? { returns: returns.map((l) => ({ productName: l.productName, quantity: l.quantity })) }
+          ? {
+              returns: returns.map((l) => ({
+                productName: l.productName,
+                quantity: l.quantity,
+                ...(l.variantId ? { variantId: l.variantId } : {}),
+              })),
+            }
           : {}),
       }),
     onSuccess: () => {
@@ -96,11 +102,14 @@ export function HandoverModal({ visible, onClose }: Props) {
             ) : (
               sold.map((s) => (
                 <View
-                  key={s.productName}
+                  key={s.variantId ?? s.productName}
                   className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 mb-2"
                 >
                   <View className="flex-row justify-between items-center">
-                    <Text className="text-text dark:text-slate-100 font-semibold capitalize">{s.productName}</Text>
+                    <Text className="text-text dark:text-slate-100 font-semibold capitalize">
+                      {s.productName}
+                      {s.variantLabel ? ` · ${s.variantLabel}` : ''}
+                    </Text>
                     <Text className="text-muted dark:text-slate-400 text-xs">
                       {formatBreakdown(breakdownQuantity(s.qtySold, s.piecesPerCarton))}
                     </Text>
@@ -175,10 +184,13 @@ export function HandoverModal({ visible, onClose }: Props) {
             ) : (
               returns.map((l) => (
                 <View
-                  key={l.productName}
+                  key={l.variantId ?? l.productName}
                   className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-2.5 mb-2 flex-row justify-between"
                 >
-                  <Text className="text-text dark:text-slate-200 text-sm capitalize">{l.productName}</Text>
+                  <Text className="text-text dark:text-slate-200 text-sm capitalize">
+                    {l.productName}
+                    {l.variantLabel ? ` · ${l.variantLabel}` : ''}
+                  </Text>
                   <Text className="text-muted dark:text-slate-400 text-sm">
                     {formatBreakdown(breakdownQuantity(l.quantity, l.piecesPerCarton))}
                   </Text>

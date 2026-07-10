@@ -13,8 +13,14 @@ import {
   Platform,
 } from 'react-native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { salesApi, inventoryApi, type ProductSummary } from '../../lib/api';
+import { salesApi, inventoryApi, quantityDiscountsApi, type ProductSummary } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import {
+  resolveQuantityDiscountPercent,
+  quantityTierFor,
+  clampPercent,
+  type QuantityTier,
+} from '../../lib/quantity-discount';
 import { Button } from '../ui/Button';
 import {
   getErrorMessage,
@@ -65,10 +71,15 @@ interface CartItem {
   extraPieces: string;
   showExtraPieces: boolean;
   // Pricing — FC
-  unitPriceFc: string;       // per piece, in FC
+  unitPriceFc: string;       // per piece, in FC (pre-discount)
   cartonPriceFc: string;     // per carton, FC (bidirectionally bound to unitPriceFc via ppc)
   // Original dashboard-set price, in FC, for the "set in dashboard" hint.
   dashboardPriceFc: string;
+  // Quantity ("group of prices") discount — off by default. When on, the tier
+  // is auto-picked from the line quantity; `discountPctOverride` (blank = use
+  // the auto tier %) lets the seller tweak it for this sale.
+  applyDiscount: boolean;
+  discountPctOverride: string;
 }
 
 interface PriceGuardPending {
@@ -150,6 +161,15 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     enabled: visible && !isOffline,
   });
 
+  // Shop quantity-discount tiers. Cached long so a config fetched while online
+  // stays available if the modal is reopened offline in the same session.
+  const { data: qdConfig } = useQuery({
+    queryKey: QK.quantityDiscounts,
+    queryFn: quantityDiscountsApi.get,
+    staleTime: 5 * 60_000,
+    enabled: visible && !isOffline,
+  });
+
   const onlineProducts: ProductSummary[] = (productsData ?? []).filter(
     (p) => p.totalAvailable > 0,
   );
@@ -183,9 +203,47 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
   const cartArray = Array.from(cart.values());
 
-  /** Row total in FC. */
+  // ── Quantity discount helpers ──────────────────────────────────────────────
+  /** Auto tier % for the line's current quantity (0 when no tier is reached). */
+  const autoPctFor = (item: CartItem): number =>
+    resolveQuantityDiscountPercent(totalPiecesOf(item), item.piecesPerCarton, qdConfig);
+
+  /** Percentage actually applied: the override if typed, else the auto tier %. */
+  const effectivePctFor = (item: CartItem): number => {
+    if (!qdConfig?.enabled || !item.applyDiscount) return 0;
+    const ov = item.discountPctOverride.trim();
+    return ov !== '' ? clampPercent(parseFloat(ov)) : autoPctFor(item);
+  };
+
+  /** Discounted per-piece FC price (whole FC), or the plain price when no discount. */
+  const effectiveUnitPriceFc = (item: CartItem): number => {
+    const base = parseFloat(item.unitPriceFc) || 0;
+    const pct = effectivePctFor(item);
+    return pct > 0 ? Math.round(base * (1 - pct / 100)) : base;
+  };
+
+  const tierName = (tier: QuantityTier | null): string =>
+    tier === 'carton'
+      ? t.recordSaleModal.qdTierCarton
+      : tier === 'dozen'
+        ? t.recordSaleModal.qdTierDozen
+        : tier === 'half_dozen'
+          ? t.recordSaleModal.qdTierHalfDozen
+          : '';
+
+  /** Free-text discount reason stored on the sale (satisfies the employee rule). */
+  const qdReasonFor = (item: CartItem): string | undefined => {
+    const pct = effectivePctFor(item);
+    if (pct <= 0) return undefined;
+    const tier = quantityTierFor(totalPiecesOf(item), item.piecesPerCarton, qdConfig);
+    const prefix = t.recordSaleModal.qdReasonPrefix;
+    // No tier when the seller manually overrode below the first threshold.
+    return tier ? `${prefix}: ${tierName(tier)} (${pct}%)` : `${prefix} (${pct}%)`;
+  };
+
+  /** Row total in FC (uses the discounted unit price when a discount applies). */
   const computeRowTotal = (item: CartItem): number => {
-    const up = parseFloat(item.unitPriceFc);
+    const up = effectiveUnitPriceFc(item);
     const tp = totalPiecesOf(item);
     if (isNaN(up) || up <= 0 || tp <= 0) return 0;
     return up * tp;
@@ -221,6 +279,8 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         unitPriceFc,
         cartonPriceFc: deriveCartonPrice(unitPriceFc, ppc),
         dashboardPriceFc: unitPriceFc,
+        applyDiscount: false,
+        discountPctOverride: '',
       });
       return next;
     });
@@ -299,7 +359,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
    * Errors that aren't recoverable are alerted inline.
    */
   const submitItems = async (
-    items: { item: CartItem; totalPieces: number; salePrice: string; salePriceFc?: number; confirmedOverride?: boolean; discountReason?: string }[],
+    items: { item: CartItem; totalPieces: number; salePrice: string; salePriceFc?: number; confirmedOverride?: boolean; discountReason?: string; originalUnitPrice?: string }[],
     receiptId: string,
   ): Promise<{
     priceGuard: PriceGuardPending[];
@@ -309,7 +369,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     const priceGuard: PriceGuardPending[] = [];
     const discount: DiscountPending[] = [];
     const saleIds: string[] = [];
-    for (const { item, totalPieces, salePrice, salePriceFc, confirmedOverride, discountReason } of items) {
+    for (const { item, totalPieces, salePrice, salePriceFc, confirmedOverride, discountReason, originalUnitPrice } of items) {
       try {
         const sale = await salesApi.record({
           productName: item.productName,
@@ -321,6 +381,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
           receiptId,
           ...(confirmedOverride ? { confirmedOverride: true } : {}),
           ...(discountReason ? { discountReason } : {}),
+          ...(originalUnitPrice ? { originalUnitPrice } : {}),
         });
         if (sale && typeof sale === 'object' && 'id' in sale && typeof sale.id === 'string') {
           saleIds.push(sale.id);
@@ -503,22 +564,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
    * to a USD string (4dp) for the API while keeping the FC value around for
    * the receipt + offline cache.
    */
-  const buildSubmitItems = (items: CartItem[]) => {
-    return items.map((item) => {
-      // Convert at THIS item's rate (a mini's locked consignment rate, or live),
-      // so the USD stored on the sale reproduces the entered FC exactly at that
-      // same rate later.
-      const rate = parseFloat(item.rate) || 1;
-      const salePriceFc = parseFloat(item.unitPriceFc) || 0;
-      const salePrice = (salePriceFc / rate).toFixed(4);
-      return {
-        item,
-        totalPieces: totalPiecesOf(item),
-        salePrice,
-        salePriceFc,
-      };
-    });
-  };
+  const buildSubmitItems = (items: CartItem[]) => items.map((item) => itemToPayloadFull(item));
 
   const handleSubmit = async (): Promise<void> => {
     if (cart.size === 0) {
@@ -546,8 +592,12 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     // ── Offline path ─────────────────────────────────────────────────────────
     if (isOffline) {
       const soldItems = buildSubmitItems(cartArray);
-      for (const { item, totalPieces, salePrice } of soldItems) {
-        recordOfflineSale(item.productName, totalPieces, salePrice, { receiptId });
+      for (const { item, totalPieces, salePrice, originalUnitPrice, discountReason } of soldItems) {
+        recordOfflineSale(item.productName, totalPieces, salePrice, {
+          receiptId,
+          originalUnitPrice,
+          discountReason,
+        });
       }
       setLastOnlineSaleIds([]);
       // Open the receipt prompt FIRST, then close the main modal. If the
@@ -580,22 +630,38 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     }
   };
 
-  /** Map a CartItem to a submission payload, converting its FC unit price → USD
-   *  at the item's rate (a mini's locked consignment rate, or live). */
-  const itemToPayload = (item: CartItem): { salePrice: string; salePriceFc: number; totalPieces: number } => {
+  /** Map a CartItem to a full submission payload, converting its FC unit price →
+   *  USD at the item's rate (a mini's locked consignment rate, or live) and
+   *  folding in any quantity discount: the sent price is the DISCOUNTED price,
+   *  and the pre-discount price + reason ride along so the sale records them. */
+  const itemToPayloadFull = (
+    item: CartItem,
+  ): {
+    item: CartItem;
+    totalPieces: number;
+    salePrice: string;
+    salePriceFc: number;
+    originalUnitPrice?: string;
+    discountReason?: string;
+  } => {
     const rate = parseFloat(item.rate) || 1;
-    const salePriceFc = parseFloat(item.unitPriceFc) || 0;
+    const baseFc = parseFloat(item.unitPriceFc) || 0;
+    const pct = effectivePctFor(item);
+    const salePriceFc = effectiveUnitPriceFc(item); // discounted whole FC
+    const salePrice = (salePriceFc / rate).toFixed(4);
     return {
+      item,
       totalPieces: totalPiecesOf(item),
-      salePrice: (salePriceFc / rate).toFixed(4),
+      salePrice,
       salePriceFc,
+      ...(pct > 0 ? { originalUnitPrice: (baseFc / rate).toFixed(4) } : {}),
+      ...(pct > 0 ? { discountReason: qdReasonFor(item) } : {}),
     };
   };
 
   const handleConfirmOverrides = async (): Promise<void> => {
     const inputs = priceGuardPending.map((p) => ({
-      item: p.cartItem,
-      ...itemToPayload(p.cartItem),
+      ...itemToPayloadFull(p.cartItem),
       totalPieces: p.totalPieces,
       confirmedOverride: true,
     }));
@@ -618,8 +684,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       return;
     }
     const inputs = discountPending.map((p) => ({
-      item: p.cartItem,
-      ...itemToPayload(p.cartItem),
+      ...itemToPayloadFull(p.cartItem),
       totalPieces: p.totalPieces,
       discountReason: p.reason.trim(),
     }));
@@ -986,10 +1051,89 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                           </View>
                         ) : null}
 
+                        {/* Quantity ("group of prices") discount */}
+                        {qdConfig?.enabled ? (
+                          <View className="mt-3 rounded-xl border border-border dark:border-slate-700 px-3 py-2.5">
+                            <Pressable
+                              onPress={() =>
+                                updateItem(product.productName, {
+                                  applyDiscount: !cartItem.applyDiscount,
+                                })
+                              }
+                              className="flex-row items-center justify-between"
+                            >
+                              <Text className="text-text dark:text-slate-100 text-sm font-medium flex-1 mr-2">
+                                {t.recordSaleModal.qdToggle}
+                              </Text>
+                              <View
+                                className={`w-11 h-6 rounded-full px-0.5 justify-center ${
+                                  cartItem.applyDiscount ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
+                                }`}
+                              >
+                                <View
+                                  className={`w-5 h-5 rounded-full bg-white ${
+                                    cartItem.applyDiscount ? 'self-end' : 'self-start'
+                                  }`}
+                                />
+                              </View>
+                            </Pressable>
+
+                            {cartItem.applyDiscount ? (
+                              (() => {
+                                const auto = autoPctFor(cartItem);
+                                const pct = effectivePctFor(cartItem);
+                                const tier = quantityTierFor(
+                                  totalPiecesOf(cartItem),
+                                  cartItem.piecesPerCarton,
+                                  qdConfig,
+                                );
+                                if (auto <= 0 && !cartItem.discountPctOverride.trim()) {
+                                  return (
+                                    <Text className="text-muted dark:text-slate-500 text-[11px] mt-2">
+                                      {t.recordSaleModal.qdNotQualified}
+                                    </Text>
+                                  );
+                                }
+                                return (
+                                  <View className="mt-2">
+                                    <View className="flex-row items-center gap-2">
+                                      <Text className="text-muted dark:text-slate-400 text-xs flex-1">
+                                        {tier
+                                          ? t.recordSaleModal.qdTierApplied(tierName(tier))
+                                          : t.recordSaleModal.qdCustom}
+                                      </Text>
+                                      <TextInput
+                                        value={cartItem.discountPctOverride}
+                                        onChangeText={(v) =>
+                                          updateItem(product.productName, {
+                                            discountPctOverride: v.replace(/[^0-9.]/g, ''),
+                                          })
+                                        }
+                                        keyboardType="decimal-pad"
+                                        placeholder={String(auto)}
+                                        placeholderTextColor="#94A3B8"
+                                        selectTextOnFocus
+                                        className="text-text dark:text-slate-100 font-semibold text-base w-14 text-center border-b border-border dark:border-slate-700"
+                                      />
+                                      <Text className="text-muted dark:text-slate-500 text-sm">%</Text>
+                                    </View>
+                                    <Text className="text-success text-[11px] mt-1.5">
+                                      {t.recordSaleModal.qdPreview(
+                                        pct,
+                                        formatFcValue(effectiveUnitPriceFc(cartItem)),
+                                      )}
+                                    </Text>
+                                  </View>
+                                );
+                              })()
+                            ) : null}
+                          </View>
+                        ) : null}
+
                         {/* Below-cost warning. Both values are FC so they're directly comparable. */}
                         {(() => {
                           const cost = parseFloat(cartItem.unitCostFc);
-                          const sell = parseFloat(cartItem.unitPriceFc);
+                          const sell = effectiveUnitPriceFc(cartItem);
                           if (!isNaN(cost) && cost > 0 && !isNaN(sell) && sell > 0 && sell <= cost) {
                             return (
                               <Text className="text-danger text-[11px] mt-2">
@@ -1003,7 +1147,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                         {/* Row total — pure FC, no exchange-rate conversion. */}
                         <View className="mt-3 pt-2 border-t border-border dark:border-slate-700 flex-row justify-between items-center">
                           <Text className="text-muted dark:text-slate-500 text-xs">
-                            {formatFcValue(cartItem.unitPriceFc || '0')} × {totalPiecesOf(cartItem)}
+                            {formatFcValue(effectiveUnitPriceFc(cartItem) || 0)} × {totalPiecesOf(cartItem)}
                           </Text>
                           <Text className="text-primary font-bold text-base">
                             {formatFcValue(computeRowTotal(cartItem))}

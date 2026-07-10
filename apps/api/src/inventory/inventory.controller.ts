@@ -14,6 +14,7 @@ import { InventoryFilterDto } from './dto/inventory-filter.dto';
 import { UpdateSellingPriceDto } from './dto/update-selling-price.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { RenameProductDto } from './dto/rename-product.dto';
+import { UpdateMiniCartonPriceDto } from './dto/update-mini-carton-price.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
@@ -145,6 +146,26 @@ export class InventoryController {
     return this.inventoryService.updateMiniSellingPrice(ctx.effectiveOwnerId, id, dto);
   }
 
+  @Patch('mini-carton-price')
+  @AllowedFor('MINI_EMPLOYEE')
+  @ApiOperation({
+    summary: 'Mini employee sets the whole-carton selling price for a sized product',
+    description:
+      'Stores the price on the mini\'s consigned-in lots so the app defaults to it when selling a carton. Floor enforced by the sale price guard.',
+  })
+  @ApiResponse({ status: 200, description: '{ updated }' })
+  @ApiResponse({ status: 404, description: 'No consigned stock for this product' })
+  updateMiniCartonPrice(
+    @CurrentActorContext() ctx: ActorContext,
+    @Body() dto: UpdateMiniCartonPriceDto,
+  ) {
+    return this.inventoryService.updateMiniCartonPrice(
+      ctx.effectiveOwnerId,
+      dto.groupId,
+      dto.cartonSellingPrice,
+    );
+  }
+
   @Post(':entryId/adjust')
   @AllowedFor('OWNER')
   @ApiOperation({
@@ -164,6 +185,25 @@ export class InventoryController {
     @Body() dto: AdjustStockDto,
   ) {
     return this.inventoryService.adjustStock(ctx.effectiveOwnerId, entryId, dto);
+  }
+
+  @Post('variant/:variantId/adjust')
+  @AllowedFor('OWNER')
+  @ApiOperation({
+    summary: 'Adjust stock for one size of a sized product with a typed reason (owner only)',
+    description:
+      'Finds the owner\'s own lot for the size (PERSONAL first, else SUPPLIER) and applies the ' +
+      'same typed adjustment as POST /inventory/:entryId/adjust.',
+  })
+  @ApiResponse({ status: 201, description: '{ entry, movement }' })
+  @ApiResponse({ status: 400, description: 'Invalid reason / insufficient stock / missing notes' })
+  @ApiResponse({ status: 404, description: 'No adjustable stock for this size' })
+  adjustVariantStock(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('variantId') variantId: string,
+    @Body() dto: AdjustStockDto,
+  ) {
+    return this.inventoryService.adjustVariantStock(ctx.effectiveOwnerId, variantId, dto);
   }
 
   @Post('consign')

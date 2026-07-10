@@ -7,6 +7,7 @@ import {
   IsPositive,
   IsDecimal,
   IsOptional,
+  IsUUID,
 } from 'class-validator';
 
 export class ConsignmentItemDto {
@@ -14,6 +15,15 @@ export class ConsignmentItemDto {
   @IsString()
   @MinLength(1)
   productName: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Consign one size of a sized product. When set, stock is matched by this ' +
+      'size and the CONSIGNED lots are tagged with it; productName is derived from the group.',
+  })
+  @IsUUID()
+  @IsOptional()
+  variantId?: string;
 
   @ApiProperty({ example: 10, description: 'Quantity to consign' })
   @Type(() => Number)

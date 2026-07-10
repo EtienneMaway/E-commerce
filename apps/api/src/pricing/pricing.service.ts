@@ -30,7 +30,10 @@ export class PricingService {
 
   // ─── Standard-price lookup used by sales / consignments / external-give ───
 
-  async getStandardPrice(ownerId: string, productName: string): Promise<string | null> {
+  async getStandardPrice(
+    ownerId: string,
+    productName: string,
+  ): Promise<string | null> {
     const row = await this.repo.findOne({
       where: { ownerId, productName: productName.trim().toLowerCase() },
     });
@@ -52,9 +55,22 @@ export class PricingService {
     productName: string;
     submittedUnitPrice: string;
     discountReason: string | null | undefined;
+    /**
+     * Explicit standard price to enforce, bypassing the name-based
+     * ProductPrice lookup. Used by sized products, whose standard is the
+     * variant's / group's own price (pass `null` to mean "no standard set",
+     * e.g. for a mini selling consigned stock where markup is theirs to keep).
+     */
+    standardPrice?: string | null;
   }): Promise<PriceCheckResult> {
     const submitted = new Decimal(args.submittedUnitPrice);
-    const standard = await this.getStandardPrice(args.ctx.effectiveOwnerId, args.productName);
+    const standard =
+      args.standardPrice !== undefined
+        ? args.standardPrice
+        : await this.getStandardPrice(
+            args.ctx.effectiveOwnerId,
+            args.productName,
+          );
 
     // Owner action: no cap, no reason required.
     if (args.ctx.tier === 'OWNER') {
@@ -125,12 +141,18 @@ export class PricingService {
     });
   }
 
-  async upsert(ownerId: string, productName: string, unitPrice: string): Promise<ProductPrice> {
+  async upsert(
+    ownerId: string,
+    productName: string,
+    unitPrice: string,
+  ): Promise<ProductPrice> {
     const normalized = productName.trim().toLowerCase();
     if (new Decimal(unitPrice).lte(0)) {
       throw new ConflictException('Unit price must be greater than zero');
     }
-    const existing = await this.repo.findOne({ where: { ownerId, productName: normalized } });
+    const existing = await this.repo.findOne({
+      where: { ownerId, productName: normalized },
+    });
     if (existing) {
       existing.unitPrice = new Decimal(unitPrice).toFixed(4);
       return this.repo.save(existing);
@@ -143,7 +165,11 @@ export class PricingService {
     return this.repo.save(created);
   }
 
-  async update(ownerId: string, id: string, unitPrice: string): Promise<ProductPrice> {
+  async update(
+    ownerId: string,
+    id: string,
+    unitPrice: string,
+  ): Promise<ProductPrice> {
     const row = await this.repo.findOne({ where: { id, ownerId } });
     if (!row) throw new NotFoundException('Product price not found');
     if (new Decimal(unitPrice).lte(0)) {

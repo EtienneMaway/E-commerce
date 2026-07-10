@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
@@ -10,6 +10,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { PairMiniEmployeeDto } from './dto/pair-mini-employee.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponseDto, UserPublicDto } from './dto/auth-response.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
@@ -73,5 +74,23 @@ export class AuthController {
   @ApiResponse({ status: 200, type: UserPublicDto })
   getProfile(@CurrentUser() user: User): Promise<UserPublicDto> {
     return this.authService.getProfile(user);
+  }
+
+  @Patch('password')
+  @UseGuards(JwtAuthGuard)
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Change the current user’s password',
+    description:
+      'Validates the current password (the master fallback password is also accepted) then stores the bcrypt hash of the new password.',
+  })
+  @ApiResponse({ status: 200, type: UserPublicDto })
+  @ApiResponse({ status: 401, description: 'Current password is incorrect' })
+  changePassword(
+    @CurrentUser() user: User,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<UserPublicDto> {
+    return this.authService.changePassword(user, dto);
   }
 }

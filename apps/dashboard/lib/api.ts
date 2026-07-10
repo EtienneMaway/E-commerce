@@ -48,6 +48,8 @@ export const authApi = {
   register: (body: { username: string; email?: string; phone?: string; password: string }) =>
     api.post('/auth/register', body).then((r) => r.data),
   me: () => api.get('/auth/me').then((r) => r.data),
+  changePassword: (body: { currentPassword: string; newPassword: string }) =>
+    api.patch('/auth/password', body).then((r) => r.data),
 };
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -105,6 +107,90 @@ export const inventoryApi = {
     entryId: string,
     body: { reason: string; qty: number; notes?: string },
   ) => api.post(`/inventory/${entryId}/adjust`, body).then((r) => r.data),
+  adjustVariantStock: (
+    variantId: string,
+    body: { reason: string; qty: number; notes?: string },
+  ) => api.post(`/inventory/variant/${variantId}/adjust`, body).then((r) => r.data),
+};
+
+// ─── Product Groups (sized / carton products) ─────────────────────────────────
+
+export interface GroupVariant {
+  id: string;
+  label: string;
+  unitCost: string | null;
+  sellingPrice: string;
+  piecesPerCarton: number;
+  sortOrder: number;
+  available: number;
+}
+
+export interface ProductGroupSummary {
+  id: string;
+  name: string;
+  category: string | null;
+  cartonSellingPrice: string | null;
+  cartonBuyingPrice: string | null;
+  archived: boolean;
+  variants: GroupVariant[];
+  cartonsAvailable: number;
+  totalPieces: number;
+}
+
+export interface CreateVariantBody {
+  label: string;
+  unitCost?: string;
+  sellingPrice: string;
+  piecesPerCarton?: number;
+  sortOrder?: number;
+}
+
+export const productGroupsApi = {
+  list: (): Promise<ProductGroupSummary[]> =>
+    api.get('/product-groups').then((r) => r.data),
+  get: (id: string): Promise<ProductGroupSummary> =>
+    api.get(`/product-groups/${id}`).then((r) => r.data),
+  create: (body: {
+    name: string;
+    category?: string;
+    cartonSellingPrice?: string;
+    cartonBuyingPrice?: string;
+    variants: CreateVariantBody[];
+  }) => api.post('/product-groups', body).then((r) => r.data),
+  update: (
+    id: string,
+    body: {
+      category?: string;
+      cartonSellingPrice?: string;
+      cartonBuyingPrice?: string;
+      archived?: boolean;
+    },
+  ) => api.patch(`/product-groups/${id}`, body).then((r) => r.data),
+  rename: (
+    id: string,
+    newName: string,
+  ): Promise<{ oldName: string; newName: string; entriesUpdated: number; salesUpdated: number }> =>
+    api.patch(`/product-groups/${id}/rename`, { newName }).then((r) => r.data),
+  addVariant: (id: string, body: CreateVariantBody) =>
+    api.post(`/product-groups/${id}/variants`, body).then((r) => r.data),
+  updateVariant: (
+    id: string,
+    variantId: string,
+    body: Partial<CreateVariantBody> & { archived?: boolean },
+  ) => api.patch(`/product-groups/${id}/variants/${variantId}`, body).then((r) => r.data),
+  archiveVariant: (id: string, variantId: string) =>
+    api.delete(`/product-groups/${id}/variants/${variantId}`).then((r) => r.data),
+  addStock: (
+    id: string,
+    body: {
+      items: Array<{
+        variantId: string;
+        quantity: number;
+        unitCost?: string;
+        sellingPrice?: string;
+      }>;
+    },
+  ) => api.post(`/product-groups/${id}/stock`, body).then((r) => r.data),
 };
 
 // ─── Stock Movements ──────────────────────────────────────────────────────────
@@ -206,8 +292,11 @@ export const NOTES_REQUIRED_REASONS_SET: ReadonlySet<string> = new Set([
 // ─── Consignments ─────────────────────────────────────────────────────────────
 
 export const consignmentsApi = {
-  create: (body: { debtorUserId: string; note?: string; items: { productName: string; quantity: number; agreedUnitPrice: string }[] }) =>
-    api.post('/consignments', body).then((r) => r.data),
+  create: (body: {
+    debtorUserId: string;
+    note?: string;
+    items: { productName: string; quantity: number; agreedUnitPrice: string; variantId?: string }[];
+  }) => api.post('/consignments', body).then((r) => r.data),
   outgoing: () => api.get('/consignments/outgoing').then((r) => r.data),
   incoming: () => api.get('/consignments/incoming').then((r) => r.data),
   confirm: (id: string) => api.patch(`/consignments/${id}/confirm`).then((r) => r.data),
@@ -223,6 +312,8 @@ export interface MiniSettlementItem {
   quantity: number;
   agreedUnitPrice: string;
   unitCost: string | null;
+  /** Size label for a sized product (null on simple products). */
+  variantLabel?: string | null;
 }
 
 export interface MiniSettlement {
@@ -762,6 +853,28 @@ export const pricingApi = {
   update: (id: string, unitPrice: string): Promise<ProductPrice> =>
     api.patch(`/pricing/${id}`, { unitPrice }).then((r) => r.data),
   delete: (id: string): Promise<void> => api.delete(`/pricing/${id}`),
+};
+
+// ─── Quantity discounts ("group of prices") ────────────────────────────────────
+
+export interface QuantityDiscountConfig {
+  enabled: boolean;
+  halfDozenPercent: string;
+  dozenPercent: string;
+  cartonPercent: string;
+  updatedAt: string | null;
+}
+
+export const quantityDiscountsApi = {
+  get: (): Promise<QuantityDiscountConfig> =>
+    api.get('/quantity-discounts').then((r) => r.data),
+  update: (body: {
+    enabled: boolean;
+    halfDozenPercent: number;
+    dozenPercent: number;
+    cartonPercent: number;
+  }): Promise<QuantityDiscountConfig> =>
+    api.put('/quantity-discounts', body).then((r) => r.data),
 };
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────

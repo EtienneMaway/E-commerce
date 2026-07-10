@@ -151,6 +151,16 @@ export const accountApi = {
 
 // ─── Inventory ─────────────────────────────────────────────────────────────
 
+export interface ProductVariantSummary {
+  variantId: string;
+  label: string;
+  unitCost: string;
+  sellingPrice: string;
+  piecesPerCarton: number;
+  available: number;
+  usdToFcRateSnapshot?: string | null;
+}
+
 export interface ProductSummary {
   productName: string;
   category: string | null;
@@ -169,6 +179,12 @@ export interface ProductSummary {
    *  for owner/full stock). The mini's app converts this product's prices at
    *  this rate instead of the live one. */
   usdToFcRateSnapshot?: string | null;
+  // Sized (carton-with-variants) products — absent on simple products.
+  kind?: 'simple' | 'group';
+  groupId?: string;
+  cartonSellingPrice?: string | null;
+  cartonsAvailable?: number;
+  variants?: ProductVariantSummary[];
 }
 
 export const inventoryApi = {
@@ -196,6 +212,10 @@ export const inventoryApi = {
   // Mini employee raises the selling price on their own consigned-in stock (>= agreed price).
   updateMiniSellingPrice: (id: string, sellingPrice: string) =>
     api.patch(`/inventory/${id}/mini-selling-price`, { sellingPrice }).then((r) => r.data),
+
+  // Mini employee sets the whole-carton selling price for a sized product.
+  updateMiniCartonPrice: (groupId: string, cartonSellingPrice: string) =>
+    api.patch('/inventory/mini-carton-price', { groupId, cartonSellingPrice }).then((r) => r.data),
 };
 
 // ─── Employments (mini-employee handshake) ───────────────────────────────────
@@ -225,6 +245,10 @@ export interface ConsignmentItemSummary {
   quantity: number;
   agreedUnitPrice: string;
   piecesPerCarton?: number | null;
+  /** Sized products: the size (variant) + its group + label; null on simple products. */
+  variantId?: string | null;
+  groupId?: string | null;
+  variantLabel?: string | null;
 }
 
 export interface ConsignmentSummary {
@@ -252,14 +276,20 @@ export interface MiniSettlementSummary {
   note: string | null;
   createdAt: string;
   approvedAt: string | null;
-  items: { id: string; productName: string; quantity: number; agreedUnitPrice: string }[];
+  items: {
+    id: string;
+    productName: string;
+    quantity: number;
+    agreedUnitPrice: string;
+    variantLabel?: string | null;
+  }[];
 }
 
 export const miniSettlementsApi = {
   create: (body: {
     cashAmount?: string;
     cashAmountFc?: string;
-    returns?: { productName: string; quantity: number }[];
+    returns?: { productName: string; quantity: number; variantId?: string }[];
     note?: string;
   }) => api.post('/mini-settlements', body).then((r) => r.data),
   outgoing: (): Promise<MiniSettlementSummary[]> =>
@@ -322,6 +352,8 @@ export interface MiniStats {
 export interface HandoverPreview {
   sold: {
     productName: string;
+    variantId: string | null;
+    variantLabel: string | null;
     qtySold: number;
     piecesPerCarton: number | null;
     revenue: string;
@@ -330,7 +362,13 @@ export interface HandoverPreview {
     agreedValueFc: string; // FC at the sale's locked rate
     profitFc: string; // FC at the sale's locked rate
   }[];
-  returns: { productName: string; quantity: number; piecesPerCarton: number | null }[];
+  returns: {
+    productName: string;
+    variantId: string | null;
+    variantLabel: string | null;
+    quantity: number;
+    piecesPerCarton: number | null;
+  }[];
   cashForSold: string; // USD
   profitMade: string; // USD
   cashForSoldFc: string; // FC (each sale at its locked rate) — what the app shows
@@ -349,13 +387,24 @@ export const salesApi = {
   record: (
     body: {
       productName: string;
-      qtySold: number;
+      /** Pieces sold — required for a simple or single-size sale; omitted for a
+       *  whole-carton sale (use cartonQty). */
+      qtySold?: number;
       salePrice: string;
       /** FC price the customer paid — sent by minis so each deducted lot books
        *  at its own locked consignment rate. */
       salePriceFc?: string;
+      /** Sell one size of a sized product (stock looked up by size). */
+      variantId?: string;
+      /** Sell whole cartons of a sized product at the group carton price. */
+      carton?: boolean;
+      groupId?: string;
+      cartonQty?: number;
       confirmedOverride?: boolean;
       discountReason?: string;
+      /** Pre-discount unit price (USD) to store on the row — sent when a
+       *  quantity ("group of prices") discount was applied. */
+      originalUnitPrice?: string;
       clientName?: string;
       clientPhone?: string;
       receiptId?: string;
@@ -411,6 +460,21 @@ export const currencyApi = {
             updatedAt: string;
           },
       ),
+};
+
+// ─── Quantity discounts ("group of prices") ──────────────────────────────────
+
+export interface QuantityDiscountConfig {
+  enabled: boolean;
+  halfDozenPercent: string;
+  dozenPercent: string;
+  cartonPercent: string;
+  updatedAt: string | null;
+}
+
+export const quantityDiscountsApi = {
+  get: (): Promise<QuantityDiscountConfig> =>
+    api.get('/quantity-discounts').then((r) => r.data),
 };
 
 // ─── Salary Payments ───────────────────────────────────────────────────────

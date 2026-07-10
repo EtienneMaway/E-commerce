@@ -13,6 +13,8 @@ import { SupplierDebt } from './supplier-debt.entity';
 import { DebtorCredit } from './debtor-credit.entity';
 import { SaleTransaction } from './sale-transaction.entity';
 import { StockMovement } from './stock-movement.entity';
+import { ProductGroup } from './product-group.entity';
+import { ProductVariant } from './product-variant.entity';
 
 export enum InventorySource {
   PERSONAL = 'PERSONAL',
@@ -55,12 +57,30 @@ export class InventoryEntry {
   @Column({ name: 'quantity_remaining' })
   quantityRemaining: number;
 
-  @ApiPropertyOptional({ example: '240.00', description: 'Purchase price for one full carton (null if not set)' })
-  @Column({ name: 'carton_price', type: 'decimal', precision: 14, scale: 4, nullable: true, default: null })
+  @ApiPropertyOptional({
+    example: '240.00',
+    description: 'Purchase price for one full carton (null if not set)',
+  })
+  @Column({
+    name: 'carton_price',
+    type: 'decimal',
+    precision: 14,
+    scale: 4,
+    nullable: true,
+    default: null,
+  })
   cartonPrice: string | null;
 
-  @ApiPropertyOptional({ example: 20, description: 'How many pieces make one carton (null if not set)' })
-  @Column({ name: 'pieces_per_carton', type: 'int', nullable: true, default: null })
+  @ApiPropertyOptional({
+    example: 20,
+    description: 'How many pieces make one carton (null if not set)',
+  })
+  @Column({
+    name: 'pieces_per_carton',
+    type: 'int',
+    nullable: true,
+    default: null,
+  })
   piecesPerCarton: number | null;
 
   @ApiPropertyOptional({
@@ -68,7 +88,14 @@ export class InventoryEntry {
     description:
       "Locked FC/USD rate for CONSIGNED_IN lots given to a mini employee — snapshotted from the consignment at confirm time. A mini converts this lot's USD figures to FC at this rate (not the live rate), so the agreement stays intact when the rate changes. Null for owner/full-employee stock (they use the live rate).",
   })
-  @Column({ name: 'usd_to_fc_rate_snapshot', type: 'decimal', precision: 14, scale: 4, nullable: true, default: null })
+  @Column({
+    name: 'usd_to_fc_rate_snapshot',
+    type: 'decimal',
+    precision: 14,
+    scale: 4,
+    nullable: true,
+    default: null,
+  })
   usdToFcRateSnapshot: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
@@ -99,14 +126,18 @@ export class InventoryEntry {
   @Column({ name: 'supplier_debt_id', nullable: true, type: 'varchar' })
   supplierDebtId: string | null;
 
-  @ManyToOne(() => SupplierDebt, (debt) => debt.inventoryEntries, { nullable: true })
+  @ManyToOne(() => SupplierDebt, (debt) => debt.inventoryEntries, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'supplier_debt_id' })
   supplierDebt: SupplierDebt | null;
 
   @Column({ name: 'debtor_credit_id', nullable: true, type: 'varchar' })
   debtorCreditId: string | null;
 
-  @ManyToOne(() => DebtorCredit, (credit) => credit.inventoryEntries, { nullable: true })
+  @ManyToOne(() => DebtorCredit, (credit) => credit.inventoryEntries, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'debtor_credit_id' })
   debtorCredit: DebtorCredit | null;
 
@@ -116,11 +147,38 @@ export class InventoryEntry {
   @OneToMany(() => StockMovement, (m) => m.inventoryEntry)
   movements: StockMovement[];
 
-  @ApiPropertyOptional({ description: 'Employee who created this entry on owner\'s behalf (consignment-out flows etc.)' })
+  @ApiPropertyOptional({
+    description:
+      "Employee who created this entry on owner's behalf (consignment-out flows etc.)",
+  })
   @Column({ name: 'actor_id', type: 'uuid', nullable: true })
   actorId: string | null;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'actor_id' })
   actor: User | null;
+
+  // --- Sized (carton-with-variants) products. Null for simple products, which
+  //     keep their flat piece price and the legacy carton_price/pieces_per_carton
+  //     columns above. When set, this lot holds stock of one size of a group. ---
+  @ApiPropertyOptional({
+    description: 'ProductGroup this lot belongs to (sized products only)',
+  })
+  @Column({ name: 'group_id', type: 'uuid', nullable: true, default: null })
+  groupId: string | null;
+
+  @ManyToOne(() => ProductGroup, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'group_id' })
+  group: ProductGroup | null;
+
+  @ApiPropertyOptional({
+    description:
+      'ProductVariant (size) this lot holds stock of (sized products only)',
+  })
+  @Column({ name: 'variant_id', type: 'uuid', nullable: true, default: null })
+  variantId: string | null;
+
+  @ManyToOne(() => ProductVariant, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'variant_id' })
+  variant: ProductVariant | null;
 }

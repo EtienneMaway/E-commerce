@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  IsUUID,
   MinLength,
 } from 'class-validator';
 
@@ -15,12 +16,59 @@ export class RecordSaleDto {
   @MinLength(2)
   productName: string;
 
-  @ApiProperty({ example: 5 })
+  @ApiPropertyOptional({
+    example: 5,
+    description:
+      'Pieces sold. Required for a simple or single-size sale; ignored for a ' +
+      'whole-carton sale (use cartonQty instead).',
+  })
   @IsInt()
   @IsPositive()
-  qtySold: number;
+  @IsOptional()
+  qtySold?: number;
 
-  @ApiProperty({ example: '32.00', description: 'Actual selling price per unit' })
+  @ApiPropertyOptional({
+    example: 'variant-uuid',
+    description:
+      'Sell one size of a sized product. When set, stock is looked up by this ' +
+      'size instead of by product name. Mutually exclusive with carton.',
+  })
+  @IsUUID()
+  @IsOptional()
+  variantId?: string;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'Sell one or more WHOLE cartons of a sized product at the group carton ' +
+      'price. Requires groupId; deducts the carton composition across sizes.',
+  })
+  @IsBoolean()
+  @IsOptional()
+  carton?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'group-uuid',
+    description: 'ProductGroup to sell a carton of (carton sales only)',
+  })
+  @IsUUID()
+  @IsOptional()
+  groupId?: string;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description:
+      'Number of whole cartons to sell (carton sales only, default 1)',
+  })
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  cartonQty?: number;
+
+  @ApiProperty({
+    example: '32.00',
+    description: 'Actual selling price per unit',
+  })
   @IsDecimal({ decimal_digits: '1,4' })
   salePrice: string;
 
@@ -48,15 +96,29 @@ export class RecordSaleDto {
   @ApiPropertyOptional({
     example: 'Loyal customer',
     description:
-      'Reason for discounting below the owner\'s standard price. Required (employee only) when submitted price is below the standard, after a 422 DISCOUNT_REASON_REQUIRED response.',
+      "Reason for discounting below the owner's standard price. Required (employee only) when submitted price is below the standard, after a 422 DISCOUNT_REASON_REQUIRED response.",
   })
   @IsString()
   @IsOptional()
   discountReason?: string;
 
   @ApiPropertyOptional({
+    example: '32.00',
+    description:
+      'Pre-discount unit price to record on the sale for the receipt/history. ' +
+      'Sent when the client applied a quantity ("group of prices") discount so ' +
+      'the original price is preserved even for owner sales (which the employee ' +
+      'pricing rule does not capture). Ignored when the employee pricing rule ' +
+      'already captured an original price.',
+  })
+  @IsDecimal({ decimal_digits: '1,4' })
+  @IsOptional()
+  originalUnitPrice?: string;
+
+  @ApiPropertyOptional({
     example: 'Jean Mukendi',
-    description: 'Optional buyer name. Surfaced on the sales tab so the merchant can find a past order later.',
+    description:
+      'Optional buyer name. Surfaced on the sales tab so the merchant can find a past order later.',
   })
   @IsString()
   @IsOptional()

@@ -930,7 +930,7 @@ function HandoverRow({ handover, onChange, liveRate }: { handover: MiniSettlemen
           </div>
           {handover.items.length > 0 && (
             <div className="text-xs opacity-70 mt-1">
-              {t.employees.miniReturns}: {handover.items.map((it) => `${it.quantity}× ${it.productName}`).join(', ')}
+              {t.employees.miniReturns}: {handover.items.map((it) => `${it.quantity}× ${it.productName}${it.variantLabel ? ` (${it.variantLabel})` : ''}`).join(', ')}
             </div>
           )}
           {expenses.length > 0 && (

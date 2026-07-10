@@ -38,11 +38,44 @@ export class MiniSettlementItem {
   @Column({ type: 'int' })
   quantity: number;
 
-  @ApiProperty({ example: '32.0000', description: 'Owner-set price the mini owed per unit — reversed on approval' })
-  @Column({ name: 'agreed_unit_price', type: 'decimal', precision: 14, scale: 4 })
+  @ApiProperty({
+    example: '32.0000',
+    description:
+      'Owner-set price the mini owed per unit — reversed on approval',
+  })
+  @Column({
+    name: 'agreed_unit_price',
+    type: 'decimal',
+    precision: 14,
+    scale: 4,
+  })
   agreedUnitPrice: string;
 
-  @ApiPropertyOptional({ example: '25.0000', description: 'Owner original cost, resolved on approval for the re-stocked entry' })
-  @Column({ name: 'unit_cost', type: 'decimal', precision: 14, scale: 4, nullable: true })
+  @ApiPropertyOptional({
+    example: '25.0000',
+    description:
+      'Owner original cost, resolved on approval for the re-stocked entry',
+  })
+  @Column({
+    name: 'unit_cost',
+    type: 'decimal',
+    precision: 14,
+    scale: 4,
+    nullable: true,
+  })
   unitCost: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Size (ProductVariant) being returned, for sized products; null for simple products',
+  })
+  @Column({ name: 'variant_id', type: 'uuid', nullable: true })
+  variantId: string | null;
+
+  @ApiPropertyOptional({
+    example: 'large',
+    description: 'Snapshot of the returned size label',
+  })
+  @Column({ name: 'variant_label', type: 'varchar', nullable: true })
+  variantLabel: string | null;
 }

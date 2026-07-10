@@ -8,6 +8,7 @@ import {
   MiniSettlement,
   MiniSettlementItem,
   Payment,
+  ProductVariant,
   SaleTransaction,
   SupplierDebt,
 } from '../entities';
@@ -28,6 +29,7 @@ import { CurrencyModule } from '../currency/currency.module';
       SaleTransaction,
       Employment,
       MiniExpense,
+      ProductVariant,
     ]),
     StockMovementsModule,
     CurrencyModule,
