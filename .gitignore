@@ -8,6 +8,10 @@ dist/
 .env.local
 .env.production
 
+# Database dumps — contain real business data
+backups/
+*.sql.gz
+
 # Logs
 *.log
 npm-debug.log*
