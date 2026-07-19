@@ -28,6 +28,7 @@ import {
   isPriceGuardWarning,
   isDiscountReasonRequired,
   getDiscountReasonInfo,
+  isNetworkError,
 } from '../../lib/utils';
 import { useFormatCurrency, useExchangeRate, usdToFcStr, formatFcValue, formatMoney } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -57,7 +58,27 @@ interface Props {
  * `unitCostFc` is derived once from `product.latestUnitCost` × rate at the
  * moment the product is added to the cart (read-only reference).
  */
+/**
+ * Mints a client-side sale id. Same shape as the offline queue's row ids
+ * (store/offline.store.ts), so online and replayed sales share one key space —
+ * both land in sale_transactions.client_sale_id and dedupe the same way.
+ */
+function newClientSaleId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 interface CartItem {
+  /**
+   * Idempotency key for this cart line, minted once when the line is added and
+   * reused by every submit attempt. The server dedupes on (ownerId,
+   * clientSaleId), so a request that timed out after the server committed is
+   * recognised on retry instead of recording the sale twice.
+   *
+   * It deliberately does NOT derive from receiptId: a fresh receiptId is minted
+   * on every tap of Record Sale (see handleSubmit), which is exactly the retry
+   * this key has to survive.
+   */
+  clientSaleId: string;
   productName: string;
   unitCostFc: string;        // FC, read-only reference
   piecesPerCarton: number | null;
@@ -266,6 +287,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       const unitPriceFc = usdToFcStr(product.latestSellingPrice ?? '0', rate);
       const unitCostFc = usdToFcStr(product.latestUnitCost ?? '0', rate);
       next.set(product.productName, {
+        clientSaleId: newClientSaleId(),
         productName: product.productName,
         unitCostFc,
         piecesPerCarton: ppc,
@@ -365,16 +387,23 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     priceGuard: PriceGuardPending[];
     discount: DiscountPending[];
     saleIds: string[];
+    /** Product names whose sale was queued for sync after a network failure. */
+    queued: string[];
   }> => {
     const priceGuard: PriceGuardPending[] = [];
     const discount: DiscountPending[] = [];
     const saleIds: string[] = [];
+    const queued: string[] = [];
     for (const { item, totalPieces, salePrice, salePriceFc, confirmedOverride, discountReason, originalUnitPrice } of items) {
       try {
         const sale = await salesApi.record({
           productName: item.productName,
           qtySold: totalPieces,
           salePrice,
+          // Stable across retries — if this request already committed server-side
+          // but the response never arrived, the retry returns that row instead
+          // of recording a second sale.
+          clientSaleId: item.clientSaleId,
           // Minis send the FC price so the server books each deducted lot at its
           // own locked rate (exact across batches given at different rates).
           ...(isMini && salePriceFc ? { salePriceFc: salePriceFc.toFixed(4) } : {}),
@@ -404,12 +433,27 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
             submittedPrice: info.submittedPrice,
             reason: '',
           });
+        } else if (isNetworkError(err)) {
+          // No verdict from the server — the write may or may not have landed.
+          // Queue it under the SAME clientSaleId that was just sent, so the
+          // replay either records it once or is recognised as already done.
+          // Previously this fell through to a plain alert and the sale was lost.
+          recordOfflineSale(item.productName, totalPieces, salePrice, {
+            id: item.clientSaleId,
+            receiptId,
+            ...(originalUnitPrice ? { originalUnitPrice } : {}),
+            ...(discountReason ? { discountReason } : {}),
+          });
+          queued.push(item.productName);
         } else {
           Alert.alert(t.common.error, `${item.productName}: ${getErrorMessage(err)}`);
         }
       }
     }
-    return { priceGuard, discount, saleIds };
+    if (queued.length > 0) {
+      Alert.alert(t.sales.queuedTitle, t.sales.queuedBody(queued.join(', ')));
+    }
+    return { priceGuard, discount, saleIds, queued };
   };
 
   const invalidate = (): void => {

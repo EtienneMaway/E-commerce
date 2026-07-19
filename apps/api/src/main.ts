@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import compression from 'compression';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -12,6 +13,18 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
     logger: WinstonModule.createLogger(winstonConfig),
   });
+
+  // gzip every JSON response. This API serves merchants on 2G/3G links in DRC,
+  // where payload size is the dominant cost — the aggregate and list endpoints
+  // are repetitive JSON (4-dp decimal strings, UUIDs, ISO dates) and compress
+  // by roughly 75-85%.
+  //
+  // Deliberately applied here and not left to nginx alone: the mobile app is
+  // the most bandwidth-constrained client, and this keeps compression working
+  // if the API is ever reached without the nginx proxy in front of it.
+  // `threshold` matches nginx's gzip_min_length — below ~256 bytes the gzip
+  // header can make a response larger.
+  app.use(compression({ threshold: 256 }));
 
   // Global prefix for all routes
   app.setGlobalPrefix('api');

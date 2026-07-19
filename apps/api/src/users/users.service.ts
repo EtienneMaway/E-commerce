@@ -140,7 +140,12 @@ export class UsersService implements OnModuleInit {
   }
 
   async changePassword(userId: string, dto: UserChangePasswordDto): Promise<void> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+    // passwordHash is select:false — opt in, this path verifies it.
+    const user = await this.userRepo
+      .createQueryBuilder('user')
+      .addSelect('user.passwordHash')
+      .where('user.id = :id', { id: userId })
+      .getOne();
     if (!user) throw new NotFoundException('User not found');
     if (user.deletedAt || user.anonymizedAt) {
       throw new UnauthorizedException('Account deleted');
@@ -161,7 +166,12 @@ export class UsersService implements OnModuleInit {
   }
 
   async requestDeletion(userId: string, password: string): Promise<User> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+    // passwordHash is select:false — opt in, this path verifies it.
+    const user = await this.userRepo
+      .createQueryBuilder('user')
+      .addSelect('user.passwordHash')
+      .where('user.id = :id', { id: userId })
+      .getOne();
     if (!user) throw new NotFoundException('User not found');
     if (user.deletedAt || user.anonymizedAt) {
       throw new BadRequestException('Account is already pending deletion');

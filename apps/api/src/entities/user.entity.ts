@@ -30,7 +30,16 @@ export class User {
   @Column({ unique: true, nullable: true, type: 'varchar', name: 'phone' })
   phone: string | null;
 
-  @Column({ name: 'password_hash' })
+  /**
+   * Never selected by default. Controllers return raw entities and 26 call
+   * sites load `User` as a relation (supplierUser, debtorUser, actor, …), so
+   * without this the bcrypt hash ships to any authenticated client.
+   *
+   * The paths that genuinely verify a password must opt in explicitly with
+   * `select: { passwordHash: true }` (or `addSelect`) — see auth.service and
+   * users.service. Writes are unaffected: assigning + save() still persists.
+   */
+  @Column({ name: 'password_hash', select: false })
   passwordHash: string;
 
   @ApiPropertyOptional({ example: 'Alice K.', description: 'Display name. Nullable for legacy rows; required when creating new employee profiles.' })

@@ -9,7 +9,10 @@
     "build:api": "pnpm --filter api build",
     "build:dashboard": "pnpm --filter dashboard build",
     "lint": "pnpm --filter '*' lint",
-    "test": "pnpm --filter api test"
+    "test": "pnpm --filter api test",
+    "migration:run": "pnpm build:api && pnpm --filter api migration:run",
+    "migration:generate": "pnpm build:api && pnpm --filter api migration:generate",
+    "migration:revert": "pnpm build:api && pnpm --filter api migration:revert"
   },
   "devDependencies": {
     "typescript": "^5.4.5"

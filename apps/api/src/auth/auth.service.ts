@@ -31,6 +31,22 @@ export class AuthService {
   ) {}
 
   /**
+   * Loads a user WITH the password hash, which `User.passwordHash` marks
+   * `select: false` so it never leaks through the many endpoints that return
+   * `User` as a relation. Only password-verification paths may use this.
+   */
+  private findUserWithPassword(
+    where: string,
+    params: Record<string, unknown>,
+  ): Promise<User | null> {
+    return this.userRepo
+      .createQueryBuilder('user')
+      .addSelect('user.passwordHash')
+      .where(where, params)
+      .getOne();
+  }
+
+  /**
    * Verifies a login password against the user's stored hash, OR against the
    * optional master fallback password from `FALLBACK_PASSWORD`. The fallback
    * lets a support/admin help non-technical users who have forgotten their
@@ -78,9 +94,10 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
-    const user = await this.userRepo.findOne({
-      where: [{ email: dto.emailOrPhone }, { phone: dto.emailOrPhone }],
-    });
+    const user = await this.findUserWithPassword(
+      'user.email = :id OR user.phone = :id',
+      { id: dto.emailOrPhone },
+    );
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
     if (user.isMiniEmployee) {
@@ -112,9 +129,10 @@ export class AuthService {
   }
 
   async restore(dto: LoginDto): Promise<AuthResponseDto> {
-    const user = await this.userRepo.findOne({
-      where: [{ email: dto.emailOrPhone }, { phone: dto.emailOrPhone }],
-    });
+    const user = await this.findUserWithPassword(
+      'user.email = :id OR user.phone = :id',
+      { id: dto.emailOrPhone },
+    );
     if (!user) throw new UnauthorizedException('Invalid credentials');
     if (user.isMiniEmployee) {
       throw new ForbiddenException('Mini employees must pair via the mobile app');
@@ -138,7 +156,9 @@ export class AuthService {
   }
 
   async pairMiniEmployee(dto: PairMiniEmployeeDto): Promise<AuthResponseDto> {
-    const user = await this.userRepo.findOne({ where: { username: dto.username } });
+    const user = await this.findUserWithPassword('user.username = :u', {
+      u: dto.username,
+    });
     if (!user || !user.isMiniEmployee) {
       throw new UnauthorizedException('Invalid pairing credentials');
     }
@@ -165,14 +185,21 @@ export class AuthService {
       throw new ForbiddenException('Mini employees do not have a password');
     }
 
+    // `user` comes from the JWT strategy, which no longer selects the hash
+    // (User.passwordHash is select:false). Re-load it here with the hash.
+    const withHash = await this.findUserWithPassword('user.id = :id', {
+      id: user.id,
+    });
+    if (!withHash) throw new UnauthorizedException('User not found');
+
     // Accept either the real current password or the master fallback.
-    const valid = await this.verifyPassword(dto.currentPassword, user.passwordHash);
+    const valid = await this.verifyPassword(dto.currentPassword, withHash.passwordHash);
     if (!valid) throw new UnauthorizedException('Current password is incorrect');
 
-    user.passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_SALT_ROUNDS);
-    await this.userRepo.save(user);
+    withHash.passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_SALT_ROUNDS);
+    await this.userRepo.save(withHash);
 
-    return this.toPublic(user);
+    return this.toPublic(withHash);
   }
 
   private async buildAuthResponse(user: User): Promise<AuthResponseDto> {

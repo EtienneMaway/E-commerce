@@ -315,6 +315,10 @@ const en = {
     noDebtorsSub: 'Consign stock to a debtor to track what they owe you.',
   },
   sales: {
+    // Network failure on the online sale path — saved to the sync queue, not lost
+    queuedTitle: 'Saved — will sync',
+    queuedBody: (products: string) =>
+      `The network dropped, so these were saved on this phone and will be sent automatically: ${products}. They are not lost — do not record them again.`,
     history: 'History',
     topProducts: 'Top Products',
     period7d: '7d',
@@ -1169,6 +1173,10 @@ const fr: Translations = {
     noDebtorsSub: "Consignez du stock à un débiteur pour suivre ce qu'il vous doit.",
   },
   sales: {
+    // Échec réseau lors d'une vente en ligne — mise en file, pas perdue
+    queuedTitle: 'Enregistré — sera synchronisé',
+    queuedBody: (products: string) =>
+      `Le réseau a coupé : ces ventes ont été enregistrées sur ce téléphone et seront envoyées automatiquement : ${products}. Elles ne sont pas perdues — ne les ressaisissez pas.`,
     history: 'Historique',
     topProducts: 'Top produits',
     period7d: '7j',

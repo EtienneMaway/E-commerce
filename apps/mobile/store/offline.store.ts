@@ -91,6 +91,13 @@ interface OfflineState {
       clientPhone?: string;
       originalUnitPrice?: string;
       discountReason?: string;
+      /**
+       * Reuse an id already sent to the server as `clientSaleId` (an online
+       * attempt that failed with no verdict). The replay in lib/sync.ts sends
+       * the row id as `clientSaleId`, so carrying the original key over is what
+       * makes the retry dedupe instead of recording the sale twice.
+       */
+      id?: string;
     },
   ) => void;
   /** Patch buyer info onto every pending sale that shares the given receiptId. */
@@ -140,7 +147,7 @@ export const useOfflineStore = create<OfflineState>()(
       disableOfflineMode: () => set({ isOffline: false }),
 
       recordOfflineSale: (productName, qtySold, salePrice, extras) => {
-        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const id = extras?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         set((s) => ({
           pendingSales: [
             ...s.pendingSales,

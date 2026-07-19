@@ -1,3 +1,5 @@
+import axios from 'axios';
+
 const PIECES_PER_DOZEN = 12;
 
 export interface QuantityBreakdown {
@@ -91,6 +93,23 @@ export function getErrorMessage(error: unknown): string {
   }
   if (error instanceof Error) return error.message;
   return 'Something went wrong';
+}
+
+/**
+ * True when the request never got a verdict from the server — connection
+ * failure, DNS, or a client-side timeout. The defining property is that the
+ * server MAY have processed it: a timeout says nothing about whether the write
+ * landed. Callers must therefore replay with a stable idempotency key rather
+ * than assume the operation did not happen.
+ *
+ * Distinct from a definite server rejection (any 4xx/5xx), which carries a
+ * `response` and means the request was received and judged.
+ */
+export function isNetworkError(error: unknown): boolean {
+  // Must be an axios failure with no response. Deliberately NOT a catch-all for
+  // any Error: a programming bug thrown inside the request block would other-
+  // wise be misread as "the network dropped" and silently queued as a sale.
+  return axios.isAxiosError(error) && !error.response;
 }
 
 /** Check if an API error is a price guard warning (HTTP 422) */
