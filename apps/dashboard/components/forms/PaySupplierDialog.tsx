@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { paymentsApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useToast } from '../ui/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -23,6 +24,7 @@ export function PaySupplierDialog({ supplier, onClose }: Props) {
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
+  const toast = useToast();
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
@@ -40,11 +42,20 @@ export function PaySupplierDialog({ supplier, onClose }: Props) {
         ...(note.trim() ? { note: note.trim() } : {}),
       }),
     onSuccess: () => {
+      const who = supplier?.username ?? '';
       qc.invalidateQueries({ queryKey: QK.suppliers });
       qc.invalidateQueries({ queryKey: QK.supplierDetail(supplier!.id) });
+      // A payment moves real cash: the dashboard's cash position, "I owe" and
+      // net position all shift. Previously none of them were refreshed.
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       onClose();
+      toast({ variant: 'success', title: t.toasts.paymentRecorded, description: t.toasts.paymentRecordedBody(who) });
     },
-    onError: (err) => setError(getErrorMessage(err)),
+    onError: (err) => {
+      const message = getErrorMessage(err);
+      setError(message);
+      toast({ variant: 'error', title: t.toasts.errorTitle, description: message });
+    },
   });
 
   if (!supplier) return null;

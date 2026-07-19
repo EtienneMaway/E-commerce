@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useToast } from '../ui/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -24,6 +25,7 @@ export function EditSellingPriceDialog({ entry, onClose }: Props) {
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
+  const toast = useToast();
   const [price, setPrice] = useState('');
   const [error, setError] = useState('');
 
@@ -37,11 +39,19 @@ export function EditSellingPriceDialog({ entry, onClose }: Props) {
   const mutation = useMutation({
     mutationFn: () => inventoryApi.updateSellingPrice(entry!.id, price),
     onSuccess: () => {
+      const product = entry?.productName ?? '';
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: QK.inventory() });
+      // Selling price feeds the dashboard's total selling value.
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       onClose();
+      toast({ variant: 'success', title: t.toasts.priceUpdated, description: t.toasts.priceUpdatedBody(product) });
     },
-    onError: (err) => setError(getErrorMessage(err)),
+    onError: (err) => {
+      const message = getErrorMessage(err);
+      setError(message);
+      toast({ variant: 'error', title: t.toasts.errorTitle, description: message });
+    },
   });
 
   if (!entry) return null;

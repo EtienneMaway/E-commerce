@@ -15,6 +15,7 @@ import { UserMenu } from '../../components/ui/UserMenu';
 import { PersonaSwitcher } from '../../components/ui/PersonaSwitcher';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { ConfirmProvider } from '../../components/ui/ConfirmDialog';
+import { ToastProvider } from '../../components/ui/Toast';
 
 const NAV_ICONS = [
   <svg key="dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -201,6 +202,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <ConfirmProvider>
+    <ToastProvider>
     <div className="flex min-h-screen" style={{ background: 'var(--background)' }}>
 
       {/* ─── Top bar (always visible; acts as the global navbar) ────── */}
@@ -363,6 +365,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         </div>
       </main>
     </div>
+    </ToastProvider>
     </ConfirmProvider>
   );
 }

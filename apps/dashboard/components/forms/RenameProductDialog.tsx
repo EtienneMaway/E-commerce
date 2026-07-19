@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useToast } from '../ui/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 
@@ -17,6 +18,7 @@ interface Props {
 export function RenameProductDialog({ open, currentName, onClose, onRenamed }: Props) {
   const t = useT();
   const qc = useQueryClient();
+  const toast = useToast();
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
 
@@ -33,14 +35,27 @@ export function RenameProductDialog({ open, currentName, onClose, onRenamed }: P
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: ['inventory'] });
       qc.invalidateQueries({ queryKey: ['sales'] });
+      // A rename cascades across inventory, sales, external transactions and
+      // pricing, so anything keyed on the old name is now stale.
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       const total =
         result.entriesUpdated + result.salesUpdated + result.externalTxUpdated + result.pricingUpdated;
       setError('');
       onRenamed(result.newName);
-      // Briefly surface success copy through the parent — parent handles redirect.
-      void total;
+      // This total used to be computed and then thrown away (`void total`) with
+      // a comment claiming the parent surfaced it — nothing did. It is the most
+      // reassuring thing we can show after a cascading rename, so show it.
+      toast({
+        variant: 'success',
+        title: t.toasts.productRenamed,
+        description: t.toasts.productRenamedBody(result.newName, total),
+      });
     },
-    onError: (err) => setError(getErrorMessage(err)),
+    onError: (err) => {
+      const message = getErrorMessage(err);
+      setError(message);
+      toast({ variant: 'error', title: t.toasts.errorTitle, description: message });
+    },
   });
 
   if (!open) return null;

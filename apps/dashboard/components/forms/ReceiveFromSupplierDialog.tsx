@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { consignmentsApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useToast } from '../ui/Toast';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -36,6 +37,7 @@ function totalValue(items: ConsignmentItem[]): string {
 export function ReceiveFromSupplierDialog({ open, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
+  const toast = useToast();
 
   const { data, isLoading } = useQuery({
     queryKey: QK.consignmentsIncoming,
@@ -54,7 +56,18 @@ export function ReceiveFromSupplierDialog({ open, onClose }: Props) {
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: ['inventory'] });
       qc.invalidateQueries({ queryKey: QK.consignmentsIncoming });
+      // Confirming pulls stock onto your books AND raises what you owe this
+      // supplier, so the dashboard's "I owe" and supplier list both change.
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      // Deliberately does NOT close: the list may hold more pending deliveries.
+      toast({
+        variant: 'success',
+        title: t.toasts.receivedFromSupplier,
+        description: t.toasts.receivedFromSupplierBody,
+      });
     },
+    onError: (err) =>
+      toast({ variant: 'error', title: t.toasts.errorTitle, description: getErrorMessage(err) }),
   });
 
   if (!open) return null;

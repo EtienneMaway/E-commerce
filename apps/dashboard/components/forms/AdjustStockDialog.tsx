@@ -9,6 +9,7 @@ import {
   type ManualStockReason,
 } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useToast } from '../ui/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 
@@ -44,6 +45,7 @@ const NEGATIVE_MANUAL: ManualStockReason[] = [
 export function AdjustStockDialog({ entry, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
+  const toast = useToast();
 
   const [reason, setReason] = useState<ManualStockReason | ''>('');
   const [qty, setQty] = useState<string>('');
@@ -69,13 +71,22 @@ export function AdjustStockDialog({ entry, onClose }: Props) {
       });
     },
     onSuccess: () => {
+      const product = entry?.productName ?? '';
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: QK.inventory() });
       qc.invalidateQueries({ queryKey: ['inventory', 'movements'] });
       qc.invalidateQueries({ queryKey: ['inventory', 'entries'] });
+      // An adjustment changes stock on hand, so the dashboard's inventory
+      // valuation and low-stock alerts both move.
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       onClose();
+      toast({ variant: 'success', title: t.toasts.stockAdjusted, description: t.toasts.stockAdjustedBody(product) });
     },
-    onError: (err) => setError(getErrorMessage(err)),
+    onError: (err) => {
+      const message = getErrorMessage(err);
+      setError(message);
+      toast({ variant: 'error', title: t.toasts.errorTitle, description: message });
+    },
   });
 
   if (!entry) return null;

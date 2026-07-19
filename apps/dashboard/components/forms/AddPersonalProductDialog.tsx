@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi, currencyApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useToast } from '../ui/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 
@@ -121,6 +122,7 @@ function computeItem(item: ItemForm): ComputedItem | null {
 export function AddPersonalProductDialog({ open, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
+  const toast = useToast();
   const [items, setItems] = useState<ItemForm[]>([{ ...EMPTY_ITEM }]);
   const [entryCurrency, setEntryCurrency] = useState<EntryCurrency>('USD');
   const [focusedItemIndex, setFocusedItemIndex] = useState<number | null>(null);
@@ -242,12 +244,21 @@ export function AddPersonalProductDialog({ open, onClose }: Props) {
       return inventoryApi.addPersonalBulk({ items: payload });
     },
     onSuccess: () => {
+      const count = items.length;
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: ['inventory'] });
+      // Buying stock with owner cash moves the cash position and the inventory
+      // valuation the dashboard reports — without this those figures stay stale.
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       resetForm();
       onClose();
+      toast({ variant: 'success', title: t.toasts.stockAdded, description: t.toasts.stockAddedBody(count) });
     },
-    onError: (err) => setError(getErrorMessage(err)),
+    onError: (err) => {
+      const message = getErrorMessage(err);
+      setError(message);
+      toast({ variant: 'error', title: t.toasts.errorTitle, description: message });
+    },
   });
 
   const resetForm = useCallback(() => {

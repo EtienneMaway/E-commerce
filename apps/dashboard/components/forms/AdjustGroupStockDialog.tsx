@@ -9,6 +9,7 @@ import {
   type ManualStockReason,
 } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useToast } from '../ui/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 
@@ -38,6 +39,7 @@ const NEGATIVE_MANUAL: ManualStockReason[] = [
 export function AdjustGroupStockDialog({ group, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
+  const toast = useToast();
 
   const [variantId, setVariantId] = useState('');
   const [reason, setReason] = useState<ManualStockReason | ''>('');
@@ -64,13 +66,20 @@ export function AdjustGroupStockDialog({ group, onClose }: Props) {
       });
     },
     onSuccess: () => {
+      const product = group?.name ?? '';
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: QK.inventory() });
       qc.invalidateQueries({ queryKey: QK.productGroups });
       qc.invalidateQueries({ queryKey: ['inventory', 'movements'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       onClose();
+      toast({ variant: 'success', title: t.toasts.stockAdjusted, description: t.toasts.stockAdjustedBody(product) });
     },
-    onError: (err) => setError(getErrorMessage(err)),
+    onError: (err) => {
+      const message = getErrorMessage(err);
+      setError(message);
+      toast({ variant: 'error', title: t.toasts.errorTitle, description: message });
+    },
   });
 
   if (!group) return null;

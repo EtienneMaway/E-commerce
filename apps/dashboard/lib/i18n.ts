@@ -43,6 +43,31 @@ const en = {
     scopeOwn: 'Showing your own books',
     scopeEmployer: (name: string) => `Showing @${name}'s books`,
   },
+  /**
+   * Shared confirmations for write dialogs. Every one of these used to close
+   * silently, so the merchant had no way to tell a success from a failure —
+   * and re-did the action. Bodies state the SIDE EFFECT, not just "done",
+   * because that is what tells you whether to repeat it.
+   */
+  toasts: {
+    errorTitle: 'Something went wrong',
+    stockAdded: 'Stock added',
+    stockAddedBody: (n: number) =>
+      n === 1 ? '1 product added to your inventory.' : `${n} products added to your inventory.`,
+    stockAdjusted: 'Stock adjusted',
+    stockAdjustedBody: (product: string) => `${product} updated. See Movements for the audit trail.`,
+    priceUpdated: 'Price updated',
+    priceUpdatedBody: (product: string) => `New selling price saved for ${product}.`,
+    productCreated: 'Product created',
+    productCreatedBody: (product: string) => `${product} is ready to sell.`,
+    receivedFromSupplier: 'Stock received',
+    receivedFromSupplierBody: 'Added to your inventory and to what you owe this supplier.',
+    productRenamed: 'Product renamed',
+    productRenamedBody: (name: string, n: number) =>
+      `Now called ${name}. ${n} linked record${n === 1 ? '' : 's'} updated.`,
+    paymentRecorded: 'Payment recorded',
+    paymentRecordedBody: (who: string) => `Your balance with ${who} has been reduced.`,
+  },
   common: {
     loading: 'Loading...',
     cancel: 'Cancel',
@@ -485,6 +510,14 @@ const en = {
     statusRejected: 'Rejected',
   },
   consignments: {
+    // Feedback after entrusting goods — stock only moves on the recipient's
+    // confirmation, so the wording must not imply it has already left.
+    sentToastTitle: (who: string) => `Sent to ${who}`,
+    sentToastBody: (n: number) =>
+      n === 1
+        ? '1 product is now awaiting their confirmation. Your stock moves only once they accept.'
+        : `${n} products are now awaiting their confirmation. Your stock moves only once they accept.`,
+    sentErrorTitle: 'Could not send',
     title: 'Consignments',
     sub: 'Manage outgoing and incoming consignment requests',
     tabOutgoing: 'Outgoing',
@@ -1175,6 +1208,25 @@ const fr: Translations = {
     scopeOwn: 'Affichage de vos livres',
     scopeEmployer: (name: string) => `Affichage des livres de @${name}`,
   },
+  toasts: {
+    errorTitle: 'Une erreur est survenue',
+    stockAdded: 'Stock ajouté',
+    stockAddedBody: (n: number) =>
+      n === 1 ? '1 produit ajouté à votre inventaire.' : `${n} produits ajoutés à votre inventaire.`,
+    stockAdjusted: 'Stock ajusté',
+    stockAdjustedBody: (product: string) => `${product} mis à jour. Voir Mouvements pour l'historique.`,
+    priceUpdated: 'Prix mis à jour',
+    priceUpdatedBody: (product: string) => `Nouveau prix de vente enregistré pour ${product}.`,
+    productCreated: 'Produit créé',
+    productCreatedBody: (product: string) => `${product} est prêt à la vente.`,
+    receivedFromSupplier: 'Stock reçu',
+    receivedFromSupplierBody: "Ajouté à votre inventaire et à ce que vous devez à ce fournisseur.",
+    productRenamed: 'Produit renommé',
+    productRenamedBody: (name: string, n: number) =>
+      `Désormais appelé ${name}. ${n} enregistrement${n === 1 ? '' : 's'} lié${n === 1 ? '' : 's'} mis à jour.`,
+    paymentRecorded: 'Paiement enregistré',
+    paymentRecordedBody: (who: string) => `Votre solde avec ${who} a été réduit.`,
+  },
   common: {
     loading: 'Chargement...',
     cancel: 'Annuler',
@@ -1609,6 +1661,13 @@ const fr: Translations = {
     statusRejected: 'Rejeté',
   },
   consignments: {
+    // Retour après confiage — le stock ne bouge qu'à la confirmation.
+    sentToastTitle: (who: string) => `Envoyé à ${who}`,
+    sentToastBody: (n: number) =>
+      n === 1
+        ? "1 produit attend sa confirmation. Votre stock ne bouge qu'après son acceptation."
+        : `${n} produits attendent sa confirmation. Votre stock ne bouge qu'après son acceptation.`,
+    sentErrorTitle: "Envoi impossible",
     title: 'Consignations',
     sub: 'Gérer les demandes de consignation',
     tabOutgoing: 'Sortantes',

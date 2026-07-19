@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi, productGroupsApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useToast } from '../ui/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -46,6 +47,7 @@ interface Props {
 export function CreateSizedProductDialog({ open, onClose, onRestock }: Props) {
   const t = useT();
   const qc = useQueryClient();
+  const toast = useToast();
   const formatCurrency = useFormatCurrency();
 
   const [name, setName] = useState('');
@@ -146,13 +148,20 @@ export function CreateSizedProductDialog({ open, onClose, onRestock }: Props) {
       return created;
     },
     onSuccess: () => {
+      const created = name.trim();
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: ['inventory'] });
       qc.invalidateQueries({ queryKey: QK.productGroups });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       reset();
       onClose();
+      toast({ variant: 'success', title: t.toasts.productCreated, description: t.toasts.productCreatedBody(created) });
     },
-    onError: (err) => setError(getErrorMessage(err)),
+    onError: (err) => {
+      const message = getErrorMessage(err);
+      setError(message);
+      toast({ variant: 'error', title: t.toasts.errorTitle, description: message });
+    },
   });
 
   if (!open) return null;

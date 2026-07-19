@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { productGroupsApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useToast } from '../ui/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 
@@ -23,6 +24,7 @@ interface Props {
 export function EditGroupPricesDialog({ group, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
+  const toast = useToast();
 
   const [cartonPrice, setCartonPrice] = useState('');
   const [cartonCost, setCartonCost] = useState('');
@@ -66,12 +68,19 @@ export function EditGroupPricesDialog({ group, onClose }: Props) {
       );
     },
     onSuccess: () => {
+      const product = group?.name ?? '';
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: ['inventory'] });
       qc.invalidateQueries({ queryKey: QK.productGroups });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       onClose();
+      toast({ variant: 'success', title: t.toasts.priceUpdated, description: t.toasts.priceUpdatedBody(product) });
     },
-    onError: (err) => setError(getErrorMessage(err)),
+    onError: (err) => {
+      const message = getErrorMessage(err);
+      setError(message);
+      toast({ variant: 'error', title: t.toasts.errorTitle, description: message });
+    },
   });
 
   if (!group) return null;

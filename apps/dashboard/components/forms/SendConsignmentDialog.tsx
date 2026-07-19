@@ -6,6 +6,7 @@ import { consignmentsApi, currencyApi, inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { getErrorMessage } from '../../lib/utils';
 import { UserSearchInput } from '../ui/UserSearchInput';
+import { useToast } from '../ui/Toast';
 import { useT } from '../../lib/i18n';
 
 type EntryCurrency = 'USD' | 'FC';
@@ -117,6 +118,7 @@ function getTotalPieces(cartonQty: number, ppc: number | null, extraPieces: stri
 export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, submitLabel }: Props) {
   const t = useT();
   const qc = useQueryClient();
+  const toast = useToast();
   const [debtor, setDebtor] = useState<UserOption | null>(fixedDebtor ?? null);
   const [note, setNote] = useState('');
   const [items, setItems] = useState<ItemRow[]>([{ ...EMPTY_ITEM }]);
@@ -436,15 +438,44 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
         }),
       }),
     onSuccess: () => {
+      const sentTo = debtor?.username ?? '';
+      const lineCount = items.length;
+
+      // Invalidate everything this write touches. Previously only
+      // consignmentsOutgoing was refreshed — so on the employee page, where the
+      // mini-oversight panel reads miniActivity, NOTHING on screen changed after
+      // a successful send. Combined with the silent close below, that made it
+      // look like the action had failed, and the natural response was to send
+      // the same goods again.
       qc.invalidateQueries({ queryKey: QK.consignmentsOutgoing });
+      qc.invalidateQueries({ queryKey: QK.consignmentsIncoming });
+      qc.invalidateQueries({ queryKey: ['mini-settlements'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: QK.inventoryProducts });
+
       setDebtor(fixedDebtor ?? null);
       setNote('');
       setItems([{ ...EMPTY_ITEM }]);
       setError('');
       setEntryCurrency('USD');
       onClose();
+
+      // Explicit confirmation. Stock does NOT move yet — it leaves your books
+      // only when the recipient confirms — so say that, otherwise "sent" reads
+      // as "already handed over".
+      toast({
+        variant: 'success',
+        title: t.consignments.sentToastTitle(sentTo),
+        description: t.consignments.sentToastBody(lineCount),
+      });
     },
-    onError: (err) => setError(getErrorMessage(err)),
+    onError: (err) => {
+      const message = getErrorMessage(err);
+      setError(message);
+      // Also toast it: the dialog scrolls, and on a long item list the inline
+      // error can sit off-screen where it is never seen.
+      toast({ variant: 'error', title: t.consignments.sentErrorTitle, description: message });
+    },
   });
 
   const isBelowCost = (it: ItemRow): boolean => {

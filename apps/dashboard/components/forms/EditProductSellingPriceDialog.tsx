@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useToast } from '../ui/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -35,6 +36,7 @@ export function EditProductSellingPriceDialog({
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
+  const toast = useToast();
 
   // Editable = owned active (PERSONAL or SUPPLIER), excludes CONSIGNED_IN/OUT
   const editable = useMemo(
@@ -110,9 +112,15 @@ export function EditProductSellingPriceDialog({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: QK.inventory() });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       onClose();
+      toast({ variant: 'success', title: t.toasts.priceUpdated, description: t.toasts.priceUpdatedBody(productName) });
     },
-    onError: (err) => setError(getErrorMessage(err)),
+    onError: (err) => {
+      const message = getErrorMessage(err);
+      setError(message);
+      toast({ variant: 'error', title: t.toasts.errorTitle, description: message });
+    },
   });
 
   if (!open) return null;
