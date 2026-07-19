@@ -160,21 +160,27 @@ export async function syncPendingSales(): Promise<SyncResult> {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS && !ok; attempt++) {
       try {
         if (exp.kind === 'normal') {
-          await expensesApi.create({
-            amount: exp.amount,
-            currency: (exp.currency ?? 'FC') as ExpenseCurrency,
-            category: exp.category as ExpenseCategory,
-            description: exp.description,
-            date: exp.date,
-            clientId: exp.id,
-          });
+          await expensesApi.create(
+            {
+              amount: exp.amount,
+              currency: (exp.currency ?? 'FC') as ExpenseCurrency,
+              category: exp.category as ExpenseCategory,
+              description: exp.description,
+              date: exp.date,
+              clientId: exp.id,
+            },
+            { timeout: SYNC_REQUEST_TIMEOUT },
+          );
         } else {
-          await miniSettlementsApi.createExpense({
-            amount: exp.amount,
-            category: exp.category,
-            description: exp.description,
-            clientId: exp.id,
-          });
+          await miniSettlementsApi.createExpense(
+            {
+              amount: exp.amount,
+              category: exp.category,
+              description: exp.description,
+              clientId: exp.id,
+            },
+            { timeout: SYNC_REQUEST_TIMEOUT },
+          );
         }
         ok = true;
       } catch (err) {

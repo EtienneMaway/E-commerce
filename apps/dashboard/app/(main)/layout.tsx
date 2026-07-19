@@ -5,7 +5,10 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '../../store/auth.store';
 import { usePersonaStore } from '../../store/persona.store';
+import { useQuery } from '@tanstack/react-query';
 import { authApi } from '../../lib/api';
+import { QK } from '../../lib/query-keys';
+import { isAuthError } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 import { KmbLogo } from '../../components/ui/KmbLogo';
 import { UserMenu } from '../../components/ui/UserMenu';
@@ -165,12 +168,31 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   }, [persona, user?.activeEmployment]);
 
   useEffect(() => {
-    if (!hydrated) return;
-    if (!token) { router.replace('/login'); return; }
-    authApi.me()
-      .then((me) => { if (me) setUser(me); })
-      .catch(() => { logout(); router.replace('/login'); });
-  }, [hydrated, token, router, logout, setUser]);
+    if (hydrated && !token) router.replace('/login');
+  }, [hydrated, token, router]);
+
+  // Session check. Previously a bare promise whose .catch() logged the user out
+  // on ANY failure — so a slow link (10s axios timeout) signed people out
+  // mid-session. Now: retried with backoff, and only a real 401/403 ends the
+  // session. A network failure leaves the existing session alone.
+  const { data: me, error: meError } = useQuery({
+    queryKey: QK.me,
+    queryFn: () => authApi.me(),
+    enabled: hydrated && !!token,
+    retry: (failureCount, err) => !isAuthError(err) && failureCount < 3,
+    staleTime: 5 * 60_000,
+  });
+
+  useEffect(() => {
+    if (me) setUser(me);
+  }, [me, setUser]);
+
+  useEffect(() => {
+    if (meError && isAuthError(meError)) {
+      logout();
+      router.replace('/login');
+    }
+  }, [meError, logout, router]);
 
   // Close sidebar on route change (mobile only)
   useEffect(() => { if (isMobile) setSidebarOpen(false); }, [pathname, isMobile]);

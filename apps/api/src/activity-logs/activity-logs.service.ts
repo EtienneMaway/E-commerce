@@ -23,6 +23,25 @@ import {
   type ActorCond,
 } from '../common/actor-filter';
 
+/**
+ * Per-source row cap for the merged activity feed.
+ *
+ * This endpoint fans out to six tables, merges in Node, sorts, then slices one
+ * page. Every loader was previously UNBOUNDED — `loadSales` alone pulled every
+ * sale row ever written (with its actor relation) to render ten entries, so
+ * page 1 cost exactly as much as page 500 and the cost grew forever with
+ * history. On a slow link that is also a large response to compress and ship.
+ *
+ * Trade-off, stated plainly: `total` and `byType` are computed from the merged
+ * set, so once a single source exceeds this cap those counts under-report and
+ * the feed shows "the most recent N per source" rather than all history. That
+ * is the right behaviour for an activity feed, and it only diverges at volumes
+ * where the previous implementation would have been unusably slow anyway. If
+ * exact lifetime totals are ever needed, they should come from dedicated
+ * COUNT(*) queries rather than by loading every row.
+ */
+const MAX_ROWS_PER_SOURCE = 2000;
+
 export interface ActivityLogEntry {
   id: string;
   type: ActivityLogType;
@@ -109,6 +128,7 @@ export class ActivityLogsService {
       where: where as FindOptionsWhere<SaleTransaction>,
       relations: { actor: true },
       order: { date: 'DESC' },
+      take: MAX_ROWS_PER_SOURCE,
     });
     return rows.map((s) => ({
       id: `sale:${s.id}`,
@@ -140,7 +160,7 @@ export class ActivityLogsService {
     applyActorCondToQb(qb, 'item.actor_id', actor);
     if (range.from) qb.andWhere('req.createdAt >= :from', { from: range.from });
     if (range.to) qb.andWhere('req.createdAt <= :to', { to: range.to });
-    qb.orderBy('req.createdAt', 'DESC');
+    qb.orderBy('req.createdAt', 'DESC').take(MAX_ROWS_PER_SOURCE);
     const rows = await qb.getMany();
     return rows.map((it) => ({
       id: `consignment_item:${it.id}`,
@@ -179,7 +199,7 @@ export class ActivityLogsService {
     applyActorCondToQb(qb, 'tx.actor_id', actor);
     if (range.from) qb.andWhere('tx.createdAt >= :from', { from: range.from });
     if (range.to) qb.andWhere('tx.createdAt <= :to', { to: range.to });
-    qb.orderBy('tx.createdAt', 'DESC');
+    qb.orderBy('tx.createdAt', 'DESC').take(MAX_ROWS_PER_SOURCE);
     const rows = await qb.getMany();
 
     return rows.map((tx) => ({
@@ -224,7 +244,7 @@ export class ActivityLogsService {
     applyActorCondToQb(qb, 'p.actor_id', actor);
     if (range.from) qb.andWhere('p.created_at >= :from', { from: range.from });
     if (range.to) qb.andWhere('p.created_at <= :to', { to: range.to });
-    qb.orderBy('p.created_at', 'DESC');
+    qb.orderBy('p.created_at', 'DESC').take(MAX_ROWS_PER_SOURCE);
     const rows = await qb.getMany();
 
     return rows.map((p): ActivityLogEntry => {
@@ -258,6 +278,7 @@ export class ActivityLogsService {
       where,
       relations: { actor: true },
       order: { date: 'DESC' },
+      take: MAX_ROWS_PER_SOURCE,
     });
     return rows.map((e) => ({
       id: `expense:${e.id}`,
@@ -292,7 +313,7 @@ export class ActivityLogsService {
     applyActorCondToQb(qb, 'e.actor_id', actor);
     if (range.from) qb.andWhere('e.createdAt >= :from', { from: range.from });
     if (range.to) qb.andWhere('e.createdAt <= :to', { to: range.to });
-    qb.orderBy('e.createdAt', 'DESC');
+    qb.orderBy('e.createdAt', 'DESC').take(MAX_ROWS_PER_SOURCE);
     const rows = await qb.getMany();
 
     return rows.map((e) => ({

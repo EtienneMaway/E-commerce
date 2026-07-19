@@ -112,6 +112,17 @@ export function isNetworkError(error: unknown): boolean {
   return axios.isAxiosError(error) && !error.response;
 }
 
+/**
+ * True only when the server actively rejected the caller's identity (401/403).
+ * The one condition that should stop a retry loop or end a session — a dropped
+ * connection says nothing about whether the token is valid.
+ */
+export function isAuthError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  const status = error.response?.status;
+  return status === 401 || status === 403;
+}
+
 /** Check if an API error is a price guard warning (HTTP 422) */
 export function isPriceGuardWarning(error: unknown): boolean {
   if (error && typeof error === 'object' && 'response' in error) {

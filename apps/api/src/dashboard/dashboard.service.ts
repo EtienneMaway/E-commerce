@@ -26,6 +26,7 @@ import { LOW_STOCK_THRESHOLD, OVERDUE_DAYS } from '../common/constants';
 import { ConsignmentsService } from '../consignments/consignments.service';
 import { CurrencyService } from '../currency/currency.service';
 import { SalesService } from '../sales/sales.service';
+import { SalaryPaymentsService } from '../salary-payments/salary-payments.service';
 import { SalesSummaryFilterDto } from '../sales/dto/sales-filter.dto';
 import type { ActorContext } from '../common/types/actor-context';
 import { applyActorCondToQb, resolveActorFilter } from '../common/actor-filter';
@@ -109,6 +110,18 @@ export interface ProfitBySource {
   totalProfit: string;
 }
 
+/** Composite payload for the mobile home screen — see getHome(). */
+export interface DashboardHome {
+  summary: DashboardSummary;
+  suppliers: SupplierListItem[];
+  alerts: AlertItem[];
+  cashPosition: CashPosition;
+  /** Payslips awaiting this actor's confirmation. */
+  pendingSalaryCount: number;
+  /** Σ of those payslips, 4dp string — all the client rendered. */
+  pendingSalaryTotal: string;
+}
+
 export interface CashPosition {
   // Accrual view — used to guard spending against earned profit
   totalIncome: string;              // Gross revenue across all streams (USD, accrual)
@@ -181,7 +194,49 @@ export class DashboardService {
     private readonly consignmentsService: ConsignmentsService,
     private readonly currencyService: CurrencyService,
     private readonly salesService: SalesService,
+    private readonly salaryPaymentsService: SalaryPaymentsService,
   ) {}
+
+  /**
+   * Everything the mobile home screen needs, in ONE request.
+   *
+   * That screen previously issued five independent calls (summary, suppliers,
+   * alerts, cash-position, pending-salary). On a 2G link each costs a full
+   * round-trip plus auth plus its own query work — and several of them scan the
+   * same tables in the same second. Folding them into one response removes four
+   * round-trips from the screen users open first.
+   *
+   * The parts still run in parallel server-side, so this is never slower than
+   * the slowest individual call.
+   */
+  async getHome(ctx: ActorContext): Promise<DashboardHome> {
+    const ownerId = ctx.effectiveOwnerId;
+    const [summary, suppliers, alerts, cashPosition, pendingSalary] =
+      await Promise.all([
+        this.getSummary(ownerId),
+        this.getSuppliers(ownerId),
+        this.getAlerts(ownerId),
+        this.getCashPosition(ownerId),
+        // Salary confirmations belong to the ACTOR, not the books being viewed:
+        // an employee sees their own pending payslips regardless of persona.
+        this.salaryPaymentsService.pendingForEmployee(ctx.actorId),
+      ]);
+
+    // The client only ever rendered a count and a total from the payslip rows
+    // (it reduced the array itself), so send those instead of the full objects.
+    const pendingSalaryTotal = pendingSalary
+      .reduce((sum, p) => sum.plus(new Decimal(p.amount)), new Decimal(0))
+      .toFixed(4);
+
+    return {
+      summary,
+      suppliers,
+      alerts,
+      cashPosition,
+      pendingSalaryCount: pendingSalary.length,
+      pendingSalaryTotal,
+    };
+  }
 
   /**
    * Combined period profit for the dashboard's profit cards: direct-sales

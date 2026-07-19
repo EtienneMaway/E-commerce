@@ -67,11 +67,18 @@ export function useFormatCurrency(): (value: string | number, dp?: number) => st
   const { displayCurrency } = useCurrencyStore();
   const isSmallScreen = useIsSmallScreen();
 
+  // The rate underpins every FC figure on screen, and the fallback below is
+  // '1' — i.e. a failed fetch silently renders FC amounts at ~1/2700 of their
+  // real value. It previously had `retry: false`, so a single blip on a flaky
+  // link was enough to trigger that. Retry (inheriting the global backoff
+  // policy) and hold the last good rate for a full day: the rate is set
+  // administratively and does not move intraday, so a stale one is vastly
+  // safer than no rate at all.
   const { data: rateData } = useQuery({
     queryKey: QK.exchangeRate,
     queryFn: currencyApi.getRate,
     staleTime: 5 * 60_000,
-    retry: false,
+    gcTime: 24 * 60 * 60_000,
   });
 
   const rate = rateData?.usdToFcRate ?? '1';

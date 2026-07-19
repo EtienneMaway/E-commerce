@@ -5,6 +5,16 @@ export const QK = {
   salesHistory: (filters?: object) => ['sales', 'history', filters] as const,
   topProducts: (filters?: object) => ['sales', 'top-products', filters] as const,
   dashboard: ['dashboard', 'summary'] as const,
+  /** Composite home payload — replaces 5 separate calls. See dashboardApi.home. */
+  dashboardHome: ['dashboard', 'home'] as const,
+  /**
+   * Prefix key covering every ['dashboard', …] query (summary, home, suppliers,
+   * alerts, cash-position, profit-by-*). Use this to invalidate after a write
+   * that moves the books — invalidating only `dashboard` or `cashPosition`
+   * individually silently misses the composite `home` payload the home screen
+   * actually renders.
+   */
+  dashboardAll: ['dashboard'] as const,
   suppliers: ['dashboard', 'suppliers'] as const,
   supplierDetail: (id: string) => ['dashboard', 'suppliers', id] as const,
   profitByProduct: ['dashboard', 'profit-by-product'] as const,

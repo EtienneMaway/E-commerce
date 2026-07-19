@@ -17,6 +17,7 @@ import {
 import { ConsignmentsModule } from '../consignments/consignments.module';
 import { CurrencyModule } from '../currency/currency.module';
 import { SalesModule } from '../sales/sales.module';
+import { SalaryPaymentsModule } from '../salary-payments/salary-payments.module';
 
 @Module({
   imports: [
@@ -35,6 +36,9 @@ import { SalesModule } from '../sales/sales.module';
     ConsignmentsModule,
     CurrencyModule,
     SalesModule,
+    // For the /dashboard/home aggregate, which folds the employee's pending
+    // salary confirmations into the same response.
+    SalaryPaymentsModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

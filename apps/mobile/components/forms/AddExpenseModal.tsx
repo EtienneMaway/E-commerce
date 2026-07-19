@@ -41,7 +41,7 @@ export function AddExpenseModal({ visible, onClose }: Props) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['expenses'] });
-      qc.invalidateQueries({ queryKey: QK.cashPosition });
+      qc.invalidateQueries({ queryKey: QK.dashboardAll });
       setAmount('');
       setDescription('');
       onClose();

@@ -209,8 +209,7 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
       qc.invalidateQueries({ queryKey: QK.inventoryProducts }),
       qc.invalidateQueries({ queryKey: QK.inventory() }),
       qc.invalidateQueries({ queryKey: QK.salesHistory() }),
-      qc.invalidateQueries({ queryKey: QK.dashboard }),
-      qc.invalidateQueries({ queryKey: QK.cashPosition }),
+      qc.invalidateQueries({ queryKey: QK.dashboardAll }),
       qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] }),
     ]);
   }

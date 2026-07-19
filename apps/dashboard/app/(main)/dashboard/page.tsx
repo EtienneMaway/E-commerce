@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi, salesApi, type DashboardProfitSummary } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
@@ -8,8 +9,29 @@ import { formatDate } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { KpiCard } from '../../../components/ui/KpiCard';
 import { Badge } from '../../../components/ui/Badge';
-import { TopProductsChart } from '../../../components/charts/TopProductsChart';
-import { SourcePieChart } from '../../../components/charts/SourcePieChart';
+// Charts are loaded on demand. Recharts pulls in the d3 scale/shape/path
+// family — statically imported it sat on the critical path, blocking the KPI
+// cards from painting until the whole chart library had downloaded. The cards
+// are the numbers merchants actually open this page for, so they must not wait
+// on a chart. ssr:false because Recharts measures the DOM to size itself.
+const TopProductsChart = dynamic(
+  () => import('../../../components/charts/TopProductsChart').then((m) => m.TopProductsChart),
+  { ssr: false, loading: () => <ChartSkeleton /> },
+);
+const SourcePieChart = dynamic(
+  () => import('../../../components/charts/SourcePieChart').then((m) => m.SourcePieChart),
+  { ssr: false, loading: () => <ChartSkeleton /> },
+);
+
+function ChartSkeleton() {
+  return (
+    <div
+      className="h-64 w-full rounded-xl animate-pulse"
+      style={{ background: 'var(--muted-bg, rgba(128,128,128,0.10))' }}
+      aria-busy="true"
+    />
+  );
+}
 import {
   PeriodFilter,
   DEFAULT_PERIOD,

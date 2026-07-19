@@ -3,7 +3,7 @@ import { ScrollView, View, Text, RefreshControl, TouchableOpacity, Pressable, Al
 import Constants from 'expo-constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { dashboardApi, inventoryApi, salaryPaymentsApi, currencyApi, type SalaryPayment } from '../../lib/api';
+import { dashboardApi, inventoryApi, salaryPaymentsApi, currencyApi, type SalaryPayment, type DashboardHome } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -65,43 +65,45 @@ export default function DashboardScreen() {
     clearSyncErrors,
   } = useOfflineStore();
 
-  // The owner-oriented dashboard endpoints (summary, suppliers, alerts, cash
-  // position) are owner/full-employee only — a mini would 403. Minis render
-  // their own figures via MiniHomeStats, so skip these queries for them.
-  const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: QK.dashboard,
-    queryFn: dashboardApi.summary,
-    enabled: !isOffline && !isMini,
-  });
-
-  const { data: suppliers } = useQuery({
-    queryKey: QK.suppliers,
-    queryFn: dashboardApi.suppliers,
-    enabled: !isOffline && !isMini,
-  });
-
-  const { data: alertsData } = useQuery({
-    queryKey: QK.alerts,
-    queryFn: dashboardApi.alerts,
-    staleTime: 5 * 60_000,
-    enabled: !isOffline && !isMini,
-  });
-
-  const { data: cashData } = useQuery({
-    queryKey: QK.cashPosition,
-    queryFn: dashboardApi.cashPosition,
+  // ONE request for the whole owner/full-employee home screen. It is
+  // owner/full-employee only — a mini would 403 — so minis skip it entirely and
+  // render their own figures via MiniHomeStats instead. This was five
+  // separate queries (summary, suppliers, alerts, cash-position, pending
+  // salary) firing together on mount — on a 2G uplink they queued behind each
+  // other and several timed out from queueing delay alone, not server slowness.
+  const { data: homeData, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: QK.dashboardHome,
+    queryFn: dashboardApi.home,
     enabled: !isOffline && !isMini,
     staleTime: 30_000,
   });
 
-  const { data: pendingSalaryData } = useQuery({
+  const home = homeData as DashboardHome | undefined;
+  const data = home?.summary;
+  const suppliers = home?.suppliers;
+  const alertsData = home?.alerts;
+  const cashData = home?.cashPosition;
+
+  // Minis are not allowed on /dashboard/home (they 403), but they do have
+  // payslips, so they still need this one on its own.
+  const { data: miniPendingSalary } = useQuery({
     queryKey: QK.salaryPaymentsPending,
     queryFn: salaryPaymentsApi.pending,
     staleTime: 30_000,
-    enabled: !isOffline,
+    enabled: !isOffline && isMini,
   });
-  const pendingSalary = (pendingSalaryData as SalaryPayment[] | undefined) ?? [];
-  const pendingSalaryTotal = pendingSalary.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+
+  // The server now sends the total directly — the screen only ever rendered
+  // that, never the individual payslip rows.
+  const pendingSalaryTotal = isMini
+    ? ((miniPendingSalary as SalaryPayment[] | undefined) ?? []).reduce(
+        (sum, p) => sum + parseFloat(p.amount),
+        0,
+      )
+    : parseFloat(home?.pendingSalaryTotal ?? '0') || 0;
+  const pendingSalaryCount = isMini
+    ? ((miniPendingSalary as SalaryPayment[] | undefined) ?? []).length
+    : home?.pendingSalaryCount ?? 0;
 
   const alerts = (alertsData as AlertItem[] | undefined) ?? [];
   const lowStockItems = alerts.filter((a) => a.type === 'low_stock');
@@ -171,7 +173,7 @@ export default function DashboardScreen() {
 
   const runSync = async () => {
     const result = await syncPendingSales();
-    qc.invalidateQueries({ queryKey: QK.dashboard });
+    qc.invalidateQueries({ queryKey: QK.dashboardAll });
     qc.invalidateQueries({ queryKey: QK.inventory() });
     qc.invalidateQueries({ queryKey: QK.salesHistory() });
     // Minis: their home stats depend on synced sales + expenses.
@@ -402,7 +404,7 @@ export default function DashboardScreen() {
       )}
 
       {/* Pending salary confirmations — shown to anyone with an active employment */}
-      {!isOffline && isEmployee && pendingSalary.length > 0 && (
+      {!isOffline && isEmployee && pendingSalaryCount > 0 && (
         <Pressable
           onPress={() => router.push('/salary')}
           className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-xl px-4 py-3 mb-4 flex-row items-start gap-3"
@@ -411,9 +413,9 @@ export default function DashboardScreen() {
           <Text className="text-lg">💵</Text>
           <View className="flex-1">
             <Text className="text-amber-700 dark:text-amber-300 font-semibold text-sm">
-              {pendingSalary.length === 1
+              {pendingSalaryCount === 1
                 ? '1 salary payment to confirm'
-                : `${pendingSalary.length} salary payments to confirm`}
+                : `${pendingSalaryCount} salary payments to confirm`}
             </Text>
             <Text className="text-amber-600 dark:text-amber-400 text-sm mt-0.5">
               {formatCurrency(pendingSalaryTotal.toFixed(4))} total · tap to review

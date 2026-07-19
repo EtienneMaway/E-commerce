@@ -19,6 +19,19 @@ import { SalesSummaryFilterDto } from '../sales/dto/sales-filter.dto';
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
+  @Get('home')
+  @ApiOperation({
+    summary: 'Everything the mobile home screen needs, in one request',
+    description:
+      'Aggregates summary + suppliers + alerts + cash-position + pending salary ' +
+      'totals. Replaces five separate calls — on a 2G link that is four fewer ' +
+      'round-trips on the first screen users open.',
+  })
+  @ApiResponse({ status: 200, description: 'Composite home payload' })
+  getHome(@CurrentActorContext() ctx: ActorContext) {
+    return this.dashboardService.getHome(ctx);
+  }
+
   @Get()
   @ApiOperation({
     summary: 'Financial summary dashboard',

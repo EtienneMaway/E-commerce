@@ -1,12 +1,26 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { salesApi } from '../../../../lib/api';
 import { QK } from '../../../../lib/query-keys';
 import { useFormatCurrency } from '../../../../lib/currency';
-import { TopProductsChart } from '../../../../components/charts/TopProductsChart';
+// Lazy — keeps the Recharts/d3 bundle off this route's critical path too.
+const TopProductsChart = dynamic(
+  () => import('../../../../components/charts/TopProductsChart').then((m) => m.TopProductsChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="h-64 w-full rounded-xl animate-pulse"
+        style={{ background: 'var(--muted-bg, rgba(128,128,128,0.10))' }}
+        aria-busy="true"
+      />
+    ),
+  },
+);
 import { DataTable, type Column } from '../../../../components/ui/DataTable';
 import { useT } from '../../../../lib/i18n';
 

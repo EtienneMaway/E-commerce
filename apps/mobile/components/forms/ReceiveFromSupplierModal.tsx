@@ -41,8 +41,7 @@ export function ReceiveFromSupplierModal({ visible, onClose }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
       qc.invalidateQueries({ queryKey: QK.inventory() });
-      qc.invalidateQueries({ queryKey: QK.suppliers });
-      qc.invalidateQueries({ queryKey: QK.dashboard });
+      qc.invalidateQueries({ queryKey: QK.dashboardAll });
       setSupplier(null);
       setForm({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '', piecesPerCarton: '' });
       onClose();

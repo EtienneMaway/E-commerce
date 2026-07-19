@@ -15,7 +15,15 @@ export function setActingAs(kind: ActingAs): void {
 
 export const api = axios.create({
   baseURL: process.env.EXPO_PUBLIC_API_URL ?? 'http://10.0.2.2:3001/api',
-  timeout: 10_000,
+  // 10s was too tight for the 2G/edge links this app runs on — lib/sync.ts had
+  // already concluded the same and overrode it to 45s, but only for offline
+  // replay, leaving every interactive request to fail at 10s. 30s is the
+  // compromise: long enough that a slow response completes rather than being
+  // abandoned (and, for writes, abandoned *after* the server committed), short
+  // enough that a genuinely dead link still surfaces an error while the
+  // merchant is looking at the screen. Individual calls can still pass a
+  // per-request `timeout` override.
+  timeout: 30_000,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -129,7 +137,10 @@ export const expensesApi = {
     description?: string;
     date?: string;
     clientId?: string;
-  }): Promise<Expense> => api.post('/expenses', body).then((r) => r.data),
+  },
+  // Per-call overrides (offline sync uses a longer timeout for slow links).
+  config?: { timeout?: number },
+  ): Promise<Expense> => api.post('/expenses', body, config).then((r) => r.data),
 
   delete: (id: string): Promise<void> => api.delete(`/expenses/${id}`).then(() => undefined),
 };
@@ -300,13 +311,17 @@ export const miniSettlementsApi = {
     api.get('/mini-settlements/stats', { params: { period } }).then((r) => r.data),
   handoverPreview: (): Promise<HandoverPreview> =>
     api.get('/mini-settlements/handover-preview').then((r) => r.data),
-  createExpense: (body: {
-    amount: string; // FC
-    category: string;
-    description?: string;
-    clientId?: string;
-  }): Promise<MiniExpenseSummary> =>
-    api.post('/mini-settlements/expenses', body).then((r) => r.data),
+  createExpense: (
+    body: {
+      amount: string; // FC
+      category: string;
+      description?: string;
+      clientId?: string;
+    },
+    // Per-call overrides (offline sync uses a longer timeout for slow links).
+    config?: { timeout?: number },
+  ): Promise<MiniExpenseSummary> =>
+    api.post('/mini-settlements/expenses', body, config).then((r) => r.data),
   listExpenses: (): Promise<MiniExpenseSummary[]> =>
     api.get('/mini-settlements/expenses').then((r) => r.data),
   // Full history — pending AND already-handed-over expenses.
@@ -554,7 +569,39 @@ export interface CashPosition {
   availableProfitCash: string;
 }
 
+/**
+ * Composite payload from GET /dashboard/home. The per-part shapes stay `unknown`
+ * where the screen already casts them locally — this type exists to name the
+ * envelope, not to re-declare shapes the screens already own.
+ */
+export interface DashboardSummary {
+  totalIOwe: string;
+  totalOwedToMe: string;
+  netPosition: string;
+  totalProfitAllTime: string;
+  totalPurchaseValue: string;
+  totalSellingValue: string;
+}
+
+export interface DashboardHome {
+  summary: DashboardSummary;
+  /** Shape is cast at the render site, which already owns it. */
+  suppliers: unknown[];
+  alerts: unknown[];
+  cashPosition: CashPosition;
+  pendingSalaryCount: number;
+  /** Σ of pending payslips, 4dp string — the only figure the screen renders. */
+  pendingSalaryTotal: string;
+}
+
 export const dashboardApi = {
+  /**
+   * One request for the whole home screen, replacing five (summary, suppliers,
+   * alerts, cash-position, pending-salary). On a 2G link that removes four
+   * round-trips from the first screen a merchant opens. Owner/full-employee
+   * only — minis 403 here and use their own MiniHomeStats instead.
+   */
+  home: (): Promise<DashboardHome> => api.get('/dashboard/home').then((r) => r.data),
   summary: () => api.get('/dashboard').then((r) => r.data),
   suppliers: () => api.get('/dashboard/suppliers').then((r) => r.data),
   supplierDetail: (id: string) => api.get(`/dashboard/suppliers/${id}`).then((r) => r.data),

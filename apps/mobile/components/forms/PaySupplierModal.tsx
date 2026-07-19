@@ -31,8 +31,7 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
     mutationFn: () => paymentsApi.paySupplier({ supplierUserId: supplierId, amount: amountUsd, note: note || undefined }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.supplierDetail(supplierId) });
-      qc.invalidateQueries({ queryKey: QK.suppliers });
-      qc.invalidateQueries({ queryKey: QK.dashboard });
+      qc.invalidateQueries({ queryKey: QK.dashboardAll });
       setAmountFc('');
       setNote('');
       onClose();

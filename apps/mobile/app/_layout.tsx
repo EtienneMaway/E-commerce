@@ -1,7 +1,10 @@
 import '../global.css';
 import { useEffect, useState } from 'react';
 import { Stack, router, useNavigationContainerRef, useSegments } from 'expo-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'nativewind';
 import { useAuthStore } from '../store/auth.store';
@@ -11,14 +14,66 @@ import { usePersonaStore } from '../store/persona.store';
 import { usePrinterStore } from '../store/printer.store';
 import { useT } from '../lib/i18n';
 import { authApi, dashboardApi } from '../lib/api';
+import { isAuthError } from '../lib/utils';
+import { initConnectivity } from '../lib/connectivity';
 import { scheduleAlertNotifications } from '../lib/notifications';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
+// Tuned for merchants on 2G/edge links in DRC. lib/sync.ts already established
+// that one attempt on a 10s budget is not enough on these networks; these
+// defaults bring the same thinking to ordinary reads.
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, staleTime: 30_000 },
+    queries: {
+      staleTime: 30_000,
+      // Three attempts with backoff instead of one. Never retry a 401/403 —
+      // the answer will not change and it only delays the error.
+      retry: (failureCount, err) => !isAuthError(err) && failureCount < 3,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 15_000),
+      // Hold cached screens for 24h rather than the 5min default. Backgrounding
+      // the app for a few minutes previously evicted everything, so returning
+      // to it triggered a full refetch storm before anything could render.
+      gcTime: 24 * 60 * 60_000,
+      // On React Native this fires when the app returns to the foreground.
+      // Left on by default it refetched every mounted query at once — on the
+      // home tab that is a 7-8 request burst every time the merchant reopens
+      // the app. staleTime still covers genuinely stale data.
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      // Only the sale path carries a client-side idempotency key
+      // (RecordSaleModal's clientSaleId). Everything else would risk double-
+      // writing on retry, so failures surface to the user instead.
+      retry: 0,
+    },
   },
 });
+
+/**
+ * Writes the query cache to AsyncStorage so it survives an app restart.
+ *
+ * Before this, the cache was purely in-memory: every cold start showed empty
+ * skeletons and fired a 7-8 request fan-out, even when the merchant had opened
+ * the same screen a minute earlier. On a 2G link that made the app unusable for
+ * the first 10-30 seconds of every launch. Now the last known data paints
+ * immediately and refetches quietly in the background.
+ */
+const persistOptions = {
+  persister: createAsyncStoragePersister({
+    storage: AsyncStorage,
+    key: 'rq-cache',
+    // Sales/money data goes stale but never becomes dangerous to show briefly;
+    // a week keeps a merchant who opens the app rarely from a cold blank start.
+    throttleTime: 2_000,
+  }),
+  maxAge: 7 * 24 * 60 * 60_000,
+  dehydrateOptions: {
+    shouldDehydrateQuery: (query: { state: { status: string } }) =>
+      // Never persist errored queries — a failure captured on a bad network
+      // would otherwise be restored as the "known" state on next launch.
+      query.state.status === 'success',
+  },
+};
 
 function ThemeSync() {
   const theme = useThemeStore((s) => s.theme);
@@ -93,8 +148,19 @@ function AuthGuard() {
             .then((alerts) => scheduleAlertNotifications(alerts))
             .catch(() => {/* non-critical — ignore */});
         })
-        .catch(() => {
-          logout().then(() => router.replace('/(auth)/login'));
+        .catch((err: unknown) => {
+          // Only a real rejection of the token ends the session. Previously ANY
+          // failure logged the user out — so opening the app on a weak signal
+          // (a 10s timeout back then) kicked the merchant to the login screen
+          // with a perfectly valid token.
+          if (isAuthError(err)) {
+            logout().then(() => router.replace('/(auth)/login'));
+            return;
+          }
+          // Network failure: keep the session and let them into the app. Cached
+          // screens still render, and queued sales still sync when signal
+          // returns.
+          router.replace('/(tabs)');
         });
     }
   }, [token, isLoading, segments, isNavReady]);
@@ -109,9 +175,14 @@ function DynamicStatusBar() {
 
 export default function RootLayout() {
   const t = useT();
+
+  // Bridge NetInfo + AppState into React Query and auto-drain the offline
+  // queue. Without this the app had no idea it had lost or regained signal.
+  useEffect(() => initConnectivity(), []);
+
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <ThemeSync />
         <LocaleSync />
         <AuthGuard />
@@ -129,7 +200,7 @@ export default function RootLayout() {
             options={{ headerShown: true, title: t.expenses.title, headerBackTitle: t.screens.back }}
           />
         </Stack>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </ErrorBoundary>
   );
 }

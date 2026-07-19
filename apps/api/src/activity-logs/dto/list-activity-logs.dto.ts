@@ -1,4 +1,4 @@
-import { IsArray, IsDateString, IsEnum, IsInt, IsOptional, IsPositive } from 'class-validator';
+import { IsArray, IsDateString, IsEnum, IsInt, IsOptional, IsPositive, Max } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsUuidOrSelf } from '../../common/actor-filter';
@@ -62,5 +62,7 @@ export class ListActivityLogsDto {
   @Type(() => Number)
   @IsInt()
   @IsPositive()
+  // Hard ceiling: without it `?limit=100000` defeats pagination entirely.
+  @Max(200)
   limit?: number = 10;
 }

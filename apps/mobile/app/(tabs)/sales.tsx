@@ -9,7 +9,7 @@ import {
   RefreshControl,
   TextInput,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { salesApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { formatDate } from '../../lib/utils';
@@ -157,7 +157,8 @@ export default function SalesScreen() {
 
   // Empty string → omit the query param (no server-side filter); otherwise
   // pass it through. React Query keeps a separate cache per (period, query)
-  // pair so swapping clears stale results without a flash.
+  // pair; `placeholderData: keepPreviousData` below is what actually prevents
+  // the flash while the new pair loads.
   const trimmedQuery = clientQuery.trim();
   const { data: salesData, isFetching: salesLoading, refetch: refetchSales } = useQuery({
     queryKey: QK.salesHistory({ period: historyPeriod, clientQuery: trimmedQuery }),
@@ -168,6 +169,10 @@ export default function SalesScreen() {
       }),
     staleTime: 30_000,
     enabled: view === 'history',
+    // Keep the previous period's rows on screen while the new period loads.
+    // Without this every filter tap blanked the list to a spinner — on a 3s
+    // network that reads as the app losing the data.
+    placeholderData: keepPreviousData,
   });
 
   const { data: topData, isFetching: topLoading, refetch: refetchTop } = useQuery({
@@ -175,6 +180,7 @@ export default function SalesScreen() {
     queryFn: () => salesApi.topProducts({ rankBy, period: topPeriod }),
     staleTime: 30_000,
     enabled: view === 'top',
+    placeholderData: keepPreviousData,
   });
 
   const sales = (salesData as { data: SaleRow[]; total: number } | undefined)?.data ?? [];

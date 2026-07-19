@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { IsUuidOrSelf } from '../../common/actor-filter';
@@ -102,6 +103,9 @@ export class SalesFilterDto {
   @Type(() => Number)
   @IsInt()
   @IsPositive()
+  // Hard ceiling: without it `?limit=100000` defeats pagination entirely and
+  // pulls the whole table into one response.
+  @Max(200)
   @IsOptional()
   limit?: number = 10;
 

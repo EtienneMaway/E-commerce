@@ -8,7 +8,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
   expensesApi,
   dashboardApi,
@@ -71,6 +71,8 @@ function OwnerExpensesScreen() {
     queryKey: QK.expenses(listParams),
     queryFn: () => expensesApi.list(listParams),
     enabled: !isOffline,
+    // Page/filter changes keep the current rows visible instead of blanking.
+    placeholderData: keepPreviousData,
   });
 
   const { data: cash } = useQuery({
@@ -137,7 +139,7 @@ function OwnerExpensesScreen() {
     mutationFn: (id: string) => expensesApi.delete(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['expenses'] });
-      qc.invalidateQueries({ queryKey: QK.cashPosition });
+      qc.invalidateQueries({ queryKey: QK.dashboardAll });
     },
     onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
   });

@@ -460,8 +460,8 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     qc.invalidateQueries({ queryKey: QK.inventoryProducts });
     qc.invalidateQueries({ queryKey: QK.inventory() });
     qc.invalidateQueries({ queryKey: QK.salesHistory() });
-    qc.invalidateQueries({ queryKey: QK.dashboard });
-    qc.invalidateQueries({ queryKey: QK.cashPosition });
+    // Prefix key: covers summary, home, cash-position, alerts, suppliers.
+    qc.invalidateQueries({ queryKey: QK.dashboardAll });
     // Mini employees: refresh their home stats (cash to hand over, I owe, profit).
     qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] });
   };
