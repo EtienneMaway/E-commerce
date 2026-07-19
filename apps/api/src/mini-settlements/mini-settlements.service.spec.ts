@@ -266,3 +266,63 @@ describe('MiniSettlementsService.approve', () => {
     expect(createdPersonal).toBe(false);
   });
 });
+
+/**
+ * A mini hands back cash *and* the unsold goods, but stock only leaves their
+ * books on approval. A second PENDING handover would therefore re-snapshot the
+ * same still-undeducted CONSIGNED_IN lots and claim the same units twice, so
+ * create() must refuse while one is open.
+ */
+describe('MiniSettlementsService.create — one open handover at a time', () => {
+  const MINI = 'mini-1';
+  const OWNER = 'owner-1';
+
+  const ctx: ActorContext = {
+    actorId: MINI,
+    effectiveOwnerId: MINI, // a mini operates on their own books
+    tier: 'MINI_EMPLOYEE',
+    employment: { employerId: OWNER } as never,
+  };
+
+  function build(openHandover: unknown) {
+    const settlementRepo = {
+      findOne: jest.fn(async () => openHandover),
+      create: jest.fn((v: unknown) => v),
+      save: jest.fn(async (v: unknown) => ({ ...(v as object), id: 's-new' })),
+    };
+    const entryRepo = { find: jest.fn(async () => []) };
+    const variantRepo = { find: jest.fn(async () => []) };
+    const miniExpenseRepo = { update: jest.fn(async () => ({})) };
+    const service = new MiniSettlementsService(
+      settlementRepo as never,
+      { create: jest.fn((v: unknown) => v) } as never, // itemRepo
+      entryRepo as never,
+      {} as never, // debtorCreditRepo
+      {} as never, // supplierDebtRepo
+      {} as never, // saleRepo
+      {} as never, // employmentRepo
+      miniExpenseRepo as never,
+      {} as never, // dataSource
+      {} as never, // stockMovements
+      {} as never, // currencyService
+      variantRepo as never,
+    );
+    return { service, settlementRepo };
+  }
+
+  it('rejects a second handover while one is awaiting approval', async () => {
+    const { service } = build({ id: 's-open', status: MiniSettlementStatus.PENDING });
+    await expect(service.create(ctx, { cashAmount: '100.0000' })).rejects.toThrow(
+      /already have a handover waiting for approval/i,
+    );
+  });
+
+  it('allows a handover when none is open', async () => {
+    const { service, settlementRepo } = build(null);
+    const saved = await service.create(ctx, { cashAmount: '100.0000' });
+    expect(saved).toMatchObject({ id: 's-new', status: MiniSettlementStatus.PENDING });
+    expect(settlementRepo.findOne).toHaveBeenCalledWith({
+      where: { miniId: MINI, status: MiniSettlementStatus.PENDING },
+    });
+  });
+});

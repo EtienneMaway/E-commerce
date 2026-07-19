@@ -10,7 +10,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { PairMiniEmployeeDto } from './dto/pair-mini-employee.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
+import { AuthChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponseDto, UserPublicDto } from './dto/auth-response.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
@@ -89,7 +89,7 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Current password is incorrect' })
   changePassword(
     @CurrentUser() user: User,
-    @Body() dto: ChangePasswordDto,
+    @Body() dto: AuthChangePasswordDto,
   ): Promise<UserPublicDto> {
     return this.authService.changePassword(user, dto);
   }

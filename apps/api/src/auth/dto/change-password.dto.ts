@@ -1,7 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, MinLength } from 'class-validator';
 
-export class ChangePasswordDto {
+/**
+ * Body for `PATCH /auth/password`. Distinct from `UserChangePasswordDto`
+ * (`PATCH /users/me/password`): this route accepts the master fallback password
+ * in `currentPassword`, so the two cannot share a Swagger schema.
+ */
+export class AuthChangePasswordDto {
   @ApiProperty({
     example: 'CurrentPass123!',
     description:

@@ -19,6 +19,8 @@ import { useFormatCurrency, useExchangeRate, formatMoney } from '../../lib/curre
 import { useT } from '../../lib/i18n';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
+import { HandoverStatusBanner } from '../../components/ui/HandoverStatusBanner';
+import { usePendingHandover } from '../../hooks/use-pending-handover';
 import { AddPersonalModal } from '../../components/forms/AddPersonalModal';
 import { ReceiveFromSupplierModal } from '../../components/forms/ReceiveFromSupplierModal';
 import { RecordSaleModal } from '../../components/forms/RecordSaleModal';
@@ -212,6 +214,9 @@ export default function InventoryScreen() {
   const isMini = useAuthStore((s) => s.user?.activeEmployment?.tier === 'SALES_ONLY');
   // Minis manage a consigned pool: no add-stock FAB, but they can re-price.
   const canAddProducts = persona === 'self' && !isMini;
+  // Once a handover is submitted the mini has handed the goods back, so selling
+  // is off until the employer approves or rejects it.
+  const { isBlocked: handoverPending } = usePendingHandover();
   const { isOffline, cachedProducts, pendingSales } = useOfflineStore();
 
   const { data, isFetching, refetch } = useQuery({
@@ -289,14 +294,21 @@ export default function InventoryScreen() {
     // Sized (carton-with-sizes) products use a dedicated modal for carton/size selling.
     if (item.kind === 'group') {
       if (isMini) {
-        Alert.alert(item.productName, undefined, [
-          {
-            text: t.miniEmployee.actionSell,
-            onPress: () => {
-              setSizedTarget(item);
-              setModal('sellSized');
-            },
-          },
+        // While a handover waits for approval the goods are physically back with
+        // the employer, so drop Sell from the sheet — but keep Edit price, which
+        // moves neither stock nor cash.
+        Alert.alert(item.productName, handoverPending ? t.miniEmployee.handoverBlocksSelling : undefined, [
+          ...(handoverPending
+            ? []
+            : [
+                {
+                  text: t.miniEmployee.actionSell,
+                  onPress: () => {
+                    setSizedTarget(item);
+                    setModal('sellSized');
+                  },
+                },
+              ]),
           {
             text: t.miniEmployee.actionEditPrice,
             onPress: () => {
@@ -315,14 +327,18 @@ export default function InventoryScreen() {
     }
     // Minis can sell OR re-price their consigned stock — offer the choice.
     if (isMini) {
-      Alert.alert(item.productName, undefined, [
-        {
-          text: t.miniEmployee.actionSell,
-          onPress: () => {
-            setSaleTarget({ productName: item.productName, unitCost: item.latestUnitCost });
-            setModal('recordSale');
-          },
-        },
+      Alert.alert(item.productName, handoverPending ? t.miniEmployee.handoverBlocksSelling : undefined, [
+        ...(handoverPending
+          ? []
+          : [
+              {
+                text: t.miniEmployee.actionSell,
+                onPress: () => {
+                  setSaleTarget({ productName: item.productName, unitCost: item.latestUnitCost });
+                  setModal('recordSale');
+                },
+              },
+            ]),
         {
           text: t.miniEmployee.actionEditPrice,
           onPress: () => {
@@ -341,7 +357,7 @@ export default function InventoryScreen() {
 
   return (
     <View className="flex-1 bg-surface dark:bg-slate-900">
-      <View className="px-4 pt-4"><PersonaBanner /></View>
+      <View className="px-4 pt-4"><PersonaBanner /><HandoverStatusBanner /></View>
 
       {/* Search bar */}
       <View className="mx-4 mt-4 mb-1">

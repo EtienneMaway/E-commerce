@@ -7,10 +7,10 @@
 # and survives this machine's low-memory situation.
 #
 # Usage:
-#   cd apps/mobile && ./rebuild-local.sh              # build against your .env (local API on :3000)
-#   cd apps/mobile && ./rebuild-local.sh --railway    # build against the Railway backend (for real phones)
+#   cd apps/mobile && ./rebuild-local.sh           # build against your .env (local API on :3000)
+#   cd apps/mobile && ./rebuild-local.sh --prod    # build against the production backend (for real phones)
 #
-# --railway temporarily rewrites .env to the Railway URL for the build, then
+# --prod temporarily rewrites .env to the production API URL for the build, then
 # restores your original .env automatically (even if the build fails). Use it to
 # make an APK you can sideload on any Android phone, anywhere — it talks to the
 # public HTTPS backend instead of your machine's localhost.
@@ -20,7 +20,7 @@ set -euo pipefail
 AVD="Medium_Phone_API_36.1"
 PKG="com.kmb.mobile"
 ACTIVITY="$PKG/.MainActivity"
-RAILWAY_URL="https://api-production-05dd.up.railway.app/api"
+PROD_API_URL="https://api.kmb-talk.com/api"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ANDROID_DIR="$HERE/android"
@@ -43,19 +43,19 @@ fi
 
 # ---- parse args -------------------------------------------------------------
 MODE="local"
-if [ "${1:-}" = "--railway" ]; then
-  MODE="railway"
+if [ "${1:-}" = "--prod" ]; then
+  MODE="prod"
 elif [ -n "${1:-}" ]; then
-  echo "Unknown option: $1  (use --railway or no argument)" >&2
+  echo "Unknown option: $1  (use --prod or no argument)" >&2
   exit 2
 fi
 
 # ---- point the build at the right backend -----------------------------------
 restore_env() { [ -f "$ENV_BAK" ] && mv -f "$ENV_BAK" "$ENV_FILE"; }
-if [ "$MODE" = "railway" ]; then
+if [ "$MODE" = "prod" ]; then
   cp "$ENV_FILE" "$ENV_BAK"
   trap restore_env EXIT              # always put the original .env back
-  printf 'EXPO_PUBLIC_API_URL=%s\n' "$RAILWAY_URL" > "$ENV_FILE"
+  printf 'EXPO_PUBLIC_API_URL=%s\n' "$PROD_API_URL" > "$ENV_FILE"
 fi
 
 echo "==> Mode: $MODE"
@@ -95,7 +95,7 @@ echo "==> Launching ..."
 adb shell am start -n "$ACTIVITY" >/dev/null
 
 echo "==> Done. App restarted with your latest changes."
-if [ "$MODE" = "railway" ]; then
-  echo "==> This APK talks to Railway and can be shared/sideloaded on any phone:"
+if [ "$MODE" = "prod" ]; then
+  echo "==> This APK talks to the production backend and can be shared/sideloaded on any phone:"
   echo "    $APK"
 fi

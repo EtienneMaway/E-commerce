@@ -75,6 +75,24 @@ const en = {
     receiveCardSub: 'Products your employer assigned to you',
     handoverCardTitle: 'Hand over',
     handoverCardSub: 'Turn in cash and unsold items',
+    handoverCardWaiting: 'Waiting for your employer to approve',
+    // Pending-approval state
+    handoverPendingTitle: 'Handover waiting for approval',
+    handoverPendingSub: 'Your employer has to approve it before you can sell or hand over again.',
+    handoverPendingSince: (date: string) => `Sent ${date}`,
+    handoverBlocksSelling: 'You handed your goods back, so selling is paused until your employer approves or rejects the handover.',
+    handoverRejectedTitle: 'Handover rejected',
+    handoverRejectedSub: 'Your employer rejected your last handover. You can sell again and hand over when ready.',
+    // Offline queue must drain first — otherwise the cash total would be wrong
+    handoverSyncTitle: 'Sync your sales first',
+    handoverSyncSub: (n: number) =>
+      n === 1
+        ? '1 sale or expense has not reached the server yet. Handing over now would show the wrong amount of cash.'
+        : `${n} sales or expenses have not reached the server yet. Handing over now would show the wrong amount of cash.`,
+    handoverSyncNow: 'Sync now',
+    handoverSyncFailed: 'Some items could not sync',
+    handoverOfflineTitle: 'You are offline',
+    handoverOfflineSub: 'Go back online and sync your sales before handing over.',
     // Receive modal
     receiveTitle: 'Receive products',
     receiveSubtitle: 'Confirm the products your employer gave you to sell. They move to your inventory as a debt you settle later.',
@@ -915,6 +933,24 @@ const fr: Translations = {
     receiveCardSub: 'Produits que votre employeur vous a confiés',
     handoverCardTitle: 'Remettre',
     handoverCardSub: 'Remettre l\'argent et les invendus',
+    handoverCardWaiting: 'En attente de l\'approbation de votre employeur',
+    // État « en attente d'approbation »
+    handoverPendingTitle: 'Remise en attente d\'approbation',
+    handoverPendingSub: 'Votre employeur doit l\'approuver avant que vous puissiez vendre ou remettre à nouveau.',
+    handoverPendingSince: (date: string) => `Envoyée le ${date}`,
+    handoverBlocksSelling: 'Vous avez rendu votre marchandise : la vente est suspendue jusqu\'à ce que votre employeur approuve ou refuse la remise.',
+    handoverRejectedTitle: 'Remise refusée',
+    handoverRejectedSub: 'Votre employeur a refusé votre dernière remise. Vous pouvez vendre à nouveau et remettre quand vous voulez.',
+    // La file hors ligne doit être vidée avant : sinon le total serait faux
+    handoverSyncTitle: 'Synchronisez d\'abord vos ventes',
+    handoverSyncSub: (n: number) =>
+      n === 1
+        ? '1 vente ou dépense n\'est pas encore arrivée au serveur. Remettre maintenant afficherait un montant erroné.'
+        : `${n} ventes ou dépenses ne sont pas encore arrivées au serveur. Remettre maintenant afficherait un montant erroné.`,
+    handoverSyncNow: 'Synchroniser',
+    handoverSyncFailed: 'Certains éléments n\'ont pas pu être synchronisés',
+    handoverOfflineTitle: 'Vous êtes hors ligne',
+    handoverOfflineSub: 'Reconnectez-vous et synchronisez vos ventes avant de remettre.',
     receiveTitle: 'Recevoir des produits',
     receiveSubtitle: 'Confirmez les produits que votre employeur vous a confiés. Ils passent dans votre inventaire comme une dette à régler plus tard.',
     receiveEmpty: 'Rien à recevoir pour le moment.',

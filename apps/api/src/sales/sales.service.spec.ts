@@ -111,6 +111,7 @@ describe('SalesService.recordSale — whole-carton sale', () => {
       entryRepo as never,
       groupRepo as never,
       variantRepo as never,
+      { findOne: jest.fn(async () => null) } as never, // no open handover
       dataSource as never,
       stockMovements as never,
       pricingService as never,
@@ -292,6 +293,7 @@ describe('SalesService.recordSale — quantity discount capture (single sale)', 
       entryRepo as never,
       { findOne: jest.fn(async () => null) } as never,
       { findOne: jest.fn(async () => null) } as never,
+      { findOne: jest.fn(async () => null) } as never, // no open handover
       dataSource as never,
       stockMovements as never,
       pricingService as never,
@@ -340,5 +342,57 @@ describe('SalesService.recordSale — quantity discount capture (single sale)', 
 
     expect(savedSales[0].originalUnitPrice).toBeNull();
     expect(savedSales[0].discountReason).toBeNull();
+  });
+});
+
+/**
+ * A mini employee who has submitted a handover has physically returned both the
+ * cash and the unsold goods. The stock only leaves their books on approval, so
+ * without this guard the app would still offer phantom stock — and the sale
+ * would land in the gap between the handover's window and the next one, where
+ * no settlement accounts for it.
+ */
+describe('SalesService.recordSale — mini blocked while a handover is pending', () => {
+  const MINI = 'mini-1';
+
+  const miniCtx: ActorContext = {
+    actorId: MINI,
+    effectiveOwnerId: MINI,
+    tier: 'MINI_EMPLOYEE',
+    employment: { employerId: 'owner-1' },
+  } as unknown as ActorContext;
+
+  function build(openHandover: unknown) {
+    const settlementRepo = { findOne: jest.fn(async () => openHandover) };
+    const entryRepo = { find: jest.fn(async () => []), findOne: jest.fn(async () => null) };
+    const service = new SalesService(
+      { findOne: jest.fn(async () => null) } as never, // saleRepo
+      entryRepo as never,
+      { findOne: jest.fn(async () => null) } as never, // groupRepo
+      { findOne: jest.fn(async () => null) } as never, // variantRepo
+      settlementRepo as never,
+      { transaction: jest.fn() } as never, // dataSource
+      { record: jest.fn() } as never, // stockMovements
+      { applyEmployeePriceRule: jest.fn() } as never, // pricingService
+    );
+    return { service, settlementRepo };
+  }
+
+  const dto = { productName: 'rice', quantity: 1, unitPrice: '5.0000' } as never;
+
+  it('rejects the sale while a handover awaits approval', async () => {
+    const { service } = build({ id: 's-open', status: 'PENDING' });
+    await expect(service.recordSale(miniCtx, dto)).rejects.toThrow(
+      /handover is waiting for approval/i,
+    );
+  });
+
+  it('does not gate an owner on mini handovers', async () => {
+    const { service, settlementRepo } = build({ id: 's-open', status: 'PENDING' });
+    // Owner tier never reaches the handover lookup; it fails later on stock.
+    await expect(service.recordSale(ownerCtx, dto)).rejects.not.toThrow(
+      /handover is waiting for approval/i,
+    );
+    expect(settlementRepo.findOne).not.toHaveBeenCalled();
   });
 });

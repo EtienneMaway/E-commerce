@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -12,6 +13,8 @@ import Decimal from 'decimal.js';
 import {
   InventoryEntry,
   InventorySource,
+  MiniSettlement,
+  MiniSettlementStatus,
   ProductGroup,
   ProductVariant,
   SaleTransaction,
@@ -87,6 +90,8 @@ export class SalesService {
     private readonly groupRepo: Repository<ProductGroup>,
     @InjectRepository(ProductVariant)
     private readonly variantRepo: Repository<ProductVariant>,
+    @InjectRepository(MiniSettlement)
+    private readonly settlementRepo: Repository<MiniSettlement>,
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
     private readonly pricingService: PricingService,
@@ -112,6 +117,23 @@ export class SalesService {
         order: { date: 'ASC' },
       });
       if (existing) return existing;
+    }
+
+    // A mini employee hands back cash *and* the unsold goods, so once a
+    // handover is awaiting approval they are physically holding nothing to
+    // sell. The stock only leaves their books on approval, so without this the
+    // app would still offer phantom stock — and the sale would land in the gap
+    // between the handover's window and the next one, where no settlement
+    // accounts for it.
+    if (ctx.tier === 'MINI_EMPLOYEE') {
+      const openHandover = await this.settlementRepo.findOne({
+        where: { miniId: ownerId, status: MiniSettlementStatus.PENDING },
+      });
+      if (openHandover) {
+        throw new ConflictException(
+          'Your handover is waiting for approval — you cannot record sales until your employer approves or rejects it',
+        );
+      }
     }
 
     const base = { ownerId, actorId, clientSaleId };

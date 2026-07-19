@@ -21,6 +21,7 @@ import { RecordSaleModal } from '../../components/forms/RecordSaleModal';
 import { SellSizedProductModal } from '../../components/forms/SellSizedProductModal';
 import { EditMiniPriceModal } from '../../components/forms/EditMiniPriceModal';
 import { useAuthStore } from '../../store/auth.store';
+import { usePendingHandover } from '../../hooks/use-pending-handover';
 import type { InventoryEntry, ProductSummary } from '@trading-app/types';
 
 const LOW_STOCK = 5;
@@ -103,6 +104,9 @@ export default function ProductDetailScreen() {
   const formatCurrency = useFormatCurrency();
   const exchangeRate = useExchangeRate();
   const isMini = useAuthStore((s) => s.user?.activeEmployment?.tier === 'SALES_ONLY');
+  // Selling is off while a handover waits for approval — the goods are already
+  // back with the employer even though the stock only moves on approval.
+  const { isBlocked: handoverPending } = usePendingHandover();
   const [saleOpen, setSaleOpen] = useState(false);
   const [sizedSellOpen, setSizedSellOpen] = useState(false);
   const [editPriceOpen, setEditPriceOpen] = useState(false);
@@ -158,7 +162,12 @@ export default function ProductDetailScreen() {
                   <Text className="text-primary font-semibold text-sm">{t.miniEmployee.actionEditPrice}</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={() => setSizedSellOpen(true)} className="bg-primary px-4 py-2 rounded-xl">
+              <TouchableOpacity
+                onPress={() => setSizedSellOpen(true)}
+                disabled={handoverPending}
+                className="bg-primary px-4 py-2 rounded-xl"
+                style={{ opacity: handoverPending ? 0.4 : 1 }}
+              >
                 <Text className="text-white font-semibold text-sm">{t.productDetail.sellBtn}</Text>
               </TouchableOpacity>
             </View>
@@ -252,7 +261,12 @@ export default function ProductDetailScreen() {
           <Text className="text-2xl font-bold text-text dark:text-slate-100 flex-1 mr-3" numberOfLines={2}>
             {titleCased}
           </Text>
-          <TouchableOpacity onPress={() => setSaleOpen(true)} className="bg-primary px-4 py-2 rounded-xl">
+          <TouchableOpacity
+            onPress={() => setSaleOpen(true)}
+            disabled={handoverPending}
+            className="bg-primary px-4 py-2 rounded-xl"
+            style={{ opacity: handoverPending ? 0.4 : 1 }}
+          >
             <Text className="text-white font-semibold text-sm">{t.productDetail.sellBtn}</Text>
           </TouchableOpacity>
         </View>

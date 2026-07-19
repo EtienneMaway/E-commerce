@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10'
+
+jobs:
+  api:
+    name: API — migrations, tests, build
+    runs-on: ubuntu-latest
+
+    # Mirrors production: migrations run against a real Postgres, never a mock.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: trading_app_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trading_app_ci
+      JWT_SECRET: ci-secret-not-used-outside-ci
+      JWT_EXPIRES_IN: 7d
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter api exec tsc --noEmit -p tsconfig.json
+
+      # Migrations run from dist/ (see migration:run in apps/api/package.json),
+      # so the build has to come first — same order as the VPS deploy script.
+      - name: Build
+        run: pnpm build:api
+
+      - name: Run migrations on an empty database
+        working-directory: apps/api
+        run: pnpm migration:run
+
+      # A second run must be a clean no-op. Catches a migration that was
+      # recorded but whose SQL would re-execute, and proves the ledger is sane.
+      - name: Re-run migrations (must be a no-op)
+        working-directory: apps/api
+        run: |
+          output=$(pnpm migration:run 2>&1)
+          echo "$output"
+          if echo "$output" | grep -q "has been executed successfully"; then
+            echo "::error::A migration executed twice — the migrations table is not gating replays."
+            exit 1
+          fi
+          echo "No pending migrations, as expected."
+
+      - name: Verify schema is queryable
+        run: |
+          psql "$DATABASE_URL" -c "SELECT count(*) FROM migrations;"
+          psql "$DATABASE_URL" -c "\dt" | head -40
+
+      - name: Tests
+        run: pnpm test
+
+  clients:
+    name: Dashboard + mobile typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Mobile typecheck
+        run: pnpm --filter mobile exec tsc --noEmit -p tsconfig.json
+
+      - name: Dashboard typecheck
+        run: pnpm --filter dashboard exec tsc --noEmit
+
+      - name: Dashboard build
+        run: pnpm build:dashboard
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.com
+
+  deploy:
+    name: Deploy to VPS
+    needs: [api, clients]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # Set up a "production" environment in repo settings to require manual
+    # approval before this job runs.
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          # Runs the existing script from VPS_DEPLOYMENT.md: pull, install,
+          # build both apps, migrate, pm2 restart. Keeping the logic on the box
+          # means the deploy steps stay in one place, not split with CI.
+          script: /home/${{ secrets.VPS_USER }}/deploy.sh

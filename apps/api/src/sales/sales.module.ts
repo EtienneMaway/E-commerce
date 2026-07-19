@@ -4,6 +4,7 @@ import { SalesController } from './sales.controller';
 import { SalesService } from './sales.service';
 import {
   InventoryEntry,
+  MiniSettlement,
   ProductGroup,
   ProductVariant,
   SaleTransaction,
@@ -17,6 +18,7 @@ import { StockMovementsModule } from '../stock-movements/stock-movements.module'
       InventoryEntry,
       ProductGroup,
       ProductVariant,
+      MiniSettlement,
     ]),
     StockMovementsModule,
   ],

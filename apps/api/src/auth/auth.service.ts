@@ -16,7 +16,7 @@ import { EmploymentsService } from '../employments/employments.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { PairMiniEmployeeDto } from './dto/pair-mini-employee.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
+import { AuthChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponseDto, UserPublicDto } from './dto/auth-response.dto';
 import { ACCOUNT_DELETION_GRACE_MS, BCRYPT_SALT_ROUNDS } from '../common/constants';
 
@@ -160,7 +160,7 @@ export class AuthService {
     return this.toPublic(user);
   }
 
-  async changePassword(user: User, dto: ChangePasswordDto): Promise<UserPublicDto> {
+  async changePassword(user: User, dto: AuthChangePasswordDto): Promise<UserPublicDto> {
     if (user.isMiniEmployee) {
       throw new ForbiddenException('Mini employees do not have a password');
     }

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -209,6 +210,18 @@ export class MiniSettlementsService {
       throw new ForbiddenException('Only a mini employee can hand over a settlement');
     }
     const ownerId = ctx.employment.employerId;
+
+    // One open handover at a time. Stock is only deducted on approval, so a
+    // second PENDING handover would re-snapshot the same undeducted
+    // CONSIGNED_IN lots and claim the same unsold units twice.
+    const openHandover = await this.settlementRepo.findOne({
+      where: { miniId, status: MiniSettlementStatus.PENDING },
+    });
+    if (openHandover) {
+      throw new ConflictException(
+        'You already have a handover waiting for approval — ask your employer to approve or reject it first',
+      );
+    }
 
     const cash = new Decimal(dto.cashAmount ?? '0');
     if (cash.lt(0)) {

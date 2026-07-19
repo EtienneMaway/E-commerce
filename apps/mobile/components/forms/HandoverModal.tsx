@@ -6,6 +6,8 @@ import { formatFcValue } from '../../lib/currency';
 import { breakdownQuantity, formatBreakdown, getErrorMessage } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { useT } from '../../lib/i18n';
+import { useOfflineStore } from '../../store/offline.store';
+import { syncPendingSales } from '../../lib/sync';
 
 interface Props {
   visible: boolean;
@@ -22,11 +24,34 @@ export function HandoverModal({ visible, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
 
+  // The preview is computed server-side from *synced* rows. Anything still in
+  // the offline queue would understate the cash owed (unsynced sales) and land
+  // its expenses on the next cycle instead of this one (the API claims only
+  // already-persisted expenses onto the handover). So the queue must drain
+  // before the mini is shown — let alone asked to confirm — a cash figure.
+  const { isOffline, pendingSales, pendingExpenses } = useOfflineStore();
+  const queued = pendingSales.length + pendingExpenses.length;
+  const blocked = isOffline || queued > 0;
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['mini-settlements', 'handover-preview'],
     queryFn: () => miniSettlementsApi.handoverPreview(),
-    enabled: visible,
+    enabled: visible && !blocked,
     staleTime: 5_000,
+  });
+
+  const { mutate: runSync, isPending: syncing } = useMutation({
+    mutationFn: syncPendingSales,
+    onSuccess: (result) => {
+      if (result.failed > 0) {
+        Alert.alert(t.miniEmployee.handoverSyncFailed, result.errors.join('\n'));
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ['mini-settlements', 'handover-preview'] });
+      qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] });
+      qc.invalidateQueries({ queryKey: QK.miniExpenses });
+    },
+    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
   });
 
   const preview = data as HandoverPreview | undefined;
@@ -85,7 +110,26 @@ export function HandoverModal({ visible, onClose }: Props) {
         </View>
         <Text className="text-muted dark:text-slate-500 text-sm mb-5">{t.miniEmployee.handoverAutoSubtitle}</Text>
 
-        {isLoading ? (
+        {blocked ? (
+          <View className="mt-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-2xl px-4 py-4">
+            <Text className="text-amber-700 dark:text-amber-300 font-semibold text-base">
+              {isOffline ? t.miniEmployee.handoverOfflineTitle : t.miniEmployee.handoverSyncTitle}
+            </Text>
+            <Text className="text-amber-600 dark:text-amber-400 text-sm mt-1">
+              {isOffline
+                ? t.miniEmployee.handoverOfflineSub
+                : t.miniEmployee.handoverSyncSub(queued)}
+            </Text>
+            {!isOffline && (
+              <Button
+                label={t.miniEmployee.handoverSyncNow}
+                onPress={() => runSync()}
+                loading={syncing}
+                className="mt-4"
+              />
+            )}
+          </View>
+        ) : isLoading ? (
           <ActivityIndicator className="mt-8" />
         ) : error ? (
           <Text className="text-danger text-center mt-10">{getErrorMessage(error)}</Text>

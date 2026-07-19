@@ -17,7 +17,7 @@ import { UsersService } from './users.service';
 import { UserSearchResultDto } from './dto/user-search-result.dto';
 import { UserSearchQueryDto } from './dto/user-search-query.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
+import { UserChangePasswordDto } from './dto/change-password.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -60,7 +60,7 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'Current password is incorrect' })
   async changePassword(
     @CurrentUser() user: User,
-    @Body() dto: ChangePasswordDto,
+    @Body() dto: UserChangePasswordDto,
   ): Promise<{ success: true }> {
     await this.usersService.changePassword(user.id, dto);
     return { success: true };

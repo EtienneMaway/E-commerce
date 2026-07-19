@@ -14,7 +14,7 @@ import * as crypto from 'crypto';
 import { User } from '../entities';
 import { UserSearchResultDto } from './dto/user-search-result.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
+import { UserChangePasswordDto } from './dto/change-password.dto';
 import { UserPublicDto } from '../auth/dto/auth-response.dto';
 import { EmploymentsService } from '../employments/employments.service';
 import {
@@ -139,7 +139,7 @@ export class UsersService implements OnModuleInit {
     return this.userRepo.save(user);
   }
 
-  async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
+  async changePassword(userId: string, dto: UserChangePasswordDto): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (user.deletedAt || user.anonymizedAt) {
