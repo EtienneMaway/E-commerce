@@ -32,13 +32,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
         // just delays the redirect to login.
         retry: (failureCount, err) => !isAuthError(err) && failureCount < 3,
         retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 15_000),
-        // OFF deliberately. The dashboard page mounts 7 queries; with this on,
-        // every alt-tab back to the browser refired all of them at once. On a
-        // slow connection that burst is worse than slightly stale data.
-        refetchOnWindowFocus: false,
-        // Also off: a flapping connection would otherwise trigger the same
-        // full-screen burst each time it briefly reconnects.
-        refetchOnReconnect: false,
+        // ON. With no push or socket channel, refetching when the tab regains
+        // focus is the main way the owner learns about things that happened
+        // elsewhere — a mini confirming a consignment, a handover submitted.
+        //
+        // This was briefly off to avoid a resume burst, but "the screen is
+        // stale until I log out and back in" is a far worse failure than a
+        // burst of cheap requests. staleTime (30s) keeps it from refetching
+        // anything just loaded, so rapid tab-switching costs nothing.
+        refetchOnWindowFocus: true,
+        refetchOnReconnect: true,
       },
       mutations: {
         // Writes are not idempotent here (no client-side dedupe key on the web

@@ -45,6 +45,7 @@ import { SalaryPaymentsModule } from './salary-payments/salary-payments.module';
 import { PricingModule } from './pricing/pricing.module';
 import { ActivityLogsModule } from './activity-logs/activity-logs.module';
 import { MiniSettlementsModule } from './mini-settlements/mini-settlements.module';
+import { SyncModule } from './sync/sync.module';
 import { ProductGroupsModule } from './product-groups/product-groups.module';
 import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts.module';
 
@@ -117,6 +118,7 @@ import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts
     MiniSettlementsModule,
     ProductGroupsModule,
     QuantityDiscountsModule,
+    SyncModule,
   ],
   providers: [
     // Apply throttle guard globally

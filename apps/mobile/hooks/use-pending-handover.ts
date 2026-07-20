@@ -39,6 +39,9 @@ export function usePendingHandover(): PendingHandover {
     queryFn: miniSettlementsApi.outgoing,
     enabled: isMini,
     staleTime: 15_000,
+    // No polling: useInboxSignal invalidates this key when the handovers stamp
+    // moves, so the employer's approve/reject lands here as soon as the app
+    // hears about it rather than up to 45s later.
   });
 
   const list = (data as MiniSettlementSummary[] | undefined) ?? [];

@@ -91,6 +91,8 @@ export default function DashboardScreen() {
     queryFn: salaryPaymentsApi.pending,
     staleTime: 30_000,
     enabled: !isOffline && isMini,
+    // No polling: useInboxSignal invalidates this key when the salary stamp
+    // moves (employer recorded or cancelled a payslip).
   });
 
   // The server now sends the total directly — the screen only ever rendered

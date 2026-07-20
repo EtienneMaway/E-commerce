@@ -6,6 +6,7 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { User } from './user.entity';
@@ -98,6 +99,14 @@ export class MiniSettlement {
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
+
+  /**
+   * Every state change, not just approval. `approvedAt` stays null on reject,
+   * so this is the only timestamp that moves for a rejection — which is what
+   * `GET /sync/signal` derives the handovers channel from.
+   */
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
 
   @ApiPropertyOptional()
   @Column({ name: 'approved_at', type: 'timestamp', nullable: true })

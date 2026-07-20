@@ -47,6 +47,8 @@ export function MiniEmployeeHome() {
     queryFn: () => employmentsApi.list({ role: 'employee' }),
     enabled: !active,
     staleTime: 15_000,
+    // No polling: useInboxSignal invalidates this key when the employment
+    // stamp moves (invite created, accepted, or terminated).
   });
   const pendingInvite = ((employments as EmploymentSummary[] | undefined) ?? []).find(
     (e) => e.status === 'PENDING' && e.tier === 'SALES_ONLY',
@@ -58,6 +60,8 @@ export function MiniEmployeeHome() {
     queryFn: consignmentsApi.incoming,
     enabled: isActiveMini,
     staleTime: 15_000,
+    // No polling: useInboxSignal invalidates this key when the consignments
+    // stamp moves.
   });
   const pendingReceiveCount = ((incoming as ConsignmentSummary[] | undefined) ?? []).filter(
     (c) => c.status === 'PENDING',

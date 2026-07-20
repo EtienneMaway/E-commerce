@@ -16,6 +16,7 @@ import { useT } from '../lib/i18n';
 import { authApi, dashboardApi } from '../lib/api';
 import { isAuthError } from '../lib/utils';
 import { initConnectivity } from '../lib/connectivity';
+import { useInboxSignal } from '../hooks/use-inbox-signal';
 import { scheduleAlertNotifications } from '../lib/notifications';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
@@ -34,11 +35,18 @@ const queryClient = new QueryClient({
       // the app for a few minutes previously evicted everything, so returning
       // to it triggered a full refetch storm before anything could render.
       gcTime: 24 * 60 * 60_000,
-      // On React Native this fires when the app returns to the foreground.
-      // Left on by default it refetched every mounted query at once — on the
-      // home tab that is a 7-8 request burst every time the merchant reopens
-      // the app. staleTime still covers genuinely stale data.
-      refetchOnWindowFocus: false,
+      // Refetch when the app returns to the foreground (bridged from AppState
+      // in lib/connectivity.ts). For inbox events specifically — a consignment
+      // sent to you, an employment invite — lib/inbox-signal.ts now drives the
+      // refresh; this remains the general freshness net for everything else.
+      //
+      // It was briefly disabled to avoid a resume burst, back when the home tab
+      // fired 7-8 requests. That tab is now a single aggregate call
+      // (GET /dashboard/home), so the burst is small and freshness wins.
+      // staleTime (30s) still prevents refetching anything just loaded.
+      refetchOnWindowFocus: true,
+      // Same reasoning: regaining signal should pull whatever was missed.
+      refetchOnReconnect: true,
     },
     mutations: {
       // Only the sale path carries a client-side idempotency key
@@ -168,6 +176,15 @@ function AuthGuard() {
   return null;
 }
 
+/**
+ * Server-driven inbox refresh. Must live inside the QueryClientProvider (it
+ * needs useQueryClient) — hence a component rather than a call in RootLayout.
+ */
+function InboxSignalSync() {
+  useInboxSignal();
+  return null;
+}
+
 function DynamicStatusBar() {
   const theme = useThemeStore((s) => s.theme);
   return <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />;
@@ -186,6 +203,7 @@ export default function RootLayout() {
         <ThemeSync />
         <LocaleSync />
         <AuthGuard />
+        <InboxSignalSync />
         <DynamicStatusBar />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" />
