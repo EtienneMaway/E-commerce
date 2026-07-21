@@ -2,7 +2,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { BRAND, RECEIPT_FOOTER, escapeHtml, formatFc } from './receipt';
 import { breakdownQuantity, formatBreakdown, formatDate } from './utils';
-import type { MiniSettlementSummary } from './api';
+import type { ConsignmentSummary, MiniSettlementSummary } from './api';
 
 /**
  * Printable records for the mini-employee ↔ employer loop:
@@ -50,6 +50,14 @@ export interface HandoverReturnLine {
   readonly qtyLabel: string;
 }
 
+/** One sold product line on the handover receipt — the FC amount is the cash
+ *  contribution (agreed value), so the section sums to the cash total. */
+export interface HandoverSoldLine {
+  readonly productName: string;
+  readonly qtyLabel: string;
+  readonly amountFc: number;
+}
+
 export interface ApprovedHandoverSlip {
   readonly to: SlipParty; // employer/owner receiving the handover
   readonly handedOverBy: SlipParty; // the mini
@@ -58,6 +66,8 @@ export interface ApprovedHandoverSlip {
   readonly reference?: string;
   readonly note?: string;
   readonly cashHandedOverFc: number;
+  /** Products sold this cycle (itemizes the cash). Empty for pre-snapshot handovers. */
+  readonly sold: HandoverSoldLine[];
   readonly returns: HandoverReturnLine[];
 }
 
@@ -87,10 +97,47 @@ export function toApprovedHandoverSlip(
     reference: settlement.id.slice(0, 6).toUpperCase(),
     note: settlement.note ?? undefined,
     cashHandedOverFc: cashFc,
+    sold: (settlement.soldLines ?? []).map((l) => ({
+      productName: l.variantLabel ? `${l.productName} · ${l.variantLabel}` : l.productName,
+      qtyLabel: formatBreakdown(breakdownQuantity(l.qtySold, l.piecesPerCarton)),
+      amountFc: parseFloat(l.agreedValueFc) || 0,
+    })),
     returns: settlement.items.map((it) => ({
       productName: it.variantLabel ? `${it.productName} · ${it.variantLabel}` : it.productName,
       qtyLabel: formatBreakdown(breakdownQuantity(it.quantity, null)),
     })),
+  };
+}
+
+/**
+ * Reduce a consignment (as returned by `/consignments/incoming`) to a printable
+ * "goods received" slip. Shared by the receive modal (print on confirm) and the
+ * received-items history tab (reprint). Consignment prices are per-piece USD;
+ * convert at `rate` the same way the receive list rows are shown.
+ */
+export function toReceivedGoodsSlip(
+  consignment: ConsignmentSummary,
+  self: SlipParty,
+  rate: string,
+): ReceivedGoodsSlip {
+  const r = parseFloat(rate) || 1;
+  const items = consignment.items.map((it) => {
+    const unitFc = (parseFloat(it.agreedUnitPrice) || 0) * r;
+    return {
+      productName: it.variantLabel ? `${it.productName} · ${it.variantLabel}` : it.productName,
+      qtyLabel: formatBreakdown(breakdownQuantity(it.quantity, it.piecesPerCarton ?? null)),
+      unitPriceFc: unitFc,
+      lineTotalFc: unitFc * it.quantity,
+    };
+  });
+  return {
+    from: { name: consignment.supplier?.name ?? undefined, handle: consignment.supplier?.username },
+    receivedBy: self,
+    date: formatDate(consignment.createdAt),
+    reference: consignment.id.slice(0, 6).toUpperCase(),
+    note: consignment.note ?? undefined,
+    items,
+    totalOwedFc: items.reduce((s, i) => s + i.lineTotalFc, 0),
   };
 }
 
@@ -253,6 +300,26 @@ export function buildReceivedGoodsHtml(slip: ReceivedGoodsSlip): string {
 export function buildApprovedHandoverHtml(slip: ApprovedHandoverSlip): string {
   const toLine = partyLine(slip.to);
   const toHandle = partyHandleLine(slip.to);
+  const soldRows = slip.sold
+    .map(
+      (s) => `
+        <div class="row item">
+          <div class="line">
+            <span class="name">${escapeHtml(s.productName)}</span>
+            <span class="amount">${formatFc(s.amountFc)}</span>
+          </div>
+          <div class="line sub">
+            <span>&nbsp;&nbsp;${escapeHtml(s.qtyLabel)}</span>
+          </div>
+        </div>`,
+    )
+    .join('');
+  const soldSection = slip.sold.length
+    ? `
+  <div class="section">Products sold</div>
+  <div class="items">${soldRows}</div>
+  <hr class="divider" />`
+    : '';
   const returnRows =
     slip.returns.length === 0
       ? '<div class="line sub"><span>&nbsp;&nbsp;None — everything was sold.</span></div>'
@@ -280,6 +347,7 @@ export function buildApprovedHandoverHtml(slip: ApprovedHandoverSlip): string {
   </div>
 
   <hr class="divider" />
+  ${soldSection}
   <div class="total-row">
     <span class="label">CASH</span>
     <span>${formatFc(slip.cashHandedOverFc)}</span>

@@ -214,6 +214,7 @@ export interface StockMovement {
     productName: string;
     source: string;
     unitCost: string;
+    piecesPerCarton: number | null;
   };
 }
 

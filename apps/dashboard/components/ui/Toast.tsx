@@ -33,10 +33,17 @@ export function useToast(): (opts: ToastOptions) => void {
   return ctx;
 }
 
-const VARIANT_STYLES: Record<ToastVariant, { bg: string; border: string; fg: string; icon: string }> = {
-  success: { bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.45)', fg: '#065f46', icon: '✓' },
-  error: { bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.45)', fg: '#7f1d1d', icon: '!' },
-  info: { bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.45)', fg: '#1e3a8a', icon: 'i' },
+/**
+ * Each variant fills the whole toast with a tint of its semantic colour so a
+ * result is obvious at a glance — success reads green, failure red — instead of
+ * a near-white card with a thin stripe. `accent` (the strong colour) drives the
+ * border + icon badge; `tint` fills the body. All are existing design tokens, so
+ * they flip correctly in dark mode (the -light tokens become deep shades there).
+ */
+const VARIANT_STYLES: Record<ToastVariant, { accent: string; tint: string; icon: string }> = {
+  success: { accent: 'var(--success)', tint: 'var(--success-light)', icon: '✓' },
+  error: { accent: 'var(--danger)', tint: 'var(--danger-light)', icon: '!' },
+  info: { accent: 'var(--primary)', tint: 'var(--primary-light)', icon: 'i' },
 };
 
 let nextId = 0;
@@ -104,14 +111,15 @@ function ToastRow({ item, onDismiss }: { item: ToastItem; onDismiss: (id: number
     <div
       className="pointer-events-auto min-w-[260px] max-w-[380px] rounded-xl px-4 py-3 shadow-lg flex items-start gap-3"
       style={{
-        background: 'var(--card, #fff)',
-        borderLeft: `4px solid ${style.border}`,
+        background: style.tint,
+        border: `1px solid ${style.accent}`,
+        borderLeft: `4px solid ${style.accent}`,
         boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
       }}
     >
       <span
         className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold"
-        style={{ background: style.bg, color: style.fg }}
+        style={{ background: style.accent, color: '#fff' }}
         aria-hidden
       >
         {style.icon}

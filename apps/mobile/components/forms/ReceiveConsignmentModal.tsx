@@ -10,7 +10,7 @@ import { useAuthStore } from '../../store/auth.store';
 import {
   printReceivedGoods,
   shareReceivedGoodsPdf,
-  type ReceivedGoodsSlip,
+  toReceivedGoodsSlip,
 } from '../../lib/handover-receipt';
 
 interface Props {
@@ -67,31 +67,19 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
   });
   const busy = confirmM.isPending || rejectM.isPending;
 
-  // Slip for the most recently received consignment, reduced to FC. Prices on
-  // the consignment are per-piece USD (agreedUnitPrice); convert at the live
-  // rate the same way the list rows above are displayed.
-  const receivedSlip = useMemo<ReceivedGoodsSlip | null>(() => {
-    if (!justReceived) return null;
-    const r = parseFloat(rate) || 1;
-    const items = justReceived.items.map((it) => {
-      const unitFc = (parseFloat(it.agreedUnitPrice) || 0) * r;
-      return {
-        productName: it.variantLabel ? `${it.productName} · ${it.variantLabel}` : it.productName,
-        qtyLabel: formatBreakdown(breakdownQuantity(it.quantity, it.piecesPerCarton ?? null)),
-        unitPriceFc: unitFc,
-        lineTotalFc: unitFc * it.quantity,
-      };
-    });
-    return {
-      from: { name: justReceived.supplier?.name ?? undefined, handle: justReceived.supplier?.username },
-      receivedBy: { name: user?.name ?? undefined, handle: user?.username },
-      date: new Date().toLocaleString('fr-CD'),
-      reference: justReceived.id.slice(0, 6).toUpperCase(),
-      note: justReceived.note ?? undefined,
-      items,
-      totalOwedFc: items.reduce((s, i) => s + i.lineTotalFc, 0),
-    };
-  }, [justReceived, rate, user]);
+  // Slip for the most recently received consignment (shared with the received-
+  // items history tab so a reprint matches this one).
+  const receivedSlip = useMemo(
+    () =>
+      justReceived
+        ? toReceivedGoodsSlip(
+            justReceived,
+            { name: user?.name ?? undefined, handle: user?.username },
+            rate,
+          )
+        : null,
+    [justReceived, rate, user],
+  );
 
   const handlePrint = async () => {
     if (!receivedSlip) return;

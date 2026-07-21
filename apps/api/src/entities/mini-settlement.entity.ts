@@ -14,6 +14,23 @@ import { Payment } from './payment.entity';
 import { MiniSettlementItem } from './mini-settlement-item.entity';
 import { MiniExpense } from './mini-expense.entity';
 
+/**
+ * One product line sold during the cycle this handover settles — snapshotted at
+ * create time so the mini's printable handover receipt itemizes the sales that
+ * make up the cash, immutably, long after the fact. Display-only (all money in
+ * FC as strings); the ledger math still runs off the aggregate `cashAmount`.
+ */
+export interface MiniSettlementSoldLine {
+  productName: string;
+  variantLabel: string | null;
+  qtySold: number;
+  piecesPerCarton: number | null;
+  /** FC owed to the owner for these units (agreed price × qty) — the cash contribution. */
+  agreedValueFc: string;
+  /** The mini's markup on these units, FC. */
+  profitFc: string;
+}
+
 export enum MiniSettlementStatus {
   /** Mini employee handed over cash + returns on the app; awaiting owner approval. */
   PENDING = 'PENDING',
@@ -68,6 +85,13 @@ export class MiniSettlement {
   })
   @Column({ name: 'cash_amount_fc', type: 'decimal', precision: 14, scale: 4, nullable: true })
   cashAmountFc: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Snapshot of the products sold in this handover cycle, for the printable receipt. Null on pre-snapshot handovers.',
+  })
+  @Column({ name: 'sold_lines', type: 'jsonb', nullable: true })
+  soldLines: MiniSettlementSoldLine[] | null;
 
   @ApiPropertyOptional()
   @Column({ type: 'varchar', nullable: true })

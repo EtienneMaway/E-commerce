@@ -19,6 +19,7 @@ import {
   MiniExpense,
   MiniSettlement,
   MiniSettlementItem,
+  type MiniSettlementSoldLine,
   MiniSettlementStatus,
   Payment,
   PaymentDirection,
@@ -264,12 +265,30 @@ export class MiniSettlementsService {
       );
     }
 
+    // Snapshot what was sold this cycle for the printable handover receipt, using
+    // the same boundary the cash represents (everything sold since the last
+    // approved handover). Immutable once stored so the receipt reprints identically.
+    const lastApproved = await this.settlementRepo.findOne({
+      where: { miniId, status: MiniSettlementStatus.APPROVED },
+      order: { approvedAt: 'DESC' },
+    });
+    const soldLines = await this.computeSoldLines(miniId, lastApproved?.approvedAt ?? null);
+    const soldSnapshot: MiniSettlementSoldLine[] = soldLines.map((l) => ({
+      productName: l.productName,
+      variantLabel: l.variantLabel,
+      qtySold: l.qtySold,
+      piecesPerCarton: l.piecesPerCarton,
+      agreedValueFc: l.agreedValueFc,
+      profitFc: l.profitFc,
+    }));
+
     const settlement = this.settlementRepo.create({
       ownerId,
       miniId,
       status: MiniSettlementStatus.PENDING,
       cashAmount: cash.toFixed(4),
       cashAmountFc: dto.cashAmountFc ? new Decimal(dto.cashAmountFc).toFixed(4) : null,
+      soldLines: soldSnapshot.length > 0 ? soldSnapshot : null,
       note: dto.note ?? null,
       items,
     });
@@ -439,47 +458,30 @@ export class MiniSettlementsService {
 
   // ─── Mini employee: full handover breakdown (sold + returns + cash) ────────
 
-  async handoverPreview(ctx: ActorContext): Promise<HandoverPreview> {
-    const miniId = ctx.effectiveOwnerId;
-    if (!ctx.employment) {
-      throw new ForbiddenException('Only a mini employee has a handover');
-    }
-
-    // Boundary: everything sold AFTER the last approved handover is unsettled.
-    const last = await this.settlementRepo.findOne({
-      where: { miniId, status: MiniSettlementStatus.APPROVED },
-      order: { approvedAt: 'DESC' },
-    });
-    const since = last?.approvedAt ?? null;
-
-    // A mini only ever holds consigned stock, so every sale on their own books
-    // is a consigned sale owed to the owner — no need to filter by source (and
-    // doing so risks missing rows if the source string ever differs).
+  /**
+   * Products sold on the mini's books after `since` (their last approved
+   * handover, or all-time when null), aggregated per product/size with FC values
+   * at each sale's locked rate. Shared by the live handover preview and the
+   * immutable snapshot persisted on a handover at create time — a mini only ever
+   * holds consigned stock, so every sale on their books is owed to the owner (no
+   * source filter needed, which also avoids missing rows if the source string
+   * ever differs).
+   */
+  private async computeSoldLines(
+    miniId: string,
+    since: Date | null,
+  ): Promise<HandoverSoldLine[]> {
     const saleQb = this.saleRepo
       .createQueryBuilder('s')
       .where('s.owner_id = :miniId', { miniId });
     if (since) saleQb.andWhere('s.created_at > :since', { since });
     const sales = await saleQb.getMany();
 
-    // The mini's consigned-in stock, fetched once: it supplies the
-    // pieces-per-carton for every product (so both sold and returned quantities
-    // render in cartons/dozens/loose pieces) and the unsold units to return.
-    // Depleted lots (quantityRemaining = 0) are kept here so a fully-sold
-    // product still resolves its carton size.
     const inEntries = await this.entryRepo.find({
       where: { ownerId: miniId, source: InventorySource.CONSIGNED_IN },
     });
-    // Resolve carton size the same way inventory.listProducts does (line 138):
-    // take the FIRST NON-NULL piecesPerCarton across the product's lots. Older
-    // lots can be null (pre-carton-size migration) while newer ones carry it, so
-    // a plain "first lot wins" would wrongly report the product as uncartoned
-    // and render sold/returns in bare pieces.
-    // Identity key: sized products key by size (variantId); simple by name — so
-    // different sizes of one group don't collapse into a single row.
     const keyOf = (variantId: string | null | undefined, productName: string) =>
       variantId ?? productName;
-    const retLabels = await this.variantLabels(inEntries.map((e) => e.variantId));
-
     const ppcByKey = new Map<string, number>();
     for (const e of inEntries) {
       const k = keyOf(e.variantId, e.productName);
@@ -532,7 +534,7 @@ export class MiniSettlementsService {
       cur.profitFc = cur.profitFc.plus(fcOf(profit, s.usdToFcRateSnapshot));
       soldMap.set(k, cur);
     }
-    const sold: HandoverSoldLine[] = [...soldMap.entries()].map(([k, v]) => ({
+    return [...soldMap.entries()].map(([k, v]) => ({
       productName: v.productName,
       variantId: v.variantId,
       variantLabel: v.variantLabel,
@@ -544,6 +546,46 @@ export class MiniSettlementsService {
       agreedValueFc: v.agreedValueFc.toFixed(4),
       profitFc: v.profitFc.toFixed(4),
     }));
+  }
+
+  async handoverPreview(ctx: ActorContext): Promise<HandoverPreview> {
+    const miniId = ctx.effectiveOwnerId;
+    if (!ctx.employment) {
+      throw new ForbiddenException('Only a mini employee has a handover');
+    }
+
+    // Boundary: everything sold AFTER the last approved handover is unsettled.
+    const last = await this.settlementRepo.findOne({
+      where: { miniId, status: MiniSettlementStatus.APPROVED },
+      order: { approvedAt: 'DESC' },
+    });
+    const since = last?.approvedAt ?? null;
+
+    const sold = await this.computeSoldLines(miniId, since);
+
+    // The mini's consigned-in stock, fetched once for the RETURNS section: it
+    // supplies the pieces-per-carton for every product (so returned quantities
+    // render in cartons/dozens/loose pieces) and the unsold units to return.
+    // Depleted lots (quantityRemaining = 0) are kept here so a fully-sold
+    // product still resolves its carton size.
+    const inEntries = await this.entryRepo.find({
+      where: { ownerId: miniId, source: InventorySource.CONSIGNED_IN },
+    });
+    // Identity key: sized products key by size (variantId); simple by name — so
+    // different sizes of one group don't collapse into a single row.
+    const keyOf = (variantId: string | null | undefined, productName: string) =>
+      variantId ?? productName;
+    const retLabels = await this.variantLabels(inEntries.map((e) => e.variantId));
+
+    // Resolve carton size the same way inventory.listProducts does: FIRST
+    // NON-NULL piecesPerCarton across the product's lots (older lots can be null
+    // pre-carton-size migration).
+    const ppcByKey = new Map<string, number>();
+    for (const e of inEntries) {
+      const k = keyOf(e.variantId, e.productName);
+      if (e.piecesPerCarton != null && !ppcByKey.has(k)) ppcByKey.set(k, e.piecesPerCarton);
+    }
+
     const cashForSold = sold
       .reduce((sum, x) => sum.plus(new Decimal(x.agreedValue)), new Decimal(0))
       .toFixed(4);

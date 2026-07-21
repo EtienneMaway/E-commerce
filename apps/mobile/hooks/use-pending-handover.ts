@@ -18,12 +18,6 @@ export interface PendingHandover {
   /** Newest handover when it was rejected — nothing else surfaces a rejection. */
   latestRejected: MiniSettlementSummary | null;
   /**
-   * Newest handover when it was approved — surfaced so the mini gets a standing
-   * confirmation and can print the approved handover record. Clears as soon as
-   * they open their next handover (which pushes a new row to the front).
-   */
-  latestApproved: MiniSettlementSummary | null;
-  /**
    * While a handover is pending the mini has physically given back both the
    * cash and the unsold goods, so selling and re-handing-over are both off.
    */
@@ -56,7 +50,6 @@ export function usePendingHandover(): PendingHandover {
   // submits their next handover, which pushes a new row to the front.
   const newest = list[0] ?? null;
   const latestRejected = newest?.status === 'REJECTED' ? newest : null;
-  const latestApproved = newest?.status === 'APPROVED' ? newest : null;
 
-  return { pending, latestRejected, latestApproved, isBlocked: !!pending, isMini, isLoading };
+  return { pending, latestRejected, isBlocked: !!pending, isMini, isLoading };
 }

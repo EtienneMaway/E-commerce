@@ -293,18 +293,29 @@ describe('MiniSettlementsService.create — one open handover at a time', () => 
     const entryRepo = { find: jest.fn(async () => []) };
     const variantRepo = { find: jest.fn(async () => []) };
     const miniExpenseRepo = { update: jest.fn(async () => ({})) };
+    // create() now snapshots the sold lines via computeSoldLines → needs a sale
+    // query builder and the currency rate. No sales here, so it yields [].
+    const saleQb = {
+      where: jest.fn(() => saleQb),
+      andWhere: jest.fn(() => saleQb),
+      getMany: jest.fn(async () => []),
+    };
+    const saleRepo = { createQueryBuilder: jest.fn(() => saleQb) };
+    const currencyService = {
+      getRate: jest.fn(async () => ({ usdToFcRate: '2700', sellingRate: null })),
+    };
     const service = new MiniSettlementsService(
       settlementRepo as never,
       { create: jest.fn((v: unknown) => v) } as never, // itemRepo
       entryRepo as never,
       {} as never, // debtorCreditRepo
       {} as never, // supplierDebtRepo
-      {} as never, // saleRepo
+      saleRepo as never,
       {} as never, // employmentRepo
       miniExpenseRepo as never,
       {} as never, // dataSource
       {} as never, // stockMovements
-      {} as never, // currencyService
+      currencyService as never,
       variantRepo as never,
     );
     return { service, settlementRepo };

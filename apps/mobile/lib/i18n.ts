@@ -108,8 +108,6 @@ const en = {
     printDone: 'Done',
     receivedDoneTitle: 'Received ✓',
     receivedDoneSub: 'Print or share a record of the goods you received.',
-    handoverApprovedTitle: 'Handover approved ✓',
-    handoverApprovedSub: 'Your employer approved it. Print or share the record.',
     handoverSlipTo: 'To',
     // Handover history screen
     historyCardTitle: 'Handover history',
@@ -120,6 +118,14 @@ const en = {
     statusPending: 'Pending',
     statusApproved: 'Approved',
     statusRejected: 'Rejected',
+    // History tabs + received-items history
+    tabHandovers: 'Handovers',
+    tabReceived: 'Received',
+    receivedHistoryEmpty: 'You have not received any products yet.',
+    receivedItemsCount: (n: number) => (n === 1 ? '1 item' : `${n} items`),
+    receivedTotalOwed: 'Owed',
+    statusReceived: 'Received',
+    statusCancelled: 'Cancelled',
     // Handover modal
     handoverTitle: 'Hand over',
     handoverAutoSubtitle: 'Calculated automatically from what you sold and what\'s left. Review and confirm.',
@@ -987,8 +993,6 @@ const fr: Translations = {
     printDone: 'Terminé',
     receivedDoneTitle: 'Reçu ✓',
     receivedDoneSub: 'Imprimez ou partagez un reçu de la marchandise reçue.',
-    handoverApprovedTitle: 'Remise approuvée ✓',
-    handoverApprovedSub: 'Votre employeur l\'a approuvée. Imprimez ou partagez le reçu.',
     handoverSlipTo: 'À',
     // Écran historique des remises
     historyCardTitle: 'Historique des remises',
@@ -999,6 +1003,14 @@ const fr: Translations = {
     statusPending: 'En attente',
     statusApproved: 'Approuvée',
     statusRejected: 'Refusée',
+    // Onglets d'historique + historique des réceptions
+    tabHandovers: 'Remises',
+    tabReceived: 'Réceptions',
+    receivedHistoryEmpty: 'Vous n\'avez encore reçu aucun produit.',
+    receivedItemsCount: (n: number) => (n === 1 ? '1 article' : `${n} articles`),
+    receivedTotalOwed: 'Dû',
+    statusReceived: 'Reçu',
+    statusCancelled: 'Annulé',
     handoverTitle: 'Remise',
     handoverAutoSubtitle: 'Calculé automatiquement d\'après vos ventes et le stock restant. Vérifiez et confirmez.',
     handoverSoldLine: (n: number) => `Vendu ${n}`,

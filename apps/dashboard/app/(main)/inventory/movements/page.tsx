@@ -9,7 +9,7 @@ import {
   type StockMovement,
 } from '../../../../lib/api';
 import { QK } from '../../../../lib/query-keys';
-import { formatDate } from '../../../../lib/utils';
+import { formatDate, breakdownQuantity, formatBreakdown } from '../../../../lib/utils';
 import { useFormatCurrency } from '../../../../lib/currency';
 import { DataTable, type Column } from '../../../../components/ui/DataTable';
 import { Badge } from '../../../../components/ui/Badge';
@@ -121,25 +121,34 @@ export default function StockMovementsPage() {
     {
       key: 'qtyDelta',
       header: t.stockMovements.colDelta,
-      render: (m) => (
-        <span
-          style={{
-            fontWeight: 600,
-            color: m.qtyDelta >= 0 ? 'var(--success)' : 'var(--danger)',
-          }}
-        >
-          {m.qtyDelta > 0 ? `+${m.qtyDelta}` : m.qtyDelta}
-        </span>
-      ),
+      render: (m) => {
+        const ppc = m.inventoryEntry?.piecesPerCarton ?? null;
+        const sign = m.qtyDelta > 0 ? '+' : m.qtyDelta < 0 ? '−' : '';
+        return (
+          <span
+            style={{
+              fontWeight: 600,
+              color: m.qtyDelta >= 0 ? 'var(--success)' : 'var(--danger)',
+            }}
+          >
+            {sign}
+            {formatBreakdown(breakdownQuantity(Math.abs(m.qtyDelta), ppc))}
+          </span>
+        );
+      },
     },
     {
       key: 'beforeAfter',
       header: t.stockMovements.colBeforeAfter,
-      render: (m) => (
-        <span className="text-xs" style={{ color: 'var(--muted)' }}>
-          {m.qtyBefore} → {m.qtyAfter}
-        </span>
-      ),
+      render: (m) => {
+        const ppc = m.inventoryEntry?.piecesPerCarton ?? null;
+        return (
+          <span className="text-xs" style={{ color: 'var(--muted)' }}>
+            {formatBreakdown(breakdownQuantity(m.qtyBefore, ppc))} →{' '}
+            {formatBreakdown(breakdownQuantity(m.qtyAfter, ppc))}
+          </span>
+        );
+      },
     },
     {
       key: 'value',

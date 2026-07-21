@@ -292,6 +292,9 @@ export interface MiniSettlementSummary {
   approvedAt: string | null;
   /** Employer receiving the handover — present on outgoing rows. */
   owner?: { id: string; username: string; name?: string | null };
+  /** Snapshot of products sold this cycle, for the printable receipt. Null on
+   *  handovers created before this feature. */
+  soldLines?: MiniSettlementSoldLine[] | null;
   /** Unsold lines being returned to the owner. */
   items: {
     id: string;
@@ -300,6 +303,17 @@ export interface MiniSettlementSummary {
     agreedUnitPrice: string;
     variantLabel?: string | null;
   }[];
+}
+
+export interface MiniSettlementSoldLine {
+  productName: string;
+  variantLabel: string | null;
+  qtySold: number;
+  piecesPerCarton: number | null;
+  /** FC owed to the owner for these units — the cash contribution. */
+  agreedValueFc: string;
+  /** The mini's markup on these units, FC. */
+  profitFc: string;
 }
 
 export const miniSettlementsApi = {
