@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import Link from 'next/link';
 import { salesApi, inventoryApi } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
-import { formatDate } from '../../../lib/utils';
+import { formatDate, breakdownQuantity, formatBreakdown } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { DataTable, type Column } from '../../../components/ui/DataTable';
 import { Badge } from '../../../components/ui/Badge';
@@ -21,13 +21,27 @@ import { saleReceiptHtml } from '../../../lib/print-templates';
 import { PrintDialog } from '../../../components/ui/PrintDialog';
 import { generateReceiptId, type ReceiptData } from '../../../lib/thermal-receipt';
 
-type Period = '7d' | '30d' | '90d' | 'all';
+type Period = '7d' | '30d' | '90d' | 'all' | 'custom';
+
+/** Rows fetched per query — the sales list DTO caps `limit` at 200. Beyond this
+ *  the table shows the most recent 200 (with a note); the header count stays
+ *  exact via the aggregate endpoint. */
+const MAX_LIST_ROWS = 200;
+/** Client-side page size for the history table. */
+const TABLE_PAGE_SIZE = 15;
+
+/** A user-picked date range (YYYY-MM-DD strings; '' = open-ended). */
+interface CustomRange {
+  from: string;
+  to: string;
+}
 
 /**
  * Map the sales-history period to profit-summary params. 7d/30d align exactly
- * with the endpoint's rolling week/month windows; 90d uses a custom range.
+ * with the endpoint's rolling week/month windows; 90d and the user 'custom'
+ * range both use the summary endpoint's custom mode.
  */
-function summaryParams(period: Period): {
+function summaryParams(period: Period, custom: CustomRange): {
   period: 'week' | 'month' | 'all' | 'custom';
   dateFrom?: string;
   dateTo?: string;
@@ -35,9 +49,30 @@ function summaryParams(period: Period): {
   if (period === '7d') return { period: 'week' };
   if (period === '30d') return { period: 'month' };
   if (period === 'all') return { period: 'all' };
+  if (period === 'custom') {
+    // Undefined (not '') so an open-ended side is omitted from the query string.
+    return { period: 'custom', dateFrom: custom.from || undefined, dateTo: custom.to || undefined };
+  }
   const from = new Date();
   from.setDate(from.getDate() - 90);
   return { period: 'custom', dateFrom: from.toISOString().slice(0, 10), dateTo: new Date().toISOString().slice(0, 10) };
+}
+
+/**
+ * Params for the sales LIST endpoint. Its `period` enum has no `custom` value,
+ * so a user range is expressed as `period: 'all'` (which makes the API skip the
+ * rolling-window filter) plus explicit dateFrom/dateTo. The presets pass through.
+ */
+function listParams(period: Period, custom: CustomRange, actorId?: string): {
+  period: string;
+  dateFrom?: string;
+  dateTo?: string;
+  actorId?: string;
+} {
+  if (period === 'custom') {
+    return { period: 'all', dateFrom: custom.from || undefined, dateTo: custom.to || undefined, actorId };
+  }
+  return { period, actorId };
 }
 
 interface Row {
@@ -61,6 +96,7 @@ export default function SalesPage() {
   const formatCurrency = useFormatCurrency();
   const { user } = useAuthStore();
   const [period, setPeriod] = useState<Period>('30d');
+  const [custom, setCustom] = useState<CustomRange>({ from: '', to: '' });
   const [actorFilter, setActorFilter] = useState<string>(ACTOR_FILTER_ALL);
   const [printRow, setPrintRow] = useState<Row | null>(null);
 
@@ -76,6 +112,7 @@ export default function SalesPage() {
     { label: t.sales.period30d, value: '30d' },
     { label: t.sales.period90d, value: '90d' },
     { label: t.sales.periodAll, value: 'all' },
+    { label: t.sales.periodCustom, value: 'custom' },
   ];
 
   const COLUMNS: Column<Row>[] = [
@@ -101,7 +138,15 @@ export default function SalesPage() {
       key: 'source', header: t.sales.colSource,
       render: (r) => <Badge label={r.source === 'PERSONAL' ? t.sales.sourcePersonal : t.sales.sourceSupplier} variant={r.source === 'PERSONAL' ? 'personal' : 'supplier'} />,
     },
-    { key: 'qtySold', header: t.sales.colQty, sortable: true, getValue: (r) => r.qtySold },
+    {
+      key: 'qtySold', header: t.sales.colQty, sortable: true,
+      // Sort on the raw piece count; render the packaging breakdown. A product
+      // with piecesPerCarton set shows e.g. "2 ctn  1 dz  3 pcs  (51 total)";
+      // a loose product (no carton) shows "51 pcs". ppcMap keys already align
+      // with sale productName (same map drives receipt printing below).
+      getValue: (r) => r.qtySold,
+      render: (r) => formatBreakdown(breakdownQuantity(r.qtySold, ppcMap.get(r.productName) ?? null)),
+    },
     {
       key: 'unitCost', header: t.sales.colUnitCost, sortable: true,
       getValue: (r) => parseFloat(r.unitCost),
@@ -139,27 +184,43 @@ export default function SalesPage() {
     },
   ];
 
-  const queryParams = { period, actorId: resolveActorFilter(actorFilter) };
+  // Fetch the whole filtered period (up to the API's hard cap) and paginate the
+  // table client-side. Without an explicit limit the API returned only its
+  // default 10 rows while reporting the true total, so widening a period could
+  // never reveal more than 10 and there was no pager to reach the rest — the
+  // filters looked broken. TABLE_PAGE_SIZE drives DataTable's own pager.
+  const queryParams = { ...listParams(period, custom, resolveActorFilter(actorFilter)), limit: MAX_LIST_ROWS };
   const { data, isLoading } = useQuery({
     queryKey: QK.salesHistory(queryParams),
     queryFn: () => salesApi.list(queryParams),
-    staleTime: 30_000,
+    // Cache tuning so identical filters aren't re-fetched or re-aggregated: a
+    // filter already viewed this session serves from cache with no server hit,
+    // and keepPreviousData holds the current rows while the next filter loads
+    // instead of flashing a spinner (and re-mounting the table) each switch.
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const rows = ((data as { data: Row[]; total: number } | undefined)?.data) ?? [];
+  const listTotal = (data as { total: number } | undefined)?.total ?? 0;
+  // True when the period holds more rows than the API cap returned, so the table
+  // shows only the most recent MAX_LIST_ROWS. The header count stays exact (it
+  // comes from the aggregate endpoint), so this note explains the difference.
+  const isTruncated = listTotal > rows.length;
 
   // Period totals come from the dedicated profit-summary endpoint so they cover
   // the WHOLE period — not just the rows on the current page (which was the old
   // bug: the header summed only the visible ~10 rows).
-  const sParams = { ...summaryParams(period), actorId: resolveActorFilter(actorFilter) };
+  const sParams = { ...summaryParams(period, custom), actorId: resolveActorFilter(actorFilter) };
   const { data: summary } = useQuery({
     queryKey: QK.salesProfitSummary(sParams),
     queryFn: () => salesApi.profitSummary(sParams),
-    staleTime: 30_000,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
   const totalRevenue = summary ? parseFloat(summary.totalRevenue) : 0;
   const totalProfit = summary ? parseFloat(summary.totalProfit) : 0;
-  const txnCount = summary?.salesCount ?? (data as { total: number } | undefined)?.total ?? 0;
+  const txnCount = summary?.salesCount ?? listTotal;
 
   return (
     <div>
@@ -224,6 +285,28 @@ export default function SalesPage() {
                 </button>
               ))}
             </div>
+            {period === 'custom' && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>{t.sales.filterFrom}</span>
+                <input
+                  type="date"
+                  value={custom.from}
+                  max={custom.to || undefined}
+                  onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))}
+                  className="rounded-lg border outline-none"
+                  style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--foreground)', padding: '4px 8px', fontSize: 12 }}
+                />
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>{t.sales.filterTo}</span>
+                <input
+                  type="date"
+                  value={custom.to}
+                  min={custom.from || undefined}
+                  onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))}
+                  className="rounded-lg border outline-none"
+                  style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--foreground)', padding: '4px 8px', fontSize: 12 }}
+                />
+              </div>
+            )}
             <ActorFilter value={actorFilter} onChange={setActorFilter} />
           </div>
         </div>
@@ -236,13 +319,21 @@ export default function SalesPage() {
         {isLoading ? (
           <div className="loading-state"><div className="spinner" /><span>{t.sales.loading}</span></div>
         ) : (
-          <DataTable
-            columns={COLUMNS}
-            data={rows}
-            keyField="id"
-            searchPlaceholder={t.sales.searchPlaceholder}
-            searchFields={['productName']}
-          />
+          <>
+            <DataTable
+              columns={COLUMNS}
+              data={rows}
+              keyField="id"
+              searchPlaceholder={t.sales.searchPlaceholder}
+              searchFields={['productName']}
+              pageSize={TABLE_PAGE_SIZE}
+            />
+            {isTruncated && (
+              <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
+                {t.sales.showingRecent(rows.length, listTotal)}
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>

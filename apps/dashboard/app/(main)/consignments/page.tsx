@@ -231,9 +231,8 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
     queryKey: QK.consignmentsIncoming,
     queryFn: () => consignmentsApi.incoming(),
     staleTime: 30_000,
-    // Poll: an incoming consignment can arrive while this tab sits open, and
-    // there is no push channel to announce it.
-    refetchInterval: 45_000,
+    // No polling: useInboxSignal invalidates this key when the consignments
+    // stamp moves (a supplier entrusts goods while this tab sits open).
   });
 
   const confirmMutation = useMutation({

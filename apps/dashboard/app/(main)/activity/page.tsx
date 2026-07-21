@@ -34,6 +34,9 @@ const TYPE_COLORS: Record<ActivityLogType, { bg: string; fg: string }> = {
   EXTERNAL_PAYMENT_OUT: { bg: 'rgba(239,68,68,0.15)', fg: '#EF4444' },
   PAYMENT_TO_SUPPLIER: { bg: 'rgba(239,68,68,0.15)', fg: '#EF4444' },
   PAYMENT_FROM_DEBTOR: { bg: 'rgba(16,185,129,0.15)', fg: '#10B981' },
+  // Green like other cash-in, but violet-shifted: a handover is money arriving
+  // via an employee rather than a debtor settling up.
+  HANDOVER: { bg: 'rgba(139,92,246,0.15)', fg: '#8B5CF6' },
   EXPENSE: { bg: 'rgba(245,158,11,0.18)', fg: '#F59E0B' },
   INVENTORY_PERSONAL_ADDED: { bg: 'rgba(99,102,241,0.15)', fg: '#818CF8' },
   INVENTORY_RECEIVED_FROM_SUPPLIER: { bg: 'rgba(99,102,241,0.15)', fg: '#818CF8' },
@@ -58,6 +61,10 @@ function buildDrillLink(entry: ActivityLogEntry): string | null {
       return entry.productName
         ? `/inventory/${encodeURIComponent(entry.productName)}`
         : '/inventory';
+    // Handovers are reviewed per-employee, but the entry carries only the
+    // settlement id — not the mini's user id — so this lands on the list.
+    case 'mini_settlement':
+      return '/employees';
   }
 }
 

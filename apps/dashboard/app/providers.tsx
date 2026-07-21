@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useThemeStore } from '../store/theme.store';
 import { useLocaleStore } from '../store/locale.store';
 import { isAuthError } from '../lib/utils';
+import { useInboxSignal } from '../hooks/use-inbox-signal';
 
 function AppProvider({ children }: { children: React.ReactNode }) {
   const initTheme = useThemeStore((s) => s.init);
@@ -13,6 +14,9 @@ function AppProvider({ children }: { children: React.ReactNode }) {
     initTheme();
     initLocale();
   }, [initTheme, initLocale]);
+  // Server-driven inbox refresh. Inside QueryClientProvider (needs
+  // useQueryClient), so it lives here rather than in Providers.
+  useInboxSignal();
   return <>{children}</>;
 }
 
@@ -32,15 +36,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
         // just delays the redirect to login.
         retry: (failureCount, err) => !isAuthError(err) && failureCount < 3,
         retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 15_000),
-        // ON. With no push or socket channel, refetching when the tab regains
-        // focus is the main way the owner learns about things that happened
-        // elsewhere — a mini confirming a consignment, a handover submitted.
-        //
-        // This was briefly off to avoid a resume burst, but "the screen is
-        // stale until I log out and back in" is a far worse failure than a
-        // burst of cheap requests. staleTime (30s) keeps it from refetching
-        // anything just loaded, so rapid tab-switching costs nothing.
-        refetchOnWindowFocus: true,
+        // OFF. The dashboard mounts many queries; with this on, tabbing back
+        // after 30s+ refires all of them at once, and on the 2G/3G links these
+        // merchants use that burst reads as "loading for ages". Inbox freshness
+        // (handovers, consignments, invites) is now delivered precisely by the
+        // inbox-signal poll + header (see lib/inbox-signal.ts), so the blunt
+        // refetch-everything-on-focus is no longer needed to stay current.
+        refetchOnWindowFocus: false,
+        // Reconnect stays ON: regaining a connection after an outage should pull
+        // whatever was missed. It fires far less often than focus and only when
+        // there is genuinely new ground to catch up on.
         refetchOnReconnect: true,
       },
       mutations: {

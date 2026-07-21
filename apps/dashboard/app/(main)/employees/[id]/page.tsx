@@ -14,6 +14,7 @@ import {
   miniSettlementsApi,
   salaryPaymentsApi,
   currencyApi,
+  inventoryApi,
 } from '../../../../lib/api';
 import { QK } from '../../../../lib/query-keys';
 import { useOwnerOnlyPage } from '../../../../hooks/use-owner-only';
@@ -23,7 +24,13 @@ import { useT, type Translations } from '../../../../lib/i18n';
 import { useLocaleStore } from '../../../../store/locale.store';
 import { useCurrencyStore } from '../../../../store/currency.store';
 import { useFormatCurrency } from '../../../../lib/currency';
-import { formatCurrency, formatDate, getErrorMessage } from '../../../../lib/utils';
+import {
+  formatCurrency,
+  formatDate,
+  getErrorMessage,
+  breakdownQuantity,
+  formatBreakdown,
+} from '../../../../lib/utils';
 
 const STATUS_COLORS: Record<SalaryPaymentStatus, { bg: string; fg: string }> = {
   PENDING_CONFIRMATION: { bg: 'rgba(245,158,11,0.15)', fg: '#F59E0B' },
@@ -518,10 +525,25 @@ function MiniOversight({
   const fmtRate = (rate: string | null): string =>
     rate ? `1$ = ${new Intl.NumberFormat('fr-CD').format(Math.trunc(parseFloat(rate) || 0))} FC` : '—';
 
+  // Product → piecesPerCarton, so quantities in this panel can render as
+  // cartons/dozens/pieces (like the sales page). The activity/handover payloads
+  // carry only raw piece counts; this owner-side map supplies the carton size.
+  // Keyed by productName, which is normalized lowercase on both sides.
+  const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
+    queryKey: QK.inventoryProducts,
+    queryFn: () => inventoryApi.listProducts(),
+    staleTime: 60_000,
+  });
+  const ppcMap = useMemo(
+    () => new Map((productsData ?? []).map((p) => [p.productName, p.piecesPerCarton])),
+    [productsData],
+  );
+
   const { data: handovers } = useQuery({
     queryKey: QK.miniSettlementsIncoming,
     queryFn: () => miniSettlementsApi.incoming(),
-    refetchInterval: 15_000,
+    // No polling: useInboxSignal invalidates this key when the handovers stamp
+    // moves (a mini submits a handover for approval).
   });
 
   // Handover cycles: approved handovers split this mini's timeline into windows.
@@ -556,7 +578,8 @@ function MiniOversight({
     queryKey: QK.miniActivity(miniUserId, params),
     queryFn: () => miniSettlementsApi.miniActivity(miniUserId, params),
     enabled: !!miniUserId,
-    refetchInterval: 15_000,
+    // No polling: useInboxSignal invalidates the miniActivity prefix when the
+    // handovers stamp moves, refreshing whichever cycle window is on screen.
   });
 
   // Reset both tables to page 1 when the cycle window changes.
@@ -731,7 +754,9 @@ function MiniOversight({
                 {givenSlice.map((g, i) => (
                   <tr key={givenClamped * PAGE_SIZE + i} className="border-t" style={{ borderColor: 'rgba(127,127,127,0.1)' }}>
                     <td className="py-1.5 pr-3 capitalize">{g.productName}</td>
-                    <td className="py-1.5 pr-3 text-right">{g.quantity}</td>
+                    <td className="py-1.5 pr-3 text-right whitespace-nowrap">
+                      {formatBreakdown(breakdownQuantity(g.quantity, ppcMap.get(g.productName) ?? null))}
+                    </td>
                     <td className="py-1.5 pr-3 text-right opacity-60 whitespace-nowrap">{fmtRate(g.usdToFcRateSnapshot)}</td>
                     <td className="py-1.5 pr-3 text-right opacity-80">
                       {money(String((parseFloat(g.agreedUnitPrice) || 0) * g.quantity), g.agreedValueFc)}
@@ -799,7 +824,9 @@ function MiniOversight({
                           )}
                         </span>
                       </td>
-                      <td className="py-1.5 pr-3 text-right">{s.qtySold}</td>
+                      <td className="py-1.5 pr-3 text-right whitespace-nowrap">
+                        {formatBreakdown(breakdownQuantity(s.qtySold, ppcMap.get(s.productName) ?? null))}
+                      </td>
                       <td className="py-1.5 pr-3 text-right opacity-70">{moneyAtRate(s.agreedUnitPrice, s.usdToFcRateSnapshot)}</td>
                       <td className="py-1.5 pr-3 text-right">{moneyAtRate(s.salePrice, s.usdToFcRateSnapshot)}</td>
                       <td className="py-1.5 pr-3 text-right" style={{ color: up ? '#10B981' : undefined }}>
@@ -841,7 +868,7 @@ function MiniOversight({
         ) : (
           <div className="space-y-2">
             {allHandovers.map((h) => (
-              <HandoverRow key={h.id} handover={h} onChange={invalidate} liveRate={liveRate} />
+              <HandoverRow key={h.id} handover={h} onChange={invalidate} liveRate={liveRate} ppcMap={ppcMap} />
             ))}
           </div>
         )}
@@ -859,7 +886,7 @@ function MiniOversight({
   );
 }
 
-function HandoverRow({ handover, onChange, liveRate }: { handover: MiniSettlement; onChange: () => void; liveRate: number }) {
+function HandoverRow({ handover, onChange, liveRate, ppcMap }: { handover: MiniSettlement; onChange: () => void; liveRate: number; ppcMap: Map<string, number | null> }) {
   const t = useT();
   const approveM = useMutation({
     mutationFn: () => miniSettlementsApi.approve(handover.id),
@@ -930,7 +957,14 @@ function HandoverRow({ handover, onChange, liveRate }: { handover: MiniSettlemen
           </div>
           {handover.items.length > 0 && (
             <div className="text-xs opacity-70 mt-1">
-              {t.employees.miniReturns}: {handover.items.map((it) => `${it.quantity}× ${it.productName}${it.variantLabel ? ` (${it.variantLabel})` : ''}`).join(', ')}
+              {t.employees.miniReturns}: {handover.items.map((it) => {
+                // A variant (sized) item is counted in its own unit, so the
+                // group's carton size doesn't apply — show a plain piece count
+                // for those; break whole-product items into cartons/dozens/pcs.
+                const ppc = it.variantLabel ? null : (ppcMap.get(it.productName) ?? null);
+                const qty = formatBreakdown(breakdownQuantity(it.quantity, ppc));
+                return `${it.productName}${it.variantLabel ? ` (${it.variantLabel})` : ''} — ${qty}`;
+              }).join(', ')}
             </div>
           )}
           {expenses.length > 0 && (

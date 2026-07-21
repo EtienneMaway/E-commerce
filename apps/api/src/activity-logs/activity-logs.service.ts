@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, FindOptionsWhere, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
+import { Between, FindOptionsWhere, In, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
 import {
   ConsignmentItem,
   Expense,
@@ -9,6 +9,7 @@ import {
   ExternalTransactionType,
   InventoryEntry,
   InventorySource,
+  MiniSettlement,
   Payment,
   PaymentDirection,
   SaleTransaction,
@@ -51,7 +52,14 @@ export interface ActivityLogEntry {
   amount: string | null;
   productName: string | null;
   resourceId: string;
-  resourceType: 'sale' | 'consignment_item' | 'external_transaction' | 'payment' | 'expense' | 'inventory_entry';
+  resourceType:
+    | 'sale'
+    | 'consignment_item'
+    | 'external_transaction'
+    | 'payment'
+    | 'expense'
+    | 'inventory_entry'
+    | 'mini_settlement';
 }
 
 export interface ActivityLogsResult {
@@ -70,6 +78,7 @@ export class ActivityLogsService {
     @InjectRepository(Payment) private readonly paymentRepo: Repository<Payment>,
     @InjectRepository(Expense) private readonly expenseRepo: Repository<Expense>,
     @InjectRepository(InventoryEntry) private readonly entryRepo: Repository<InventoryEntry>,
+    @InjectRepository(MiniSettlement) private readonly settlementRepo: Repository<MiniSettlement>,
   ) {}
 
   async findAll(ctx: ActorContext, query: ListActivityLogsDto): Promise<ActivityLogsResult> {
@@ -87,8 +96,12 @@ export class ActivityLogsService {
         types.includes(ActivityLogType.EXTERNAL_PAYMENT_OUT)) {
       fetchers.push(this.loadExternalTransactions(ownerId, actor, range, types));
     }
+    // HANDOVER is served by loadPayments too — an approved handover IS a
+    // DEBTOR_TO_OWNER payment — so filtering to handovers alone must still
+    // reach this loader.
     if (types.includes(ActivityLogType.PAYMENT_TO_SUPPLIER) ||
-        types.includes(ActivityLogType.PAYMENT_FROM_DEBTOR)) {
+        types.includes(ActivityLogType.PAYMENT_FROM_DEBTOR) ||
+        types.includes(ActivityLogType.HANDOVER)) {
       fetchers.push(this.loadPayments(ownerId, actor, range, types));
     }
     if (types.includes(ActivityLogType.EXPENSE)) fetchers.push(this.loadExpenses(ownerId, actor, range));
@@ -215,6 +228,25 @@ export class ActivityLogsService {
     }));
   }
 
+  /**
+   * Map payment id → the approved handover that booked it.
+   *
+   * Only approved handovers have a payment at all (mini-settlements.service
+   * creates it inside the approval transaction, and only when cash > 0), so
+   * this needs no status filter: a pending or rejected handover simply has no
+   * payment to match, and a handover of pure returns with nothing sold has no
+   * cash and therefore no entry — which is correct, since nothing was sold.
+   */
+  private async handoversByPaymentId(
+    paymentIds: string[],
+  ): Promise<Map<string, MiniSettlement>> {
+    if (paymentIds.length === 0) return new Map();
+    const rows = await this.settlementRepo.find({
+      where: { paymentId: In(paymentIds) },
+    });
+    return new Map(rows.map((s) => [s.paymentId as string, s]));
+  }
+
   private async loadPayments(
     ownerId: string,
     actor: ActorCond | null,
@@ -223,7 +255,11 @@ export class ActivityLogsService {
   ): Promise<ActivityLogEntry[]> {
     const directions: PaymentDirection[] = [];
     if (types.includes(ActivityLogType.PAYMENT_TO_SUPPLIER)) directions.push(PaymentDirection.OWNER_TO_SUPPLIER);
-    if (types.includes(ActivityLogType.PAYMENT_FROM_DEBTOR)) directions.push(PaymentDirection.DEBTOR_TO_OWNER);
+    // HANDOVER entries are DEBTOR_TO_OWNER payments too, so asking for either
+    // type has to pull that direction; the mapping below sorts them apart.
+    if (types.includes(ActivityLogType.PAYMENT_FROM_DEBTOR) || types.includes(ActivityLogType.HANDOVER)) {
+      directions.push(PaymentDirection.DEBTOR_TO_OWNER);
+    }
     if (directions.length === 0) return [];
 
     const qb = this.paymentRepo
@@ -244,11 +280,42 @@ export class ActivityLogsService {
     applyActorCondToQb(qb, 'p.actor_id', actor);
     if (range.from) qb.andWhere('p.created_at >= :from', { from: range.from });
     if (range.to) qb.andWhere('p.created_at <= :to', { to: range.to });
-    qb.orderBy('p.created_at', 'DESC').take(MAX_ROWS_PER_SOURCE);
+    // `p.date` (the entity property) not `p.created_at` (the column). Every
+    // other loader here already orders by the property; this one did not, and
+    // because `take()` makes TypeORM build a distinct-id subquery it has to map
+    // the ordering back to a property — an unmappable raw column threw
+    // "Cannot read properties of undefined (reading 'databaseName')" and 500'd
+    // the whole endpoint for any owner with payments.
+    qb.orderBy('p.date', 'DESC').take(MAX_ROWS_PER_SOURCE);
     const rows = await qb.getMany();
 
-    return rows.map((p): ActivityLogEntry => {
+    // Which of these payments were booked by a mini-employee handover.
+    const handovers = await this.handoversByPaymentId(rows.map((p) => p.id));
+
+    const entries = rows.map((p): ActivityLogEntry => {
       const isOut = p.direction === PaymentDirection.OWNER_TO_SUPPLIER;
+      const handover = handovers.get(p.id);
+
+      // A handover payment is reported as the handover it came from, not as a
+      // generic debtor payment — same row, same money, one entry. The amount is
+      // the settlement's cash, i.e. what the mini SOLD; the unsold goods they
+      // returned are deliberately not represented here.
+      if (handover) {
+        return {
+          id: `mini_settlement:${handover.id}`,
+          type: ActivityLogType.HANDOVER,
+          timestamp: p.date.toISOString(),
+          actor: p.actor ? { id: p.actor.id, username: p.actor.username } : null,
+          summary: `Handover by @${p.paidByUser?.username ?? 'employee'} — ${handover.cashAmount} for goods sold`,
+          amount: handover.cashAmount,
+          productName: null,
+          // Points at the settlement so a client can open the handover itself
+          // (with its returned-items breakdown) rather than the payment row.
+          resourceId: handover.id,
+          resourceType: 'mini_settlement',
+        };
+      }
+
       return {
         id: `payment:${p.id}`,
         type: isOut ? ActivityLogType.PAYMENT_TO_SUPPLIER : ActivityLogType.PAYMENT_FROM_DEBTOR,
@@ -263,6 +330,11 @@ export class ActivityLogsService {
         resourceType: 'payment',
       };
     });
+
+    // The direction filter above is deliberately broad (HANDOVER and
+    // PAYMENT_FROM_DEBTOR share a direction), so drop anything the caller did
+    // not actually ask for.
+    return entries.filter((e) => types.includes(e.type));
   }
 
   private async loadExpenses(

@@ -12,6 +12,13 @@ export enum ActivityLogType {
   EXTERNAL_PAYMENT_OUT = 'EXTERNAL_PAYMENT_OUT',
   PAYMENT_TO_SUPPLIER = 'PAYMENT_TO_SUPPLIER',
   PAYMENT_FROM_DEBTOR = 'PAYMENT_FROM_DEBTOR',
+  /**
+   * A mini employee's approved handover. Not a separate table read: an approved
+   * handover books its cash as a DEBTOR_TO_OWNER payment, so this is that same
+   * payment recognised and relabelled rather than a second entry for the same
+   * money. See ActivityLogsService.loadPayments.
+   */
+  HANDOVER = 'HANDOVER',
   EXPENSE = 'EXPENSE',
   INVENTORY_PERSONAL_ADDED = 'INVENTORY_PERSONAL_ADDED',
   INVENTORY_RECEIVED_FROM_SUPPLIER = 'INVENTORY_RECEIVED_FROM_SUPPLIER',

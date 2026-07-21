@@ -41,6 +41,10 @@ export const QK = {
   quantityDiscounts: ['quantity-discounts'] as const,
   activityLogs: (filters?: object) => ['activity-logs', filters] as const,
   miniSettlementsIncoming: ['mini-settlements', 'incoming'] as const,
+  /** Prefix key over every ['mini-settlements', 'activity', …] query. Used to
+   *  invalidate all mini-activity windows at once when a handover lands. */
+  miniActivityAll: ['mini-settlements', 'activity'] as const,
   miniActivity: (miniUserId: string, filters?: object) =>
     ['mini-settlements', 'activity', miniUserId, filters] as const,
+  syncSignal: ['sync', 'signal'] as const,
 } as const;

@@ -424,7 +424,7 @@ export interface SalesProfitSummary {
 }
 
 export const salesApi = {
-  list: (params?: { productName?: string; period?: string; page?: number; limit?: number; actorId?: string }) =>
+  list: (params?: { productName?: string; period?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number; actorId?: string }) =>
     api.get('/sales', { params }).then((r) => r.data),
   topProducts: (params?: { rankBy?: 'qty' | 'revenue' | 'profit'; period?: string }) =>
     api.get('/sales/top-products', { params }).then((r) => r.data),
@@ -787,6 +787,7 @@ export const ACTIVITY_LOG_TYPES = [
   'EXTERNAL_PAYMENT_OUT',
   'PAYMENT_TO_SUPPLIER',
   'PAYMENT_FROM_DEBTOR',
+  'HANDOVER',
   'EXPENSE',
   'INVENTORY_PERSONAL_ADDED',
   'INVENTORY_RECEIVED_FROM_SUPPLIER',
@@ -802,7 +803,14 @@ export interface ActivityLogEntry {
   amount: string | null;
   productName: string | null;
   resourceId: string;
-  resourceType: 'sale' | 'consignment_item' | 'external_transaction' | 'payment' | 'expense' | 'inventory_entry';
+  resourceType:
+    | 'sale'
+    | 'consignment_item'
+    | 'external_transaction'
+    | 'payment'
+    | 'expense'
+    | 'inventory_entry'
+    | 'mini_settlement';
 }
 
 export interface ActivityLogsParams {
@@ -911,4 +919,18 @@ export const dashboardApi = {
     api.get('/dashboard/profit-by-product', { params }).then((r) => r.data),
   profitBySource: () => api.get('/dashboard/profit-by-source').then((r) => r.data),
   alerts: () => api.get('/dashboard/alerts').then((r) => r.data),
+};
+
+// ─── Sync (inbox change-signal) ─────────────────────────────────────────────────
+
+/** One epoch-ms stamp per inbox channel. See useInboxSignal / the API's SyncService. */
+export interface InboxSignal {
+  handovers: number;
+  employment: number;
+  consignments: number;
+  salary: number;
+}
+
+export const syncApi = {
+  signal: (): Promise<InboxSignal> => api.get('/sync/signal').then((r) => r.data),
 };
