@@ -217,6 +217,10 @@ export default function RootLayout() {
             name="expenses"
             options={{ headerShown: true, title: t.expenses.title, headerBackTitle: t.screens.back }}
           />
+          <Stack.Screen
+            name="handovers"
+            options={{ headerShown: true, title: t.miniEmployee.historyTitle, headerBackTitle: t.screens.back }}
+          />
         </Stack>
       </PersistQueryClientProvider>
     </ErrorBoundary>

@@ -284,9 +284,15 @@ export interface MiniSettlementSummary {
   id: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   cashAmount: string;
+  /** FC value of the sold cash at the batches' locked rates; null for
+   *  pre-snapshot handovers (fall back to converting cashAmount at live rate). */
+  cashAmountFc?: string | null;
   note: string | null;
   createdAt: string;
   approvedAt: string | null;
+  /** Employer receiving the handover — present on outgoing rows. */
+  owner?: { id: string; username: string; name?: string | null };
+  /** Unsold lines being returned to the owner. */
   items: {
     id: string;
     productName: string;

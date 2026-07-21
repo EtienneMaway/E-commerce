@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, Pressable, Alert } from 'react-native';
+import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   authApi,
@@ -156,6 +157,19 @@ export function MiniEmployeeHome() {
           </Text>
         </View>
         {!handoverPending && <Text className="text-muted dark:text-slate-500 text-xl">›</Text>}
+      </Pressable>
+
+      <Pressable
+        onPress={() => router.push('/handovers')}
+        className="flex-row items-center bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4"
+        style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
+      >
+        <Text className="text-2xl mr-3">🧾</Text>
+        <View className="flex-1">
+          <Text className="text-text dark:text-slate-100 font-semibold text-base">{t.miniEmployee.historyCardTitle}</Text>
+          <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">{t.miniEmployee.historyCardSub}</Text>
+        </View>
+        <Text className="text-muted dark:text-slate-500 text-xl">›</Text>
       </Pressable>
 
       <ReceiveConsignmentModal visible={receiveOpen} onClose={() => setReceiveOpen(false)} />

@@ -54,7 +54,7 @@ export interface ReceiptData {
   readonly clientPhone?: string;
 }
 
-const BRAND = 'KMB-Talk';
+export const BRAND = 'KMB-Talk';
 
 /**
  * Constants printed in the footer of every receipt.
@@ -99,7 +99,7 @@ export function formatCartonInfoLine(item: ReceiptItem): string {
   return `${formatFc(cartonPrice)} / ctn (${ppc} pcs)`;
 }
 
-function formatFc(value: number): string {
+export function formatFc(value: number): string {
   return new Intl.NumberFormat('fr-CD').format(Math.round(value)) + ' FC';
 }
 
@@ -113,7 +113,7 @@ export function generateReceiptId(): string {
   return Date.now().toString(36).slice(-6).toUpperCase();
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

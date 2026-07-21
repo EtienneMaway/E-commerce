@@ -67,7 +67,22 @@ export default function ProductDetailPage({
 
   const { data, isLoading } = useQuery({
     queryKey: QK.inventory({ productName }),
-    queryFn: () => inventoryApi.list({ productName, page: 1, limit: 500 }),
+    // The API caps `limit` at 200 (InventoryFilterDto). A single product's
+    // ledger is almost always far smaller, but page through the cap so the
+    // value totals below stay correct even for a product with a very long
+    // restock history — never silently truncate. (Requesting limit>200 here
+    // used to 400 and left this whole page blank.)
+    queryFn: async () => {
+      const first = await inventoryApi.list({ productName, page: 1, limit: 200 });
+      const totalPages = first.pagination?.totalPages ?? 1;
+      if (totalPages <= 1) return first;
+      const rest = await Promise.all(
+        Array.from({ length: totalPages - 1 }, (_, i) =>
+          inventoryApi.list({ productName, page: i + 2, limit: 200 }),
+        ),
+      );
+      return { ...first, data: [...first.data, ...rest.flatMap((r) => r.data)] };
+    },
     staleTime: 30_000,
     enabled: !!productName,
   });

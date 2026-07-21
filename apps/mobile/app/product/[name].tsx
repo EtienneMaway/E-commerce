@@ -124,7 +124,23 @@ export default function ProductDetailScreen() {
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: QK.inventory({ productName }),
-    queryFn: () => inventoryApi.list({ productName, page: 1, limit: 500 }),
+    // The API caps `limit` at 200 (InventoryFilterDto); requesting more 400s and
+    // leaves this screen empty. Page through the cap so a product with a long
+    // restock history still shows its full ledger.
+    queryFn: async () => {
+      const fetchPage = (page: number) =>
+        inventoryApi.list({ productName, page, limit: 200 }) as Promise<{
+          data: InventoryEntry[];
+          pagination?: { totalPages: number };
+        }>;
+      const first = await fetchPage(1);
+      const totalPages = first.pagination?.totalPages ?? 1;
+      if (totalPages <= 1) return first;
+      const rest = await Promise.all(
+        Array.from({ length: totalPages - 1 }, (_, i) => fetchPage(i + 2)),
+      );
+      return { ...first, data: [...first.data, ...rest.flatMap((r) => r.data)] };
+    },
     staleTime: 30_000,
     enabled: !!productName && !group,
   });

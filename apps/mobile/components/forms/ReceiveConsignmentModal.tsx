@@ -1,10 +1,17 @@
+import { useMemo, useState } from 'react';
 import { Modal, ScrollView, View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { consignmentsApi, type ConsignmentSummary } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
-import { useFormatCurrency } from '../../lib/currency';
+import { useExchangeRate, useFormatCurrency } from '../../lib/currency';
 import { breakdownQuantity, formatBreakdown, getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+import { useAuthStore } from '../../store/auth.store';
+import {
+  printReceivedGoods,
+  shareReceivedGoodsPdf,
+  type ReceivedGoodsSlip,
+} from '../../lib/handover-receipt';
 
 interface Props {
   visible: boolean;
@@ -20,6 +27,12 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
   const t = useT();
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
+  const rate = useExchangeRate();
+  const user = useAuthStore((s) => s.user);
+  // The consignment just confirmed — kept so the mini can print/share a record
+  // of what they received, since it drops out of the PENDING list on confirm.
+  const [justReceived, setJustReceived] = useState<ConsignmentSummary | null>(null);
+  const [printing, setPrinting] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: QK.consignmentsIncoming,
@@ -39,8 +52,12 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
   };
 
   const confirmM = useMutation({
-    mutationFn: (id: string) => consignmentsApi.confirm(id),
-    onSuccess: invalidate,
+    mutationFn: (c: ConsignmentSummary) => consignmentsApi.confirm(c.id),
+    onSuccess: (_data, c) => {
+      invalidate();
+      // Surface the print/share record for the goods just accepted.
+      setJustReceived(c);
+    },
     onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
   });
   const rejectM = useMutation({
@@ -50,16 +67,102 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
   });
   const busy = confirmM.isPending || rejectM.isPending;
 
+  // Slip for the most recently received consignment, reduced to FC. Prices on
+  // the consignment are per-piece USD (agreedUnitPrice); convert at the live
+  // rate the same way the list rows above are displayed.
+  const receivedSlip = useMemo<ReceivedGoodsSlip | null>(() => {
+    if (!justReceived) return null;
+    const r = parseFloat(rate) || 1;
+    const items = justReceived.items.map((it) => {
+      const unitFc = (parseFloat(it.agreedUnitPrice) || 0) * r;
+      return {
+        productName: it.variantLabel ? `${it.productName} · ${it.variantLabel}` : it.productName,
+        qtyLabel: formatBreakdown(breakdownQuantity(it.quantity, it.piecesPerCarton ?? null)),
+        unitPriceFc: unitFc,
+        lineTotalFc: unitFc * it.quantity,
+      };
+    });
+    return {
+      from: { name: justReceived.supplier?.name ?? undefined, handle: justReceived.supplier?.username },
+      receivedBy: { name: user?.name ?? undefined, handle: user?.username },
+      date: new Date().toLocaleString('fr-CD'),
+      reference: justReceived.id.slice(0, 6).toUpperCase(),
+      note: justReceived.note ?? undefined,
+      items,
+      totalOwedFc: items.reduce((s, i) => s + i.lineTotalFc, 0),
+    };
+  }, [justReceived, rate, user]);
+
+  const handlePrint = async () => {
+    if (!receivedSlip) return;
+    setPrinting(true);
+    try {
+      await printReceivedGoods(receivedSlip);
+    } catch (err) {
+      Alert.alert(t.printer.printFailed, getErrorMessage(err));
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const close = () => {
+    setJustReceived(null);
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
       <ScrollView className="flex-1 bg-surface dark:bg-slate-900" contentContainerClassName="px-6 py-8">
         <View className="flex-row justify-between items-center mb-2">
           <Text className="text-xl font-bold text-text dark:text-slate-100">{t.miniEmployee.receiveTitle}</Text>
-          <TouchableOpacity onPress={onClose}>
+          <TouchableOpacity onPress={close}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
         </View>
         <Text className="text-muted dark:text-slate-500 text-sm mb-5">{t.miniEmployee.receiveSubtitle}</Text>
+
+        {receivedSlip && (
+          <View className="bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-900 rounded-2xl px-4 py-4 mb-4">
+            <View className="flex-row items-start gap-2">
+              <Text className="text-base mt-0.5">✅</Text>
+              <View className="flex-1">
+                <Text className="text-emerald-700 dark:text-emerald-300 font-semibold text-sm">
+                  {t.miniEmployee.receivedDoneTitle}
+                </Text>
+                <Text className="text-emerald-600 dark:text-emerald-400 text-xs mt-0.5">
+                  {t.miniEmployee.receivedDoneSub}
+                </Text>
+              </View>
+            </View>
+            <View className="flex-row gap-2 mt-3">
+              <TouchableOpacity
+                onPress={() => void handlePrint()}
+                disabled={printing}
+                className="flex-1 bg-emerald-600 rounded-xl py-2.5 flex-row items-center justify-center gap-2"
+                style={{ opacity: printing ? 0.6 : 1 }}
+              >
+                {printing && <ActivityIndicator size="small" color="#fff" />}
+                <Text className="text-white font-semibold text-sm">{t.miniEmployee.printBtn}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void shareReceivedGoodsPdf(receivedSlip)}
+                className="px-4 rounded-xl py-2.5 items-center justify-center border border-emerald-600"
+              >
+                <Text className="text-emerald-700 dark:text-emerald-300 font-semibold text-sm">
+                  {t.miniEmployee.shareBtn}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setJustReceived(null)}
+                className="px-4 rounded-xl py-2.5 items-center justify-center"
+              >
+                <Text className="text-muted dark:text-slate-400 font-semibold text-sm">
+                  {t.miniEmployee.printDone}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {isLoading ? (
           <ActivityIndicator className="mt-8" />
@@ -159,7 +262,7 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
               </View>
               <View className="flex-row gap-2 mt-3">
                 <TouchableOpacity
-                  onPress={() => confirmM.mutate(c.id)}
+                  onPress={() => confirmM.mutate(c)}
                   disabled={busy}
                   className="flex-1 bg-success rounded-xl py-2.5 items-center"
                   style={{ opacity: busy ? 0.5 : 1 }}
