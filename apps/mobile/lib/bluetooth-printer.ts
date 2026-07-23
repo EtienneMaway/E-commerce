@@ -3,7 +3,14 @@ import RNBluetoothClassic, {
   BluetoothDevice,
 } from 'react-native-bluetooth-classic';
 import type { ReceiptData } from './receipt';
-import { encodeReceipt, encodeTestPrint, toBase64 } from './escpos';
+import type { ReceivedGoodsSlip, ApprovedHandoverSlip } from './handover-receipt';
+import {
+  encodeReceipt,
+  encodeReceivedGoodsSlip,
+  encodeApprovedHandoverSlip,
+  encodeTestPrint,
+  toBase64,
+} from './escpos';
 
 /**
  * Thin wrapper around `react-native-bluetooth-classic` for ESC/POS receipt
@@ -99,6 +106,26 @@ export async function printReceiptToBluetooth(
   data: ReceiptData,
 ): Promise<void> {
   const payload = toBase64(encodeReceipt(data));
+  await withConnection(printer.address, async (device) => {
+    await device.write(payload, 'base64');
+  });
+}
+
+export async function printReceivedGoodsSlipToBluetooth(
+  printer: PairedPrinter,
+  slip: ReceivedGoodsSlip,
+): Promise<void> {
+  const payload = toBase64(encodeReceivedGoodsSlip(slip));
+  await withConnection(printer.address, async (device) => {
+    await device.write(payload, 'base64');
+  });
+}
+
+export async function printApprovedHandoverToBluetooth(
+  printer: PairedPrinter,
+  slip: ApprovedHandoverSlip,
+): Promise<void> {
+  const payload = toBase64(encodeApprovedHandoverSlip(slip));
   await withConnection(printer.address, async (device) => {
     await device.write(payload, 'base64');
   });

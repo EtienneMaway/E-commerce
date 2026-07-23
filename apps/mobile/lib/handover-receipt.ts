@@ -3,6 +3,11 @@ import * as Sharing from 'expo-sharing';
 import { BRAND, RECEIPT_FOOTER, escapeHtml, formatFc } from './receipt';
 import { breakdownQuantity, formatBreakdown, formatDate } from './utils';
 import type { ConsignmentSummary, MiniSettlementSummary } from './api';
+import { usePrinterStore } from '../store/printer.store';
+import {
+  printReceivedGoodsSlipToBluetooth,
+  printApprovedHandoverToBluetooth,
+} from './bluetooth-printer';
 
 /**
  * Printable records for the mini-employee ↔ employer loop:
@@ -11,13 +16,13 @@ import type { ConsignmentSummary, MiniSettlementSummary } from './api';
  *   2. A "handover receipt" — printed once the employer approves the mini's
  *      handover (cash turned in + unsold goods returned).
  *
- * Unlike the POS sales receipt (which prefers a paired Bluetooth thermal
- * printer, see lib/receipt.ts), these are occasional record documents both
- * parties keep. They route only through the system print dialog / share-to-PDF
- * (expo-print), which works on every device out of the box and can target any
- * printer or save a PDF — no Bluetooth pairing required. Their internal labels
- * are hardcoded to match the sales receipt's style; only the surrounding app UI
- * is translated.
+ * Same routing as the POS sales receipt (lib/receipt.ts): prefer the paired
+ * Bluetooth thermal printer (printer.store) and send raw ESC/POS bytes
+ * directly. The system print dialog / share-to-PDF (expo-print) is only used
+ * as an explicit fallback — either when no printer is paired, or when the
+ * caller invokes the `*ViaSystem` variant after a Bluetooth print failure.
+ * Their internal labels are hardcoded to match the sales receipt's style;
+ * only the surrounding app UI is translated.
  */
 
 /** A named party on a slip — employer or the mini. Either field may be absent. */
@@ -376,14 +381,53 @@ async function sharePdf(html: string, dialogTitle: string): Promise<void> {
   }
 }
 
-export const printReceivedGoods = (slip: ReceivedGoodsSlip): Promise<void> =>
-  printHtml(buildReceivedGoodsHtml(slip));
+/**
+ * Print a "goods received" slip. Routes through the paired Bluetooth thermal
+ * printer when one is set; otherwise falls back to the system print dialog
+ * (which is what every device gets out of the box, but is the path that
+ * surfaces AirPrint/network printers instead of a paired POS printer).
+ */
+export async function printReceivedGoods(slip: ReceivedGoodsSlip): Promise<void> {
+  const paired = usePrinterStore.getState().printer;
+  if (paired) {
+    await printReceivedGoodsSlipToBluetooth(paired, slip);
+    return;
+  }
+  await printHtml(buildReceivedGoodsHtml(slip));
+}
+
+/**
+ * Escape hatch: print a "goods received" slip via the system print dialog
+ * regardless of whether a Bluetooth printer is paired. Used as the fallback
+ * path when the paired printer is unreachable.
+ */
+export async function printReceivedGoodsViaSystem(slip: ReceivedGoodsSlip): Promise<void> {
+  await printHtml(buildReceivedGoodsHtml(slip));
+}
 
 export const shareReceivedGoodsPdf = (slip: ReceivedGoodsSlip): Promise<void> =>
   sharePdf(buildReceivedGoodsHtml(slip), 'Goods received');
 
-export const printApprovedHandover = (slip: ApprovedHandoverSlip): Promise<void> =>
-  printHtml(buildApprovedHandoverHtml(slip));
+/**
+ * Print an "approved handover" slip. Same Bluetooth-first routing as
+ * `printReceivedGoods` above.
+ */
+export async function printApprovedHandover(slip: ApprovedHandoverSlip): Promise<void> {
+  const paired = usePrinterStore.getState().printer;
+  if (paired) {
+    await printApprovedHandoverToBluetooth(paired, slip);
+    return;
+  }
+  await printHtml(buildApprovedHandoverHtml(slip));
+}
+
+/**
+ * Escape hatch: print an "approved handover" slip via the system print
+ * dialog regardless of whether a Bluetooth printer is paired.
+ */
+export async function printApprovedHandoverViaSystem(slip: ApprovedHandoverSlip): Promise<void> {
+  await printHtml(buildApprovedHandoverHtml(slip));
+}
 
 export const shareApprovedHandoverPdf = (slip: ApprovedHandoverSlip): Promise<void> =>
   sharePdf(buildApprovedHandoverHtml(slip), 'Handover receipt');

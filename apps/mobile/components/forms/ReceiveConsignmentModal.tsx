@@ -7,8 +7,10 @@ import { useExchangeRate, useFormatCurrency } from '../../lib/currency';
 import { breakdownQuantity, formatBreakdown, getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../store/auth.store';
+import { usePrinterStore } from '../../store/printer.store';
 import {
   printReceivedGoods,
+  printReceivedGoodsViaSystem,
   shareReceivedGoodsPdf,
   toReceivedGoodsSlip,
 } from '../../lib/handover-receipt';
@@ -87,7 +89,14 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
     try {
       await printReceivedGoods(receivedSlip);
     } catch (err) {
-      Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      if (usePrinterStore.getState().printer) {
+        Alert.alert(t.printer.printFailed, getErrorMessage(err), [
+          { text: t.common.cancel, style: 'cancel' },
+          { text: t.printer.fallbackUsed, onPress: () => void printReceivedGoodsViaSystem(receivedSlip) },
+        ]);
+      } else {
+        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      }
     } finally {
       setPrinting(false);
     }

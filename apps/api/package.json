@@ -20,6 +20,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:dump": "bash scripts/db-dump.sh",
     "db:restore": "bash scripts/db-restore.sh",
+    "db:reset": "bash scripts/db-reset.sh",
     "migration:generate": "typeorm migration:generate -d dist/database/database.config.js",
     "migration:run": "typeorm migration:run -d dist/database/database.config.js",
     "migration:revert": "typeorm migration:revert -d dist/database/database.config.js"

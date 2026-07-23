@@ -22,12 +22,15 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { formatDate, getErrorMessage } from '../lib/utils';
 import { formatFcValue, useExchangeRate } from '../lib/currency';
 import { useAuthStore } from '../store/auth.store';
+import { usePrinterStore } from '../store/printer.store';
 import { useT } from '../lib/i18n';
 import {
   printApprovedHandover,
+  printApprovedHandoverViaSystem,
   shareApprovedHandoverPdf,
   toApprovedHandoverSlip,
   printReceivedGoods,
+  printReceivedGoodsViaSystem,
   shareReceivedGoodsPdf,
   toReceivedGoodsSlip,
 } from '../lib/handover-receipt';
@@ -85,10 +88,18 @@ function HandoversTab() {
 
   const handlePrint = async (s: MiniSettlementSummary) => {
     setPrintingId(s.id);
+    const slip = toApprovedHandoverSlip(s, self, rate);
     try {
-      await printApprovedHandover(toApprovedHandoverSlip(s, self, rate));
+      await printApprovedHandover(slip);
     } catch (err) {
-      Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      if (usePrinterStore.getState().printer) {
+        Alert.alert(t.printer.printFailed, getErrorMessage(err), [
+          { text: t.common.cancel, style: 'cancel' },
+          { text: t.printer.fallbackUsed, onPress: () => void printApprovedHandoverViaSystem(slip) },
+        ]);
+      } else {
+        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      }
     } finally {
       setPrintingId(null);
     }
@@ -138,10 +149,18 @@ function ReceivedTab() {
 
   const handlePrint = async (c: ConsignmentSummary) => {
     setPrintingId(c.id);
+    const slip = toReceivedGoodsSlip(c, self, rate);
     try {
-      await printReceivedGoods(toReceivedGoodsSlip(c, self, rate));
+      await printReceivedGoods(slip);
     } catch (err) {
-      Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      if (usePrinterStore.getState().printer) {
+        Alert.alert(t.printer.printFailed, getErrorMessage(err), [
+          { text: t.common.cancel, style: 'cancel' },
+          { text: t.printer.fallbackUsed, onPress: () => void printReceivedGoodsViaSystem(slip) },
+        ]);
+      } else {
+        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      }
     } finally {
       setPrintingId(null);
     }

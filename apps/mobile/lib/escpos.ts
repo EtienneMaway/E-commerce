@@ -8,12 +8,18 @@
  */
 
 import {
+  BRAND,
   RECEIPT_FOOTER,
   formatPackagingLine,
   formatCartonInfoLine,
   type ReceiptData,
   type ReceiptItem,
 } from './receipt';
+import type {
+  ReceivedGoodsSlip,
+  ApprovedHandoverSlip,
+  SlipParty,
+} from './handover-receipt';
 
 const ENC = {
   INIT: [0x1b, 0x40],
@@ -104,7 +110,6 @@ function renderItem(item: ReceiptItem): number[] {
  */
 export function encodeReceipt(data: ReceiptData): Uint8Array {
   const bytes: number[] = [];
-  const BRAND = 'KMB-Talk';
 
   bytes.push(...ENC.INIT);
 
@@ -245,6 +250,208 @@ export function encodeTestPrint(deviceName?: string): Uint8Array {
   bytes.push(...ENC.LF);
   bytes.push(...ENC.FEED_LINES(3));
   bytes.push(...ENC.CUT);
+  return new Uint8Array(bytes);
+}
+
+function partyLabel(party: SlipParty): string {
+  if (party.name) return party.name;
+  if (party.handle) return `@${party.handle}`;
+  return '-';
+}
+
+function partyHandleLabel(party: SlipParty): string {
+  return party.name && party.handle ? `@${party.handle}` : '';
+}
+
+/** "name ... amount", right-aligned amount, matching `renderItem`'s layout. */
+function nameAmountLine(name: string, amount: string): number[] {
+  const maxNameWidth = COLS - amount.length - 1;
+  const line =
+    name.length <= maxNameWidth
+      ? padRight(name, maxNameWidth) + ' ' + amount
+      : name.slice(0, maxNameWidth) + ' ' + amount;
+  return [...ascii(line), ...ENC.LF];
+}
+
+function footerBytes(): number[] {
+  const out: number[] = [];
+  out.push(...ENC.LF);
+  out.push(...ENC.ALIGN_CENTER);
+  out.push(...ascii(RECEIPT_FOOTER.address));
+  out.push(...ENC.LF);
+  out.push(...ascii(RECEIPT_FOOTER.phone));
+  out.push(...ENC.LF);
+  out.push(...ENC.LF);
+  out.push(...ENC.BOLD_ON);
+  out.push(...ascii(RECEIPT_FOOTER.thanks));
+  out.push(...ENC.LF);
+  out.push(...ENC.BOLD_OFF);
+  return out;
+}
+
+/**
+ * Encode a "goods received" slip (mini-employee confirms a consignment) into
+ * ESC/POS bytes. Mirrors `buildReceivedGoodsHtml` in handover-receipt.ts so a
+ * Bluetooth printout matches the PDF/system-print fallback layout.
+ */
+export function encodeReceivedGoodsSlip(slip: ReceivedGoodsSlip): Uint8Array {
+  const bytes: number[] = [];
+
+  bytes.push(...ENC.INIT);
+
+  bytes.push(...ENC.ALIGN_CENTER);
+  bytes.push(...ENC.BOLD_ON);
+  bytes.push(...ENC.DOUBLE_HEIGHT_ON);
+  bytes.push(...ascii(BRAND));
+  bytes.push(...ENC.LF);
+  bytes.push(...ENC.NORMAL);
+  bytes.push(...ENC.BOLD_OFF);
+  bytes.push(...ascii('goods received'));
+  bytes.push(...ENC.LF);
+  bytes.push(...divider('='));
+
+  bytes.push(...ENC.BOLD_ON);
+  bytes.push(...ascii(partyLabel(slip.from)));
+  bytes.push(...ENC.LF);
+  bytes.push(...ENC.BOLD_OFF);
+  const fromHandle = partyHandleLabel(slip.from);
+  if (fromHandle) {
+    bytes.push(...ascii(fromHandle));
+    bytes.push(...ENC.LF);
+  }
+  bytes.push(...ENC.LF);
+
+  bytes.push(...ENC.ALIGN_LEFT);
+  if (slip.reference) {
+    bytes.push(...ascii(metaLine('Ref #', slip.reference)));
+    bytes.push(...ENC.LF);
+  }
+  bytes.push(...ascii(metaLine('Date', slip.date)));
+  bytes.push(...ENC.LF);
+  bytes.push(...ascii(metaLine('Received by', partyLabel(slip.receivedBy))));
+  bytes.push(...ENC.LF);
+  if (slip.note) {
+    bytes.push(...ascii(metaLine('Note', slip.note)));
+    bytes.push(...ENC.LF);
+  }
+
+  bytes.push(...divider('-'));
+
+  for (const item of slip.items) {
+    bytes.push(...nameAmountLine(item.productName, fc(item.lineTotalFc)));
+    bytes.push(...ascii(`  ${item.qtyLabel} @ ${fc(item.unitPriceFc)}`));
+    bytes.push(...ENC.LF);
+  }
+
+  bytes.push(...divider('-'));
+
+  bytes.push(...ENC.BOLD_ON);
+  bytes.push(...ENC.DOUBLE_HEIGHT_ON);
+  const owedStr = fc(slip.totalOwedFc);
+  bytes.push(...ascii(padRight('OWED', COLS - owedStr.length) + owedStr));
+  bytes.push(...ENC.LF);
+  bytes.push(...ENC.NORMAL);
+  bytes.push(...ENC.BOLD_OFF);
+
+  bytes.push(...divider('='));
+  bytes.push(...footerBytes());
+
+  bytes.push(...ENC.FEED_LINES(3));
+  bytes.push(...ENC.CUT);
+
+  return new Uint8Array(bytes);
+}
+
+/**
+ * Encode an "approved handover" slip (mini-employee's cash + returns turned
+ * in, once the employer approves) into ESC/POS bytes. Mirrors
+ * `buildApprovedHandoverHtml` in handover-receipt.ts.
+ */
+export function encodeApprovedHandoverSlip(slip: ApprovedHandoverSlip): Uint8Array {
+  const bytes: number[] = [];
+
+  bytes.push(...ENC.INIT);
+
+  bytes.push(...ENC.ALIGN_CENTER);
+  bytes.push(...ENC.BOLD_ON);
+  bytes.push(...ENC.DOUBLE_HEIGHT_ON);
+  bytes.push(...ascii(BRAND));
+  bytes.push(...ENC.LF);
+  bytes.push(...ENC.NORMAL);
+  bytes.push(...ENC.BOLD_OFF);
+  bytes.push(...ascii('handover receipt'));
+  bytes.push(...ENC.LF);
+  bytes.push(...divider('='));
+
+  bytes.push(...ENC.BOLD_ON);
+  bytes.push(...ascii(partyLabel(slip.to)));
+  bytes.push(...ENC.LF);
+  bytes.push(...ENC.BOLD_OFF);
+  const toHandle = partyHandleLabel(slip.to);
+  if (toHandle) {
+    bytes.push(...ascii(toHandle));
+    bytes.push(...ENC.LF);
+  }
+  bytes.push(...ENC.LF);
+
+  bytes.push(...ENC.ALIGN_LEFT);
+  if (slip.reference) {
+    bytes.push(...ascii(metaLine('Ref #', slip.reference)));
+    bytes.push(...ENC.LF);
+  }
+  bytes.push(...ascii(metaLine('Handed over by', partyLabel(slip.handedOverBy))));
+  bytes.push(...ENC.LF);
+  bytes.push(...ascii(metaLine('Submitted', slip.submittedDate)));
+  bytes.push(...ENC.LF);
+  if (slip.approvedDate) {
+    bytes.push(...ascii(metaLine('Approved', slip.approvedDate)));
+    bytes.push(...ENC.LF);
+  }
+  if (slip.note) {
+    bytes.push(...ascii(metaLine('Note', slip.note)));
+    bytes.push(...ENC.LF);
+  }
+
+  bytes.push(...divider('-'));
+
+  if (slip.sold.length > 0) {
+    bytes.push(...ascii('PRODUCTS SOLD'));
+    bytes.push(...ENC.LF);
+    for (const s of slip.sold) {
+      bytes.push(...nameAmountLine(s.productName, fc(s.amountFc)));
+      bytes.push(...ascii(`  ${s.qtyLabel}`));
+      bytes.push(...ENC.LF);
+    }
+    bytes.push(...divider('-'));
+  }
+
+  bytes.push(...ENC.BOLD_ON);
+  bytes.push(...ENC.DOUBLE_HEIGHT_ON);
+  const cashStr = fc(slip.cashHandedOverFc);
+  bytes.push(...ascii(padRight('CASH', COLS - cashStr.length) + cashStr));
+  bytes.push(...ENC.LF);
+  bytes.push(...ENC.NORMAL);
+  bytes.push(...ENC.BOLD_OFF);
+
+  bytes.push(...divider('-'));
+
+  bytes.push(...ascii('ITEMS RETURNED'));
+  bytes.push(...ENC.LF);
+  if (slip.returns.length === 0) {
+    bytes.push(...ascii('  None - everything was sold.'));
+    bytes.push(...ENC.LF);
+  } else {
+    for (const r of slip.returns) {
+      bytes.push(...nameAmountLine(r.productName, r.qtyLabel));
+    }
+  }
+
+  bytes.push(...divider('='));
+  bytes.push(...footerBytes());
+
+  bytes.push(...ENC.FEED_LINES(3));
+  bytes.push(...ENC.CUT);
+
   return new Uint8Array(bytes);
 }
 
