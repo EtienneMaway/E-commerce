@@ -10,7 +10,6 @@ import { useAuthStore } from '../../store/auth.store';
 import { usePrinterStore } from '../../store/printer.store';
 import {
   printReceivedGoods,
-  printReceivedGoodsViaSystem,
   shareReceivedGoodsPdf,
   toReceivedGoodsSlip,
 } from '../../lib/handover-receipt';
@@ -90,12 +89,9 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
       await printReceivedGoods(receivedSlip);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err), [
-          { text: t.common.cancel, style: 'cancel' },
-          { text: t.printer.fallbackUsed, onPress: () => void printReceivedGoodsViaSystem(receivedSlip) },
-        ]);
-      } else {
         Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      } else {
+        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrinting(false);

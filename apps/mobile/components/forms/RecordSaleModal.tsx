@@ -34,7 +34,7 @@ import { useFormatCurrency, useExchangeRate, usdToFcStr, formatFcValue, formatMo
 import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
-import { printReceipt, printReceiptViaSystem, shareReceiptAsPdf, generateReceiptId, type ReceiptData } from '../../lib/receipt';
+import { printReceipt, shareReceiptAsPdf, generateReceiptId, type ReceiptData } from '../../lib/receipt';
 import { usePersonaStore } from '../../store/persona.store';
 import { usePrinterStore } from '../../store/printer.store';
 
@@ -578,12 +578,9 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       await printReceipt(data);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err), [
-          { text: t.common.cancel, style: 'cancel' },
-          { text: t.printer.fallbackUsed, onPress: () => void printReceiptViaSystem(data) },
-        ]);
-      } else {
         Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      } else {
+        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     }
   };

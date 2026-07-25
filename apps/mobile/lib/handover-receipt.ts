@@ -16,13 +16,14 @@ import {
  *   2. A "handover receipt" — printed once the employer approves the mini's
  *      handover (cash turned in + unsold goods returned).
  *
- * Same routing as the POS sales receipt (lib/receipt.ts): prefer the paired
- * Bluetooth thermal printer (printer.store) and send raw ESC/POS bytes
- * directly. The system print dialog / share-to-PDF (expo-print) is only used
- * as an explicit fallback — either when no printer is paired, or when the
- * caller invokes the `*ViaSystem` variant after a Bluetooth print failure.
- * Their internal labels are hardcoded to match the sales receipt's style;
- * only the surrounding app UI is translated.
+ * Same routing as the POS sales receipt (lib/receipt.ts): only the paired
+ * Bluetooth thermal printer (printer.store) is supported — raw ESC/POS bytes
+ * sent directly. There is no system-print / network-printer fallback; the
+ * print functions throw if no printer is paired. Share-to-PDF (expo-print's
+ * printToFileAsync) remains available separately for sending a copy via
+ * WhatsApp/email/etc. — it never shows a printer picker, so it doesn't touch
+ * network/IP printers either way. Their internal labels are hardcoded to
+ * match the sales receipt's style; only the surrounding app UI is translated.
  */
 
 /** A named party on a slip — employer or the mini. Either field may be absent. */
@@ -366,10 +367,6 @@ export function buildApprovedHandoverHtml(slip: ApprovedHandoverSlip): string {
   return wrapSlipHtml('handover receipt', body);
 }
 
-async function printHtml(html: string): Promise<void> {
-  await Print.printAsync({ html });
-}
-
 async function sharePdf(html: string, dialogTitle: string): Promise<void> {
   const { uri } = await Print.printToFileAsync({ html });
   if (await Sharing.isAvailableAsync()) {
@@ -382,51 +379,30 @@ async function sharePdf(html: string, dialogTitle: string): Promise<void> {
 }
 
 /**
- * Print a "goods received" slip. Routes through the paired Bluetooth thermal
- * printer when one is set; otherwise falls back to the system print dialog
- * (which is what every device gets out of the box, but is the path that
- * surfaces AirPrint/network printers instead of a paired POS printer).
+ * Print a "goods received" slip to the paired Bluetooth thermal printer. No
+ * system-print / network-printer fallback — throws if no printer is paired.
  */
 export async function printReceivedGoods(slip: ReceivedGoodsSlip): Promise<void> {
   const paired = usePrinterStore.getState().printer;
-  if (paired) {
-    await printReceivedGoodsSlipToBluetooth(paired, slip);
-    return;
+  if (!paired) {
+    throw new Error('No Bluetooth printer paired');
   }
-  await printHtml(buildReceivedGoodsHtml(slip));
-}
-
-/**
- * Escape hatch: print a "goods received" slip via the system print dialog
- * regardless of whether a Bluetooth printer is paired. Used as the fallback
- * path when the paired printer is unreachable.
- */
-export async function printReceivedGoodsViaSystem(slip: ReceivedGoodsSlip): Promise<void> {
-  await printHtml(buildReceivedGoodsHtml(slip));
+  await printReceivedGoodsSlipToBluetooth(paired, slip);
 }
 
 export const shareReceivedGoodsPdf = (slip: ReceivedGoodsSlip): Promise<void> =>
   sharePdf(buildReceivedGoodsHtml(slip), 'Goods received');
 
 /**
- * Print an "approved handover" slip. Same Bluetooth-first routing as
- * `printReceivedGoods` above.
+ * Print an "approved handover" slip to the paired Bluetooth thermal printer.
+ * Same no-fallback behavior as `printReceivedGoods` above.
  */
 export async function printApprovedHandover(slip: ApprovedHandoverSlip): Promise<void> {
   const paired = usePrinterStore.getState().printer;
-  if (paired) {
-    await printApprovedHandoverToBluetooth(paired, slip);
-    return;
+  if (!paired) {
+    throw new Error('No Bluetooth printer paired');
   }
-  await printHtml(buildApprovedHandoverHtml(slip));
-}
-
-/**
- * Escape hatch: print an "approved handover" slip via the system print
- * dialog regardless of whether a Bluetooth printer is paired.
- */
-export async function printApprovedHandoverViaSystem(slip: ApprovedHandoverSlip): Promise<void> {
-  await printHtml(buildApprovedHandoverHtml(slip));
+  await printApprovedHandoverToBluetooth(paired, slip);
 }
 
 export const shareApprovedHandoverPdf = (slip: ApprovedHandoverSlip): Promise<void> =>

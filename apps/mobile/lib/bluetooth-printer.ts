@@ -87,6 +87,11 @@ async function withConnection<T>(
       device = await RNBluetoothClassic.connectToDevice(address, {
         // SPP/RFCOMM well-known UUID — the default for thermal printers.
         connectorType: 'rfcomm',
+        // Cheap 58mm POS printers (Goojprt, Xprinter, Munbyn, NETUM, ...) almost
+        // universally fail the secure-socket SSP/bonding handshake that this
+        // library defaults to (`secureSocket: true`). Force an insecure RFCOMM
+        // socket — the standard fix for this class of hardware.
+        secureSocket: false,
       });
     }
     return await fn(device);

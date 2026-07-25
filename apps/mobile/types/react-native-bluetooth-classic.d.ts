@@ -17,6 +17,7 @@ declare module 'react-native-bluetooth-classic' {
 
   export interface ConnectOptions {
     connectorType?: 'rfcomm' | 'binary';
+    secureSocket?: boolean;
   }
 
   const RNBluetoothClassic: {

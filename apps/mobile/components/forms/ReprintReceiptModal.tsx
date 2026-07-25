@@ -18,7 +18,6 @@ import { usePrinterStore } from '../../store/printer.store';
 import { Button } from '../ui/Button';
 import {
   printReceipt,
-  printReceiptViaSystem,
   shareReceiptAsPdf,
   type ReceiptData,
   type ReceiptItem,
@@ -158,12 +157,9 @@ export function ReprintReceiptModal({ source, onClose }: Props) {
       onClose();
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err), [
-          { text: t.common.cancel, style: 'cancel' },
-          { text: t.printer.fallbackUsed, onPress: () => void printReceiptViaSystem(receiptData) },
-        ]);
-      } else {
         Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      } else {
+        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrinting(false);

@@ -320,28 +320,18 @@ function buildHtml(data: ReceiptData): string {
 }
 
 /**
- * Print a receipt. Routing:
- *   1. If a Bluetooth thermal printer is paired (printer.store), send raw
- *      ESC/POS bytes directly — this is the POS / quick-receipt path.
- *   2. Otherwise fall back to the Android system print dialog via expo-print,
- *      which is what every device gets out of the box.
+ * Print a receipt to the paired Bluetooth thermal printer — raw ESC/POS bytes,
+ * the POS / quick-receipt path. There is no system-print / network-printer
+ * fallback: only Bluetooth POS printers are supported. Throws if no printer
+ * is paired (caller should direct the user to Account > Printer) or if the
+ * Bluetooth write itself fails.
  */
 export async function printReceipt(data: ReceiptData): Promise<void> {
   const paired = usePrinterStore.getState().printer;
-  if (paired) {
-    await printReceiptToBluetooth(paired, data);
-    return;
+  if (!paired) {
+    throw new Error('No Bluetooth printer paired');
   }
-  await Print.printAsync({ html: buildHtml(data) });
-}
-
-/**
- * Lower-level escape hatch: print via the system print dialog regardless of
- * whether a Bluetooth printer is paired. Used as the fallback path when the
- * paired printer is unreachable.
- */
-export async function printReceiptViaSystem(data: ReceiptData): Promise<void> {
-  await Print.printAsync({ html: buildHtml(data) });
+  await printReceiptToBluetooth(paired, data);
 }
 
 export async function shareReceiptAsPdf(data: ReceiptData): Promise<void> {

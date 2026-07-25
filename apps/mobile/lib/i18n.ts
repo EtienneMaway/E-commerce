@@ -783,7 +783,7 @@ const en = {
     btOff: 'Turn Bluetooth on first',
     sendingReceipt: 'Sending receipt…',
     printFailed: 'Could not print receipt',
-    fallbackUsed: 'Printer unreachable — opened the system print dialog instead.',
+    noPrinterPaired: 'No Bluetooth printer paired. Go to Account > Printer to pair one.',
   },
   expenses: {
     title: 'Expenses',
@@ -1665,7 +1665,7 @@ const fr: Translations = {
     btOff: 'Activez d’abord le Bluetooth',
     sendingReceipt: 'Envoi du reçu…',
     printFailed: 'Impossible d’imprimer le reçu',
-    fallbackUsed: 'Imprimante injoignable — la fenêtre d’impression système a été ouverte.',
+    noPrinterPaired: 'Aucune imprimante Bluetooth associée. Allez dans Compte > Imprimante pour en associer une.',
   },
   expenses: {
     title: 'Dépenses',

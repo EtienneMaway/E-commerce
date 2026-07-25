@@ -26,11 +26,9 @@ import { usePrinterStore } from '../store/printer.store';
 import { useT } from '../lib/i18n';
 import {
   printApprovedHandover,
-  printApprovedHandoverViaSystem,
   shareApprovedHandoverPdf,
   toApprovedHandoverSlip,
   printReceivedGoods,
-  printReceivedGoodsViaSystem,
   shareReceivedGoodsPdf,
   toReceivedGoodsSlip,
 } from '../lib/handover-receipt';
@@ -93,12 +91,9 @@ function HandoversTab() {
       await printApprovedHandover(slip);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err), [
-          { text: t.common.cancel, style: 'cancel' },
-          { text: t.printer.fallbackUsed, onPress: () => void printApprovedHandoverViaSystem(slip) },
-        ]);
-      } else {
         Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      } else {
+        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrintingId(null);
@@ -154,12 +149,9 @@ function ReceivedTab() {
       await printReceivedGoods(slip);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err), [
-          { text: t.common.cancel, style: 'cancel' },
-          { text: t.printer.fallbackUsed, onPress: () => void printReceivedGoodsViaSystem(slip) },
-        ]);
-      } else {
         Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      } else {
+        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrintingId(null);
