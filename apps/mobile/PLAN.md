@@ -52,6 +52,8 @@ before submitting to the Play Console.
 | applicationId aligned to `com.kmb.mobile` | `android/app/build.gradle`, MainActivity.kt, MainApplication.kt |
 | `app_name` Android resource set to `KMB-Talk` | `android/app/src/main/res/values/strings.xml` |
 | Auto-increment versionCode on every production build | `eas.json → cli.appVersionSource: "remote"` + `build.production.autoIncrement: true` |
+| Persona switch (Self / Employer @X) | `store/persona.store.ts`, `lib/api.ts` interceptor sets `X-Acting-As`, `components/ui/PersonaSwitcher.tsx` + `PersonaBanner.tsx` on all 5 tabs |
+| Bluetooth thermal printer (ESC/POS, 58 mm) | `lib/escpos.ts` (encoder), `lib/bluetooth-printer.ts` (RFCOMM client), `store/printer.store.ts`, `app/account/printer.tsx`. `printReceipt()` tries paired BT printer first, falls back to system print dialog. **Requires running `pnpm install` + `expo prebuild --clean` once before the next APK rebuild** (added `react-native-bluetooth-classic` native module). |
 | EAS submit config skeleton | `eas.json → submit.production.android` (track: `internal`, releaseStatus: `draft`) |
 | Service account JSON gitignored | `.gitignore` |
 | Global error boundary | `components/ui/ErrorBoundary.tsx`, wired in `app/_layout.tsx` |
@@ -70,11 +72,29 @@ Not blockers but you'll regret skipping:
   entirely on server-side validation. Add required/positive-number checks for
   instant feedback.
 - **Offline-mode regression test** — manual: record 5 sales offline, kill the
-  app, restart, watch sync complete. If it fails, fix before launch. Document
-  the verified flow at the bottom of `apps/mobile/CLAUDE.md`.
-- **Existing TS error in `app/(tabs)/index.tsx`** — `StatCard className` prop
-  doesn't typecheck. Runtime works; fix the `StatCard` prop interface so
-  `pnpm tsc --noEmit` is clean.
+  app mid-sync, restart, watch sync **resume** and complete (no duplicate
+  sales). If it fails, fix before launch. Document the verified flow at the
+  bottom of `apps/mobile/CLAUDE.md`.
+- ~~**Existing TS error in `app/(tabs)/index.tsx`**~~ — DONE. `StatCard` now
+  accepts an optional `className`; `pnpm tsc --noEmit` is clean.
+
+### Offline sync hardening — DONE
+
+Sync now survives poor connectivity and never double-records a sale:
+
+- **Idempotency** — each queued sale carries a stable `clientSaleId` (its queue
+  id). The API (`POST /sales`) dedupes on `(owner_id, client_sale_id)`: a sale
+  the server committed but whose response was lost on a flaky link is matched on
+  retry and returned, not duplicated. Migration `1000000000009-AddClientSaleIdToSales.ts`.
+- **Retry/backoff** — `lib/sync.ts` retries each sale up to 4× with exponential
+  backoff + jitter on network/timeout/5xx/429 errors; permanent 4xx rejections
+  surface immediately. Per-request timeout bumped to 45s (vs the global 10s) for
+  slow links.
+- **Resume** — synced rows are removed from the persisted queue **incrementally**,
+  so an app kill mid-sync resumes exactly where it stopped.
+- **Progress UI** — the home-tab sync banner shows a real progress bar + `X / Y
+  synced · NN%`. After a partial failure it offers **Resume** (continue the rest)
+  and **Restart** (retry all remaining, skipping the already-synced).
 
 ## Missing features — roadmap
 
@@ -151,16 +171,22 @@ Still outstanding for full Play compliance:
   showing every PURCHASE / SALE / RETURN / ADJUSTMENT / CONSIGN / EXPIRY entry
   per product.
 
-### Sprint 4 — employer payroll
+### Sprint 4 — employer payroll — DESCOPED on mobile (web-only by decision)
 
-The dashboard has a full employee CRUD (`apps/dashboard/app/(main)/employees/`).
-Mobile only has the recipient-side salary flow (`app/salary.tsx`).
+**Paying employees stays on the dashboard only.** Like withdrawals, payroll
+administration (roster CRUD, mini-employee pairing, salary setting, initiating a
+salary payment) is an owner-administration action, not a day-to-day mobile flow.
+The dashboard's full employee CRUD (`apps/dashboard/app/(main)/employees/`) covers it.
 
-- **Employee roster** — list, create, terminate, mini-employee creation
-  (pairing code flow), external-employee creation.
-- **Salary setting** + payroll-active toggle per employment.
-- **Pay salary** — initiate a salary payment to an employee (employer-side).
-- All endpoints already exist in `employmentsApi` + `salaryPaymentsApi`.
+**Mobile is recipient-only and already shipped** (`app/salary.tsx`): an employee
+sees their monthly salary summary (target / collected / pending / remaining),
+sees whether each payment is paid, and **confirms or rejects** each incoming
+payment as proof they truly received the cash. The home tab also surfaces a
+"salary payments to confirm" banner. No employer-side payment UI on mobile.
+
+Not building on mobile: employee roster, salary setting, pay-salary. (The
+employer-side endpoints in `employmentsApi` + `salaryPaymentsApi` remain
+dashboard-only.)
 
 ## Suggested release cadence
 
@@ -183,6 +209,15 @@ hot-path command from the repo root for a full local build is:
 cd apps/mobile
 rm -rf android/app/build android/build android/.gradle
 pnpm android
+```
+
+**After adding a native module (one-time):**
+
+```bash
+cd apps/mobile
+pnpm install                        # picks up react-native-bluetooth-classic
+pnpm prebuild                       # regenerates android/ with BT permissions
+pnpm android                        # rebuild the APK
 ```
 
 For a Play-Store-grade preview APK signed by the EAS upload key:

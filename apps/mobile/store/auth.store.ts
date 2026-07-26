@@ -46,9 +46,12 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
-    // Reset persona so the next user logging in on this device starts in Self,
-    // not whatever the previous user had selected.
-    await usePersonaStore.getState().setKind('self');
+    // Clear the persisted persona choice (not just reset it to 'self') so the
+    // next login — same employee or a different user on a shared device —
+    // isn't treated as if 'self' were an explicit prior choice. That would
+    // permanently skip the "default employees to employer" rule in
+    // applyDefaultForUser from this point on. See resetForLogout's own comment.
+    await usePersonaStore.getState().resetForLogout();
     set({ token: null, user: null });
   },
 

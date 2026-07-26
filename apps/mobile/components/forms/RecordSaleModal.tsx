@@ -13,7 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { salesApi, inventoryApi, quantityDiscountsApi, type ProductSummary } from '../../lib/api';
+import { salesApi, inventoryApi, quantityDiscountsApi, type ProductSummary, type ProductVariantSummary } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import {
   resolveQuantityDiscountPercent,
@@ -87,10 +87,13 @@ interface CartItem {
    *  consignment's locked rate (so the agreement stays fixed); otherwise the
    *  live rate. Captured when the product is added so submit + display agree. */
   rate: string;
-  // Quantity
+  // Quantity. For a carton-aware product, pieces is the PRIMARY control (most
+  // sales here are by the piece) and cartons is secondary/collapsed — the
+  // opposite used to be true. For a simple (non-carton) product, `cartons`
+  // doubles as the plain piece count and `extraPieces` is unused.
   cartons: string;
   extraPieces: string;
-  showExtraPieces: boolean;
+  showCartons: boolean;
   // Pricing — FC
   unitPriceFc: string;       // per piece, in FC (pre-discount)
   cartonPriceFc: string;     // per carton, FC (bidirectionally bound to unitPriceFc via ppc)
@@ -103,13 +106,6 @@ interface CartItem {
   discountPctOverride: string;
 }
 
-interface PriceGuardPending {
-  cartItem: CartItem;
-  warning: string;
-  potentialLoss: string;
-  totalPieces: number;
-}
-
 interface DiscountPending {
   cartItem: CartItem;
   totalPieces: number;
@@ -117,6 +113,30 @@ interface DiscountPending {
   submittedPrice: string;
   reason: string;
 }
+
+/**
+ * One selected size of a sized (carton-with-variants) product, added directly
+ * from the regular product list so a customer buying normal products AND a
+ * few specific sizes at once still gets one cart and one receipt. Always a
+ * by-size line (fixed dashboard price, no discount) — never a whole-carton
+ * line; selling whole cartons stays in the dedicated SellSizedProductModal.
+ */
+interface SizedCartLine {
+  key: string; // `${productName}::${variantId}` — unique across all group products in the cart
+  productName: string;
+  variantId: string;
+  variantLabel: string;
+  rate: string; // this size's FC/USD rate (mini-locked or live)
+  qty: number;
+  unitPriceFc: number; // rounded FC per piece
+  available: number;
+}
+
+/** A price-guard rejection from either a simple cart item or a sized line —
+ *  surfaced together in one "selling at a loss" confirmation screen. */
+type AnyPriceGuardPending =
+  | { kind: 'simple'; cartItem: CartItem; warning: string; potentialLoss: string; totalPieces: number }
+  | { kind: 'sized'; line: SizedCartLine; warning: string };
 
 /** Compute total pieces from cartons + optional loose pieces. */
 function totalPiecesOf(item: Pick<CartItem, 'cartons' | 'extraPieces' | 'piecesPerCarton'>): number {
@@ -150,7 +170,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
   const [search, setSearch] = useState(prefilledProduct);
   const [cart, setCart] = useState<Map<string, CartItem>>(new Map());
-  const [priceGuardPending, setPriceGuardPending] = useState<PriceGuardPending[]>([]);
+  const [priceGuardPending, setPriceGuardPending] = useState<AnyPriceGuardPending[]>([]);
   const [discountPending, setDiscountPending] = useState<DiscountPending[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [receiptPrompt, setReceiptPrompt] = useState<ReceiptData | null>(null);
@@ -166,12 +186,31 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   // recordOfflineSale() so a later reprint can regroup the whole receipt.
   const [lastReceiptId, setLastReceiptId] = useState<string | null>(null);
 
+  // Sized (carton-with-variants) products selected by specific size, added
+  // alongside the regular cart above — see SizedCartLine. `expandedGroup`
+  // tracks which single sized product currently has its size picker open
+  // (mirrors how a simple product's row expands to show qty/price editing).
+  const [sizedLines, setSizedLines] = useState<Map<string, SizedCartLine>>(new Map());
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  // Rows/items already recorded server-side from an earlier pass of this same
+  // submission (first attempt, or a discount-reason resubmission), carried
+  // over so the eventual receipt includes them even when other rows in the
+  // same batch needed a price-guard confirmation first.
+  const [alreadySoldSimple, setAlreadySoldSimple] = useState<
+    { item: CartItem; totalPieces: number; salePrice: string; salePriceFc: number }[]
+  >([]);
+  const [alreadySoldSized, setAlreadySoldSized] = useState<SizedCartLine[]>([]);
+
   useEffect(() => {
     if (visible) {
       setSearch(prefilledProduct);
       setCart(new Map());
       setPriceGuardPending([]);
       setDiscountPending([]);
+      setSizedLines(new Map());
+      setExpandedGroup(null);
+      setAlreadySoldSimple([]);
+      setAlreadySoldSized([]);
     }
   }, [visible, prefilledProduct]);
 
@@ -293,17 +332,58 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         piecesPerCarton: ppc,
         totalAvailable: product.totalAvailable,
         rate,
-        // If product has piecesPerCarton, "cartons" starts at 1 carton.
-        // Otherwise quantity is in raw pieces, starting at 1.
-        cartons: '1',
-        extraPieces: '',
-        showExtraPieces: false,
+        // Carton-aware products start at 0 cartons + 1 loose piece — most
+        // sales here are by the piece, not the carton (see CartItem above).
+        // A simple product has no separate pieces control, so its quantity
+        // (`cartons`, doubling as the raw piece count) still starts at 1.
+        cartons: ppc ? '0' : '1',
+        extraPieces: ppc ? '1' : '',
+        showCartons: false,
         unitPriceFc,
         cartonPriceFc: deriveCartonPrice(unitPriceFc, ppc),
         dashboardPriceFc: unitPriceFc,
         applyDiscount: false,
         discountPctOverride: '',
       });
+      return next;
+    });
+  };
+
+  // ── Sized (by-size) lines ─────────────────────────────────────────────────
+  const sizedLinesArray = Array.from(sizedLines.values());
+  const sizedGrandTotalFc = sizedLinesArray.reduce((s, l) => s + l.unitPriceFc * l.qty, 0);
+
+  const toggleSizedVariant = (product: ProductSummary, v: ProductVariantSummary): void => {
+    if (v.available <= 0) return;
+    const key = `${product.productName}::${v.variantId}`;
+    setSizedLines((prev) => {
+      const next = new Map(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        return next;
+      }
+      const rate = isMini && v.usdToFcRateSnapshot ? v.usdToFcRateSnapshot : rateForProduct(product);
+      next.set(key, {
+        key,
+        productName: product.productName,
+        variantId: v.variantId,
+        variantLabel: v.label,
+        rate,
+        qty: 1,
+        unitPriceFc: Math.round(parseFloat(v.sellingPrice) * (parseFloat(rate) || 1)),
+        available: v.available,
+      });
+      return next;
+    });
+  };
+
+  const adjustSizedQty = (key: string, delta: number): void => {
+    setSizedLines((prev) => {
+      const next = new Map(prev);
+      const row = next.get(key);
+      if (!row) return prev;
+      const q = Math.max(1, Math.min(row.available, row.qty + delta));
+      next.set(key, { ...row, qty: q });
       return next;
     });
   };
@@ -324,6 +404,24 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       if (!cur) return prev;
       const current = parseInt(cur.cartons, 10) || 0;
       next.set(productName, { ...cur, cartons: String(Math.max(0, current + delta)) });
+      return next;
+    });
+  };
+
+  /** Stepper for the primary pieces field on a carton-aware product — capped
+   *  below one carton's worth, same floor as the manual-entry clamp: a value
+   *  ≥ ppc would be a whole carton, so it must be entered via the (secondary)
+   *  cartons control instead. */
+  const setExtraPiecesAdj = (productName: string, delta: number): void => {
+    setCart((prev) => {
+      const next = new Map(prev);
+      const cur = next.get(productName);
+      if (!cur) return prev;
+      const ppc = cur.piecesPerCarton ?? 0;
+      const maxExtra = ppc > 0 ? ppc - 1 : Infinity;
+      const current = parseInt(cur.extraPieces, 10) || 0;
+      const clamped = Math.max(0, Math.min(maxExtra, current + delta));
+      next.set(productName, { ...cur, extraPieces: String(clamped) });
       return next;
     });
   };
@@ -350,6 +448,10 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     setSearch('');
     setPriceGuardPending([]);
     setDiscountPending([]);
+    setSizedLines(new Map());
+    setExpandedGroup(null);
+    setAlreadySoldSimple([]);
+    setAlreadySoldSized([]);
     onClose();
   };
 
@@ -384,13 +486,13 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     items: { item: CartItem; totalPieces: number; salePrice: string; salePriceFc?: number; confirmedOverride?: boolean; discountReason?: string; originalUnitPrice?: string }[],
     receiptId: string,
   ): Promise<{
-    priceGuard: PriceGuardPending[];
+    priceGuard: Extract<AnyPriceGuardPending, { kind: 'simple' }>[];
     discount: DiscountPending[];
     saleIds: string[];
     /** Product names whose sale was queued for sync after a network failure. */
     queued: string[];
   }> => {
-    const priceGuard: PriceGuardPending[] = [];
+    const priceGuard: Extract<AnyPriceGuardPending, { kind: 'simple' }>[] = [];
     const discount: DiscountPending[] = [];
     const saleIds: string[] = [];
     const queued: string[] = [];
@@ -419,6 +521,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         if (isPriceGuardWarning(err)) {
           const w = getPriceGuardWarning(err)!;
           priceGuard.push({
+            kind: 'simple',
             cartItem: item,
             warning: w.message,
             potentialLoss: w.potentialLoss,
@@ -456,6 +559,53 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     return { priceGuard, discount, saleIds, queued };
   };
 
+  /**
+   * Records every sized line the same way SellSizedProductModal does for its
+   * own by-size cart — one salesApi.record() call per size, all sharing the
+   * batch's receiptId. Sized lines are online-only (no offline queue support
+   * yet) and never trigger the discount-reason flow (their price is always
+   * the fixed dashboard price), only the price guard.
+   */
+  const submitSizedLines = async (
+    lines: SizedCartLine[],
+    receiptId: string,
+    confirmedOverride = false,
+  ): Promise<{
+    succeeded: SizedCartLine[];
+    priceGuard: Extract<AnyPriceGuardPending, { kind: 'sized' }>[];
+    saleIds: string[];
+  }> => {
+    const succeeded: SizedCartLine[] = [];
+    const priceGuard: Extract<AnyPriceGuardPending, { kind: 'sized' }>[] = [];
+    const saleIds: string[] = [];
+    for (const line of lines) {
+      try {
+        const salePriceUsd = (line.unitPriceFc / (parseFloat(line.rate) || 1)).toFixed(4);
+        const sale = await salesApi.record({
+          productName: line.productName,
+          variantId: line.variantId,
+          qtySold: line.qty,
+          salePrice: salePriceUsd,
+          ...(isMini ? { salePriceFc: line.unitPriceFc.toFixed(4) } : {}),
+          receiptId,
+          ...(confirmedOverride ? { confirmedOverride: true } : {}),
+        });
+        if (sale && typeof sale === 'object' && 'id' in sale && typeof sale.id === 'string') {
+          saleIds.push(sale.id);
+        }
+        succeeded.push(line);
+      } catch (err) {
+        if (isPriceGuardWarning(err)) {
+          const w = getPriceGuardWarning(err);
+          priceGuard.push({ kind: 'sized', line, warning: w?.message ?? '' });
+        } else {
+          Alert.alert(t.common.error, `${line.productName} · ${line.variantLabel}: ${getErrorMessage(err)}`);
+        }
+      }
+    }
+    return { succeeded, priceGuard, saleIds };
+  };
+
   const invalidate = (): void => {
     qc.invalidateQueries({ queryKey: QK.inventoryProducts });
     qc.invalidateQueries({ queryKey: QK.inventory() });
@@ -469,6 +619,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   const offerReceipt = (
     soldItems: { item: CartItem; totalPieces: number; salePrice: string; salePriceFc: number }[],
     receiptId: string,
+    soldSizedLines: SizedCartLine[] = [],
   ): void => {
     // Resolve the "business" identity based on the current persona:
     //   - Employer mode: the receipt is on the employer's books, so they
@@ -490,29 +641,39 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       // Receipt is FC-native — pass per-row FC prices directly (typed by the
       // user) so what the customer sees on the printout matches what was
       // entered, without an extra USD-rate round-trip that can drift by 1 FC.
-      items: soldItems.map(({ item, totalPieces, salePriceFc }) => {
-        // Pass the merchant-typed carton price through to the receipt so the
-        // printed "X FC / ctn" matches the headline number on the quote.
-        // The cart's cartonPriceFc is bidirectionally bound to unitPriceFc
-        // via piecesPerCarton, but small rounding differences can exist when
-        // the merchant edited the carton price directly — preserve what was
-        // typed rather than re-deriving.
-        const cartonPriceFc = parseFloat(item.cartonPriceFc);
-        return {
-          productName: item.productName,
-          qty: totalPieces,
-          unitPriceFc: salePriceFc,
-          totalFc: salePriceFc * totalPieces,
-          cartons: parseInt(item.cartons, 10) || 0,
-          extraPieces: parseInt(item.extraPieces, 10) || 0,
-          piecesPerCarton: item.piecesPerCarton,
-          cartonPriceFc: isFinite(cartonPriceFc) && cartonPriceFc > 0 ? cartonPriceFc : undefined,
-        };
-      }),
-      grandTotalFc: soldItems.reduce(
-        (sum, { totalPieces, salePriceFc }) => sum + salePriceFc * totalPieces,
-        0,
-      ),
+      items: [
+        ...soldItems.map(({ item, totalPieces, salePriceFc }) => {
+          // Pass the merchant-typed carton price through to the receipt so the
+          // printed "X FC / ctn" matches the headline number on the quote.
+          // The cart's cartonPriceFc is bidirectionally bound to unitPriceFc
+          // via piecesPerCarton, but small rounding differences can exist when
+          // the merchant edited the carton price directly — preserve what was
+          // typed rather than re-deriving.
+          const cartonPriceFc = parseFloat(item.cartonPriceFc);
+          return {
+            productName: item.productName,
+            qty: totalPieces,
+            unitPriceFc: salePriceFc,
+            totalFc: salePriceFc * totalPieces,
+            cartons: parseInt(item.cartons, 10) || 0,
+            extraPieces: parseInt(item.extraPieces, 10) || 0,
+            piecesPerCarton: item.piecesPerCarton,
+            cartonPriceFc: isFinite(cartonPriceFc) && cartonPriceFc > 0 ? cartonPriceFc : undefined,
+          };
+        }),
+        // Sized (by-size) lines — same product but a specific size, sold by the
+        // piece at its fixed dashboard price. Labelled "product · size" so a
+        // mixed receipt reads clearly.
+        ...soldSizedLines.map((l) => ({
+          productName: `${l.productName} · ${l.variantLabel}`,
+          qty: l.qty,
+          unitPriceFc: l.unitPriceFc,
+          totalFc: l.unitPriceFc * l.qty,
+        })),
+      ],
+      grandTotalFc:
+        soldItems.reduce((sum, { totalPieces, salePriceFc }) => sum + salePriceFc * totalPieces, 0) +
+        soldSizedLines.reduce((sum, l) => sum + l.unitPriceFc * l.qty, 0),
       // Per-item pricing — no single markup applies. Receipt builder reads
       // this only for the footer; treat 0 as "n/a" and the printer skips it.
       markupPct: 0,
@@ -608,7 +769,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   const buildSubmitItems = (items: CartItem[]) => items.map((item) => itemToPayloadFull(item));
 
   const handleSubmit = async (): Promise<void> => {
-    if (cart.size === 0) {
+    if (cart.size === 0 && sizedLines.size === 0) {
       Alert.alert(t.common.noProductsSelected, t.recordSaleModal.noProductsSelectedMsg);
       return;
     }
@@ -619,8 +780,15 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         return;
       }
     }
-    if (!allValid) {
+    if (cartArray.length > 0 && !allValid) {
       Alert.alert(t.common.missingFields, t.recordSaleModal.noProductsSelectedMsg);
+      return;
+    }
+    // Sized lines don't flow through the offline queue yet (same constraint as
+    // the dedicated by-size sell screen) — the picker is hidden offline
+    // already, but guard here too in case connectivity dropped mid-edit.
+    if (isOffline && sizedLines.size > 0) {
+      Alert.alert(t.common.error, t.recordSaleModal.sizedOfflineUnsupported);
       return;
     }
 
@@ -655,18 +823,37 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     setIsSubmitting(true);
     const submitInputs = buildSubmitItems(cartArray);
     const { priceGuard, discount, saleIds } = await submitItems(submitInputs, receiptId);
+    const succeededSimple = submitInputs.filter(
+      (si) => !priceGuard.some((p) => p.cartItem === si.item) && !discount.some((d) => d.cartItem === si.item),
+    );
+    const {
+      succeeded: succeededSized,
+      priceGuard: sizedGuard,
+      saleIds: sizedSaleIds,
+    } =
+      sizedLinesArray.length > 0
+        ? await submitSizedLines(sizedLinesArray, receiptId)
+        : {
+            succeeded: [] as SizedCartLine[],
+            priceGuard: [] as Extract<AnyPriceGuardPending, { kind: 'sized' }>[],
+            saleIds: [] as string[],
+          };
     setIsSubmitting(false);
-    setLastOnlineSaleIds(saleIds);
+    setLastOnlineSaleIds([...saleIds, ...sizedSaleIds]);
 
-    if (discount.length > 0) {
+    const combinedGuard: AnyPriceGuardPending[] = [...priceGuard, ...sizedGuard];
+
+    if (discount.length > 0 || combinedGuard.length > 0) {
       // Discount reason flow takes priority — the items are blocked server-side
-      // until a reason is provided.
+      // until a reason is provided. Whatever already succeeded (simple or
+      // sized) rides along so the eventual receipt still includes it.
+      setAlreadySoldSimple(succeededSimple);
+      setAlreadySoldSized(succeededSized);
       setDiscountPending(discount);
-    } else if (priceGuard.length > 0) {
-      setPriceGuardPending(priceGuard);
+      setPriceGuardPending(combinedGuard);
     } else {
       invalidate();
-      offerReceipt(submitInputs, receiptId);
+      offerReceipt(submitInputs, receiptId, succeededSized);
       handleClose();
     }
   };
@@ -701,7 +888,13 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
   };
 
   const handleConfirmOverrides = async (): Promise<void> => {
-    const inputs = priceGuardPending.map((p) => ({
+    const simplePending = priceGuardPending.filter(
+      (p): p is Extract<AnyPriceGuardPending, { kind: 'simple' }> => p.kind === 'simple',
+    );
+    const sizedPending = priceGuardPending.filter(
+      (p): p is Extract<AnyPriceGuardPending, { kind: 'sized' }> => p.kind === 'sized',
+    );
+    const inputs = simplePending.map((p) => ({
       ...itemToPayloadFull(p.cartItem),
       totalPieces: p.totalPieces,
       confirmedOverride: true,
@@ -710,10 +903,17 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     setLastReceiptId(receiptId);
     setIsSubmitting(true);
     const { saleIds } = await submitItems(inputs, receiptId);
+    const { succeeded: succeededSized, saleIds: sizedSaleIds } =
+      sizedPending.length > 0
+        ? await submitSizedLines(sizedPending.map((p) => p.line), receiptId, true)
+        : { succeeded: [] as SizedCartLine[], saleIds: [] as string[] };
     setIsSubmitting(false);
-    setLastOnlineSaleIds((prev) => [...prev, ...saleIds]);
+    setLastOnlineSaleIds((prev) => [...prev, ...saleIds, ...sizedSaleIds]);
     invalidate();
-    offerReceipt(inputs, receiptId);
+    offerReceipt([...alreadySoldSimple, ...inputs], receiptId, [...alreadySoldSized, ...succeededSized]);
+    setPriceGuardPending([]);
+    setAlreadySoldSimple([]);
+    setAlreadySoldSized([]);
     handleClose();
   };
 
@@ -735,15 +935,138 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     const { priceGuard, saleIds } = await submitItems(inputs, receiptId);
     setIsSubmitting(false);
     setLastOnlineSaleIds((prev) => [...prev, ...saleIds]);
-    if (priceGuard.length > 0) {
-      // Got a price-guard 422 on resubmit — chain into that flow.
-      setDiscountPending([]);
-      setPriceGuardPending(priceGuard);
+    const succeededFromDiscount = inputs.filter((i) => !priceGuard.some((p) => p.cartItem === i.item));
+    setDiscountPending([]);
+    // Merge with whatever price-guard was already pending (e.g. sized lines
+    // from the original submit pass) instead of overwriting it.
+    const stillPending: AnyPriceGuardPending[] = [...priceGuardPending, ...priceGuard];
+    if (stillPending.length > 0) {
+      setAlreadySoldSimple((prev) => [...prev, ...succeededFromDiscount]);
+      setPriceGuardPending(stillPending);
       return;
     }
     invalidate();
-    offerReceipt(inputs, receiptId);
+    offerReceipt([...alreadySoldSimple, ...succeededFromDiscount], receiptId, alreadySoldSized);
+    setAlreadySoldSimple([]);
+    setAlreadySoldSized([]);
     handleClose();
+  };
+
+  /**
+   * Renders a sized (carton-with-variants) product's row: tapping it expands
+   * an inline by-size picker (same multi-select-with-qty-stepper UX as
+   * SellSizedProductModal's "By size" tab) instead of the plain qty/price
+   * editor a simple product gets. Selecting sizes here writes into
+   * `sizedLines`, merged into this same cart + receipt at submit time.
+   */
+  const renderGroupRow = (product: ProductSummary) => {
+    const variants = product.variants ?? [];
+    const groupLines = sizedLinesArray.filter((l) => l.productName === product.productName);
+    const isExpanded = expandedGroup === product.productName;
+    const hasSelection = groupLines.length > 0;
+    const groupTotalFc = groupLines.reduce((s, l) => s + l.unitPriceFc * l.qty, 0);
+    return (
+      <View
+        key={product.productName}
+        className={`rounded-2xl border mb-2 ${
+          hasSelection ? 'bg-primary/5 border-primary' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
+        }`}
+      >
+        <TouchableOpacity
+          onPress={() => setExpandedGroup(isExpanded ? null : product.productName)}
+          activeOpacity={0.85}
+          className="flex-row items-start justify-between p-4"
+        >
+          <View className="flex-1 mr-3">
+            <Text className="text-text dark:text-slate-100 font-semibold capitalize text-base" numberOfLines={1}>
+              {product.productName}
+            </Text>
+            <View className="flex-row flex-wrap items-center gap-x-3 mt-1">
+              <Text className="text-muted dark:text-slate-500 text-xs">
+                {hasSelection ? t.sizedSale.sizesSelected(groupLines.length) : t.sizedSale.pickSize}
+              </Text>
+              {hasSelection && (
+                <Text className="text-success text-xs font-semibold">{formatFcValue(groupTotalFc)}</Text>
+              )}
+            </View>
+          </View>
+          <View
+            className={`w-6 h-6 rounded-full border-2 items-center justify-center ${
+              hasSelection ? 'bg-primary border-primary' : 'border-border dark:border-slate-700 bg-card dark:bg-slate-800'
+            }`}
+          >
+            {hasSelection && <Text className="text-white text-xs font-bold leading-none">✓</Text>}
+          </View>
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View className="px-4 pb-4 pt-1 border-t border-primary/20">
+            <Text className="text-muted dark:text-slate-500 text-xs mb-2">{t.sizedSale.multiSizeHint}</Text>
+            {variants.map((v) => {
+              const key = `${product.productName}::${v.variantId}`;
+              const row = sizedLines.get(key);
+              const isSel = !!row;
+              const out = v.available <= 0;
+              return (
+                <View
+                  key={v.variantId}
+                  className={`rounded-xl mb-2 border ${
+                    isSel ? 'border-primary bg-primary/10' : 'border-border dark:border-slate-700'
+                  }`}
+                  style={{ opacity: out ? 0.45 : 1 }}
+                >
+                  <Pressable
+                    onPress={() => toggleSizedVariant(product, v)}
+                    disabled={out}
+                    className="flex-row justify-between items-center px-3 py-2.5"
+                  >
+                    <View className="flex-1 mr-2">
+                      <Text className="text-text dark:text-slate-100 font-medium capitalize text-sm">{v.label}</Text>
+                      <Text className="text-muted dark:text-slate-500 text-xs">
+                        {out ? t.sizedSale.outOfStock : t.sizedSale.sizeAvailable(v.available)}
+                      </Text>
+                    </View>
+                    <Text className="text-text dark:text-slate-100 text-sm font-medium mr-2">
+                      {formatMoney(v.sellingPrice, isMini && v.usdToFcRateSnapshot ? v.usdToFcRateSnapshot : rateForProduct(product))}
+                    </Text>
+                    <View
+                      className={`w-5 h-5 rounded-full border-2 items-center justify-center ${
+                        isSel ? 'bg-primary border-primary' : 'border-border dark:border-slate-700'
+                      }`}
+                    >
+                      {isSel && <Text className="text-white text-[10px] font-bold leading-none">✓</Text>}
+                    </View>
+                  </Pressable>
+                  {isSel && row && (
+                    <View className="flex-row justify-between items-center px-3 pb-2.5 pt-0.5">
+                      <Text className="text-muted dark:text-slate-400 text-xs">{t.sizedSale.quantity}</Text>
+                      <View className="flex-row items-center gap-2">
+                        <TouchableOpacity
+                          onPress={() => adjustSizedQty(key, -1)}
+                          className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                        >
+                          <Text className="text-text dark:text-slate-100 font-bold leading-none">−</Text>
+                        </TouchableOpacity>
+                        <Text className="text-text dark:text-slate-100 font-bold w-5 text-center">{row.qty}</Text>
+                        <TouchableOpacity
+                          onPress={() => adjustSizedQty(key, +1)}
+                          className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                        >
+                          <Text className="text-text dark:text-slate-100 font-bold leading-none">+</Text>
+                        </TouchableOpacity>
+                        <Text className="text-primary font-semibold text-xs ml-1">
+                          {formatFcValue(row.unitPriceFc * row.qty)}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </View>
+    );
   };
 
   // ── Sub-screens ─────────────────────────────────────────────────────────
@@ -831,12 +1154,16 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
             <Text className="text-muted dark:text-slate-500 text-sm mb-4">
               {t.recordSaleModal.priceGuardSub(priceGuardPending.length)}
             </Text>
-            {priceGuardPending.map(({ cartItem, warning }) => (
-              <View key={cartItem.productName} className="border-t border-border dark:border-slate-700 pt-3 mb-2">
-                <Text className="text-text dark:text-slate-100 font-semibold capitalize">{cartItem.productName}</Text>
-                <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">{warning}</Text>
-              </View>
-            ))}
+            {priceGuardPending.map((p) => {
+              const label = p.kind === 'simple' ? p.cartItem.productName : `${p.line.productName} · ${p.line.variantLabel}`;
+              const key = p.kind === 'simple' ? p.cartItem.productName : p.line.key;
+              return (
+                <View key={key} className="border-t border-border dark:border-slate-700 pt-3 mb-2">
+                  <Text className="text-text dark:text-slate-100 font-semibold capitalize">{label}</Text>
+                  <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">{p.warning}</Text>
+                </View>
+              );
+            })}
           </View>
           <Button
             label={t.recordSaleModal.confirmSellAtLoss}
@@ -913,6 +1240,9 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
               </View>
             ) : (
               filteredProducts.map((product) => {
+                if (product.kind === 'group') {
+                  return renderGroupRow(product);
+                }
                 const cartItem = cart.get(product.productName);
                 const isSelected = !!cartItem;
                 return (
@@ -960,90 +1290,110 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                     {/* Expanded editing */}
                     {isSelected && cartItem && (
                       <View className="px-4 pb-4 pt-1 border-t border-primary/20">
-                        {/* Qty */}
+                        {/* Pieces — the primary quantity control for a carton-aware product
+                            (most sales here are by the piece); for a simple product this is
+                            just its plain Quantity, bound to `cartons`. */}
                         <View className="flex-row items-center gap-3 mt-3">
                           <Text className="text-muted dark:text-slate-400 text-xs flex-shrink-0">
-                            {cartItem.piecesPerCarton ? t.recordSaleModal.cartonsLabel : t.recordSaleModal.qtyLabel}
+                            {cartItem.piecesPerCarton ? t.recordSaleModal.piecesLabel : t.recordSaleModal.qtyLabel}
                           </Text>
                           <View className="flex-row items-center gap-1">
                             <TouchableOpacity
-                              onPress={() => setCartonsAdj(product.productName, -1)}
+                              onPress={() =>
+                                cartItem.piecesPerCarton
+                                  ? setExtraPiecesAdj(product.productName, -1)
+                                  : setCartonsAdj(product.productName, -1)
+                              }
                               className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
                             >
                               <Text className="text-text dark:text-slate-100 font-bold text-lg leading-none">−</Text>
                             </TouchableOpacity>
                             <TextInput
-                              value={cartItem.cartons}
-                              onChangeText={(v) => updateItem(product.productName, { cartons: v.replace(/[^0-9]/g, '') })}
+                              value={cartItem.piecesPerCarton ? cartItem.extraPieces : cartItem.cartons}
+                              onChangeText={(v) => {
+                                const digits = v.replace(/[^0-9]/g, '');
+                                const ppc = cartItem.piecesPerCarton;
+                                if (!ppc) {
+                                  updateItem(product.productName, { cartons: digits });
+                                  return;
+                                }
+                                // Clamp below one carton's worth — a value ≥ ppc would be a
+                                // whole carton, so it must be entered via the cartons control.
+                                let clamped = digits;
+                                if (digits !== '') {
+                                  const n = parseInt(digits, 10);
+                                  if (!isNaN(n) && n >= ppc) clamped = String(ppc - 1);
+                                }
+                                updateItem(product.productName, { extraPieces: clamped });
+                              }}
                               keyboardType="number-pad"
                               selectTextOnFocus
+                              placeholder="0"
+                              placeholderTextColor="#94A3B8"
                               className="text-text dark:text-slate-100 font-bold text-base text-center w-12 border-b border-border dark:border-slate-700 mx-1"
                             />
                             <TouchableOpacity
-                              onPress={() => setCartonsAdj(product.productName, +1)}
+                              onPress={() =>
+                                cartItem.piecesPerCarton
+                                  ? setExtraPiecesAdj(product.productName, +1)
+                                  : setCartonsAdj(product.productName, +1)
+                              }
                               className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
                             >
                               <Text className="text-text dark:text-slate-100 font-bold text-lg leading-none">+</Text>
                             </TouchableOpacity>
                           </View>
-                          {cartItem.piecesPerCarton ? (
-                            <Text className="text-muted dark:text-slate-500 text-xs flex-1">
-                              × {cartItem.piecesPerCarton} pcs
-                            </Text>
-                          ) : null}
                         </View>
-
-                        {/* Extra loose pieces (only when product is carton-aware) */}
                         {cartItem.piecesPerCarton ? (
-                          cartItem.showExtraPieces ? (
+                          <Text className="text-muted dark:text-slate-500 text-[10px] mt-1 italic">
+                            {t.recordSaleModal.extraPiecesHint(cartItem.piecesPerCarton)}
+                          </Text>
+                        ) : null}
+
+                        {/* Cartons — secondary, collapsed by default (only for carton-aware products) */}
+                        {cartItem.piecesPerCarton ? (
+                          cartItem.showCartons ? (
                             <View className="mt-2">
                               <View className="flex-row items-center gap-3">
                                 <Text className="text-muted dark:text-slate-400 text-xs flex-shrink-0">
-                                  {t.recordSaleModal.extraPiecesLabel}
-                                </Text>
-                                <TextInput
-                                  value={cartItem.extraPieces}
-                                  onChangeText={(v) => {
-                                    // Strip non-digits, then clamp below pieces-per-carton.
-                                    // A value ≥ ppc would be a whole carton, so it must
-                                    // be entered as an extra carton instead.
-                                    const digits = v.replace(/[^0-9]/g, '');
-                                    const ppc = cartItem.piecesPerCarton ?? 0;
-                                    let clamped = digits;
-                                    if (ppc > 0 && digits !== '') {
-                                      const n = parseInt(digits, 10);
-                                      if (!isNaN(n) && n >= ppc) clamped = String(ppc - 1);
-                                    }
-                                    updateItem(product.productName, { extraPieces: clamped });
-                                  }}
-                                  keyboardType="number-pad"
-                                  selectTextOnFocus
-                                  placeholder="0"
-                                  placeholderTextColor="#94A3B8"
-                                  className="text-text dark:text-slate-100 font-semibold text-base w-16 text-center border-b border-border dark:border-slate-700"
-                                />
-                                <Text className="text-muted dark:text-slate-500 text-[11px]">
-                                  / {cartItem.piecesPerCarton}
+                                  {t.recordSaleModal.cartonsLabel}
                                 </Text>
                                 <TouchableOpacity
-                                  onPress={() =>
-                                    updateItem(product.productName, { showExtraPieces: false, extraPieces: '' })
-                                  }
+                                  onPress={() => setCartonsAdj(product.productName, -1)}
+                                  className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
                                 >
-                                  <Text className="text-danger text-xs">{t.recordSaleModal.extraPiecesRemove}</Text>
+                                  <Text className="text-text dark:text-slate-100 font-bold leading-none">−</Text>
+                                </TouchableOpacity>
+                                <TextInput
+                                  value={cartItem.cartons}
+                                  onChangeText={(v) => updateItem(product.productName, { cartons: v.replace(/[^0-9]/g, '') })}
+                                  keyboardType="number-pad"
+                                  selectTextOnFocus
+                                  className="text-text dark:text-slate-100 font-semibold text-base w-12 text-center border-b border-border dark:border-slate-700"
+                                />
+                                <TouchableOpacity
+                                  onPress={() => setCartonsAdj(product.productName, +1)}
+                                  className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                                >
+                                  <Text className="text-text dark:text-slate-100 font-bold leading-none">+</Text>
+                                </TouchableOpacity>
+                                <Text className="text-muted dark:text-slate-500 text-[11px] flex-1">
+                                  × {cartItem.piecesPerCarton} pcs
+                                </Text>
+                                <TouchableOpacity
+                                  onPress={() => updateItem(product.productName, { showCartons: false, cartons: '0' })}
+                                >
+                                  <Text className="text-danger text-xs">{t.recordSaleModal.cartonsRemove}</Text>
                                 </TouchableOpacity>
                               </View>
-                              <Text className="text-muted dark:text-slate-500 text-[10px] mt-1 italic">
-                                {t.recordSaleModal.extraPiecesHint(cartItem.piecesPerCarton)}
-                              </Text>
                             </View>
                           ) : (
                             <Pressable
-                              onPress={() => updateItem(product.productName, { showExtraPieces: true })}
+                              onPress={() => updateItem(product.productName, { showCartons: true })}
                               className="mt-2"
                             >
                               <Text className="text-primary text-xs font-semibold">
-                                {t.recordSaleModal.extraPiecesToggle}
+                                {t.recordSaleModal.cartonsToggle}
                               </Text>
                             </Pressable>
                           )
@@ -1171,11 +1521,15 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                           </View>
                         ) : null}
 
-                        {/* Below-cost warning. Both values are FC so they're directly comparable. */}
+                        {/* Below-cost warning. Both values are FC so they're directly comparable.
+                            Mirrors the server's price guard floor: for a mini, unitCostFc IS the
+                            price the employer assigned them, so exactly matching it is the expected
+                            break-even, not a mistake — only strictly below it warns. */}
                         {(() => {
                           const cost = parseFloat(cartItem.unitCostFc);
                           const sell = effectiveUnitPriceFc(cartItem);
-                          if (!isNaN(cost) && cost > 0 && !isNaN(sell) && sell > 0 && sell <= cost) {
+                          const atOrBelowCost = isMini ? sell < cost : sell <= cost;
+                          if (!isNaN(cost) && cost > 0 && !isNaN(sell) && sell > 0 && atOrBelowCost) {
                             return (
                               <Text className="text-danger text-[11px] mt-2">
                                 ⚠ {t.recordSaleModal.sellingBelowCost}
@@ -1204,13 +1558,13 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
           {/* Footer */}
           <View className="px-4 pb-8 pt-3 border-t border-border dark:border-slate-700 bg-surface dark:bg-slate-900">
-            {cart.size > 0 && (
+            {(cart.size > 0 || sizedLinesArray.length > 0) && (
               <View className="flex-row justify-between items-center mb-3">
                 <Text className="text-muted dark:text-slate-500 text-sm">
-                  {t.recordSaleModal.productsSelected(cart.size)}
+                  {t.recordSaleModal.productsSelected(cart.size + sizedLinesArray.length)}
                 </Text>
                 <Text className="text-text dark:text-slate-100 font-bold text-lg">
-                  {t.recordSaleModal.total(formatFcValue(grandTotal))}
+                  {t.recordSaleModal.total(formatFcValue(grandTotal + sizedGrandTotalFc))}
                 </Text>
               </View>
             )}
@@ -1219,13 +1573,13 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
             </View>
             <Button
               label={
-                cart.size === 0
+                cart.size === 0 && sizedLinesArray.length === 0
                   ? t.recordSaleModal.selectProductsBtn
-                  : t.recordSaleModal.recordSaleBtn(cart.size)
+                  : t.recordSaleModal.recordSaleBtn(cart.size + sizedLinesArray.length)
               }
               onPress={handleSubmit}
               loading={isSubmitting}
-              disabled={cart.size === 0 || !allValid}
+              disabled={(cart.size === 0 && sizedLinesArray.length === 0) || (cartArray.length > 0 && !allValid)}
             />
           </View>
         </View>

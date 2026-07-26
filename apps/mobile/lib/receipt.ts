@@ -2,6 +2,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { usePrinterStore } from '../store/printer.store';
 import { printReceiptToBluetooth } from './bluetooth-printer';
+import { printReceiptToSunmi } from './sunmi-printer';
 
 export interface ReceiptItem {
   readonly productName: string;
@@ -122,10 +123,10 @@ export function escapeHtml(s: string): string {
 }
 
 /**
- * Build a thermal-receipt-shaped HTML page. Width is fixed at 80mm so when
- * sent through Android's system print or share-to-PDF, the output is a
- * narrow, grow-to-content receipt rather than a half-empty A4. Monospaced
- * font keeps the columns aligned the way a real receipt would print.
+ * Build a thermal-receipt-shaped HTML page for the share-to-PDF path. Width
+ * is fixed at 80mm so the output is a narrow, grow-to-content receipt rather
+ * than a half-empty A4. Monospaced font keeps the columns aligned the way a
+ * real receipt would print.
  */
 function buildHtml(data: ReceiptData): string {
   const itemRows = data.items
@@ -320,16 +321,21 @@ function buildHtml(data: ReceiptData): string {
 }
 
 /**
- * Print a receipt to the paired Bluetooth thermal printer — raw ESC/POS bytes,
- * the POS / quick-receipt path. There is no system-print / network-printer
- * fallback: only Bluetooth POS printers are supported. Throws if no printer
- * is paired (caller should direct the user to Account > Printer) or if the
- * Bluetooth write itself fails.
+ * Print a receipt to the paired printer — raw ESC/POS bytes, the POS /
+ * quick-receipt path. Only two printer kinds are supported: an external
+ * Bluetooth thermal printer, or a Sunmi terminal's built-in printer. There is
+ * no system-print / network-printer fallback. Throws if no printer is paired
+ * (caller should direct the user to Account > Printer) or if the write itself
+ * fails.
  */
 export async function printReceipt(data: ReceiptData): Promise<void> {
   const paired = usePrinterStore.getState().printer;
   if (!paired) {
-    throw new Error('No Bluetooth printer paired');
+    throw new Error('No printer paired');
+  }
+  if (paired.kind === 'sunmi') {
+    await printReceiptToSunmi(data);
+    return;
   }
   await printReceiptToBluetooth(paired, data);
 }

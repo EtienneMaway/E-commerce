@@ -40,6 +40,13 @@ describe('allocateCartonUnitPrices', () => {
 });
 
 describe('SalesService.recordSale — whole-carton sale', () => {
+  const miniCtx: ActorContext = {
+    actorId: 'mini-3',
+    effectiveOwnerId: 'mini-3',
+    tier: 'MINI_EMPLOYEE',
+    employment: { employerId: OWNER },
+  } as unknown as ActorContext;
+
   interface Lot extends Partial<InventoryEntry> {
     id: string;
     variantId: string;
@@ -224,6 +231,47 @@ describe('SalesService.recordSale — whole-carton sale', () => {
     expect(savedSales).toHaveLength(2);
   });
 
+  // A mini's per-size unitCost is each size's assigned/agreed price, so the
+  // carton total cost here (20×2 + 20×4 = 120) is exactly what they were
+  // assigned to sell the whole carton for — break-even, not a mistake.
+  it('lets a mini sell a whole carton at exactly its assigned total cost without the guard firing', async () => {
+    const small: Lot = { id: 'e-s', variantId: 'v-s', source: InventorySource.PERSONAL, unitCost: '2.0000', quantityRemaining: 30 };
+    const large: Lot = { id: 'e-l', variantId: 'v-l', source: InventorySource.PERSONAL, unitCost: '4.0000', quantityRemaining: 25 };
+    const { service, savedSales } = build({
+      cartonSellingPrice: '120.0000', // total cost = 20×2 + 20×4 = 120 — exact match
+      lots: { 'v-s': { PERSONAL: [small] }, 'v-l': { PERSONAL: [large] } },
+    });
+
+    await service.recordSale(miniCtx, {
+      productName: 'casserole',
+      carton: true,
+      groupId: 'g1',
+      cartonQty: 1,
+      salePrice: '120.0000',
+    } as never);
+
+    expect(savedSales).toHaveLength(2);
+  });
+
+  it('still fires the carton guard when a mini sells strictly below its assigned total cost', async () => {
+    const small: Lot = { id: 'e-s', variantId: 'v-s', source: InventorySource.PERSONAL, unitCost: '2.0000', quantityRemaining: 30 };
+    const large: Lot = { id: 'e-l', variantId: 'v-l', source: InventorySource.PERSONAL, unitCost: '4.0000', quantityRemaining: 25 };
+    const { service } = build({
+      cartonSellingPrice: '100.0000', // below the 120 total cost
+      lots: { 'v-s': { PERSONAL: [small] }, 'v-l': { PERSONAL: [large] } },
+    });
+
+    await expect(
+      service.recordSale(miniCtx, {
+        productName: 'casserole',
+        carton: true,
+        groupId: 'g1',
+        cartonQty: 1,
+        salePrice: '100.0000',
+      } as never),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
   it('rejects when a size cannot cover the carton composition', async () => {
     const small: Lot = { id: 'e-s', variantId: 'v-s', source: InventorySource.PERSONAL, unitCost: '2.0000', quantityRemaining: 30 };
     const large: Lot = { id: 'e-l', variantId: 'v-l', source: InventorySource.PERSONAL, unitCost: '4.0000', quantityRemaining: 10 };
@@ -342,6 +390,175 @@ describe('SalesService.recordSale — quantity discount capture (single sale)', 
 
     expect(savedSales[0].originalUnitPrice).toBeNull();
     expect(savedSales[0].discountReason).toBeNull();
+  });
+});
+
+/**
+ * A mini employee's inventory `unitCost` is the consignment's agreedUnitPrice
+ * — the price the employer assigned them, not a raw wholesale cost. Selling
+ * at exactly that price is the expected break-even floor, so the guard for a
+ * mini only fires strictly BELOW it. Owner/full-employee cost is a real
+ * inventory cost basis, so their rule stays "at or below" as documented.
+ */
+describe('SalesService.recordSale — price guard floor (mini vs owner)', () => {
+  const MINI = 'mini-2';
+  const miniCtx: ActorContext = {
+    actorId: MINI,
+    effectiveOwnerId: MINI,
+    tier: 'MINI_EMPLOYEE',
+    employment: { employerId: 'owner-1' },
+  } as unknown as ActorContext;
+
+  function build(
+    lot: Partial<InventoryEntry> & { source: InventorySource },
+    variant?: { id: string; sellingPrice: string },
+  ) {
+    const savedSales: SaleTransaction[] = [];
+    const manager = {
+      save: jest.fn(async (Entity: unknown, obj: Record<string, unknown>) => {
+        if (Entity === SaleTransaction) {
+          if (!obj.id) obj.id = `sale-${savedSales.length + 1}`;
+          savedSales.push(obj as unknown as SaleTransaction);
+        }
+        return obj;
+      }),
+      create: jest.fn((_E: unknown, obj: Record<string, unknown>) => ({ ...obj })),
+    };
+    const entryRepo = {
+      find: jest.fn(async (o: { where: { source: InventorySource } }) =>
+        o.where.source === lot.source ? [lot] : [],
+      ),
+    };
+    const saleRepo = { findOne: jest.fn(async () => null) };
+    const dataSource = {
+      transaction: jest.fn(async (cb: (m: typeof manager) => Promise<unknown>) => cb(manager)),
+    };
+    const stockMovements = { record: jest.fn(async () => ({})) };
+    const pricingService = {
+      applyEmployeePriceRule: jest.fn(async (args: { submittedUnitPrice: string }) => ({
+        effectiveUnitPrice: new Decimal(args.submittedUnitPrice).toFixed(4),
+        standardPrice: null,
+        capped: false,
+        originalUnitPrice: null,
+      })),
+    };
+    // Only relevant for a variantId (sized-product, by-size) sale — the
+    // service looks the variant up before touching the price guard.
+    const variantRepo = { findOne: jest.fn(async () => variant ?? null) };
+    const service = new SalesService(
+      saleRepo as never,
+      entryRepo as never,
+      { findOne: jest.fn(async () => null) } as never,
+      variantRepo as never,
+      { findOne: jest.fn(async () => null) } as never, // no open handover
+      dataSource as never,
+      stockMovements as never,
+      pricingService as never,
+    );
+    return { service, savedSales };
+  }
+
+  it('lets a mini sell at exactly their assigned price without the guard firing', async () => {
+    const { service, savedSales } = build({
+      id: 'e1',
+      productName: 'shoes',
+      source: InventorySource.PERSONAL,
+      unitCost: '10.0000', // the mini's assigned/agreed price
+      quantityRemaining: 20,
+    });
+
+    await service.recordSale(miniCtx, {
+      productName: 'shoes',
+      qtySold: 2,
+      salePrice: '10.0000', // exact match — break-even, should be allowed
+    } as never);
+
+    expect(savedSales).toHaveLength(1);
+  });
+
+  it('still fires the guard when a mini sells strictly below their assigned price', async () => {
+    const { service } = build({
+      id: 'e1',
+      productName: 'shoes',
+      source: InventorySource.PERSONAL,
+      unitCost: '10.0000',
+      quantityRemaining: 20,
+    });
+
+    await expect(
+      service.recordSale(miniCtx, {
+        productName: 'shoes',
+        qtySold: 2,
+        salePrice: '9.0000',
+      } as never),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('still fires the guard for an owner selling at exactly cost (unchanged "at or below" rule)', async () => {
+    const { service } = build({
+      id: 'e1',
+      productName: 'shoes',
+      source: InventorySource.PERSONAL,
+      unitCost: '10.0000',
+      quantityRemaining: 20,
+    });
+
+    await expect(
+      service.recordSale(ownerCtx, {
+        productName: 'shoes',
+        qtySold: 2,
+        salePrice: '10.0000',
+      } as never),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  // Same floor applies to a specific SIZE of a sized product — a variantId
+  // sale runs through this exact same guard code (`allEntries[0].unitCost`),
+  // whether the entry came from a variantId or a productName lookup.
+  it('lets a mini sell a specific size at exactly its assigned price without the guard firing', async () => {
+    const { service, savedSales } = build(
+      {
+        id: 'e1',
+        variantId: 'v-1',
+        productName: 'sneakers',
+        source: InventorySource.PERSONAL,
+        unitCost: '10.0000', // this size's assigned/agreed price
+        quantityRemaining: 20,
+      } as never,
+      { id: 'v-1', sellingPrice: '10.0000' },
+    );
+
+    await service.recordSale(miniCtx, {
+      productName: 'sneakers',
+      variantId: 'v-1',
+      qtySold: 2,
+      salePrice: '10.0000', // exact match — break-even, should be allowed
+    } as never);
+
+    expect(savedSales).toHaveLength(1);
+  });
+
+  it('still fires the guard when a mini sells a specific size strictly below its assigned price', async () => {
+    const { service } = build(
+      {
+        id: 'e1',
+        variantId: 'v-1',
+        productName: 'sneakers',
+        source: InventorySource.PERSONAL,
+        unitCost: '10.0000',
+        quantityRemaining: 20,
+      } as never,
+      { id: 'v-1', sellingPrice: '10.0000' },
+    );
+
+    await expect(
+      service.recordSale(miniCtx, {
+        productName: 'sneakers',
+        variantId: 'v-1',
+        qtySold: 2,
+        salePrice: '9.0000',
+      } as never),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 });
 

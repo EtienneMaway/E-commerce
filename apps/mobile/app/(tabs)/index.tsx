@@ -239,7 +239,11 @@ export default function DashboardScreen() {
           <Text className="text-2xl font-bold text-text dark:text-slate-100">{t.home.title}</Text>
           <View className="flex-row items-center gap-2 mt-0.5">
             <Text className="text-muted dark:text-slate-500 text-sm">@{user?.username}</Text>
-            {user?.activeEmployment?.tier !== 'SALES_ONLY' && <PersonaSwitcher />}
+            {/* Always rendered for any active employment (PersonaSwitcher itself
+                no-ops without one) — a mini (SALES_ONLY) employee needs this too,
+                since PersonaBanner's "switch to self" link is a one-way door for
+                them otherwise: nothing else can flip them back to Employer mode. */}
+            <PersonaSwitcher />
           </View>
         </View>
         <View className="flex-row items-center gap-3">

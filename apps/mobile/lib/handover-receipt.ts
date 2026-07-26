@@ -8,6 +8,10 @@ import {
   printReceivedGoodsSlipToBluetooth,
   printApprovedHandoverToBluetooth,
 } from './bluetooth-printer';
+import {
+  printReceivedGoodsSlipToSunmi,
+  printApprovedHandoverToSunmi,
+} from './sunmi-printer';
 
 /**
  * Printable records for the mini-employee ↔ employer loop:
@@ -17,9 +21,10 @@ import {
  *      handover (cash turned in + unsold goods returned).
  *
  * Same routing as the POS sales receipt (lib/receipt.ts): only the paired
- * Bluetooth thermal printer (printer.store) is supported — raw ESC/POS bytes
- * sent directly. There is no system-print / network-printer fallback; the
- * print functions throw if no printer is paired. Share-to-PDF (expo-print's
+ * printer (printer.store) is supported — either an external Bluetooth
+ * thermal printer or a Sunmi terminal's built-in printer — with raw ESC/POS
+ * bytes sent directly. There is no system-print / network-printer fallback;
+ * the print functions throw if no printer is paired. Share-to-PDF (expo-print's
  * printToFileAsync) remains available separately for sending a copy via
  * WhatsApp/email/etc. — it never shows a printer picker, so it doesn't touch
  * network/IP printers either way. Their internal labels are hardcoded to
@@ -379,13 +384,18 @@ async function sharePdf(html: string, dialogTitle: string): Promise<void> {
 }
 
 /**
- * Print a "goods received" slip to the paired Bluetooth thermal printer. No
- * system-print / network-printer fallback — throws if no printer is paired.
+ * Print a "goods received" slip to the paired printer (Bluetooth or Sunmi
+ * built-in). No system-print / network-printer fallback — throws if no
+ * printer is paired.
  */
 export async function printReceivedGoods(slip: ReceivedGoodsSlip): Promise<void> {
   const paired = usePrinterStore.getState().printer;
   if (!paired) {
-    throw new Error('No Bluetooth printer paired');
+    throw new Error('No printer paired');
+  }
+  if (paired.kind === 'sunmi') {
+    await printReceivedGoodsSlipToSunmi(slip);
+    return;
   }
   await printReceivedGoodsSlipToBluetooth(paired, slip);
 }
@@ -394,13 +404,17 @@ export const shareReceivedGoodsPdf = (slip: ReceivedGoodsSlip): Promise<void> =>
   sharePdf(buildReceivedGoodsHtml(slip), 'Goods received');
 
 /**
- * Print an "approved handover" slip to the paired Bluetooth thermal printer.
- * Same no-fallback behavior as `printReceivedGoods` above.
+ * Print an "approved handover" slip to the paired printer (Bluetooth or
+ * Sunmi built-in). Same no-fallback behavior as `printReceivedGoods` above.
  */
 export async function printApprovedHandover(slip: ApprovedHandoverSlip): Promise<void> {
   const paired = usePrinterStore.getState().printer;
   if (!paired) {
-    throw new Error('No Bluetooth printer paired');
+    throw new Error('No printer paired');
+  }
+  if (paired.kind === 'sunmi') {
+    await printApprovedHandoverToSunmi(slip);
+    return;
   }
   await printApprovedHandoverToBluetooth(paired, slip);
 }

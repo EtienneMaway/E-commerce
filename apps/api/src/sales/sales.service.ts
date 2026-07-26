@@ -269,9 +269,18 @@ export class SalesService {
       discountReason: resolvedReason,
     } = this.resolveDiscountCapture(priceCheck.originalUnitPrice, dto);
 
-    // Price guard — uses unit cost of the first entry to be deducted.
+    // Price guard — uses unit cost of the first entry to be deducted. For a
+    // mini employee that "cost" is the consignment's agreedUnitPrice (the
+    // price the employer assigned them) — selling at exactly that price is
+    // the expected break-even floor, not a mistake, so only strictly BELOW
+    // it warns. Owner/full-employee cost is a real inventory cost basis, so
+    // that rule stays "at or below" as documented.
     const unitCost = new Decimal(allEntries[0].unitCost);
-    if (effectiveSalePrice.lte(unitCost) && !dto.confirmedOverride) {
+    const isAtOrBelowCost =
+      ctx.tier === 'MINI_EMPLOYEE'
+        ? effectiveSalePrice.lt(unitCost)
+        : effectiveSalePrice.lte(unitCost);
+    if (isAtOrBelowCost && !dto.confirmedOverride) {
       const potentialLoss = unitCost
         .minus(effectiveSalePrice)
         .mul(qtySold)
@@ -452,8 +461,13 @@ export class SalesService {
     }
 
     // Carton-level price guard: warn only if the whole carton is at/under cost.
+    // Same mini-employee carve-out as the per-piece guard above — their
+    // "cost" here is the sum of each size's agreedUnitPrice, i.e. exactly
+    // what they were assigned, so break-even at that price is expected.
     const revenue = cartonUnitPrice.mul(cartonQty);
-    if (revenue.lte(totalCost) && !dto.confirmedOverride) {
+    const isCartonAtOrBelowCost =
+      ctx.tier === 'MINI_EMPLOYEE' ? revenue.lt(totalCost) : revenue.lte(totalCost);
+    if (isCartonAtOrBelowCost && !dto.confirmedOverride) {
       const potentialLoss = totalCost.minus(revenue).toFixed(4);
       const warning: PriceGuardWarningDto = {
         warning: true,

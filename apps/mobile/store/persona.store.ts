@@ -15,6 +15,18 @@ interface PersonaState {
   setKind: (kind: ActingAs) => Promise<void>;
   hydrate: () => Promise<void>;
   /**
+   * Called on logout. Resets in-memory state to 'self' for whatever renders
+   * next (the login screen), but — unlike `setKind` — does NOT persist that
+   * as a choice: it clears the stored value instead of writing 'self' over
+   * it. This matters because `applyDefaultForUser` treats a persisted value
+   * as an explicit prior choice and skips its own "default employees to
+   * employer" rule. Persisting 'self' here would mean every subsequent
+   * login — same employee or a different one on a shared device — starts
+   * back in Self, permanently defeating that default from the first logout
+   * onward.
+   */
+  resetForLogout: () => Promise<void>;
+  /**
    * Resolves the right persona for a freshly-loaded user. Called from
    * auth.store after /auth/me or /auth/login returns.
    *
@@ -49,6 +61,12 @@ export const usePersonaStore = create<PersonaState>((set) => ({
     const kind: ActingAs = raw === 'employer' ? 'employer' : 'self';
     setActingAs(kind);
     set({ kind, hydrated: true });
+  },
+
+  resetForLogout: async () => {
+    await SecureStore.deleteItemAsync(PERSONA_KEY);
+    setActingAs('self');
+    set({ kind: 'self' });
   },
 
   applyDefaultForUser: async (user) => {

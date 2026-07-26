@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { salesApi, miniSettlementsApi, expensesApi } from './api';
 import { useOfflineStore } from '../store/offline.store';
+import type { PendingSale, PendingExpense } from '../store/offline.store';
 import { isPriceGuardWarning, getErrorMessage } from './utils';
 import type { ExpenseCategory, ExpenseCurrency } from './api';
 
@@ -39,16 +40,121 @@ function isRetryable(err: unknown): boolean {
   return true;
 }
 
+/** Submits one sale, retrying transient failures and auto-confirming a price-guard 422. */
+async function syncOneSale(sale: PendingSale): Promise<{ ok: boolean; error: unknown }> {
+  // Carry the buyer info and receipt grouping captured offline so the row
+  // lands on the server with the same searchable metadata an online sale
+  // would have. `clientSaleId` is the queue id — stable across retries.
+  const basePayload = {
+    productName: sale.productName,
+    qtySold: sale.qtySold,
+    salePrice: sale.salePrice,
+    clientName: sale.clientName,
+    clientPhone: sale.clientPhone,
+    receiptId: sale.receiptId,
+    clientSaleId: sale.id,
+    // Preserve any quantity-discount metadata so the replayed sale records
+    // the pre-discount price + reason exactly as the offline sale intended.
+    ...(sale.originalUnitPrice ? { originalUnitPrice: sale.originalUnitPrice } : {}),
+    ...(sale.discountReason ? { discountReason: sale.discountReason } : {}),
+  };
+
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await salesApi.record(basePayload, { timeout: SYNC_REQUEST_TIMEOUT });
+      return { ok: true, error: null };
+    } catch (err) {
+      // Price guard: auto-confirm since the user already set the markup
+      // offline. This is a deterministic 422, not a transient failure, so
+      // resolve it in-place rather than counting it as a retry attempt.
+      if (isPriceGuardWarning(err)) {
+        try {
+          await salesApi.record(
+            { ...basePayload, confirmedOverride: true },
+            { timeout: SYNC_REQUEST_TIMEOUT },
+          );
+          return { ok: true, error: null };
+        } catch (err2) {
+          if (!isRetryable(err2) || attempt === MAX_ATTEMPTS) return { ok: false, error: err2 };
+          lastError = err2;
+        }
+      } else {
+        if (!isRetryable(err) || attempt === MAX_ATTEMPTS) return { ok: false, error: err };
+        lastError = err;
+      }
+      // Exponential backoff with jitter before the next attempt.
+      const backoff = Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);
+      await delay(backoff + Math.floor(Math.random() * 300));
+    }
+  }
+  return { ok: false, error: lastError };
+}
+
+/** Submits one expense (owner/full-employee "normal" or mini-employee FC), retrying transient failures. */
+async function syncOneExpense(exp: PendingExpense): Promise<{ ok: boolean; error: unknown }> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      if (exp.kind === 'normal') {
+        await expensesApi.create(
+          {
+            amount: exp.amount,
+            currency: (exp.currency ?? 'FC') as ExpenseCurrency,
+            category: exp.category as ExpenseCategory,
+            description: exp.description,
+            date: exp.date,
+            clientId: exp.id,
+          },
+          { timeout: SYNC_REQUEST_TIMEOUT },
+        );
+      } else {
+        await miniSettlementsApi.createExpense(
+          {
+            amount: exp.amount,
+            category: exp.category,
+            description: exp.description,
+            clientId: exp.id,
+          },
+          { timeout: SYNC_REQUEST_TIMEOUT },
+        );
+      }
+      return { ok: true, error: null };
+    } catch (err) {
+      if (!isRetryable(err) || attempt === MAX_ATTEMPTS) return { ok: false, error: err };
+      lastError = err;
+      const backoff = Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);
+      await delay(backoff + Math.floor(Math.random() * 300));
+    }
+  }
+  return { ok: false, error: lastError };
+}
+
+type SyncTask =
+  | { type: 'sale'; recordedAt: string; sale: PendingSale }
+  | { type: 'expense'; recordedAt: string; expense: PendingExpense };
+
 /**
- * Submits all pending offline sales to the API, newest queue order preserved.
+ * Submits all pending offline sales AND expenses to the API, in the original
+ * chronological order they were recorded in — NOT "all sales, then all
+ * expenses". That distinction matters for a mini employee: recording an
+ * expense is gated server-side on them currently holding outstanding
+ * consigned stock. If every queued sale were flushed first and happened to
+ * fully sell through that stock, an expense genuinely recorded earlier
+ * (while stock was still held) would be rejected for a state that only
+ * exists because of sync's own ordering — not because the expense was ever
+ * actually invalid. Interleaving by `recordedAt` replays events in the same
+ * order they really happened, so that gate sees the same state it would
+ * have online.
  *
- * - Each sale is retried with backoff on transient/network errors.
- * - Price-guard warnings are auto-confirmed (the user already chose the markup
- *   when recording the sale offline).
+ * - Each item is retried with backoff on transient/network errors.
+ * - Sale price-guard warnings are auto-confirmed (the user already chose the
+ *   markup when recording the sale offline).
  * - Synced rows are removed from the queue **incrementally**, so if the app is
  *   killed mid-sync the next run resumes from exactly where it stopped — the
- *   already-synced rows are gone and the `clientSaleId` dedupe covers any row
- *   that did reach the server just before the crash.
+ *   already-synced rows are gone and the clientSaleId/clientId dedupe covers
+ *   any row that did reach the server just before the crash.
  *
  * Returns a summary of what succeeded and what failed.
  */
@@ -72,136 +178,47 @@ export async function syncPendingSales(): Promise<SyncResult> {
 
   setSyncStatus('syncing');
 
-  // Progress spans sales + expenses so the banner shows the whole sync run.
-  const total = pendingSales.length + pendingExpenses.length;
+  const tasks: SyncTask[] = [
+    ...pendingSales.map((sale) => ({ type: 'sale' as const, recordedAt: sale.recordedAt, sale })),
+    ...pendingExpenses.map((expense) => ({ type: 'expense' as const, recordedAt: expense.recordedAt, expense })),
+  ].sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
+
+  const total = tasks.length;
   let completed = 0;
   setSyncProgress({ total, completed });
 
   let syncedCount = 0;
   const errors: string[] = [];
 
-  for (const sale of pendingSales) {
-    // Carry the buyer info and receipt grouping captured offline so the row
-    // lands on the server with the same searchable metadata an online sale
-    // would have. `clientSaleId` is the queue id — stable across retries.
-    const basePayload = {
-      productName: sale.productName,
-      qtySold: sale.qtySold,
-      salePrice: sale.salePrice,
-      clientName: sale.clientName,
-      clientPhone: sale.clientPhone,
-      receiptId: sale.receiptId,
-      clientSaleId: sale.id,
-      // Preserve any quantity-discount metadata so the replayed sale records
-      // the pre-discount price + reason exactly as the offline sale intended.
-      ...(sale.originalUnitPrice ? { originalUnitPrice: sale.originalUnitPrice } : {}),
-      ...(sale.discountReason ? { discountReason: sale.discountReason } : {}),
-    };
-
-    let lastError: unknown = null;
-    let done = false;
-
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS && !done; attempt++) {
-      try {
-        await salesApi.record(basePayload, { timeout: SYNC_REQUEST_TIMEOUT });
-        done = true;
-      } catch (err) {
-        // Price guard: auto-confirm since the user already set the markup
-        // offline. This is a deterministic 422, not a transient failure, so
-        // resolve it in-place rather than counting it as a retry attempt.
-        if (isPriceGuardWarning(err)) {
-          try {
-            await salesApi.record(
-              { ...basePayload, confirmedOverride: true },
-              { timeout: SYNC_REQUEST_TIMEOUT },
-            );
-            done = true;
-            break;
-          } catch (err2) {
-            if (!isRetryable(err2) || attempt === MAX_ATTEMPTS) {
-              lastError = err2;
-              break;
-            }
-            lastError = err2;
-          }
-        } else {
-          if (!isRetryable(err) || attempt === MAX_ATTEMPTS) {
-            lastError = err;
-            break;
-          }
-          lastError = err;
-        }
-        // Exponential backoff with jitter before the next attempt.
-        const backoff = Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);
-        await delay(backoff + Math.floor(Math.random() * 300));
+  for (const task of tasks) {
+    if (task.type === 'sale') {
+      const { sale } = task;
+      const { ok, error } = await syncOneSale(sale);
+      if (ok) {
+        // Remove immediately so the persisted queue reflects real progress and
+        // a crash mid-run resumes correctly.
+        removeSyncedSales([sale.id]);
+        syncedCount += 1;
+        completed += 1;
+        setSyncProgress({ total, completed });
+      } else {
+        const msg = `${sale.productName}: ${getErrorMessage(error)}`;
+        errors.push(msg);
+        updateSaleError(sale.id, msg);
       }
-    }
-
-    if (done) {
-      // Remove immediately so the persisted queue reflects real progress and a
-      // crash mid-run resumes correctly.
-      removeSyncedSales([sale.id]);
-      syncedCount += 1;
-      completed += 1;
-      setSyncProgress({ total, completed });
     } else {
-      const msg = `${sale.productName}: ${getErrorMessage(lastError)}`;
-      errors.push(msg);
-      updateSaleError(sale.id, msg);
-    }
-  }
-
-  // ── Pending expenses (owner/full-employee "normal" + mini-employee FC).
-  // Retried like sales; the server dedupes on clientId (= queue id), so retries
-  // never double-book. ──
-  for (const exp of pendingExpenses) {
-    let ok = false;
-    let lastError: unknown = null;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS && !ok; attempt++) {
-      try {
-        if (exp.kind === 'normal') {
-          await expensesApi.create(
-            {
-              amount: exp.amount,
-              currency: (exp.currency ?? 'FC') as ExpenseCurrency,
-              category: exp.category as ExpenseCategory,
-              description: exp.description,
-              date: exp.date,
-              clientId: exp.id,
-            },
-            { timeout: SYNC_REQUEST_TIMEOUT },
-          );
-        } else {
-          await miniSettlementsApi.createExpense(
-            {
-              amount: exp.amount,
-              category: exp.category,
-              description: exp.description,
-              clientId: exp.id,
-            },
-            { timeout: SYNC_REQUEST_TIMEOUT },
-          );
-        }
-        ok = true;
-      } catch (err) {
-        if (!isRetryable(err) || attempt === MAX_ATTEMPTS) {
-          lastError = err;
-          break;
-        }
-        lastError = err;
-        const backoff = Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);
-        await delay(backoff + Math.floor(Math.random() * 300));
+      const { expense } = task;
+      const { ok, error } = await syncOneExpense(expense);
+      if (ok) {
+        removeSyncedExpenses([expense.id]);
+        syncedCount += 1;
+        completed += 1;
+        setSyncProgress({ total, completed });
+      } else {
+        const msg = `Expense: ${getErrorMessage(error)}`;
+        errors.push(msg);
+        updateExpenseError(expense.id, msg);
       }
-    }
-    if (ok) {
-      removeSyncedExpenses([exp.id]);
-      syncedCount += 1;
-      completed += 1;
-      setSyncProgress({ total, completed });
-    } else {
-      const msg = `Expense: ${getErrorMessage(lastError)}`;
-      errors.push(msg);
-      updateExpenseError(exp.id, msg);
     }
   }
 
