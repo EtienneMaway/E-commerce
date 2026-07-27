@@ -15,10 +15,11 @@ import {
   type ReceiptData,
   type ReceiptItem,
 } from './receipt';
-import type {
-  ReceivedGoodsSlip,
-  ApprovedHandoverSlip,
-  SlipParty,
+import {
+  prettyExpenseCategory,
+  type ReceivedGoodsSlip,
+  type ApprovedHandoverSlip,
+  type SlipParty,
 } from './handover-receipt';
 
 const ENC = {
@@ -425,9 +426,26 @@ export function encodeApprovedHandoverSlip(slip: ApprovedHandoverSlip): Uint8Arr
     bytes.push(...divider('-'));
   }
 
+  const expensesTotalFc = slip.expenses.reduce((sum, e) => sum + e.amountFc, 0);
+  if (slip.expenses.length > 0) {
+    bytes.push(...ascii('EXPENSES CLAIMED'));
+    bytes.push(...ENC.LF);
+    for (const e of slip.expenses) {
+      const label = prettyExpenseCategory(e.category) + (e.description ? ` - ${e.description}` : '');
+      bytes.push(...nameAmountLine(label, `-${fc(e.amountFc)}`));
+    }
+    bytes.push(...divider('-'));
+  }
+
+  if (expensesTotalFc > 0) {
+    bytes.push(...nameAmountLine('Cash for sold goods', fc(slip.cashHandedOverFc)));
+    bytes.push(...nameAmountLine('Expenses', `-${fc(expensesTotalFc)}`));
+  }
+
   bytes.push(...ENC.BOLD_ON);
   bytes.push(...ENC.DOUBLE_HEIGHT_ON);
-  const cashStr = fc(slip.cashHandedOverFc);
+  const netCashFc = slip.cashHandedOverFc - expensesTotalFc;
+  const cashStr = fc(netCashFc);
   bytes.push(...ascii(padRight('CASH', COLS - cashStr.length) + cashStr));
   bytes.push(...ENC.LF);
   bytes.push(...ENC.NORMAL);

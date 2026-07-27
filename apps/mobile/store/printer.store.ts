@@ -7,10 +7,13 @@ const PRINTER_KEY = 'ta_printer';
 /**
  * Two supported printer kinds — no others (no network/IP/AirPrint printers):
  *   - 'bluetooth': an external Bluetooth thermal printer, identified by MAC address.
- *   - 'sunmi': the printer built into a Sunmi POS terminal itself — no pairing,
- *     no address, just a marker that the built-in driver should be used.
+ *   - 'builtin': the printer built into a POS terminal itself — no pairing,
+ *     no address, just a marker that the built-in driver should be used. Under
+ *     the hood this tries genuine Sunmi hardware's raw AIDL printer first,
+ *     falling back to the Android system print dialog for POS clones that
+ *     only expose their printer as a plain print service (lib/builtin-printer.ts).
  */
-export type PrinterConfig = ({ kind: 'bluetooth' } & PairedPrinter) | { kind: 'sunmi'; name: string };
+export type PrinterConfig = ({ kind: 'bluetooth' } & PairedPrinter) | { kind: 'builtin'; name: string };
 
 interface PrinterState {
   printer: PrinterConfig | null;
@@ -36,10 +39,19 @@ export const usePrinterStore = create<PrinterState>((set) => ({
     const raw = await SecureStore.getItemAsync(PRINTER_KEY);
     if (raw) {
       try {
-        const parsed = JSON.parse(raw) as PrinterConfig | PairedPrinter;
+        const parsed = JSON.parse(raw) as PrinterConfig | PairedPrinter | { kind: 'sunmi'; name: string };
         // Pre-Sunmi-support installs persisted a plain `{ address, name }` with
         // no `kind` — treat those as Bluetooth so existing pairings survive.
-        const migrated: PrinterConfig = 'kind' in parsed ? parsed : { kind: 'bluetooth', ...parsed };
+        // Pre-'builtin'-rename installs persisted `kind: 'sunmi'` — migrate to
+        // the generalized 'builtin' kind so existing selections survive too.
+        let migrated: PrinterConfig;
+        if (!('kind' in parsed)) {
+          migrated = { kind: 'bluetooth', ...parsed };
+        } else if (parsed.kind === 'sunmi') {
+          migrated = { kind: 'builtin', name: parsed.name };
+        } else {
+          migrated = parsed;
+        }
         set({ printer: migrated, hydrated: true });
         return;
       } catch {

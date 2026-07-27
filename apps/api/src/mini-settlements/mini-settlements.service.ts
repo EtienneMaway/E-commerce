@@ -307,7 +307,7 @@ export class MiniSettlementsService {
   async findOutgoing(ctx: ActorContext): Promise<MiniSettlement[]> {
     return this.settlementRepo.find({
       where: { miniId: ctx.effectiveOwnerId },
-      relations: { owner: true, items: true, payment: true },
+      relations: { owner: true, items: true, payment: true, expenses: true },
       order: { createdAt: 'DESC' },
     });
   }

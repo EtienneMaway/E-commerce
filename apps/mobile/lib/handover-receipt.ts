@@ -9,9 +9,9 @@ import {
   printApprovedHandoverToBluetooth,
 } from './bluetooth-printer';
 import {
-  printReceivedGoodsSlipToSunmi,
-  printApprovedHandoverToSunmi,
-} from './sunmi-printer';
+  printReceivedGoodsSlipToBuiltIn,
+  printApprovedHandoverToBuiltIn,
+} from './builtin-printer';
 
 /**
  * Printable records for the mini-employee ↔ employer loop:
@@ -22,13 +22,13 @@ import {
  *
  * Same routing as the POS sales receipt (lib/receipt.ts): only the paired
  * printer (printer.store) is supported — either an external Bluetooth
- * thermal printer or a Sunmi terminal's built-in printer — with raw ESC/POS
- * bytes sent directly. There is no system-print / network-printer fallback;
- * the print functions throw if no printer is paired. Share-to-PDF (expo-print's
- * printToFileAsync) remains available separately for sending a copy via
- * WhatsApp/email/etc. — it never shows a printer picker, so it doesn't touch
- * network/IP printers either way. Their internal labels are hardcoded to
- * match the sales receipt's style; only the surrounding app UI is translated.
+ * thermal printer or a POS terminal's built-in printer (lib/builtin-printer.ts,
+ * raw ESC/POS on genuine Sunmi hardware, system print dialog otherwise) — no
+ * ad-hoc network/IP printer picker. The print functions throw if no printer
+ * is paired. Share-to-PDF (expo-print's printToFileAsync) remains available
+ * separately for sending a copy via WhatsApp/email/etc. — it never shows a
+ * printer picker either. Their internal labels are hardcoded to match the
+ * sales receipt's style; only the surrounding app UI is translated.
  */
 
 /** A named party on a slip — employer or the mini. Either field may be absent. */
@@ -69,6 +69,14 @@ export interface HandoverSoldLine {
   readonly amountFc: number;
 }
 
+/** One expense the mini claimed on this handover cycle — deducted from the
+ *  sold cash to arrive at what was physically handed over. */
+export interface HandoverExpenseSlipLine {
+  readonly category: string;
+  readonly description: string | null;
+  readonly amountFc: number;
+}
+
 export interface ApprovedHandoverSlip {
   readonly to: SlipParty; // employer/owner receiving the handover
   readonly handedOverBy: SlipParty; // the mini
@@ -76,9 +84,13 @@ export interface ApprovedHandoverSlip {
   readonly approvedDate?: string;
   readonly reference?: string;
   readonly note?: string;
+  /** Gross cash owed for the sold goods, before expenses are deducted. */
   readonly cashHandedOverFc: number;
   /** Products sold this cycle (itemizes the cash). Empty for pre-snapshot handovers. */
   readonly sold: HandoverSoldLine[];
+  /** Expenses claimed on this handover — deducted from `cashHandedOverFc` to
+   *  print the net cash actually handed over. Empty when none were claimed. */
+  readonly expenses: HandoverExpenseSlipLine[];
   readonly returns: HandoverReturnLine[];
 }
 
@@ -112,6 +124,11 @@ export function toApprovedHandoverSlip(
       productName: l.variantLabel ? `${l.productName} · ${l.variantLabel}` : l.productName,
       qtyLabel: formatBreakdown(breakdownQuantity(l.qtySold, l.piecesPerCarton)),
       amountFc: parseFloat(l.agreedValueFc) || 0,
+    })),
+    expenses: (settlement.expenses ?? []).map((e) => ({
+      category: e.category,
+      description: e.description ?? null,
+      amountFc: parseFloat(e.amount) || 0,
     })),
     returns: settlement.items.map((it) => ({
       productName: it.variantLabel ? `${it.productName} · ${it.variantLabel}` : it.productName,
@@ -150,6 +167,12 @@ export function toReceivedGoodsSlip(
     items,
     totalOwedFc: items.reduce((s, i) => s + i.lineTotalFc, 0),
   };
+}
+
+/** Receipt text is deliberately hardcoded English regardless of app locale
+ *  (see the module doc above) — just prettify the raw enum value. */
+export function prettyExpenseCategory(category: string): string {
+  return category.charAt(0) + category.slice(1).toLowerCase().replace(/_/g, ' ');
 }
 
 function partyLine(party: SlipParty): string {
@@ -331,6 +354,23 @@ export function buildApprovedHandoverHtml(slip: ApprovedHandoverSlip): string {
   <div class="items">${soldRows}</div>
   <hr class="divider" />`
     : '';
+  const expensesTotalFc = slip.expenses.reduce((sum, e) => sum + e.amountFc, 0);
+  const expenseRows = slip.expenses
+    .map(
+      (e) => `
+        <div class="line">
+          <span class="name">${escapeHtml(prettyExpenseCategory(e.category))}${e.description ? ` · ${escapeHtml(e.description)}` : ''}</span>
+          <span class="amount">- ${formatFc(e.amountFc)}</span>
+        </div>`,
+    )
+    .join('');
+  const expensesSection = slip.expenses.length
+    ? `
+  <div class="section">Expenses claimed</div>
+  <div class="items">${expenseRows}</div>
+  <hr class="divider" />`
+    : '';
+  const netCashFc = slip.cashHandedOverFc - expensesTotalFc;
   const returnRows =
     slip.returns.length === 0
       ? '<div class="line sub"><span>&nbsp;&nbsp;None — everything was sold.</span></div>'
@@ -359,9 +399,16 @@ export function buildApprovedHandoverHtml(slip: ApprovedHandoverSlip): string {
 
   <hr class="divider" />
   ${soldSection}
+  ${expensesSection}
+  ${
+    expensesTotalFc > 0
+      ? `<div class="line sub"><span>Cash for sold goods</span><span>${formatFc(slip.cashHandedOverFc)}</span></div>
+  <div class="line sub"><span>Expenses</span><span>- ${formatFc(expensesTotalFc)}</span></div>`
+      : ''
+  }
   <div class="total-row">
     <span class="label">CASH</span>
-    <span>${formatFc(slip.cashHandedOverFc)}</span>
+    <span>${formatFc(netCashFc)}</span>
   </div>
   <hr class="divider" />
 
@@ -393,8 +440,8 @@ export async function printReceivedGoods(slip: ReceivedGoodsSlip): Promise<void>
   if (!paired) {
     throw new Error('No printer paired');
   }
-  if (paired.kind === 'sunmi') {
-    await printReceivedGoodsSlipToSunmi(slip);
+  if (paired.kind === 'builtin') {
+    await printReceivedGoodsSlipToBuiltIn(slip);
     return;
   }
   await printReceivedGoodsSlipToBluetooth(paired, slip);
@@ -412,8 +459,8 @@ export async function printApprovedHandover(slip: ApprovedHandoverSlip): Promise
   if (!paired) {
     throw new Error('No printer paired');
   }
-  if (paired.kind === 'sunmi') {
-    await printApprovedHandoverToSunmi(slip);
+  if (paired.kind === 'builtin') {
+    await printApprovedHandoverToBuiltIn(slip);
     return;
   }
   await printApprovedHandoverToBluetooth(paired, slip);

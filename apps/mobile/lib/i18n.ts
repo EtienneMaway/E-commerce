@@ -769,7 +769,7 @@ const en = {
   },
   printer: {
     title: 'Receipt printer',
-    subtitle: 'Use a Bluetooth thermal printer or a Sunmi POS terminal’s built-in printer',
+    subtitle: 'Use a Bluetooth thermal printer or a POS terminal’s built-in printer',
     pairedLabel: 'Paired printer',
     none: 'No printer paired',
     pairInOsHint:
@@ -789,7 +789,7 @@ const en = {
     printFailed: 'Could not print receipt',
     noPrinterPaired: 'No printer paired. Go to Account > Printer to pair one.',
     builtInName: 'Built-in POS printer',
-    builtInDetected: 'This device has a built-in POS printer',
+    builtInDetected: 'If this device (POS terminal) has a printer built in, use it here',
     useBuiltInBtn: 'Use built-in printer',
   },
   expenses: {
@@ -1658,7 +1658,7 @@ const fr: Translations = {
   },
   printer: {
     title: 'Imprimante de reçus',
-    subtitle: 'Utilisez une imprimante thermique Bluetooth ou l’imprimante intégrée d’un terminal POS Sunmi',
+    subtitle: 'Utilisez une imprimante thermique Bluetooth ou l’imprimante intégrée d’un terminal POS',
     pairedLabel: 'Imprimante associée',
     none: 'Aucune imprimante associée',
     pairInOsHint:
@@ -1678,7 +1678,7 @@ const fr: Translations = {
     printFailed: 'Impossible d’imprimer le reçu',
     noPrinterPaired: 'Aucune imprimante associée. Allez dans Compte > Imprimante pour en associer une.',
     builtInName: 'Imprimante POS intégrée',
-    builtInDetected: 'Cet appareil possède une imprimante POS intégrée',
+    builtInDetected: 'Si cet appareil (terminal POS) a une imprimante intégrée, utilisez-la ici',
     useBuiltInBtn: 'Utiliser l’imprimante intégrée',
   },
   expenses: {

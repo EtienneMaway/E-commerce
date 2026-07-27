@@ -2,7 +2,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { usePrinterStore } from '../store/printer.store';
 import { printReceiptToBluetooth } from './bluetooth-printer';
-import { printReceiptToSunmi } from './sunmi-printer';
+import { printReceiptToBuiltIn } from './builtin-printer';
 
 export interface ReceiptItem {
   readonly productName: string;
@@ -128,7 +128,7 @@ export function escapeHtml(s: string): string {
  * than a half-empty A4. Monospaced font keeps the columns aligned the way a
  * real receipt would print.
  */
-function buildHtml(data: ReceiptData): string {
+export function buildHtml(data: ReceiptData): string {
   const itemRows = data.items
     .map((item) => {
       const total = formatFc(item.totalFc);
@@ -333,8 +333,8 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
   if (!paired) {
     throw new Error('No printer paired');
   }
-  if (paired.kind === 'sunmi') {
-    await printReceiptToSunmi(data);
+  if (paired.kind === 'builtin') {
+    await printReceiptToBuiltIn(data);
     return;
   }
   await printReceiptToBluetooth(paired, data);

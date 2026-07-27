@@ -295,6 +295,9 @@ export interface MiniSettlementSummary {
   /** Snapshot of products sold this cycle, for the printable receipt. Null on
    *  handovers created before this feature. */
   soldLines?: MiniSettlementSoldLine[] | null;
+  /** Expenses the mini claimed on this handover — deducted from the sold cash
+   *  and booked on the owner's books when approved. */
+  expenses?: { category: string; description: string | null; amount: string }[];
   /** Unsold lines being returned to the owner. */
   items: {
     id: string;

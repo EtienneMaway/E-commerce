@@ -8,7 +8,7 @@ import {
   testPrint,
   type PairedPrinter,
 } from '../../lib/bluetooth-printer';
-import { isSunmiPrinterAvailable, testPrintSunmi } from '../../lib/sunmi-printer';
+import { testPrintBuiltIn } from '../../lib/builtin-printer';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 
@@ -19,14 +19,10 @@ export default function PrinterScreen() {
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sunmiAvailable, setSunmiAvailable] = useState(false);
 
   useEffect(() => {
     void hydrate();
     void scan();
-    if (Platform.OS === 'android') {
-      void isSunmiPrinterAvailable().then(setSunmiAvailable);
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -47,8 +43,8 @@ export default function PrinterScreen() {
     await setPrinter({ kind: 'bluetooth', ...device });
   };
 
-  const handleSelectSunmi = async () => {
-    await setPrinter({ kind: 'sunmi', name: t.printer.builtInName });
+  const handleSelectBuiltIn = async () => {
+    await setPrinter({ kind: 'builtin', name: t.printer.builtInName });
   };
 
   const handleForget = async () => {
@@ -59,8 +55,8 @@ export default function PrinterScreen() {
     if (!selected) return;
     setTesting(true);
     try {
-      if (selected.kind === 'sunmi') {
-        await testPrintSunmi();
+      if (selected.kind === 'builtin') {
+        await testPrintBuiltIn();
       } else {
         await testPrint(selected);
       }
@@ -91,11 +87,11 @@ export default function PrinterScreen() {
             <Text className="text-text dark:text-slate-100 text-base font-semibold">
               🖨 {selected.name}
             </Text>
-            {selected.kind === 'bluetooth' && (
+            {selected.kind === 'bluetooth' ? (
               <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">
                 {selected.address}
               </Text>
-            )}
+            ) : null}
             <View className="flex-row gap-2 mt-3">
               <View className="flex-1">
                 <Button
@@ -119,8 +115,11 @@ export default function PrinterScreen() {
         )}
       </Card>
 
-      {/* Built-in POS printer, only shown when the device actually has one */}
-      {sunmiAvailable && !(selected?.kind === 'sunmi') && (
+      {/* Built-in POS printer — offered on Android regardless of make/model,
+          since there's no reliable way to probe every POS clone's hardware
+          up front; the driver itself (lib/builtin-printer.ts) figures out at
+          print time whether to use Sunmi's SDK or the system print dialog. */}
+      {Platform.OS === 'android' && !(selected?.kind === 'builtin') && (
         <Card className="mt-4">
           <Text className="text-text dark:text-slate-100 font-semibold text-sm">
             🖨 {t.printer.builtInName}
@@ -128,7 +127,7 @@ export default function PrinterScreen() {
           <Text className="text-muted dark:text-slate-500 text-xs mt-0.5 mb-3">
             {t.printer.builtInDetected}
           </Text>
-          <Button label={t.printer.useBuiltInBtn} onPress={() => void handleSelectSunmi()} variant="outline" />
+          <Button label={t.printer.useBuiltInBtn} onPress={() => void handleSelectBuiltIn()} variant="outline" />
         </Card>
       )}
 
