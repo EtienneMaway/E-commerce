@@ -78,6 +78,34 @@ export interface HandoverExpenseLine {
   amount: string;
 }
 
+/**
+ * One product still sitting unsold with a mini — what they are holding right
+ * now, and what it is worth to the owner at the price it was consigned at.
+ * Superset of `HandoverReturnLine`, so the mini's handover preview reads the
+ * same computation as the owner's "still with them" view.
+ */
+export interface MiniUnsoldLine {
+  productName: string;
+  variantId: string | null;
+  variantLabel: string | null;
+  /** The sized product this line belongs to; null for simple products. */
+  groupId: string | null;
+  /**
+   * How many sizes the group defines in total. A carton of a sized product is
+   * one of EVERY size, so a client can only claim a full carton when it holds
+   * all of them — this is what lets it tell "some sizes left" from "complete
+   * cartons left". Null for simple products.
+   */
+  groupSizeCount: number | null;
+  quantity: number;
+  /** For a sized line this is that size's share of one carton, not a carton itself. */
+  piecesPerCarton: number | null;
+  /** The agreed price per unit the mini owes for these, USD. */
+  agreedUnitPrice: string;
+  /** quantity × agreed price, FC at the lot's locked consignment rate. */
+  agreedValueFc: string;
+}
+
 export interface HandoverReturnLine {
   productName: string;
   /** Size, for sized products — null on simple products. Sent back on handover. */
@@ -642,6 +670,101 @@ export class MiniSettlementsService {
     return [...byKey.values()];
   }
 
+  /**
+   * Everything a mini still holds unsold, grouped per product (and per size for
+   * sized products). Shared by the mini's handover preview — where it is the
+   * list of goods coming back — and the owner's "still with them" breakdown.
+   *
+   * Depleted lots are read too, not skipped: they are what resolves a
+   * fully-sold product's carton size, matching `inventory.listProducts` (first
+   * NON-NULL piecesPerCarton across the product's lots).
+   */
+  private async unsoldStock(miniId: string): Promise<MiniUnsoldLine[]> {
+    const inEntries = await this.entryRepo.find({
+      where: { ownerId: miniId, source: InventorySource.CONSIGNED_IN },
+    });
+    // Identity key: sized products key by size (variantId); simple by name — so
+    // different sizes of one group don't collapse into a single row.
+    const keyOf = (variantId: string | null | undefined, productName: string) =>
+      variantId ?? productName;
+    const labels = await this.variantLabels(inEntries.map((e) => e.variantId));
+
+    const ppcByKey = new Map<string, number>();
+    for (const e of inEntries) {
+      const k = keyOf(e.variantId, e.productName);
+      if (e.piecesPerCarton != null && !ppcByKey.has(k)) ppcByKey.set(k, e.piecesPerCarton);
+    }
+
+    const liveRate = (await this.currencyService.getRate())?.usdToFcRate ?? '1';
+
+    // Size count per group, so the client can tell whether what is left even
+    // adds up to a whole carton.
+    const groupIds = [...new Set(inEntries.map((e) => e.groupId).filter((g): g is string => !!g))];
+    const sizeCounts = new Map<string, number>();
+    if (groupIds.length > 0) {
+      const variants = await this.variantRepo.find({ where: { groupId: In(groupIds) } });
+      for (const v of variants) {
+        sizeCounts.set(v.groupId, (sizeCounts.get(v.groupId) ?? 0) + 1);
+      }
+    }
+
+    const rows = new Map<
+      string,
+      {
+        productName: string;
+        variantId: string | null;
+        groupId: string | null;
+        quantity: number;
+        /** Σ agreed value, USD — divided back out for a blended unit price. */
+        valueUsd: Decimal;
+        valueFc: Decimal;
+      }
+    >();
+    for (const e of inEntries) {
+      if (e.quantityRemaining <= 0) continue;
+      const k = keyOf(e.variantId, e.productName);
+      const cur =
+        rows.get(k) ??
+        {
+          productName: e.productName,
+          variantId: e.variantId ?? null,
+          groupId: e.groupId ?? null,
+          quantity: 0,
+          valueUsd: new Decimal(0),
+          valueFc: new Decimal(0),
+        };
+      // CONSIGNED_IN.unitCost IS the agreed price the mini owes.
+      const lotValue = new Decimal(e.unitCost).mul(e.quantityRemaining);
+      cur.quantity += e.quantityRemaining;
+      cur.valueUsd = cur.valueUsd.plus(lotValue);
+      // Each lot converts at its OWN locked rate — a product held across two
+      // consignments at different rates must not be flattened to one of them.
+      cur.valueFc = cur.valueFc.plus(
+        lotValue.mul(new Decimal(e.usdToFcRateSnapshot ?? liveRate)),
+      );
+      rows.set(k, cur);
+    }
+
+    return [...rows.entries()].map(([k, v]) => ({
+      productName: v.productName,
+      variantId: v.variantId,
+      variantLabel: v.variantId ? labels.get(v.variantId) ?? null : null,
+      groupId: v.groupId,
+      groupSizeCount: v.groupId ? sizeCounts.get(v.groupId) ?? null : null,
+      quantity: v.quantity,
+      piecesPerCarton: ppcByKey.get(k) ?? null,
+      // Blended across lots when one product came in at several agreed prices.
+      agreedUnitPrice: v.quantity > 0 ? v.valueUsd.div(v.quantity).toFixed(4) : '0.0000',
+      agreedValueFc: v.valueFc.toFixed(4),
+    }));
+  }
+
+  /** Owner/full employee: what one of their minis is still holding unsold. */
+  async miniUnsoldStock(ctx: ActorContext, miniUserId: string): Promise<MiniUnsoldLine[]> {
+    await this.requireEmployment(ctx.effectiveOwnerId, miniUserId);
+    return this.unsoldStock(miniUserId);
+  }
+
   async handoverPreview(ctx: ActorContext): Promise<HandoverPreview> {
     const miniId = ctx.effectiveOwnerId;
     if (!ctx.employment) {
@@ -657,28 +780,9 @@ export class MiniSettlementsService {
 
     const sold = await this.computeSoldLines(miniId, since);
 
-    // The mini's consigned-in stock, fetched once for the RETURNS section: it
-    // supplies the pieces-per-carton for every product (so returned quantities
-    // render in cartons/dozens/loose pieces) and the unsold units to return.
-    // Depleted lots (quantityRemaining = 0) are kept here so a fully-sold
-    // product still resolves its carton size.
-    const inEntries = await this.entryRepo.find({
-      where: { ownerId: miniId, source: InventorySource.CONSIGNED_IN },
-    });
-    // Identity key: sized products key by size (variantId); simple by name — so
-    // different sizes of one group don't collapse into a single row.
-    const keyOf = (variantId: string | null | undefined, productName: string) =>
-      variantId ?? productName;
-    const retLabels = await this.variantLabels(inEntries.map((e) => e.variantId));
-
-    // Resolve carton size the same way inventory.listProducts does: FIRST
-    // NON-NULL piecesPerCarton across the product's lots (older lots can be null
-    // pre-carton-size migration).
-    const ppcByKey = new Map<string, number>();
-    for (const e of inEntries) {
-      const k = keyOf(e.variantId, e.productName);
-      if (e.piecesPerCarton != null && !ppcByKey.has(k)) ppcByKey.set(k, e.piecesPerCarton);
-    }
+    // Unsold units still held — what the mini hands back. Same computation the
+    // owner's "still with them" breakdown reads.
+    const returns = await this.unsoldStock(miniId);
 
     const cashForSold = sold
       .reduce((sum, x) => sum.plus(new Decimal(x.agreedValue)), new Decimal(0))
@@ -692,27 +796,6 @@ export class MiniSettlementsService {
     const profitMadeFc = sold
       .reduce((sum, x) => sum.plus(new Decimal(x.profitFc)), new Decimal(0))
       .toFixed(4);
-
-    // Unsold units still held, grouped by product. Carton size comes from the
-    // shared ppcByProduct map (any non-null lot) so returns and sold agree.
-    const retMap = new Map<
-      string,
-      { productName: string; variantId: string | null; quantity: number }
-    >();
-    for (const e of inEntries) {
-      if (e.quantityRemaining <= 0) continue;
-      const k = keyOf(e.variantId, e.productName);
-      const cur = retMap.get(k) ?? { productName: e.productName, variantId: e.variantId ?? null, quantity: 0 };
-      cur.quantity += e.quantityRemaining;
-      retMap.set(k, cur);
-    }
-    const returns: HandoverReturnLine[] = [...retMap.entries()].map(([k, v]) => ({
-      productName: v.productName,
-      variantId: v.variantId,
-      variantLabel: v.variantId ? retLabels.get(v.variantId) ?? null : null,
-      quantity: v.quantity,
-      piecesPerCarton: ppcByKey.get(k) ?? null,
-    }));
 
     const pendingExp = await this.miniExpenseRepo.find({
       where: { miniId, settlementId: IsNull() },

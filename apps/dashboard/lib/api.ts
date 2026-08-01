@@ -353,6 +353,24 @@ export interface MiniTeamMember {
   createdAt: string;
 }
 
+/** One product a mini is still holding unsold from what they were entrusted. */
+export interface MiniUnsoldLine {
+  productName: string;
+  variantId: string | null;
+  variantLabel: string | null;
+  /** The sized product this line belongs to; null for simple products. */
+  groupId: string | null;
+  /** How many sizes the group defines in total; null for simple products. */
+  groupSizeCount: number | null;
+  quantity: number;
+  /** For a sized line this is that size's share of one carton, not a carton itself. */
+  piecesPerCarton: number | null;
+  /** Agreed price per unit the mini owes, USD. */
+  agreedUnitPrice: string;
+  /** quantity × agreed price, FC at the batch's locked rate. */
+  agreedValueFc: string;
+}
+
 /** A person on the cycle in progress — goods out but not yet handed over. */
 export interface ActiveTeamMember {
   id: string;
@@ -414,6 +432,8 @@ export const miniSettlementsApi = {
     api.patch(`/mini-settlements/${id}/approve`).then((r) => r.data),
   reject: (id: string): Promise<MiniSettlement> =>
     api.patch(`/mini-settlements/${id}/reject`).then((r) => r.data),
+  miniUnsold: (miniUserId: string): Promise<MiniUnsoldLine[]> =>
+    api.get(`/mini-settlements/mini/${miniUserId}/unsold`).then((r) => r.data),
   // The team on the cycle in progress (goods out, not yet handed over).
   miniTeam: (miniUserId: string): Promise<ActiveTeamMember[]> =>
     api.get(`/mini-settlements/mini/${miniUserId}/team`).then((r) => r.data),

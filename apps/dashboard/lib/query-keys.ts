@@ -45,6 +45,7 @@ export const QK = {
    *  invalidate all mini-activity windows at once when a handover lands. */
   miniActivityAll: ['mini-settlements', 'activity'] as const,
   miniTeam: (miniUserId: string) => ['mini-settlements', 'team', miniUserId] as const,
+  miniUnsold: (miniUserId: string) => ['mini-settlements', 'unsold', miniUserId] as const,
   miniActivity: (miniUserId: string, filters?: object) =>
     ['mini-settlements', 'activity', miniUserId, filters] as const,
   syncSignal: ['sync', 'signal'] as const,

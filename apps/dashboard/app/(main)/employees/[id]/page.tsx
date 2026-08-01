@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,6 +9,7 @@ import {
   EmploymentParty,
   MiniSettlement,
   type ActiveTeamMember,
+  type MiniUnsoldLine,
   SalaryPayment,
   SalaryPaymentStatus,
   employmentsApi,
@@ -507,6 +508,7 @@ function MiniOversight({
   // handover settled, and so on.
   const [navOffset, setNavOffset] = useState(0);
   const [giveOpen, setGiveOpen] = useState(false);
+  const [unsoldOpen, setUnsoldOpen] = useState(false);
   const [subTab, setSubTab] = useState<'sales' | 'handovers'>('sales');
   // Both activity tables paginate at 5 rows; pages reset whenever the selected
   // cycle changes (see the effect once cycleIdx is known).
@@ -693,7 +695,12 @@ function MiniOversight({
         />
         <SummaryCard label={t.employees.miniMarkup} value={money(activity?.markup ?? '0', activity?.markupFc ?? '0')} accent="#818CF8" />
         <SummaryCard label={t.employees.miniOutstanding} value={fmtLive(activity?.outstanding ?? '0')} accent="#F59E0B" />
-        <SummaryCard label={t.employees.miniStillOut} value={`${activity?.stillOutUnits ?? 0}`} />
+        <SummaryCard
+          label={t.employees.miniStillOut}
+          value={`${activity?.stillOutUnits ?? 0}`}
+          onClick={() => setUnsoldOpen(true)}
+          hint={t.employees.miniStillOutSeeItems}
+        />
       </div>
 
       <ExpenseAllowanceControl employment={employment} onChange={onEmploymentChange} />
@@ -902,6 +909,14 @@ function MiniOversight({
         )}
       </div>
       )}
+
+      <UnsoldStockDialog
+        open={unsoldOpen}
+        onClose={() => setUnsoldOpen(false)}
+        miniUserId={miniUserId}
+        miniUsername={miniUsername}
+        ppcMap={ppcMap}
+      />
 
       <SendConsignmentDialog
         open={giveOpen}
@@ -1148,6 +1163,182 @@ function ExpenseAllowanceControl({
       {!!m.error && (
         <div className="text-xs w-full" style={{ color: '#EF4444' }}>{getErrorMessage(m.error)}</div>
       )}
+    </div>
+  );
+}
+
+/**
+ * What the mini is still holding, itemised — the breakdown behind the
+ * "still with them" count, which on its own says how many pieces are out but
+ * not which goods they are.
+ *
+ * Quantities render in cartons/dozens/pieces like everywhere else, and the
+ * value is what the mini owes for them at the price each batch was consigned
+ * at — so it reconciles with "Owes you" rather than with retail prices.
+ */
+/**
+ * Whole cartons assemblable from what is left of a sized product. A carton holds
+ * one of every size in its own proportion, so it is gated by the scarcest size —
+ * and if any size is completely gone, no full carton can be made at all.
+ */
+function fullCartons(lines: MiniUnsoldLine[]): number {
+  const expectedSizes = lines[0]?.groupSizeCount ?? null;
+  if (expectedSizes != null && lines.length < expectedSizes) return 0;
+  const gating = lines.filter((l) => (l.piecesPerCarton ?? 0) > 0);
+  if (gating.length === 0) return 0;
+  return Math.min(...gating.map((l) => Math.floor(l.quantity / (l.piecesPerCarton as number))));
+}
+
+function UnsoldStockDialog({
+  open,
+  onClose,
+  miniUserId,
+  miniUsername,
+  ppcMap,
+}: {
+  open: boolean;
+  onClose: () => void;
+  miniUserId: string;
+  miniUsername: string;
+  ppcMap: Map<string, number | null>;
+}) {
+  const t = useT();
+  const displayCurrency = useCurrencyStore((s) => s.displayCurrency);
+  const fmtLive = useFormatCurrency();
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: QK.miniUnsold(miniUserId),
+    queryFn: () => miniSettlementsApi.miniUnsold(miniUserId),
+    enabled: open,
+    staleTime: 15_000,
+  });
+  const rows = (data as MiniUnsoldLine[] | undefined) ?? [];
+
+  if (!open) return null;
+
+  // Simple products break into cartons/dozens/pieces on their own. Sized ones
+  // can't: a carton is one of EVERY size, so a single size's leftovers say
+  // nothing about whole cartons — they group under the product instead.
+  const simpleLines = rows.filter((r) => !r.variantLabel);
+  const grouped = new Map<string, MiniUnsoldLine[]>();
+  for (const r of rows) {
+    if (!r.variantLabel) continue;
+    const key = r.groupId ?? r.productName;
+    grouped.set(key, [...(grouped.get(key) ?? []), r]);
+  }
+  const sizedGroups = [...grouped.entries()];
+
+  const totalUnits = rows.reduce((sum, r) => sum + r.quantity, 0);
+  const totalUsd = rows.reduce((sum, r) => sum + parseFloat(r.agreedUnitPrice) * r.quantity, 0);
+  const totalFc = rows.reduce((sum, r) => sum + (parseFloat(r.agreedValueFc) || 0), 0);
+  // FC figures come back already converted at each batch's locked rate, so show
+  // the server's number rather than re-converting at today's rate.
+  const money = (usd: number, fc: number) =>
+    displayCurrency === 'FC'
+      ? new Intl.NumberFormat('fr-CD').format(Math.trunc(fc)) + ' FC'
+      : fmtLive(usd.toFixed(4));
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{
+        background: 'rgba(0,0,0,0.4)',
+        // Blur the page behind so the itemised list is what the eye settles on.
+        // -webkit- prefix included for Safari, which still needs it.
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+      }}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl p-6 shadow-xl overflow-y-auto"
+        style={{ background: 'var(--card)', maxHeight: '90vh' }}
+      >
+        <div className="flex items-start justify-between mb-1">
+          <h2 className="text-lg font-bold">{t.employees.miniUnsoldTitle}</h2>
+          <button onClick={onClose} style={{ color: 'var(--muted)' }}>✕</button>
+        </div>
+        <p className="text-xs opacity-60 mb-4">{t.employees.miniUnsoldSub(miniUsername)}</p>
+
+        {isLoading ? (
+          <div className="text-sm opacity-60 p-4 text-center">{t.employees.loading}</div>
+        ) : error ? (
+          <div className="text-sm p-4 text-center" style={{ color: '#EF4444' }}>{getErrorMessage(error)}</div>
+        ) : rows.length === 0 ? (
+          <div className="text-sm opacity-60 p-4 text-center rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+            {t.employees.miniUnsoldEmpty}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs opacity-60 text-left">
+                  <th className="py-1.5 pr-3 font-medium">{t.employees.miniColProduct}</th>
+                  <th className="py-1.5 pr-3 font-medium text-right">{t.employees.miniUnsoldQty}</th>
+                  <th className="py-1.5 font-medium text-right">{t.employees.miniColValue}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {simpleLines.map((r) => (
+                  <tr key={r.productName} className="border-t" style={{ borderColor: 'rgba(127,127,127,0.1)' }}>
+                    <td className="py-1.5 pr-3 capitalize">{r.productName}</td>
+                    <td className="py-1.5 pr-3 text-right whitespace-nowrap">
+                      {formatBreakdown(
+                        breakdownQuantity(r.quantity, r.piecesPerCarton ?? ppcMap.get(r.productName) ?? null),
+                      )}
+                    </td>
+                    <td className="py-1.5 text-right opacity-80 whitespace-nowrap">
+                      {money(parseFloat(r.agreedUnitPrice) * r.quantity, parseFloat(r.agreedValueFc) || 0)}
+                    </td>
+                  </tr>
+                ))}
+
+                {/* Sized products: one heading per product carrying the whole
+                    cartons left, then a line per size in its own pieces. */}
+                {sizedGroups.map(([groupKey, lines]) => {
+                  const groupUsd = lines.reduce(
+                    (sum, l) => sum + parseFloat(l.agreedUnitPrice) * l.quantity,
+                    0,
+                  );
+                  const groupFc = lines.reduce((sum, l) => sum + (parseFloat(l.agreedValueFc) || 0), 0);
+                  return (
+                    <Fragment key={groupKey}>
+                      <tr className="border-t" style={{ borderColor: 'rgba(127,127,127,0.1)' }}>
+                        <td className="py-1.5 pr-3 capitalize font-medium">{lines[0].productName}</td>
+                        <td className="py-1.5 pr-3 text-right whitespace-nowrap font-medium">
+                          {t.employees.miniUnsoldCartons(fullCartons(lines))}
+                        </td>
+                        <td className="py-1.5 text-right opacity-80 whitespace-nowrap font-medium">
+                          {money(groupUsd, groupFc)}
+                        </td>
+                      </tr>
+                      {lines.map((l) => (
+                        <tr key={l.variantId ?? l.variantLabel}>
+                          <td className="py-1 pr-3 pl-4 capitalize opacity-70">· {l.variantLabel}</td>
+                          <td className="py-1 pr-3 text-right whitespace-nowrap opacity-70">
+                            {t.employees.miniUnsoldPieces(l.quantity)}
+                          </td>
+                          <td className="py-1 text-right opacity-60 whitespace-nowrap">
+                            {money(parseFloat(l.agreedUnitPrice) * l.quantity, parseFloat(l.agreedValueFc) || 0)}
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
+                <tr className="border-t font-semibold" style={{ borderColor: 'rgba(127,127,127,0.3)' }}>
+                  <td className="py-2 pr-3">{t.employees.miniUnsoldTotal}</td>
+                  <td className="py-2 pr-3 text-right whitespace-nowrap">
+                    {t.employees.miniUnsoldPieces(totalUnits)}
+                  </td>
+                  <td className="py-2 text-right whitespace-nowrap">{money(totalUsd, totalFc)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <button onClick={onClose} className="btn btn-secondary w-full mt-5">{t.common.close}</button>
+      </div>
     </div>
   );
 }
@@ -1451,14 +1642,44 @@ function Pager({
   );
 }
 
-function SummaryCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
-  return (
-    <div className="p-3 rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+function SummaryCard({
+  label,
+  value,
+  accent,
+  onClick,
+  hint,
+}: {
+  label: string;
+  value: string;
+  accent?: string;
+  /** When set the card becomes a button — used where a figure has a breakdown behind it. */
+  onClick?: () => void;
+  hint?: string;
+}) {
+  const body = (
+    <>
       <div className="text-xs opacity-60 mb-1">{label}</div>
       <div className="text-lg font-semibold" style={{ color: accent }}>
         {value}
       </div>
-    </div>
+      {hint && <div className="text-[11px] mt-0.5" style={{ color: '#818CF8' }}>{hint}</div>}
+    </>
+  );
+  if (!onClick) {
+    return (
+      <div className="p-3 rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+        {body}
+      </div>
+    );
+  }
+  return (
+    <button
+      onClick={onClick}
+      className="p-3 rounded-lg border text-left w-full transition-colors hover:bg-[rgba(129,140,248,0.06)]"
+      style={{ borderColor: 'rgba(129,140,248,0.4)' }}
+    >
+      {body}
+    </button>
   );
 }
 

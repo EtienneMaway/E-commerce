@@ -204,6 +204,21 @@ export class MiniSettlementsController {
     return this.service.miniActiveTeam(ctx, miniUserId);
   }
 
+  @Get('mini/:miniUserId/unsold')
+  @ApiOperation({
+    summary: "What a mini is still holding unsold (owner/full employee)",
+    description:
+      'Per product (and per size), the units not yet sold from what they were entrusted — with the agreed value at each batch\'s locked rate. The detail behind the "still with them" count.',
+  })
+  @ApiResponse({ status: 200, description: 'MiniUnsoldLine[]' })
+  @ApiResponse({ status: 403, description: 'Not your mini employee' })
+  miniUnsold(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('miniUserId', ParseUUIDPipe) miniUserId: string,
+  ) {
+    return this.service.miniUnsoldStock(ctx, miniUserId);
+  }
+
   @Post('mini/:miniUserId/team')
   @ApiOperation({
     summary: 'Add someone to a mini\'s cycle in progress (owner/full employee)',
