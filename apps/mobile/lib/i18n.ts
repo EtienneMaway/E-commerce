@@ -137,6 +137,11 @@ const en = {
     handoverSoldSection: 'What you sold',
     handoverReturnsSection: 'Returning to owner',
     teamSection: 'Team with the goods',
+    expenseAllowanceTotal: 'To spend',
+    expenseAllowanceLeft: 'Left to spend',
+    expenseAllowanceHint: (pct: string, sold: string) =>
+      `${pct}% of the ${sold} you have sold this round. It grows as you sell more.`,
+    expenseOverBudget: (left: string) => `That is more than the ${left} you have left to spend.`,
     teamNoPhone: 'No phone',
     handoverSoldQty: (n: number) => `${n} sold`,
     handoverRevenue: 'Revenue',
@@ -1030,6 +1035,11 @@ const fr: Translations = {
     handoverSoldSection: 'Ce que vous avez vendu',
     handoverReturnsSection: 'Retour au propriétaire',
     teamSection: 'Équipe avec les marchandises',
+    expenseAllowanceTotal: 'À dépenser',
+    expenseAllowanceLeft: 'Reste à dépenser',
+    expenseAllowanceHint: (pct: string, sold: string) =>
+      `${pct} % des ${sold} que vous avez vendus ce tour. Ce montant augmente à mesure que vous vendez.`,
+    expenseOverBudget: (left: string) => `C'est plus que les ${left} qu'il vous reste à dépenser.`,
     teamNoPhone: 'Sans téléphone',
     handoverSoldQty: (n: number) => `${n} vendu(s)`,
     handoverRevenue: 'Recette',

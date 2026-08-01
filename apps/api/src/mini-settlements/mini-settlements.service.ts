@@ -106,6 +106,28 @@ export interface ActiveTeamMember {
   source: 'SELF' | 'GIVE' | 'MANUAL';
 }
 
+/**
+ * How much a mini may still spend on expenses this cycle. The employer sets a
+ * percentage per employment; it applies to what the mini has SOLD so far, so the
+ * ceiling grows as they sell rather than being a flat budget against the value
+ * of the goods they were handed.
+ *
+ * All figures are FC — the currency the mini actually records expenses in —
+ * converted at each batch's locked rate like every other mini-facing total.
+ */
+export interface MiniExpenseAllowance {
+  /** The employer's percentage — always set (2% by default). */
+  pct: string;
+  /** Agreed value of what they have sold since their last approved handover. */
+  soldFc: string;
+  /** pct% of soldFc — the most claimable this cycle. */
+  allowanceFc: string;
+  /** Already claimed on the open cycle (pending expenses). */
+  spentFc: string;
+  /** What is left of the allowance, floored at 0. */
+  remainingFc: string;
+}
+
 export interface HandoverPreview {
   /** Products sold since the last handover — what the cash is owed for. */
   sold: HandoverSoldLine[];
@@ -238,6 +260,9 @@ export class MiniSettlementsService {
       throw new ForbiddenException('Only a mini employee can hand over a settlement');
     }
     const ownerId = ctx.employment.employerId;
+    // Read the employment fresh rather than trusting the request-scoped copy —
+    // the sealed allowance below must be the rate in force right now.
+    const employment = await this.requireEmployment(ownerId, miniId);
 
     // One open handover at a time. Stock is only deducted on approval, so a
     // second PENDING handover would re-snapshot the same undeducted
@@ -316,6 +341,10 @@ export class MiniSettlementsService {
       cashAmount: cash.toFixed(4),
       cashAmountFc: dto.cashAmountFc ? new Decimal(dto.cashAmountFc).toFixed(4) : null,
       soldLines: soldSnapshot.length > 0 ? soldSnapshot : null,
+      // Seal the expense ceiling this cycle ran under. The employer may change
+      // the employment's rate at any time; an already-submitted handover must
+      // keep showing the rate it was actually governed by.
+      expenseAllowancePct: employment.expenseAllowancePct,
       note: dto.note ?? null,
       items,
     });
@@ -884,6 +913,48 @@ export class MiniSettlementsService {
     await this.miniTeamRepo.remove(member);
   }
 
+  // ─── Mini employee: the expense ceiling for the open cycle ────────────────
+
+  /**
+   * The mini's expense budget for the cycle in progress. Computed off the agreed
+   * value of what they have sold since their last approved handover — the same
+   * boundary and the same FC-at-locked-rate arithmetic the handover itself uses,
+   * so what the app shows here reconciles with the cash figures.
+   */
+  async expenseAllowance(ctx: ActorContext): Promise<MiniExpenseAllowance> {
+    const miniId = ctx.effectiveOwnerId;
+    if (!ctx.employment) {
+      throw new ForbiddenException('Only a mini employee has an expense allowance');
+    }
+    const employment = await this.requireEmployment(ctx.employment.employerId, miniId);
+
+    const last = await this.settlementRepo.findOne({
+      where: { miniId, status: MiniSettlementStatus.APPROVED },
+      order: { approvedAt: 'DESC' },
+    });
+    const sold = await this.computeSoldLines(miniId, last?.approvedAt ?? null);
+    const soldFc = sold.reduce(
+      (sum, l) => sum.plus(new Decimal(l.agreedValueFc)),
+      new Decimal(0),
+    );
+
+    const pending = await this.miniExpenseRepo.find({
+      where: { miniId, settlementId: IsNull() },
+    });
+    const spentFc = pending.reduce((sum, e) => sum.plus(new Decimal(e.amount)), new Decimal(0));
+
+    const pct = employment.expenseAllowancePct;
+    const allowanceFc = soldFc.mul(new Decimal(pct)).div(100);
+    const remainingFc = Decimal.max(allowanceFc.minus(spentFc), 0);
+    return {
+      pct: new Decimal(pct).toFixed(2),
+      soldFc: soldFc.toFixed(4),
+      allowanceFc: allowanceFc.toFixed(4),
+      spentFc: spentFc.toFixed(4),
+      remainingFc: remainingFc.toFixed(4),
+    };
+  }
+
   // ─── Mini employee: record / list / remove pending expenses (FC) ───────────
 
   async createExpense(ctx: ActorContext, dto: CreateMiniExpenseDto): Promise<MiniExpense> {
@@ -916,6 +987,22 @@ export class MiniSettlementsService {
     const amount = new Decimal(dto.amount);
     if (amount.lte(0)) {
       throw new BadRequestException('Amount must be greater than zero');
+    }
+
+    // Spending ceiling: a share of what they have SOLD this cycle, not of what
+    // they were handed — so the budget grows as they sell. Checked against the
+    // running total of this cycle's claims, not just this one expense.
+    const allowance = await this.expenseAllowance(ctx);
+    const remaining = new Decimal(allowance.remainingFc);
+    if (amount.gt(remaining)) {
+      const fc = (v: Decimal | string) =>
+        new Intl.NumberFormat('fr-CD').format(Math.trunc(Number(v)));
+      throw new BadRequestException(
+        // toFixed() with no argument drops trailing zeros: "5", not "5.00".
+        `Expenses are capped at ${new Decimal(allowance.pct).toFixed()}% of what you have sold. You have sold ` +
+          `${fc(allowance.soldFc)} FC this round, giving you ${fc(allowance.allowanceFc)} FC ` +
+          `to spend — ${fc(allowance.spentFc)} FC already claimed, so ${fc(remaining)} FC left.`,
+      );
     }
 
     const expense = this.miniExpenseRepo.create({

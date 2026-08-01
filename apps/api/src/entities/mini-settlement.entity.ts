@@ -94,6 +94,14 @@ export class MiniSettlement {
   @Column({ name: 'sold_lines', type: 'jsonb', nullable: true })
   soldLines: MiniSettlementSoldLine[] | null;
 
+  @ApiPropertyOptional({
+    example: '2.00',
+    description:
+      'The expense ceiling percentage in force when this handover was submitted, sealed so a later change to the employment never rewrites what this handover was governed by. Null on handovers predating the field.',
+  })
+  @Column({ name: 'expense_allowance_pct', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  expenseAllowancePct: string | null;
+
   @ApiPropertyOptional()
   @Column({ type: 'varchar', nullable: true })
   note: string | null;

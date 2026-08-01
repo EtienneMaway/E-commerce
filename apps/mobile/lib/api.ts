@@ -352,11 +352,27 @@ export const miniSettlementsApi = {
     api.get('/mini-settlements/expenses', { params: { scope: 'all' } }).then((r) => r.data),
   deleteExpense: (id: string): Promise<void> =>
     api.delete(`/mini-settlements/expenses/${id}`).then((r) => r.data),
+  /** How much of my sales I may still spend on expenses this round. */
+  expenseAllowance: (): Promise<MiniExpenseAllowance> =>
+    api.get('/mini-settlements/expense-allowance').then((r) => r.data),
   /** Who is out with the goods I'm holding. Read-only — the employer maintains
    *  this list on the dashboard. */
   myTeam: (): Promise<ActiveTeamMember[]> =>
     api.get('/mini-settlements/team').then((r) => r.data),
 };
+
+/**
+ * The employer caps expenses at a share of what the mini has SOLD this round, so
+ * the budget grows as they sell. All figures FC. The cap always applies.
+ */
+export interface MiniExpenseAllowance {
+  /** Always set — 2% by default until the employer changes it. */
+  pct: string;
+  soldFc: string;
+  allowanceFc: string;
+  spentFc: string;
+  remainingFc: string;
+}
 
 export interface ActiveTeamMember {
   id: string;

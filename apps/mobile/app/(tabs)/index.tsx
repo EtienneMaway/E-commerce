@@ -3,7 +3,7 @@ import { ScrollView, View, Text, RefreshControl, TouchableOpacity, Pressable, Al
 import Constants from 'expo-constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { dashboardApi, inventoryApi, salaryPaymentsApi, currencyApi, type SalaryPayment, type DashboardHome } from '../../lib/api';
+import { dashboardApi, inventoryApi, salaryPaymentsApi, currencyApi, miniSettlementsApi, type SalaryPayment, type DashboardHome } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -31,6 +31,8 @@ interface ProductSummary {
   latestUnitCost: string;
   latestSellingPrice: string;
   totalAvailable: number;
+  /** Minis: the consignment rate this product's stock is locked at. */
+  usdToFcRateSnapshot?: string | null;
 }
 
 export default function DashboardScreen() {
@@ -144,9 +146,15 @@ export default function DashboardScreen() {
               // set on the API and doesn't change intraday, so locking it in
               // for the session keeps every FC display correct without
               // re-querying.
-              const [products, rate] = await Promise.all([
+              // Minis also carry their expense ceiling into the session, so
+              // offline expenses can be checked on the spot instead of piling
+              // up to be rejected when the queue drains.
+              const [products, rate, allowance] = await Promise.all([
                 inventoryApi.listProducts() as Promise<ProductSummary[]>,
                 currencyApi.getRate(),
+                isMini
+                  ? miniSettlementsApi.expenseAllowance().catch(() => null)
+                  : Promise.resolve(null),
               ]);
               enableOfflineMode(
                 products
@@ -159,8 +167,12 @@ export default function DashboardScreen() {
                     latestSellingPrice: p.latestSellingPrice,
                     latestCartonPrice: p.latestCartonPrice,
                     category: p.category,
+                    usdToFcRateSnapshot: p.usdToFcRateSnapshot,
                   })),
                 rate.usdToFcRate,
+                allowance
+                  ? { pct: allowance.pct, soldFc: allowance.soldFc, spentFc: allowance.spentFc }
+                  : null,
               );
             } catch {
               Alert.alert(t.common.error, t.home.preparingOffline);
@@ -178,8 +190,10 @@ export default function DashboardScreen() {
     qc.invalidateQueries({ queryKey: QK.dashboardAll });
     qc.invalidateQueries({ queryKey: QK.inventory() });
     qc.invalidateQueries({ queryKey: QK.salesHistory() });
-    // Minis: their home stats depend on synced sales + expenses.
+    // Minis: their home stats and expense ceiling both depend on synced sales
+    // and expenses, so both are stale the moment the queue drains.
     qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] });
+    qc.invalidateQueries({ queryKey: QK.miniExpenseAllowance });
 
     if (result.failed === 0) {
       // Nothing to report when there was nothing to do (e.g. a no-op restart).

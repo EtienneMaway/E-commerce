@@ -339,6 +339,9 @@ export interface MiniSettlement {
   /** Who was out selling with the mini during the cycle this handover closes.
    *  Materialised on approval from the cycle's consignments, then editable here. */
   team?: MiniTeamMember[];
+  /** Expense ceiling sealed when this handover was submitted — a later change to
+   *  the employment never rewrites it. Null on handovers predating the field. */
+  expenseAllowancePct?: string | null;
   mini?: EmploymentParty;
   owner?: EmploymentParty;
 }
@@ -690,6 +693,8 @@ export interface Employment {
   terminationRequestedBy: string | null;
   monthlyPay: string | null;
   payrollActive: boolean;
+  /** Mini employees: share of their sales claimable as expenses. Always set (2% by default). */
+  expenseAllowancePct?: string;
   acceptedAt: string | null;
   terminatedAt: string | null;
   createdAt: string;
@@ -763,6 +768,8 @@ export const employmentsApi = {
     api.patch(`/employments/${id}/reject-termination`).then((r) => r.data),
   setSalary: (id: string, monthlyPay: number | null): Promise<Employment> =>
     api.patch(`/employments/${id}/salary`, { monthlyPay }).then((r) => r.data),
+  setExpenseAllowance: (id: string, expenseAllowancePct: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/expense-allowance`, { expenseAllowancePct }).then((r) => r.data),
   setPayrollActive: (id: string, active: boolean): Promise<Employment> =>
     api.patch(`/employments/${id}/payroll-active`, { active }).then((r) => r.data),
   createExternalEmployee: (body: {

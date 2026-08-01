@@ -21,6 +21,7 @@ import { CreateMiniEmployeeDto } from './dto/create-mini-employee.dto';
 import { EmploymentFilterDto, EmploymentRoleFilter } from './dto/employment-filter.dto';
 import { SetSalaryDto } from './dto/set-salary.dto';
 import { SetPayrollActiveDto } from './dto/set-payroll-active.dto';
+import { SetExpenseAllowanceDto } from './dto/set-expense-allowance.dto';
 import { CreateExternalEmployeeDto } from './dto/create-external-employee.dto';
 import { UpdateEmployeeProfileDto } from './dto/update-employee-profile.dto';
 
@@ -359,6 +360,32 @@ export class EmploymentsService {
       throw new BadRequestException('Cannot change payroll status on a closed employment');
     }
     employment.payrollActive = dto.active;
+    return this.employmentRepo.save(employment);
+  }
+
+  /**
+   * Employer sets the share of a mini's sales they may spend on expenses. Always
+   * in force (2% by default), so there is no "clear it" — an employer who wants
+   * a mini effectively unrestricted sets a high percentage. Only meaningful for
+   * SALES_ONLY employments; a full employee spends on the owner's books directly.
+   */
+  async setExpenseAllowance(
+    userId: string,
+    id: string,
+    dto: SetExpenseAllowanceDto,
+  ): Promise<Employment> {
+    const employment = await this.findOne(userId, id);
+    if (employment.employerId !== userId) {
+      throw new ForbiddenException('Only the employer can set an expense allowance');
+    }
+    if (employment.tier !== EmploymentTier.SALES_ONLY) {
+      throw new BadRequestException('Expense allowances apply to mini employees only');
+    }
+    const value = Number(dto.expenseAllowancePct);
+    if (!Number.isFinite(value) || value < 0 || value > 100) {
+      throw new BadRequestException('Allowance must be between 0 and 100 percent');
+    }
+    employment.expenseAllowancePct = dto.expenseAllowancePct;
     return this.employmentRepo.save(employment);
   }
 

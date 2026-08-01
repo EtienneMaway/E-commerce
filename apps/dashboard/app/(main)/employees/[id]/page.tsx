@@ -200,6 +200,8 @@ export default function EmployeePayrollPage() {
           miniUserId={employee.id}
           miniUsername={employee.username}
           canGive={!isClosed}
+          employment={employment}
+          onEmploymentChange={invalidate}
         />
       )}
 
@@ -488,10 +490,14 @@ function MiniOversight({
   miniUserId,
   miniUsername,
   canGive,
+  employment,
+  onEmploymentChange,
 }: {
   miniUserId: string;
   miniUsername: string;
   canGive: boolean;
+  employment: Employment;
+  onEmploymentChange: () => void;
 }) {
   const t = useT();
   const qc = useQueryClient();
@@ -689,6 +695,8 @@ function MiniOversight({
         <SummaryCard label={t.employees.miniOutstanding} value={fmtLive(activity?.outstanding ?? '0')} accent="#F59E0B" />
         <SummaryCard label={t.employees.miniStillOut} value={`${activity?.stillOutUnits ?? 0}`} />
       </div>
+
+      <ExpenseAllowanceControl employment={employment} onChange={onEmploymentChange} />
 
       {/* Handover-cycle navigator — steps the whole activity view through one
           settlement window at a time (previous = older cycle, next = newer). */}
@@ -991,6 +999,13 @@ function HandoverRow({ handover, onChange, liveRate, ppcMap }: { handover: MiniS
             <div className="text-xs mt-1.5">
               <span className="opacity-60">{t.employees.miniHoExpenses}: </span>
               <span className="font-medium" style={{ color: '#EF4444' }}>{fcStr(expensesFc)}</span>
+              {/* The rate sealed at submission — later changes to the employment
+                  must not rewrite what this handover was governed by. */}
+              {handover.expenseAllowancePct != null && (
+                <span className="opacity-60">
+                  {' '}· {t.employees.miniHoAllowanceAt(String(parseFloat(handover.expenseAllowancePct)))}
+                </span>
+              )}
               <span className="opacity-60"> · {t.employees.miniHoExpensesHint}</span>
               <ul className="mt-0.5 ml-1 space-y-0.5">
                 {expenses.map((e) => (
@@ -1048,6 +1063,90 @@ function HandoverRow({ handover, onChange, liveRate, ppcMap }: { handover: MiniS
           <span className="text-xs opacity-60">{t.employees.miniNetPay}:</span>
           <span className="font-bold" style={{ color: '#10B981' }}>{fcStr(netPayFc)}</span>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The share of their own sales a mini may claim back as expenses. Deliberately a
+ * percentage of what they have SOLD this cycle rather than a flat budget or a
+ * share of what they were handed: the money to reimburse from only exists once
+ * goods turn into cash, so the ceiling should climb with sales.
+ *
+ * Blank = no ceiling, which is what every employment starts as.
+ */
+function ExpenseAllowanceControl({
+  employment,
+  onChange,
+}: {
+  employment: Employment;
+  onChange: () => void;
+}) {
+  const t = useT();
+  const [editing, setEditing] = useState(false);
+  const [pct, setPct] = useState(employment.expenseAllowancePct ?? '2');
+
+  const m = useMutation({
+    mutationFn: () => employmentsApi.setExpenseAllowance(employment.id, pct.trim()),
+    onSuccess: () => {
+      setEditing(false);
+      onChange();
+    },
+  });
+
+  // Trailing zeros off: "5", not "5.00". Always set, defaulting to 2%.
+  const current = employment.expenseAllowancePct ?? '2';
+  const shown = String(parseFloat(current));
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-4 p-3 rounded-lg border text-sm"
+      style={{ borderColor: 'rgba(127,127,127,0.15)' }}
+    >
+      <span className="text-xs opacity-60">{t.employees.miniAllowanceLabel}</span>
+      {!editing ? (
+        <>
+          <span className="font-semibold">{shown}%</span>
+          <span className="text-xs opacity-60">{t.employees.miniAllowanceHint}</span>
+          <button
+            onClick={() => { setPct(current); setEditing(true); }}
+            className="text-xs font-medium ml-auto"
+            style={{ color: '#818CF8' }}
+          >
+            {t.employees.miniAllowanceEdit}
+          </button>
+        </>
+      ) : (
+        <>
+          <input
+            value={pct}
+            onChange={(e) => setPct(e.target.value.replace(/[^0-9.]/g, ''))}
+            placeholder={t.employees.miniAllowancePlaceholder}
+            autoFocus
+            className="input"
+            style={{ width: 80, padding: '4px 8px', fontSize: 12 }}
+          />
+          <span className="text-xs opacity-60">%</span>
+          <button
+            onClick={() => m.mutate()}
+            disabled={m.isPending || pct.trim() === ''}
+            className="px-2 py-1 rounded-md text-xs font-medium text-white disabled:opacity-50"
+            style={{ background: '#10B981' }}
+          >
+            {m.isPending ? t.employees.miniApproving : t.employees.miniAllowanceSave}
+          </button>
+          <button
+            onClick={() => { setEditing(false); setPct(current); }}
+            className="px-2 py-1 rounded-md text-xs opacity-60"
+          >
+            {t.common.cancel}
+          </button>
+          <span className="text-xs opacity-60 w-full">{t.employees.miniAllowanceRangeHint}</span>
+        </>
+      )}
+      {!!m.error && (
+        <div className="text-xs w-full" style={{ color: '#EF4444' }}>{getErrorMessage(m.error)}</div>
       )}
     </div>
   );

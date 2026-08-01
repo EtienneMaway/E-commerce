@@ -14,6 +14,28 @@ export interface CachedProduct {
   latestSellingPrice?: string;
   latestCartonPrice?: string | null;
   category?: string | null;
+  /**
+   * The consignment rate this product's stock was locked at (minis only).
+   * Cached so an offline expense allowance converts each sale to FC exactly the
+   * way the server will when the queue drains, instead of at the session rate.
+   */
+  usdToFcRateSnapshot?: string | null;
+}
+
+/**
+ * The mini's expense ceiling as the server last computed it, frozen when going
+ * offline. `soldFc`/`spentFc` cover everything already synced; the app adds the
+ * offline queue on top (see `lib/mini-allowance.ts`) so the budget keeps growing
+ * with offline sales and expenses are refused on the spot rather than piling up
+ * to be rejected at sync time.
+ */
+export interface AllowanceSnapshot {
+  /** Employer's percentage; null = no ceiling was set. */
+  pct: string | null;
+  /** Agreed value sold this cycle, FC, at the point of going offline. */
+  soldFc: string;
+  /** Expenses already claimed this cycle, FC, at the point of going offline. */
+  spentFc: string;
 }
 
 export interface PendingSale {
@@ -78,8 +100,14 @@ interface OfflineState {
   // app does while offline reads from here, never from the (failing) currency
   // query that would otherwise fall back to '1' and silently corrupt prices.
   snapshotRate: string | null;
+  /** Mini employees only — null for everyone else, and when no cap is set. */
+  allowanceSnapshot: AllowanceSnapshot | null;
 
-  enableOfflineMode: (products: CachedProduct[], rate: string) => void;
+  enableOfflineMode: (
+    products: CachedProduct[],
+    rate: string,
+    allowance?: AllowanceSnapshot | null,
+  ) => void;
   disableOfflineMode: () => void;
   recordOfflineSale: (
     productName: string,
@@ -135,13 +163,15 @@ export const useOfflineStore = create<OfflineState>()(
       lastSyncedAt: null,
       snapshotTakenAt: null,
       snapshotRate: null,
+      allowanceSnapshot: null,
 
-      enableOfflineMode: (products, rate) =>
+      enableOfflineMode: (products, rate, allowance = null) =>
         set({
           isOffline: true,
           cachedProducts: products,
           snapshotTakenAt: new Date().toISOString(),
           snapshotRate: rate,
+          allowanceSnapshot: allowance,
         }),
 
       disableOfflineMode: () => set({ isOffline: false }),

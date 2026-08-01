@@ -1,9 +1,15 @@
 import { useState } from 'react';
 import { Modal, ScrollView, View, Text, TouchableOpacity, Alert } from 'react-native';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { miniSettlementsApi, MINI_EXPENSE_CATEGORIES } from '../../lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  miniSettlementsApi,
+  MINI_EXPENSE_CATEGORIES,
+  type MiniExpenseAllowance,
+} from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { formatFcValue } from '../../lib/currency';
 import { useOfflineStore } from '../../store/offline.store';
+import { computeOfflineAllowance } from '../../lib/mini-allowance';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { getErrorMessage } from '../../lib/utils';
@@ -25,9 +31,38 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
   const qc = useQueryClient();
   const isOffline = useOfflineStore((s) => s.isOffline);
   const recordOfflineExpense = useOfflineStore((s) => s.recordOfflineExpense);
+  const offline = useOfflineStore();
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<string>('TRANSPORT');
   const [description, setDescription] = useState('');
+
+  // What the employer still lets them spend this round — a share of what they
+  // have sold, so it climbs as they sell. The API enforces it; showing it here
+  // means they find out before typing an amount, not after submitting.
+  const { data: allowanceData } = useQuery({
+    queryKey: QK.miniExpenseAllowance,
+    queryFn: miniSettlementsApi.expenseAllowance,
+    enabled: visible && !isOffline,
+    staleTime: 10_000,
+  });
+  // Offline the same ceiling still applies, recomputed from the snapshot taken
+  // at go-offline plus the queue since — offline sales raise the budget, offline
+  // expenses consume it.
+  const offlineAllowance = isOffline
+    ? computeOfflineAllowance({
+        snapshot: offline.allowanceSnapshot,
+        cachedProducts: offline.cachedProducts,
+        pendingSales: offline.pendingSales,
+        pendingExpenses: offline.pendingExpenses,
+        snapshotRate: offline.snapshotRate,
+      })
+    : null;
+  const allowance = isOffline
+    ? offlineAllowance ?? undefined
+    : (allowanceData as MiniExpenseAllowance | undefined);
+  const remainingFc = allowance ? parseFloat(allowance.remainingFc) : null;
+  const typed = parseInt(amount, 10) || 0;
+  const overBudget = remainingFc !== null && typed > remainingFc;
 
   const reset = () => {
     setAmount('');
@@ -47,6 +82,7 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
       qc.invalidateQueries({ queryKey: QK.miniExpensesAll });
       qc.invalidateQueries({ queryKey: ['mini-settlements', 'handover-preview'] });
       qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] });
+      qc.invalidateQueries({ queryKey: QK.miniExpenseAllowance });
       reset();
       onClose();
     },
@@ -56,6 +92,12 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
   const handleSubmit = () => {
     if (!(parseInt(amount, 10) > 0)) {
       Alert.alert(t.common.error, t.miniEmployee.expenseInvalidAmount);
+      return;
+    }
+    // The ceiling is enforced offline too, so an expense that would break it is
+    // refused now rather than queueing up to fail when the queue drains.
+    if (overBudget) {
+      Alert.alert(t.common.error, t.miniEmployee.expenseOverBudget(formatFcValue(remainingFc ?? 0)));
       return;
     }
     // Offline → queue for sync; online → submit now.
@@ -79,6 +121,25 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
           </TouchableOpacity>
         </View>
         <Text className="text-muted dark:text-slate-500 text-sm mb-5">{t.miniEmployee.expenseSubtitle}</Text>
+
+        {allowance && (
+          <View className="bg-primary/10 border border-primary/30 rounded-2xl px-4 py-3 mb-4">
+            <View className="flex-row justify-between">
+              <Text className="text-muted dark:text-slate-400 text-sm">
+                {t.miniEmployee.expenseAllowanceLeft}
+              </Text>
+              <Text className="text-text dark:text-slate-100 font-bold">
+                {formatFcValue(allowance.remainingFc)}
+              </Text>
+            </View>
+            <Text className="text-muted dark:text-slate-500 text-xs mt-1">
+              {t.miniEmployee.expenseAllowanceHint(
+                allowance.pct,
+                formatFcValue(allowance.soldFc),
+              )}
+            </Text>
+          </View>
+        )}
 
         <Input
           label={t.miniEmployee.expenseAmount}
@@ -110,7 +171,19 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
           placeholder={t.miniEmployee.expenseNotePlaceholder}
         />
 
-        <Button label={t.miniEmployee.expenseSubmit} onPress={handleSubmit} loading={isPending} className="mt-3" />
+        {overBudget && (
+          <Text className="text-danger text-xs mt-2">
+            {t.miniEmployee.expenseOverBudget(formatFcValue(remainingFc ?? 0))}
+          </Text>
+        )}
+
+        <Button
+          label={t.miniEmployee.expenseSubmit}
+          onPress={handleSubmit}
+          loading={isPending}
+          disabled={overBudget}
+          className="mt-3"
+        />
       </ScrollView>
     </Modal>
   );

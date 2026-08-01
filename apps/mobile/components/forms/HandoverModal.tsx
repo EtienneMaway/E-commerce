@@ -60,6 +60,7 @@ export function HandoverModal({ visible, onClose }: Props) {
       qc.invalidateQueries({ queryKey: ['mini-settlements', 'handover-preview'] });
       qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] });
       qc.invalidateQueries({ queryKey: QK.miniExpenses });
+      qc.invalidateQueries({ queryKey: QK.miniExpenseAllowance });
     },
     onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
   });

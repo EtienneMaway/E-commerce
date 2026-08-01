@@ -9,13 +9,19 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { miniSettlementsApi, type MiniExpenseSummary } from '../lib/api';
+import {
+  miniSettlementsApi,
+  type MiniExpenseAllowance,
+  type MiniExpenseSummary,
+} from '../lib/api';
 import { QK } from '../lib/query-keys';
 import { Card } from './ui/Card';
+import { StatCard } from './ui/StatCard';
 import { EmptyState } from './ui/EmptyState';
 import { MiniExpenseModal } from './forms/MiniExpenseModal';
 import { formatDate, getErrorMessage } from '../lib/utils';
 import { formatFcValue } from '../lib/currency';
+import { computeOfflineAllowance } from '../lib/mini-allowance';
 import { useOfflineStore } from '../store/offline.store';
 import { useT } from '../lib/i18n';
 
@@ -39,6 +45,25 @@ export function MiniExpensesView() {
     enabled: !isOffline,
   });
   const expenses = (data as MiniExpenseSummary[] | undefined) ?? [];
+
+  const { data: allowanceData } = useQuery({
+    queryKey: QK.miniExpenseAllowance,
+    queryFn: miniSettlementsApi.expenseAllowance,
+    enabled: !isOffline,
+    staleTime: 10_000,
+  });
+  // Offline the ceiling is recomputed locally from the go-offline snapshot plus
+  // the queue, so what is left to spend stays live while disconnected.
+  const offlineState = useOfflineStore();
+  const allowance = isOffline
+    ? computeOfflineAllowance({
+        snapshot: offlineState.allowanceSnapshot,
+        cachedProducts: offlineState.cachedProducts,
+        pendingSales: offlineState.pendingSales,
+        pendingExpenses: offlineState.pendingExpenses,
+        snapshotRate: offlineState.snapshotRate,
+      }) ?? undefined
+    : (allowanceData as MiniExpenseAllowance | undefined);
 
   // Expenses recorded offline (queued, not yet synced to the server).
   const queued = useOfflineStore((s) => s.pendingExpenses).filter((e) => e.kind === 'mini');
@@ -106,6 +131,32 @@ export function MiniExpensesView() {
             {expenses.length + queued.length} {t.expenses.countLabel}
           </Text>
         </Card>
+
+        {/* The spending ceiling, side by side: what this round's sales have
+            earned them, and what is left of it — so the cap is known before
+            they start typing an amount. */}
+        {allowance && (
+          <>
+            <View className="flex-row gap-3 mt-4">
+              <StatCard
+                label={t.miniEmployee.expenseAllowanceTotal}
+                value={formatFcValue(allowance.allowanceFc)}
+              />
+              <StatCard
+                label={t.miniEmployee.expenseAllowanceLeft}
+                value={formatFcValue(allowance.remainingFc)}
+                // Nothing left reads as a stop sign, not a neutral figure.
+                color={parseFloat(allowance.remainingFc) > 0 ? 'success' : 'danger'}
+              />
+            </View>
+            <Text className="text-muted dark:text-slate-500 text-xs mt-2 px-1">
+              {t.miniEmployee.expenseAllowanceHint(
+                allowance.pct,
+                formatFcValue(allowance.soldFc),
+              )}
+            </Text>
+          </>
+        )}
 
         {/* Queued offline — recorded but not yet synced */}
         {queued.length > 0 && (

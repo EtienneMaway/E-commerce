@@ -22,6 +22,7 @@ import { CreateMiniEmployeeDto } from './dto/create-mini-employee.dto';
 import { EmploymentFilterDto } from './dto/employment-filter.dto';
 import { SetSalaryDto } from './dto/set-salary.dto';
 import { SetPayrollActiveDto } from './dto/set-payroll-active.dto';
+import { SetExpenseAllowanceDto } from './dto/set-expense-allowance.dto';
 import { CreateExternalEmployeeDto } from './dto/create-external-employee.dto';
 import { UpdateEmployeeProfileDto } from './dto/update-employee-profile.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -132,6 +133,20 @@ export class EmploymentsController {
     @Body() dto: SetPayrollActiveDto,
   ) {
     return this.service.setPayrollActive(user.id, id, dto);
+  }
+
+  @Patch(':id/expense-allowance')
+  @ApiOperation({
+    summary: "Employer caps a mini employee's expenses at a share of what they sell",
+    description:
+      'The ceiling applies to the open handover cycle and grows with sales: at 5%, a mini who has sold 100 may claim up to 5 in expenses. Send null to remove the ceiling.',
+  })
+  setExpenseAllowance(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetExpenseAllowanceDto,
+  ) {
+    return this.service.setExpenseAllowance(user.id, id, dto);
   }
 
   @Delete(':id/external')

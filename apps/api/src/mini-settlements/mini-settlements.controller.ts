@@ -124,6 +124,18 @@ export class MiniSettlementsController {
     return this.service.createExpense(ctx, dto);
   }
 
+  @Get('expense-allowance')
+  @AllowedFor('MINI_EMPLOYEE')
+  @ApiOperation({
+    summary: 'How much I may still spend on expenses this round (mini employee)',
+    description:
+      'The employer caps expenses at a percentage of what the mini has sold since their last approved handover, so the ceiling grows with sales. Uncapped when the employer has not set one.',
+  })
+  @ApiResponse({ status: 200, description: '{ pct, soldFc, allowanceFc, spentFc, remainingFc }' })
+  expenseAllowance(@CurrentActorContext() ctx: ActorContext) {
+    return this.service.expenseAllowance(ctx);
+  }
+
   @Get('expenses')
   @AllowedFor('MINI_EMPLOYEE')
   @ApiOperation({

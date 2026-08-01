@@ -117,6 +117,16 @@ describe('MiniSettlementsService.approve', () => {
       getMany: jest.fn(async () => cycleConsignments),
     };
     const consignmentRepo = { createQueryBuilder: jest.fn(() => consignmentQb) };
+    // create() re-reads the employment to seal the expense allowance onto the
+    // handover.
+    const employmentRepo = {
+      findOne: jest.fn(async () => ({
+        employerId: OWNER,
+        employeeId: MINI,
+        expenseAllowancePct: '2.00',
+        employee: { id: MINI, username: 'mini', name: null, phone: null },
+      })),
+    };
 
     const service = new MiniSettlementsService(
       settlementRepo as never, // settlementRepo
@@ -410,6 +420,16 @@ describe('MiniSettlementsService.create — one open handover at a time', () => 
       getMany: jest.fn(async () => consignments),
     };
     const consignmentRepo = { createQueryBuilder: jest.fn(() => consignmentQb) };
+    // create() re-reads the employment to seal the expense allowance onto the
+    // handover.
+    const employmentRepo = {
+      findOne: jest.fn(async () => ({
+        employerId: OWNER,
+        employeeId: MINI,
+        expenseAllowancePct: '2.00',
+        employee: { id: MINI, username: 'mini', name: null, phone: null },
+      })),
+    };
     const currencyService = {
       getRate: jest.fn(async () => ({ usdToFcRate: '2700', sellingRate: null })),
     };
@@ -420,7 +440,7 @@ describe('MiniSettlementsService.create — one open handover at a time', () => 
       {} as never, // debtorCreditRepo
       {} as never, // supplierDebtRepo
       saleRepo as never,
-      {} as never, // employmentRepo
+      employmentRepo as never,
       miniExpenseRepo as never,
       {} as never, // dataSource
       {} as never, // stockMovements
