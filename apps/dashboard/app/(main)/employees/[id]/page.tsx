@@ -8,6 +8,7 @@ import {
   Employment,
   EmploymentParty,
   MiniSettlement,
+  type ActiveTeamMember,
   SalaryPayment,
   SalaryPaymentStatus,
   employmentsApi,
@@ -567,6 +568,22 @@ function MiniOversight({
   const windowFromMs = cycleIdx === 0 ? null : boundaries[cycleIdx - 1] + 1;
   const windowToMs = cycleIdx < cycleCount ? boundaries[cycleIdx] : null;
 
+  // The approved handover that closed the selected cycle — null while the
+  // current (open) one is selected. Its `team` is that session's record, and
+  // additions go onto it rather than onto the open cycle.
+  const cycleHandover = useMemo(() => {
+    if (windowToMs == null) return null;
+    return (
+      (handovers ?? []).find(
+        (h) =>
+          h.miniId === miniUserId &&
+          h.status === 'APPROVED' &&
+          h.approvedAt &&
+          new Date(h.approvedAt).getTime() === windowToMs,
+      ) ?? null
+    );
+  }, [handovers, miniUserId, windowToMs]);
+
   const params = useMemo(() => {
     const p: { dateFrom?: string; dateTo?: string } = {};
     if (windowFromMs != null) p.dateFrom = new Date(windowFromMs).toISOString();
@@ -778,6 +795,9 @@ function MiniOversight({
         )}
       </div>
 
+      {/* The team for the cycle currently selected in the navigator. */}
+      <CycleTeamPanel miniUserId={miniUserId} settlement={cycleHandover} onChange={invalidate} />
+
       {/* Live sales feed */}
       <div className="mt-4">
         <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#818CF8' }}>{t.employees.miniSalesFeed}</h3>
@@ -982,6 +1002,11 @@ function HandoverRow({ handover, onChange, liveRate, ppcMap }: { handover: MiniS
               </ul>
             </div>
           )}
+          {/* The team is part of a settled cycle's record, so it only appears —
+              and is only editable — once the handover has been approved. */}
+          {handover.status === 'APPROVED' && (
+            <HandoverTeam handover={handover} onChange={onChange} />
+          )}
           {handover.note && <div className="text-xs opacity-60 mt-1 italic">{handover.note}</div>}
           {!!err && <div className="text-xs mt-1" style={{ color: '#EF4444' }}>{getErrorMessage(err)}</div>}
         </div>
@@ -1024,6 +1049,274 @@ function HandoverRow({ handover, onChange, liveRate, ppcMap }: { handover: MiniS
           <span className="font-bold" style={{ color: '#10B981' }}>{fcStr(netPayFc)}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The mini as the leading entry of their own team — synthesised for a settled
+ * handover, where the stored rows only cover the people alongside them. (The
+ * open cycle gets the same entry from the API, as `source: 'SELF'`.)
+ */
+function selfMember(
+  settlement: MiniSettlement,
+): { id: string; name: string; phone: string | null; removable: boolean }[] {
+  const mini = settlement.mini;
+  if (!mini) return [];
+  return [
+    {
+      id: `self-${settlement.id}`,
+      name: mini.name ?? mini.username,
+      phone: mini.phone ?? null,
+      removable: false,
+    },
+  ];
+}
+
+/**
+ * The team for ONE handover cycle, following the prev/next navigator.
+ *
+ * Each cycle keeps its own list: for a closed cycle that is the frozen record on
+ * the handover that settled it; for the open one it is everyone attached to its
+ * consignments plus anyone added here, which approval will freeze in turn.
+ *
+ * Adding is available on every cycle, including empty and long-closed ones — who
+ * was actually along is often only established well after the fact. Give-time
+ * entries on the open cycle belong to a consignment's record, so only the
+ * manually-added ones can be removed there.
+ */
+function CycleTeamPanel({
+  miniUserId,
+  settlement,
+  onChange,
+}: {
+  miniUserId: string;
+  /** The approved handover closing the selected cycle; null = the open cycle. */
+  settlement: MiniSettlement | null;
+  onChange: () => void;
+}) {
+  const t = useT();
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+
+  // Only the open cycle needs a fetch — a closed one carries its team already.
+  const { data } = useQuery({
+    queryKey: QK.miniTeam(miniUserId),
+    queryFn: () => miniSettlementsApi.miniTeam(miniUserId),
+    enabled: !settlement,
+    staleTime: 30_000,
+  });
+
+  const members: { id: string; name: string; phone: string | null; removable: boolean }[] =
+    settlement
+      ? [
+          // The mini leads their own team. Synthesised on both sides rather than
+          // stored — they are a real user, and the goods were on their books.
+          ...selfMember(settlement),
+          ...(settlement.team ?? []).map((m) => ({ ...m, removable: true })),
+        ]
+      : ((data as ActiveTeamMember[] | undefined) ?? []).map((m) => ({
+          ...m,
+          removable: m.source === 'MANUAL',
+        }));
+
+  const addM = useMutation({
+    mutationFn: () => {
+      const body = { name: name.trim(), ...(phone.trim() ? { phone: phone.trim() } : {}) };
+      return settlement
+        ? miniSettlementsApi.addTeamMember(settlement.id, body)
+        : miniSettlementsApi.addActiveTeamMember(miniUserId, body);
+    },
+    onSuccess: () => {
+      setName('');
+      setPhone('');
+      setAdding(false);
+      onChange();
+    },
+  });
+  const removeM = useMutation({
+    mutationFn: (memberId: string) => miniSettlementsApi.removeTeamMember(memberId),
+    onSuccess: onChange,
+  });
+  const err = addM.error || removeM.error;
+
+  return (
+    <div className="mt-4">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#818CF8' }}>
+          {t.employees.miniTeamTitle}
+        </h3>
+        {!adding && (
+          <button onClick={() => setAdding(true)} className="text-xs font-medium" style={{ color: '#818CF8' }}>
+            {t.employees.miniHoTeamAdd}
+          </button>
+        )}
+      </div>
+      <p className="text-xs opacity-60 mb-2">
+        {settlement ? t.employees.miniTeamHintClosed : t.employees.miniTeamHint}
+      </p>
+
+      {adding && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t.employees.miniHoTeamName}
+            autoFocus
+            className="input"
+            style={{ width: 160, padding: '4px 8px', fontSize: 12 }}
+          />
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder={t.employees.miniHoTeamPhone}
+            className="input"
+            style={{ width: 150, padding: '4px 8px', fontSize: 12 }}
+          />
+          <button
+            onClick={() => addM.mutate()}
+            disabled={!name.trim() || addM.isPending}
+            className="px-2 py-1 rounded-md text-xs font-medium text-white disabled:opacity-50"
+            style={{ background: '#10B981' }}
+          >
+            {addM.isPending ? t.employees.miniApproving : t.employees.miniHoTeamSave}
+          </button>
+          <button
+            onClick={() => { setAdding(false); setName(''); setPhone(''); }}
+            className="px-2 py-1 rounded-md text-xs opacity-60"
+          >
+            {t.common.cancel}
+          </button>
+        </div>
+      )}
+
+      {members.length === 0 ? (
+        <div className="text-sm opacity-60 p-3 text-center rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+          {t.employees.miniTeamEmpty}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
+          {members.map((m) => (
+            <span key={m.id} className="inline-flex items-baseline gap-1.5">
+              <span className="font-medium">{m.name}</span>
+              <span className="text-xs opacity-60">{m.phone ?? t.employees.miniTeamNoPhone}</span>
+              {m.removable && (
+                <button
+                  onClick={() => removeM.mutate(m.id)}
+                  disabled={removeM.isPending}
+                  className="text-xs opacity-40 hover:opacity-100 disabled:opacity-20"
+                  title={t.employees.miniHoTeamRemove}
+                >
+                  ✕
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      {!!err && <div className="text-xs mt-1" style={{ color: '#EF4444' }}>{getErrorMessage(err)}</div>}
+    </div>
+  );
+}
+
+/**
+ * The people who were out selling with the mini during the cycle this handover
+ * closed. Populated on approval from the team attached to that cycle's
+ * consignments, and editable here indefinitely — who was actually along is
+ * frequently only established after the goods come back.
+ *
+ * Record only: nobody here has an account, and no money or stock is attached.
+ */
+function HandoverTeam({ handover, onChange }: { handover: MiniSettlement; onChange: () => void }) {
+  const t = useT();
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const team = [...selfMember(handover), ...(handover.team ?? []).map((m) => ({ ...m, removable: true }))];
+
+  const addM = useMutation({
+    mutationFn: () =>
+      miniSettlementsApi.addTeamMember(handover.id, {
+        name: name.trim(),
+        ...(phone.trim() ? { phone: phone.trim() } : {}),
+      }),
+    onSuccess: () => {
+      setName('');
+      setPhone('');
+      setAdding(false);
+      onChange();
+    },
+  });
+  const removeM = useMutation({
+    mutationFn: (memberId: string) => miniSettlementsApi.removeTeamMember(memberId),
+    onSuccess: onChange,
+  });
+  const err = addM.error || removeM.error;
+
+  return (
+    <div className="text-xs mt-1.5">
+      <span className="opacity-60">{t.employees.miniHoTeam}: </span>
+      {team.length === 0 ? (
+        <span className="opacity-50">{t.employees.miniHoTeamEmpty}</span>
+      ) : (
+        <span>
+          {team.map((m, i) => (
+            <span key={m.id}>
+              {i > 0 && ', '}
+              <span className="opacity-80">{m.phone ? `${m.name} (${m.phone})` : m.name}</span>
+              {m.removable && (
+                <button
+                  onClick={() => removeM.mutate(m.id)}
+                  disabled={removeM.isPending}
+                  className="ml-1 opacity-40 hover:opacity-100 disabled:opacity-20"
+                  title={t.employees.miniHoTeamRemove}
+                >
+                  ✕
+                </button>
+              )}
+            </span>
+          ))}
+        </span>
+      )}
+      {!adding ? (
+        <button onClick={() => setAdding(true)} className="ml-2" style={{ color: '#818CF8' }}>
+          {t.employees.miniHoTeamAdd}
+        </button>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t.employees.miniHoTeamName}
+            autoFocus
+            className="input"
+            style={{ width: 150, padding: '4px 8px', fontSize: 12 }}
+          />
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder={t.employees.miniHoTeamPhone}
+            className="input"
+            style={{ width: 140, padding: '4px 8px', fontSize: 12 }}
+          />
+          <button
+            onClick={() => addM.mutate()}
+            disabled={!name.trim() || addM.isPending}
+            className="px-2 py-1 rounded-md text-xs font-medium text-white disabled:opacity-50"
+            style={{ background: '#10B981' }}
+          >
+            {addM.isPending ? t.employees.miniApproving : t.employees.miniHoTeamSave}
+          </button>
+          <button
+            onClick={() => { setAdding(false); setName(''); setPhone(''); }}
+            className="px-2 py-1 rounded-md text-xs opacity-60"
+          >
+            {t.common.cancel}
+          </button>
+        </div>
+      )}
+      {!!err && <div className="mt-1" style={{ color: '#EF4444' }}>{getErrorMessage(err)}</div>}
     </div>
   );
 }

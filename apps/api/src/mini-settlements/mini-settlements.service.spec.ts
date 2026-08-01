@@ -4,6 +4,7 @@ import {
   InventoryEntry,
   InventorySource,
   MiniSettlementStatus,
+  MiniTeamMember,
   Payment,
   PaymentDirection,
   PaymentStatus,
@@ -22,7 +23,11 @@ describe('MiniSettlementsService.approve', () => {
   const OWNER = 'owner-1';
   const MINI = 'mini-1';
 
-  function build(personalLot: Record<string, unknown> | null = null) {
+  function build(
+    personalLot: Record<string, unknown> | null = null,
+    cycleConsignments: unknown[] = [],
+    pendingTeam: Record<string, unknown>[] = [],
+  ) {
     const credit = {
       id: 'credit-1',
       ownerId: OWNER,
@@ -67,7 +72,8 @@ describe('MiniSettlementsService.approve', () => {
         }
         return null;
       }),
-      find: jest.fn(async (_Entity: unknown, opts: { where?: { source?: InventorySource } }) => {
+      find: jest.fn(async (Entity: unknown, opts: { where?: { source?: InventorySource } }) => {
+        if (Entity === MiniTeamMember) return pendingTeam;
         const src = opts?.where?.source;
         if (src === InventorySource.CONSIGNED_IN) return [miniInEntry];
         if (src === InventorySource.CONSIGNED_OUT) return [ownerOutEntry];
@@ -102,6 +108,15 @@ describe('MiniSettlementsService.approve', () => {
     };
     const stockMovements = { record: jest.fn(async () => ({})) };
     const currencyService = { getRate: jest.fn(async () => ({ usdToFcRate: '2700', sellingRate: null })) };
+    // Approval materialises the cycle's team from its consignments.
+    const consignmentQb: Record<string, jest.Mock> = {
+      innerJoinAndSelect: jest.fn(() => consignmentQb),
+      where: jest.fn(() => consignmentQb),
+      andWhere: jest.fn(() => consignmentQb),
+      orderBy: jest.fn(() => consignmentQb),
+      getMany: jest.fn(async () => cycleConsignments),
+    };
+    const consignmentRepo = { createQueryBuilder: jest.fn(() => consignmentQb) };
 
     const service = new MiniSettlementsService(
       settlementRepo as never, // settlementRepo
@@ -116,6 +131,8 @@ describe('MiniSettlementsService.approve', () => {
       stockMovements as never,
       currencyService as never,
       {} as never, // variantRepo
+      consignmentRepo as never,
+      {} as never, // miniTeamRepo
     );
 
     return { service, credit, debt, settlement, savedPayments, miniInEntry, ownerOutEntry, manager };
@@ -220,10 +237,19 @@ describe('MiniSettlementsService.approve', () => {
     const dataSource = { transaction: jest.fn(async (cb: (m: typeof manager) => Promise<unknown>) => cb(manager)) };
     const stockMovements = { record: jest.fn(async () => ({})) };
     const currencyService = { getRate: jest.fn(async () => ({ usdToFcRate: '2700', sellingRate: null })) };
+    const consignmentQb: Record<string, jest.Mock> = {
+      innerJoinAndSelect: jest.fn(() => consignmentQb),
+      where: jest.fn(() => consignmentQb),
+      andWhere: jest.fn(() => consignmentQb),
+      orderBy: jest.fn(() => consignmentQb),
+      getMany: jest.fn(async () => []),
+    };
     const service = new MiniSettlementsService(
       settlementRepo as never, {} as never, {} as never, {} as never, {} as never,
       {} as never, {} as never, {} as never, dataSource as never, stockMovements as never, currencyService as never,
       {} as never, // variantRepo
+      { createQueryBuilder: jest.fn(() => consignmentQb) } as never,
+      {} as never, // miniTeamRepo
     );
 
     await service.approve(ctx, 'settle-1');
@@ -265,6 +291,79 @@ describe('MiniSettlementsService.approve', () => {
     );
     expect(createdPersonal).toBe(false);
   });
+
+  it("materialises the cycle's team onto the handover on approval, once per person", async () => {
+    const { service, manager } = build(null, [
+      {
+        id: 'c-1',
+        createdAt: new Date('2026-08-01T08:00:00.000Z'),
+        confirmedAt: new Date('2026-08-01T09:00:00.000Z'),
+        teamMembers: [
+          { id: 'ctm-1', name: 'Jean', phone: '+243900000000' },
+          { id: 'ctm-2', name: 'Marie', phone: null },
+        ],
+      },
+      {
+        // A second give in the same cycle re-lists Jean — one teammate, not two.
+        id: 'c-2',
+        createdAt: new Date('2026-08-02T08:00:00.000Z'),
+        confirmedAt: new Date('2026-08-02T09:00:00.000Z'),
+        teamMembers: [{ id: 'ctm-3', name: 'jean ', phone: '+243900000000' }],
+      },
+    ]);
+
+    await service.approve(ctx, 'settle-1');
+
+    const teamRows = (manager.create as jest.Mock).mock.calls
+      .filter((c) => c[0] === MiniTeamMember)
+      .map((c) => c[1] as { name: string; phone: string | null; settlementId: string });
+    expect(teamRows).toEqual([
+      { miniId: MINI, ownerId: OWNER, name: 'Jean', phone: '+243900000000', settlementId: 'settle-1' },
+      { miniId: MINI, ownerId: OWNER, name: 'Marie', phone: null, settlementId: 'settle-1' },
+    ]);
+  });
+
+  it('claims a dashboard-added teammate instead of duplicating them', async () => {
+    // The owner added Jean onto the open cycle AND he is on a consignment: one
+    // person on the settled record, carried by the existing row.
+    const jean = {
+      id: 'tm-1',
+      name: 'Jean',
+      phone: '+243900000000',
+      settlementId: null as string | null,
+    };
+    const { service, manager } = build(
+      null,
+      [
+        {
+          id: 'c-1',
+          createdAt: new Date('2026-08-01T08:00:00.000Z'),
+          confirmedAt: new Date('2026-08-01T09:00:00.000Z'),
+          teamMembers: [
+            { id: 'ctm-1', name: 'jean', phone: '+243900000000' },
+            { id: 'ctm-2', name: 'Marie', phone: null },
+          ],
+        },
+      ],
+      [jean],
+    );
+
+    await service.approve(ctx, 'settle-1');
+
+    const created = (manager.create as jest.Mock).mock.calls
+      .filter((c) => c[0] === MiniTeamMember)
+      .map((c) => (c[1] as { name: string }).name);
+    expect(created).toEqual(['Marie']);
+    // ...and the pre-existing row is attached to this handover.
+    expect(jean.settlementId).toBe('settle-1');
+  });
+
+  it('records no team when none was attached to the cycle', async () => {
+    const { service, manager } = build();
+    await service.approve(ctx, 'settle-1');
+    const teamRows = (manager.create as jest.Mock).mock.calls.filter((c) => c[0] === MiniTeamMember);
+    expect(teamRows).toHaveLength(0);
+  });
 });
 
 /**
@@ -284,7 +383,7 @@ describe('MiniSettlementsService.create — one open handover at a time', () => 
     employment: { employerId: OWNER } as never,
   };
 
-  function build(openHandover: unknown) {
+  function build(openHandover: unknown, consignments: unknown[] = []) {
     const settlementRepo = {
       findOne: jest.fn(async () => openHandover),
       create: jest.fn((v: unknown) => v),
@@ -295,12 +394,22 @@ describe('MiniSettlementsService.create — one open handover at a time', () => 
     const miniExpenseRepo = { update: jest.fn(async () => ({})) };
     // create() now snapshots the sold lines via computeSoldLines → needs a sale
     // query builder and the currency rate. No sales here, so it yields [].
-    const saleQb = {
+    const saleQb: Record<string, jest.Mock> = {
       where: jest.fn(() => saleQb),
       andWhere: jest.fn(() => saleQb),
       getMany: jest.fn(async () => []),
     };
     const saleRepo = { createQueryBuilder: jest.fn(() => saleQb) };
+    // create() also snapshots the optional team via computeTeamMembers → needs a
+    // consignment query builder. No consignments here, so it yields [].
+    const consignmentQb: Record<string, jest.Mock> = {
+      innerJoinAndSelect: jest.fn(() => consignmentQb),
+      where: jest.fn(() => consignmentQb),
+      andWhere: jest.fn(() => consignmentQb),
+      orderBy: jest.fn(() => consignmentQb),
+      getMany: jest.fn(async () => consignments),
+    };
+    const consignmentRepo = { createQueryBuilder: jest.fn(() => consignmentQb) };
     const currencyService = {
       getRate: jest.fn(async () => ({ usdToFcRate: '2700', sellingRate: null })),
     };
@@ -317,6 +426,8 @@ describe('MiniSettlementsService.create — one open handover at a time', () => 
       {} as never, // stockMovements
       currencyService as never,
       variantRepo as never,
+      consignmentRepo as never,
+      {} as never, // miniTeamRepo
     );
     return { service, settlementRepo };
   }

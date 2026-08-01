@@ -39,6 +39,7 @@ describe('ConsignmentsService.create — sized product', () => {
       }),
     };
     const itemRepo = { create: jest.fn((obj: Record<string, unknown>) => ({ ...obj })) };
+    const teamMemberRepo = { create: jest.fn((obj: Record<string, unknown>) => ({ ...obj })) };
     const userRepo = { findOne: jest.fn(async () => ({ id: 'debtor-1' })) };
     const entryRepo = { find: jest.fn(async () => [stockLot]) };
     const variantRepo = { findOne: jest.fn(async () => variant) };
@@ -56,6 +57,7 @@ describe('ConsignmentsService.create — sized product', () => {
     const service = new ConsignmentsService(
       requestRepo as never,
       itemRepo as never,
+      teamMemberRepo as never,
       userRepo as never,
       entryRepo as never,
       {} as never, // debtorCreditRepo

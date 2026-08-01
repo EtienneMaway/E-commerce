@@ -352,7 +352,20 @@ export const miniSettlementsApi = {
     api.get('/mini-settlements/expenses', { params: { scope: 'all' } }).then((r) => r.data),
   deleteExpense: (id: string): Promise<void> =>
     api.delete(`/mini-settlements/expenses/${id}`).then((r) => r.data),
+  /** Who is out with the goods I'm holding. Read-only — the employer maintains
+   *  this list on the dashboard. */
+  myTeam: (): Promise<ActiveTeamMember[]> =>
+    api.get('/mini-settlements/team').then((r) => r.data),
 };
+
+export interface ActiveTeamMember {
+  id: string;
+  name: string;
+  phone: string | null;
+  /** SELF — the mini themself (always first); GIVE — came in with a
+   *  consignment; MANUAL — added by the employer. */
+  source: 'SELF' | 'GIVE' | 'MANUAL';
+}
 
 export interface MiniExpenseSummary {
   id: string;

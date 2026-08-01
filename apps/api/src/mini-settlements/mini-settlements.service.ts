@@ -9,6 +9,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, ILike, In, IsNull, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import {
+  ConsignmentRequest,
+  ConsignmentStatus,
   DebtorCredit,
   Employment,
   Expense,
@@ -21,6 +23,7 @@ import {
   MiniSettlementItem,
   type MiniSettlementSoldLine,
   MiniSettlementStatus,
+  MiniTeamMember,
   Payment,
   PaymentDirection,
   PaymentStatus,
@@ -34,6 +37,7 @@ import { StockMovementsService } from '../stock-movements/stock-movements.servic
 import { CurrencyService } from '../currency/currency.service';
 import { CreateMiniSettlementDto } from './dto/create-mini-settlement.dto';
 import { CreateMiniExpenseDto } from './dto/create-mini-expense.dto';
+import { CreateMiniTeamMemberDto } from './dto/create-mini-team-member.dto';
 import { MiniActivityQueryDto } from './dto/mini-activity-query.dto';
 import { MiniStatsPeriod } from './dto/mini-stats-query.dto';
 
@@ -81,6 +85,25 @@ export interface HandoverReturnLine {
   variantLabel: string | null;
   quantity: number;
   piecesPerCarton: number | null;
+}
+
+/**
+ * One person on the team for the cycle currently in progress — the goods the
+ * mini is holding but has not handed over yet.
+ */
+export interface ActiveTeamMember {
+  id: string;
+  name: string;
+  phone: string | null;
+  /**
+   * SELF — the mini employee themself, always listed first; they lead the team
+   * by definition, so they are synthesised rather than stored, and can't be
+   * removed.
+   * GIVE — attached to a consignment when the goods went out; part of that
+   * consignment's record and not removable from here.
+   * MANUAL — added straight onto the open cycle from the dashboard; removable.
+   */
+  source: 'SELF' | 'GIVE' | 'MANUAL';
 }
 
 export interface HandoverPreview {
@@ -193,6 +216,10 @@ export class MiniSettlementsService {
     private readonly currencyService: CurrencyService,
     @InjectRepository(ProductVariant)
     private readonly variantRepo: Repository<ProductVariant>,
+    @InjectRepository(ConsignmentRequest)
+    private readonly consignmentRepo: Repository<ConsignmentRequest>,
+    @InjectRepository(MiniTeamMember)
+    private readonly miniTeamRepo: Repository<MiniTeamMember>,
   ) {}
 
   /** Resolve size labels for a set of variant ids in one query (id → label). */
@@ -548,6 +575,44 @@ export class MiniSettlementsService {
     }));
   }
 
+  /**
+   * The optional team recorded on the consignments this cycle covers: everything
+   * the employer gave the mini after `since` (their previous approved handover,
+   * or all-time when null). Mirrors `computeSoldLines`' boundary, so approving a
+   * handover materialises exactly the people who were out with the goods that
+   * handover settles.
+   *
+   * A person given on several consignments in one cycle is listed once (earliest
+   * give wins) — the point is who was out with the goods, not how many batches.
+   * PENDING/REJECTED consignments are excluded: nobody went out with goods that
+   * were never accepted.
+   */
+  private async computeTeamMembers(
+    ownerId: string,
+    miniId: string,
+    since: Date | null,
+  ): Promise<{ id: string; name: string; phone: string | null }[]> {
+    const qb = this.consignmentRepo
+      .createQueryBuilder('c')
+      .innerJoinAndSelect('c.teamMembers', 'tm')
+      .where('c.supplier_id = :ownerId', { ownerId })
+      .andWhere('c.debtor_id = :miniId', { miniId })
+      .andWhere('c.status = :status', { status: ConsignmentStatus.ACCEPTED })
+      .orderBy('c.created_at', 'ASC');
+    if (since) qb.andWhere('c.confirmed_at > :since', { since });
+    const requests = await qb.getMany();
+
+    const byKey = new Map<string, { id: string; name: string; phone: string | null }>();
+    for (const req of requests) {
+      for (const m of req.teamMembers ?? []) {
+        const key = `${m.name.trim().toLowerCase()}|${(m.phone ?? '').trim()}`;
+        if (byKey.has(key)) continue;
+        byKey.set(key, { id: m.id, name: m.name, phone: m.phone ?? null });
+      }
+    }
+    return [...byKey.values()];
+  }
+
   async handoverPreview(ctx: ActorContext): Promise<HandoverPreview> {
     const miniId = ctx.effectiveOwnerId;
     if (!ctx.employment) {
@@ -645,6 +710,180 @@ export class MiniSettlementsService {
     };
   }
 
+  /**
+   * Reading (or writing) a mini's records is only permitted through the
+   * employment relationship — the caller must actually employ them.
+   */
+  private async requireEmployment(ownerId: string, miniUserId: string): Promise<Employment> {
+    const employment = await this.employmentRepo.findOne({
+      where: { employerId: ownerId, employeeId: miniUserId },
+      relations: { employee: true },
+    });
+    if (!employment) {
+      throw new ForbiddenException('This mini employee is not one of yours');
+    }
+    return employment;
+  }
+
+  // ─── The team on the cycle in progress (not yet handed over) ──────────────
+
+  /**
+   * Who is out with the goods the mini is holding right now: everyone attached
+   * to this cycle's consignments, plus anyone the owner added straight onto the
+   * open cycle from the dashboard. Deduped by name+phone, the give-time entry
+   * winning so someone recorded on both sides appears once.
+   *
+   * The window is the same one the handover settles (everything since the last
+   * approved handover), so this list is exactly what approval will freeze onto
+   * the settlement.
+   */
+  private async activeTeam(ownerId: string, miniId: string): Promise<ActiveTeamMember[]> {
+    const last = await this.settlementRepo.findOne({
+      where: { miniId, status: MiniSettlementStatus.APPROVED },
+      order: { approvedAt: 'DESC' },
+    });
+    const given = await this.computeTeamMembers(ownerId, miniId, last?.approvedAt ?? null);
+
+    // The mini heads their own team, so they lead the list. Synthesised, never a
+    // row: they are an actual user, and the goods are already on their books.
+    const employment = await this.requireEmployment(ownerId, miniId);
+    const self = employment.employee;
+    const team: ActiveTeamMember[] = self
+      ? [
+          {
+            id: self.id,
+            name: self.name ?? self.username,
+            phone: self.phone ?? null,
+            source: 'SELF' as const,
+          },
+        ]
+      : [];
+    team.push(...given.map((m) => ({ ...m, source: 'GIVE' as const })));
+    const seen = new Set(
+      team.map((m) => `${m.name.trim().toLowerCase()}|${(m.phone ?? '').trim()}`),
+    );
+    const manual = await this.miniTeamRepo.find({
+      where: { miniId, ownerId, settlementId: IsNull() },
+      order: { createdAt: 'ASC' },
+    });
+    for (const m of manual) {
+      const key = `${m.name.trim().toLowerCase()}|${(m.phone ?? '').trim()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      team.push({ id: m.id, name: m.name, phone: m.phone, source: 'MANUAL' });
+    }
+    return team;
+  }
+
+  /** Mini employee: read-only view of who is out with them on this cycle. */
+  async myActiveTeam(ctx: ActorContext): Promise<ActiveTeamMember[]> {
+    if (!ctx.employment) {
+      throw new ForbiddenException('Only a mini employee has a team');
+    }
+    return this.activeTeam(ctx.employment.employerId, ctx.effectiveOwnerId);
+  }
+
+  /** Owner/full employee: the same list for one of their minis. */
+  async miniActiveTeam(ctx: ActorContext, miniUserId: string): Promise<ActiveTeamMember[]> {
+    return this.activeTeam(ctx.effectiveOwnerId, miniUserId);
+  }
+
+  /**
+   * Add someone onto the cycle in progress. Stays pending (no settlement) until
+   * the handover that closes the cycle claims it — the same lifecycle the mini's
+   * expenses follow.
+   */
+  async addActiveTeamMember(
+    ctx: ActorContext,
+    miniUserId: string,
+    dto: CreateMiniTeamMemberDto,
+  ): Promise<MiniTeamMember> {
+    const ownerId = ctx.effectiveOwnerId;
+    await this.requireEmployment(ownerId, miniUserId);
+
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException('Name is required');
+    const phone = dto.phone?.trim() || null;
+
+    // The same person twice on one cycle is a mis-tap, not a second teammate.
+    const existing = await this.miniTeamRepo.findOne({
+      where: { miniId: miniUserId, ownerId, settlementId: IsNull(), name: ILike(name) },
+    });
+    if (existing) return existing;
+
+    return this.miniTeamRepo.save(
+      this.miniTeamRepo.create({
+        miniId: miniUserId,
+        ownerId,
+        name,
+        phone,
+        settlementId: null,
+      }),
+    );
+  }
+
+  // ─── Owner/full employee: the team on an approved handover ────────────────
+
+  /** Load a settlement the caller owns, or explain why they can't touch it. */
+  private async ownedApprovedSettlement(
+    ctx: ActorContext,
+    settlementId: string,
+  ): Promise<MiniSettlement> {
+    const settlement = await this.settlementRepo.findOne({ where: { id: settlementId } });
+    if (!settlement) throw new NotFoundException('Handover not found');
+    if (settlement.ownerId !== ctx.effectiveOwnerId) {
+      throw new ForbiddenException('This handover is not yours');
+    }
+    // The team is part of a settled cycle's record — there is nothing to attach
+    // people to until the handover has actually been approved.
+    if (settlement.status !== MiniSettlementStatus.APPROVED) {
+      throw new BadRequestException('You can only record a team on an approved handover');
+    }
+    return settlement;
+  }
+
+  /**
+   * Add someone who was out selling with the mini during the cycle this handover
+   * closes. Owner-side and deliberately open-ended in time: who was actually
+   * along is often only established after the goods come back.
+   */
+  async addTeamMember(
+    ctx: ActorContext,
+    settlementId: string,
+    dto: CreateMiniTeamMemberDto,
+  ): Promise<MiniTeamMember> {
+    const settlement = await this.ownedApprovedSettlement(ctx, settlementId);
+
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException('Name is required');
+    const phone = dto.phone?.trim() || null;
+
+    // The same person twice on one handover is a mis-tap, not a second teammate.
+    const existing = await this.miniTeamRepo.findOne({
+      where: { settlementId: settlement.id, name: ILike(name) },
+    });
+    if (existing) return existing;
+
+    return this.miniTeamRepo.save(
+      this.miniTeamRepo.create({
+        miniId: settlement.miniId,
+        ownerId: settlement.ownerId,
+        name,
+        phone,
+        settlementId: settlement.id,
+      }),
+    );
+  }
+
+  async removeTeamMember(ctx: ActorContext, id: string): Promise<void> {
+    const member = await this.miniTeamRepo.findOne({ where: { id } });
+    if (!member) throw new NotFoundException('Team member not found');
+    if (member.ownerId !== ctx.effectiveOwnerId) {
+      throw new ForbiddenException('This team member is not on one of your handovers');
+    }
+    await this.miniTeamRepo.remove(member);
+  }
+
   // ─── Mini employee: record / list / remove pending expenses (FC) ───────────
 
   async createExpense(ctx: ActorContext, dto: CreateMiniExpenseDto): Promise<MiniExpense> {
@@ -724,7 +963,7 @@ export class MiniSettlementsService {
   async findIncoming(ctx: ActorContext): Promise<MiniSettlement[]> {
     return this.settlementRepo.find({
       where: { ownerId: ctx.effectiveOwnerId },
-      relations: { mini: true, items: true, payment: true, expenses: true },
+      relations: { mini: true, items: true, payment: true, expenses: true, team: true },
       order: { createdAt: 'DESC' },
     });
   }
@@ -947,6 +1186,48 @@ export class MiniSettlementsService {
         await manager.save(MiniExpense, me);
       }
 
+      // ── Team: materialise whoever the owner attached to this cycle's
+      // consignments onto the settlement, so the record of who was out with the
+      // goods lands with the handover that closes them. The owner can add to or
+      // prune this list on the dashboard afterwards. ──
+      const previous = await manager.findOne(MiniSettlement, {
+        where: { miniId, status: MiniSettlementStatus.APPROVED },
+        order: { approvedAt: 'DESC' },
+      });
+      const cycleTeam = await this.computeTeamMembers(
+        ownerId,
+        miniId,
+        previous?.approvedAt ?? null,
+      );
+      // Anyone added straight onto the open cycle from the dashboard is already
+      // a row — claim those rather than re-creating them, and skip any give-time
+      // teammate they duplicate, or the settlement lists that person twice.
+      const pendingTeam = await manager.find(MiniTeamMember, {
+        where: { miniId, ownerId, settlementId: IsNull() },
+      });
+      const alreadyOnTeam = new Set(
+        pendingTeam.map((m) => `${m.name.trim().toLowerCase()}|${(m.phone ?? '').trim()}`),
+      );
+      for (const member of cycleTeam) {
+        const key = `${member.name.trim().toLowerCase()}|${(member.phone ?? '').trim()}`;
+        if (alreadyOnTeam.has(key)) continue;
+        alreadyOnTeam.add(key);
+        await manager.save(
+          MiniTeamMember,
+          manager.create(MiniTeamMember, {
+            miniId,
+            ownerId,
+            name: member.name,
+            phone: member.phone,
+            settlementId: settlement.id,
+          }),
+        );
+      }
+      for (const m of pendingTeam) {
+        m.settlementId = settlement.id;
+        await manager.save(MiniTeamMember, m);
+      }
+
       settlement.status = MiniSettlementStatus.APPROVED;
       settlement.approvedAt = new Date();
       settlement.actorId = actorId;
@@ -963,15 +1244,7 @@ export class MiniSettlementsService {
   ): Promise<MiniActivity> {
     const ownerId = ctx.effectiveOwnerId;
 
-    // Authorize: the caller must employ this mini. Reading the mini's own books
-    // is only permitted through the employment relationship.
-    const employment = await this.employmentRepo.findOne({
-      where: { employerId: ownerId, employeeId: miniUserId },
-      relations: { employee: true },
-    });
-    if (!employment) {
-      throw new ForbiddenException('This mini employee is not one of yours');
-    }
+    const employment = await this.requireEmployment(ownerId, miniUserId);
 
     const from = query.dateFrom ? new Date(query.dateFrom) : null;
     // Accept both a date-only bound (YYYY-MM-DD → end of that day) and a full

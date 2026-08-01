@@ -34,6 +34,7 @@ export const QK = {
   miniExpenses: ['mini-settlements', 'expenses'] as const,
   miniExpensesAll: ['mini-settlements', 'expenses', 'all'] as const,
   miniBalance: ['mini-settlements', 'my-balance'] as const,
+  miniTeam: ['mini-settlements', 'team'] as const,
   miniStats: (period: string) => ['mini-settlements', 'stats', period] as const,
   profitSummary: (params?: object) => ['dashboard', 'profit-summary', params ?? {}] as const,
 } as const;

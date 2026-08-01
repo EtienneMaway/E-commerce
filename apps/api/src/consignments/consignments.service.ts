@@ -11,6 +11,7 @@ import {
   ConsignmentItem,
   ConsignmentRequest,
   ConsignmentStatus,
+  ConsignmentTeamMember,
   DebtorCredit,
   InventoryEntry,
   InventorySource,
@@ -33,6 +34,8 @@ export class ConsignmentsService {
     private readonly requestRepo: Repository<ConsignmentRequest>,
     @InjectRepository(ConsignmentItem)
     private readonly itemRepo: Repository<ConsignmentItem>,
+    @InjectRepository(ConsignmentTeamMember)
+    private readonly teamMemberRepo: Repository<ConsignmentTeamMember>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(InventoryEntry)
@@ -139,6 +142,14 @@ export class ConsignmentsService {
     const rateRow = await this.currencyService.getRate();
     const usdToFcRateSnapshot = rateRow?.usdToFcRate ?? null;
 
+    // Optional team travelling with these goods. Pure record-keeping: names (and
+    // maybe a phone) of people helping the recipient sell this batch, kept until
+    // the handover closes the cycle. Blank names are dropped rather than stored.
+    const teamMembers = (dto.teamMembers ?? [])
+      .map((m) => ({ name: m.name.trim(), phone: m.phone?.trim() || null }))
+      .filter((m) => m.name.length > 0)
+      .map((m) => this.teamMemberRepo.create(m));
+
     const request = this.requestRepo.create({
       supplierId,
       debtorId: dto.debtorUserId,
@@ -146,6 +157,7 @@ export class ConsignmentsService {
       note: dto.note ?? null,
       usdToFcRateSnapshot,
       items: itemEntities,
+      teamMembers,
     });
 
     return this.requestRepo.save(request);
@@ -156,7 +168,7 @@ export class ConsignmentsService {
   async findIncoming(ctx: ActorContext): Promise<ConsignmentRequest[]> {
     const requests = await this.requestRepo.find({
       where: { debtorId: ctx.effectiveOwnerId },
-      relations: { supplier: true, items: { actor: true } },
+      relations: { supplier: true, items: { actor: true }, teamMembers: true },
       order: { createdAt: 'DESC' },
     });
     await this.attachVariantLabels(requests);
@@ -168,7 +180,7 @@ export class ConsignmentsService {
   async findOutgoing(ctx: ActorContext): Promise<ConsignmentRequest[]> {
     const requests = await this.requestRepo.find({
       where: { supplierId: ctx.effectiveOwnerId },
-      relations: { debtor: true, items: { actor: true } },
+      relations: { debtor: true, items: { actor: true }, teamMembers: true },
       order: { createdAt: 'DESC' },
     });
     await this.attachVariantLabels(requests);

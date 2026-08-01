@@ -1,6 +1,6 @@
 import { Modal, ScrollView, View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { miniSettlementsApi, type HandoverPreview } from '../../lib/api';
+import { miniSettlementsApi, type ActiveTeamMember, type HandoverPreview } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { formatFcValue } from '../../lib/currency';
 import { breakdownQuantity, formatBreakdown, getErrorMessage } from '../../lib/utils';
@@ -39,6 +39,16 @@ export function HandoverModal({ visible, onClose }: Props) {
     enabled: visible && !blocked,
     staleTime: 5_000,
   });
+
+  // Who the employer recorded as being out with these goods. Read-only here —
+  // the list is maintained on the dashboard and travels onto this handover.
+  const { data: teamData } = useQuery({
+    queryKey: QK.miniTeam,
+    queryFn: miniSettlementsApi.myTeam,
+    enabled: visible && !blocked,
+    staleTime: 30_000,
+  });
+  const team = (teamData as ActiveTeamMember[] | undefined) ?? [];
 
   const { mutate: runSync, isPending: syncing } = useMutation({
     mutationFn: syncPendingSales,
@@ -93,6 +103,8 @@ export function HandoverModal({ visible, onClose }: Props) {
       qc.invalidateQueries({ queryKey: QK.miniExpenses });
       qc.invalidateQueries({ queryKey: ['mini-settlements', 'handover-preview'] });
       qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] });
+      // The handover claims the team, so the next cycle starts with none.
+      qc.invalidateQueries({ queryKey: QK.miniTeam });
       onClose();
       Alert.alert('✅', t.miniEmployee.handoverSubmitted);
     },
@@ -214,6 +226,26 @@ export function HandoverModal({ visible, onClose }: Props) {
                       {e.description ? ` · ${e.description}` : ''}
                     </Text>
                     <Text className="text-danger text-sm">− {formatFcValue(e.amount)}</Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {/* ── Team out with the goods (record only, no money attached) ── */}
+            {team.length > 0 && (
+              <>
+                <Text className="text-xs font-bold uppercase tracking-wider text-primary mt-6 mb-2">
+                  {t.miniEmployee.teamSection}
+                </Text>
+                {team.map((m) => (
+                  <View
+                    key={m.id}
+                    className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-2.5 mb-2 flex-row justify-between"
+                  >
+                    <Text className="text-text dark:text-slate-200 text-sm">{m.name}</Text>
+                    <Text className="text-muted dark:text-slate-400 text-sm">
+                      {m.phone ?? t.miniEmployee.teamNoPhone}
+                    </Text>
                   </View>
                 ))}
               </>

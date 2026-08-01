@@ -13,6 +13,7 @@ import { User } from './user.entity';
 import { Payment } from './payment.entity';
 import { MiniSettlementItem } from './mini-settlement-item.entity';
 import { MiniExpense } from './mini-expense.entity';
+import { MiniTeamMember } from './mini-team-member.entity';
 
 /**
  * One product line sold during the cycle this handover settles — snapshotted at
@@ -120,6 +121,15 @@ export class MiniSettlement {
    *  booked as the owner's expenses on approval). */
   @OneToMany(() => MiniExpense, (e) => e.settlement)
   expenses: MiniExpense[];
+
+  /**
+   * Who was out selling with the mini during the cycle this handover closes.
+   * Materialised on approval from the team attached to the cycle's
+   * consignments, and editable by the owner on the dashboard from then on.
+   * Record-only — no money or stock is attached to these people.
+   */
+  @OneToMany(() => MiniTeamMember, (m) => m.settlement)
+  team: MiniTeamMember[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

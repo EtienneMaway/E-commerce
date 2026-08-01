@@ -23,9 +23,11 @@ import type { ActorContext } from '../common/types/actor-context';
 import { MiniSettlementsService } from './mini-settlements.service';
 import { CreateMiniSettlementDto } from './dto/create-mini-settlement.dto';
 import { CreateMiniExpenseDto } from './dto/create-mini-expense.dto';
+import { CreateMiniTeamMemberDto } from './dto/create-mini-team-member.dto';
 import { MiniActivityQueryDto } from './dto/mini-activity-query.dto';
 import { MiniStatsQueryDto } from './dto/mini-stats-query.dto';
-import { MiniExpense, MiniSettlement } from '../entities';
+import { MiniExpense, MiniSettlement, MiniTeamMember } from '../entities';
+import type { ActiveTeamMember } from './mini-settlements.service';
 
 @ApiTags('mini-settlements')
 @ApiBearerAuth('jwt')
@@ -92,6 +94,18 @@ export class MiniSettlementsController {
   @ApiResponse({ status: 200, description: '{ sold, returns, cashForSold, expensesFc }' })
   handoverPreview(@CurrentActorContext() ctx: ActorContext) {
     return this.service.handoverPreview(ctx);
+  }
+
+  @Get('team')
+  @AllowedFor('MINI_EMPLOYEE')
+  @ApiOperation({
+    summary: 'Who is out with the goods I am holding (mini employee, read-only)',
+    description:
+      'The team for the cycle in progress: everyone attached to its consignments plus anyone the employer added on the dashboard. Minis cannot change this list.',
+  })
+  @ApiResponse({ status: 200, description: 'ActiveTeamMember[]' })
+  myTeam(@CurrentActorContext() ctx: ActorContext): Promise<ActiveTeamMember[]> {
+    return this.service.myActiveTeam(ctx);
   }
 
   // ─── Mini employee: pending expenses (FC) ──────────────────────────────────
@@ -161,6 +175,65 @@ export class MiniSettlementsController {
     @Query() query: MiniActivityQueryDto,
   ) {
     return this.service.miniActivity(ctx, miniUserId, query);
+  }
+
+  @Get('mini/:miniUserId/team')
+  @ApiOperation({
+    summary: 'The team on a mini\'s cycle in progress (owner/full employee)',
+    description:
+      'Everyone out with the goods this mini is holding but has not handed over yet — from the consignments plus anything added here.',
+  })
+  @ApiResponse({ status: 200, description: 'ActiveTeamMember[]' })
+  @ApiResponse({ status: 403, description: 'Not your mini employee' })
+  miniTeam(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('miniUserId', ParseUUIDPipe) miniUserId: string,
+  ): Promise<ActiveTeamMember[]> {
+    return this.service.miniActiveTeam(ctx, miniUserId);
+  }
+
+  @Post('mini/:miniUserId/team')
+  @ApiOperation({
+    summary: 'Add someone to a mini\'s cycle in progress (owner/full employee)',
+    description:
+      'Recorded against the goods currently out; the handover that closes the cycle claims it.',
+  })
+  @ApiResponse({ status: 201, type: MiniTeamMember })
+  @ApiResponse({ status: 403, description: 'Not your mini employee' })
+  addActiveTeamMember(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('miniUserId', ParseUUIDPipe) miniUserId: string,
+    @Body() dto: CreateMiniTeamMemberDto,
+  ): Promise<MiniTeamMember> {
+    return this.service.addActiveTeamMember(ctx, miniUserId, dto);
+  }
+
+  @Post(':id/team')
+  @ApiOperation({
+    summary: 'Record someone who was out selling with the mini on this handover (owner/full employee)',
+    description:
+      "Adds to the handover's team record. Available at any time after approval — who was actually along is often only established once the goods are back.",
+  })
+  @ApiResponse({ status: 201, type: MiniTeamMember })
+  @ApiResponse({ status: 400, description: 'Handover is not approved yet' })
+  @ApiResponse({ status: 403, description: 'Not your handover' })
+  addTeamMember(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentActorContext() ctx: ActorContext,
+    @Body() dto: CreateMiniTeamMemberDto,
+  ): Promise<MiniTeamMember> {
+    return this.service.addTeamMember(ctx, id, dto);
+  }
+
+  @Delete('team/:memberId')
+  @ApiOperation({ summary: 'Remove someone from a handover\'s team record (owner/full employee)' })
+  @ApiResponse({ status: 200, description: 'Removed' })
+  @ApiResponse({ status: 403, description: 'Not on one of your handovers' })
+  removeTeamMember(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+  ): Promise<void> {
+    return this.service.removeTeamMember(ctx, memberId);
   }
 
   @Patch(':id/approve')

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   ConsignmentRequest,
   ConsignmentItem,
+  ConsignmentTeamMember,
   User,
   InventoryEntry,
   DebtorCredit,
@@ -19,6 +20,7 @@ import { CurrencyModule } from '../currency/currency.module';
     TypeOrmModule.forFeature([
       ConsignmentRequest,
       ConsignmentItem,
+      ConsignmentTeamMember,
       User,
       InventoryEntry,
       DebtorCredit,

@@ -297,6 +297,8 @@ export const consignmentsApi = {
     debtorUserId: string;
     note?: string;
     items: { productName: string; quantity: number; agreedUnitPrice: string; variantId?: string }[];
+    /** Optional people teaming up with the recipient on this batch — record only. */
+    teamMembers?: { name: string; phone?: string }[];
   }) => api.post('/consignments', body).then((r) => r.data),
   outgoing: () => api.get('/consignments/outgoing').then((r) => r.data),
   incoming: () => api.get('/consignments/incoming').then((r) => r.data),
@@ -334,8 +336,28 @@ export interface MiniSettlement {
   /** Expenses (FC) the mini claimed on this handover — deducted from the cash
    *  they physically hand over and booked as the owner's expenses on approval. */
   expenses?: { id: string; amount: string; category: string; description: string | null }[];
+  /** Who was out selling with the mini during the cycle this handover closes.
+   *  Materialised on approval from the cycle's consignments, then editable here. */
+  team?: MiniTeamMember[];
   mini?: EmploymentParty;
   owner?: EmploymentParty;
+}
+
+export interface MiniTeamMember {
+  id: string;
+  name: string;
+  phone: string | null;
+  createdAt: string;
+}
+
+/** A person on the cycle in progress — goods out but not yet handed over. */
+export interface ActiveTeamMember {
+  id: string;
+  name: string;
+  phone: string | null;
+  /** SELF — the mini themself (always first, not removable); GIVE — came in with
+   *  a consignment (fixed); MANUAL — added here (removable). */
+  source: 'SELF' | 'GIVE' | 'MANUAL';
 }
 
 export interface MiniActivitySale {
@@ -389,6 +411,22 @@ export const miniSettlementsApi = {
     api.patch(`/mini-settlements/${id}/approve`).then((r) => r.data),
   reject: (id: string): Promise<MiniSettlement> =>
     api.patch(`/mini-settlements/${id}/reject`).then((r) => r.data),
+  // The team on the cycle in progress (goods out, not yet handed over).
+  miniTeam: (miniUserId: string): Promise<ActiveTeamMember[]> =>
+    api.get(`/mini-settlements/mini/${miniUserId}/team`).then((r) => r.data),
+  addActiveTeamMember: (
+    miniUserId: string,
+    body: { name: string; phone?: string },
+  ): Promise<MiniTeamMember> =>
+    api.post(`/mini-settlements/mini/${miniUserId}/team`, body).then((r) => r.data),
+  // A handover's team record — only on approved handovers, and only from here.
+  addTeamMember: (
+    settlementId: string,
+    body: { name: string; phone?: string },
+  ): Promise<MiniTeamMember> =>
+    api.post(`/mini-settlements/${settlementId}/team`, body).then((r) => r.data),
+  removeTeamMember: (memberId: string): Promise<void> =>
+    api.delete(`/mini-settlements/team/${memberId}`).then((r) => r.data),
   miniActivity: (
     miniUserId: string,
     params?: { dateFrom?: string; dateTo?: string },

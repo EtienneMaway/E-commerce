@@ -11,6 +11,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { User } from './user.entity';
 import { ConsignmentItem } from './consignment-item.entity';
+import { ConsignmentTeamMember } from './consignment-team-member.entity';
 
 export enum ConsignmentStatus {
   PENDING = 'PENDING',
@@ -69,4 +70,12 @@ export class ConsignmentRequest {
 
   @OneToMany(() => ConsignmentItem, (item) => item.consignmentRequest, { cascade: true })
   items: ConsignmentItem[];
+
+  /**
+   * Optional people teaming up with the recipient on this batch — a record of
+   * who was out with the goods between this give and the handover that closes
+   * the cycle. Never referenced by the ledger.
+   */
+  @OneToMany(() => ConsignmentTeamMember, (m) => m.consignmentRequest, { cascade: true })
+  teamMembers: ConsignmentTeamMember[];
 }

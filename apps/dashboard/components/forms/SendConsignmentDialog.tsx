@@ -55,6 +55,12 @@ interface PickOption {
   groupVariants?: ProductVariant[];
 }
 
+/** An optional person going out with the goods — recorded, not an app user. */
+interface TeamRow {
+  name: string;
+  phone: string;
+}
+
 interface ItemRow {
   productName: string;
   variantId: string | null;
@@ -122,6 +128,7 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
   const [debtor, setDebtor] = useState<UserOption | null>(fixedDebtor ?? null);
   const [note, setNote] = useState('');
   const [items, setItems] = useState<ItemRow[]>([{ ...EMPTY_ITEM }]);
+  const [team, setTeam] = useState<TeamRow[]>([]);
   const [error, setError] = useState('');
   const [focusedItemIndex, setFocusedItemIndex] = useState<number | null>(null);
   const [entryCurrency, setEntryCurrency] = useState<EntryCurrency>('USD');
@@ -394,6 +401,13 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
       })
     );
 
+  const addTeamMember = () => setTeam((prev) => [...prev, { name: '', phone: '' }]);
+
+  const setTeamField = (i: number, field: keyof TeamRow) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setTeam((prev) => prev.map((m, idx) => (idx === i ? { ...m, [field]: e.target.value } : m)));
+
+  const removeTeamMember = (i: number) => setTeam((prev) => prev.filter((_, idx) => idx !== i));
+
   const addItem = () => setItems((prev) => [...prev, { ...EMPTY_ITEM }]);
 
   const removeItem = (i: number) =>
@@ -404,6 +418,14 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
       consignmentsApi.create({
         debtorUserId: debtor!.id,
         ...(note.trim() ? { note: note.trim() } : {}),
+        // Optional and free-form: rows left blank are simply not sent.
+        ...(() => {
+          const members = team
+            .map((m) => ({ name: m.name.trim(), phone: m.phone.trim() }))
+            .filter((m) => m.name.length > 0)
+            .map((m) => (m.phone ? m : { name: m.name }));
+          return members.length > 0 ? { teamMembers: members } : {};
+        })(),
         // A whole-carton (group) row expands to one item per size: quantity =
         // cartons × the size's pieces-per-carton, and the per-carton price the
         // mini owes is split across the sizes by their selling-price share.
@@ -456,6 +478,7 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
       setDebtor(fixedDebtor ?? null);
       setNote('');
       setItems([{ ...EMPTY_ITEM }]);
+      setTeam([]);
       setError('');
       setEntryCurrency('USD');
       onClose();
@@ -965,6 +988,50 @@ export function SendConsignmentDialog({ open, onClose, fixedDebtor, heading, sub
                 );
               })}
             </div>
+          </div>
+
+          {/* Optional team going out with these goods — record only, no ledger
+              effect. Stays collapsed to an "add" link until someone is added. */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
+                {t.sendConsignment.team}
+              </label>
+              <button type="button" onClick={addTeamMember} className="text-xs font-medium" style={{ color: 'var(--primary)' }}>
+                {t.sendConsignment.addTeamMember}
+              </button>
+            </div>
+            <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>{t.sendConsignment.teamHint}</p>
+            {team.length > 0 && (
+              <div className="space-y-2">
+                {team.map((m, i) => (
+                  <div key={i} className="flex gap-2 items-start">
+                    <input
+                      value={m.name}
+                      onChange={setTeamField(i, 'name')}
+                      placeholder={t.sendConsignment.teamNamePlaceholder}
+                      className="input"
+                      style={{ flex: 2 }}
+                    />
+                    <input
+                      value={m.phone}
+                      onChange={setTeamField(i, 'phone')}
+                      placeholder={t.sendConsignment.teamPhonePlaceholder}
+                      className="input"
+                      style={{ flex: 1.5 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeTeamMember(i)}
+                      className="px-2 py-2 rounded-xl text-sm flex-shrink-0"
+                      style={{ color: 'var(--danger)' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

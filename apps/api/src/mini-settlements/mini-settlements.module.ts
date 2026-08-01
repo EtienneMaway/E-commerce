@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
+  ConsignmentRequest,
   DebtorCredit,
   Employment,
   InventoryEntry,
   MiniExpense,
   MiniSettlement,
   MiniSettlementItem,
+  MiniTeamMember,
   Payment,
   ProductVariant,
   SaleTransaction,
@@ -29,7 +31,9 @@ import { CurrencyModule } from '../currency/currency.module';
       SaleTransaction,
       Employment,
       MiniExpense,
+      MiniTeamMember,
       ProductVariant,
+      ConsignmentRequest,
     ]),
     StockMovementsModule,
     CurrencyModule,
