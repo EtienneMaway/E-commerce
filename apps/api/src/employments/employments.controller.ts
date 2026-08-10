@@ -137,9 +137,11 @@ export class EmploymentsController {
 
   @Patch(':id/expense-allowance')
   @ApiOperation({
-    summary: "Employer caps a mini employee's expenses at a share of what they sell",
+    summary: "Employer caps an employee's expenses at a share of what they sell",
     description:
-      'The ceiling applies to the open handover cycle and grows with sales: at 5%, a mini who has sold 100 may claim up to 5 in expenses. Send null to remove the ceiling.',
+      'At 5%, an employee who has sold 100 may claim up to 5 in expenses. For a mini employee the ' +
+      'ceiling applies to the open handover cycle; for a full employee it applies per day (what they ' +
+      'sold that day) and resets the next day. Always in force — set a high percentage to lift it.',
   })
   setExpenseAllowance(
     @CurrentUser() user: User,

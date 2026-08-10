@@ -364,10 +364,12 @@ export class EmploymentsService {
   }
 
   /**
-   * Employer sets the share of a mini's sales they may spend on expenses. Always
-   * in force (2% by default), so there is no "clear it" — an employer who wants
-   * a mini effectively unrestricted sets a high percentage. Only meaningful for
-   * SALES_ONLY employments; a full employee spends on the owner's books directly.
+   * Employer sets the share of an employee's sales they may spend on expenses.
+   * For a mini (SALES_ONLY) the cap runs over the open handover cycle; for a
+   * full employee it runs over each calendar day (resets the next day), against
+   * what that employee personally sold that day. Always in force (2% by
+   * default), so there is no "clear it" — an employer who wants an employee
+   * effectively unrestricted sets a high percentage.
    */
   async setExpenseAllowance(
     userId: string,
@@ -377,9 +379,6 @@ export class EmploymentsService {
     const employment = await this.findOne(userId, id);
     if (employment.employerId !== userId) {
       throw new ForbiddenException('Only the employer can set an expense allowance');
-    }
-    if (employment.tier !== EmploymentTier.SALES_ONLY) {
-      throw new BadRequestException('Expense allowances apply to mini employees only');
     }
     const value = Number(dto.expenseAllowancePct);
     if (!Number.isFinite(value) || value < 0 || value > 100) {

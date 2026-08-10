@@ -187,13 +187,20 @@ export default function EmployeePayrollPage() {
       </div>
 
       {activeTab === 'profile' && (
-        <ProfilePanel
-          employmentId={employment.id}
-          employee={employee}
-          isExternal={isExternal}
-          disabled={isClosed}
-          onChange={invalidate}
-        />
+        <>
+          <ProfilePanel
+            employmentId={employment.id}
+            employee={employee}
+            isExternal={isExternal}
+            disabled={isClosed}
+            onChange={invalidate}
+          />
+          {/* Full employees get a daily spending ceiling (% of what they sold
+              that day); the mini equivalent lives on the Activities tab. */}
+          {employment.tier === 'FULL' && !isExternal && (
+            <ExpenseAllowanceControl employment={employment} onChange={invalidate} daily />
+          )}
+        </>
       )}
 
       {activeTab === 'activities' && isMini && employee?.id && (
@@ -1094,9 +1101,12 @@ function HandoverRow({ handover, onChange, liveRate, ppcMap }: { handover: MiniS
 function ExpenseAllowanceControl({
   employment,
   onChange,
+  daily = false,
 }: {
   employment: Employment;
   onChange: () => void;
+  /** Full employees: the cap runs per calendar day instead of per handover cycle. */
+  daily?: boolean;
 }) {
   const t = useT();
   const [editing, setEditing] = useState(false);
@@ -1123,7 +1133,9 @@ function ExpenseAllowanceControl({
       {!editing ? (
         <>
           <span className="font-semibold">{shown}%</span>
-          <span className="text-xs opacity-60">{t.employees.miniAllowanceHint}</span>
+          <span className="text-xs opacity-60">
+            {daily ? t.employees.fullAllowanceHint : t.employees.miniAllowanceHint}
+          </span>
           <button
             onClick={() => { setPct(current); setEditing(true); }}
             className="text-xs font-medium ml-auto"
@@ -1157,7 +1169,9 @@ function ExpenseAllowanceControl({
           >
             {t.common.cancel}
           </button>
-          <span className="text-xs opacity-60 w-full">{t.employees.miniAllowanceRangeHint}</span>
+          <span className="text-xs opacity-60 w-full">
+            {daily ? t.employees.fullAllowanceRangeHint : t.employees.miniAllowanceRangeHint}
+          </span>
         </>
       )}
       {!!m.error && (

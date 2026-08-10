@@ -76,7 +76,7 @@ export class Employment {
   @ApiProperty({
     example: '2.00',
     description:
-      "Mini employees only: the share of what they have SOLD this handover cycle that they may spend on expenses, as a percentage. A mini who has sold 100 with a 5% allowance can claim up to 5 in expenses, and the ceiling grows as they sell more. Always applies — defaults to 2%; an employer wanting effectively no limit sets a high percentage.",
+      "The share of what the employee has SOLD that they may spend on expenses, as a percentage. For a mini (SALES_ONLY) the base is what they sold this handover cycle; for a full employee it is what they personally sold that calendar day (resets daily). Someone who has sold 100 with a 5% allowance can claim up to 5 in expenses, and the ceiling grows as they sell more. Always applies — defaults to 2%; an employer wanting effectively no limit sets a high percentage.",
   })
   @Column({ name: 'expense_allowance_pct', type: 'decimal', precision: 5, scale: 2, default: '2.00' })
   expenseAllowancePct: string;

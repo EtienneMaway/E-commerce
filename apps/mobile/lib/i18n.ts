@@ -813,6 +813,10 @@ const en = {
     date: 'Date',
     totalLabel: 'Total',
     countLabel: 'entries',
+    allowanceToSpendToday: 'To spend today',
+    allowanceLeftToday: 'Left today',
+    allowanceHint: (pct: string, sold: string) =>
+      `Your employer caps your daily expenses at ${pct}% of what you sell — you have sold ${sold} today. Resets tomorrow.`,
     byCategory: 'By category',
     noExpenses: 'No expenses for this period',
     deleteConfirmTitle: 'Delete this expense?',
@@ -1709,6 +1713,10 @@ const fr: Translations = {
     date: 'Date',
     totalLabel: 'Total',
     countLabel: 'entrées',
+    allowanceToSpendToday: "À dépenser aujourd'hui",
+    allowanceLeftToday: "Reste aujourd'hui",
+    allowanceHint: (pct: string, sold: string) =>
+      `Votre employeur limite vos dépenses du jour à ${pct} % de ce que vous vendez — vous avez vendu ${sold} aujourd'hui. Remis à zéro demain.`,
     byCategory: 'Par catégorie',
     noExpenses: 'Aucune dépense pour cette période',
     deleteConfirmTitle: 'Supprimer cette dépense ?',

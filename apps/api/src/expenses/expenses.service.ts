@@ -1,8 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, LessThanOrEqual, MoreThanOrEqual, Repository, FindOptionsWhere } from 'typeorm';
 import Decimal from 'decimal.js';
-import { Expense, ExpenseCategory, ExpenseCurrency } from '../entities';
+import { Expense, ExpenseCategory, ExpenseCurrency, SaleTransaction } from '../entities';
 import { CurrencyService } from '../currency/currency.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { ActorContext } from '../common/types/actor-context';
@@ -25,6 +30,19 @@ export interface ExpenseListResult {
   };
 }
 
+/**
+ * A full employee's spending ceiling for one calendar day: a share of what
+ * they themselves sold that day on the employer's books. All figures are
+ * ledger USD (System Rate), matching how sales are booked.
+ */
+export interface FullEmployeeDailyAllowance {
+  pct: string;
+  soldUsd: string;
+  allowanceUsd: string;
+  spentUsd: string;
+  remainingUsd: string;
+}
+
 @Injectable()
 export class ExpensesService {
   constructor(
@@ -32,6 +50,8 @@ export class ExpensesService {
     private readonly expenseRepo: Repository<Expense>,
     private readonly currencyService: CurrencyService,
     private readonly dashboardService: DashboardService,
+    @InjectRepository(SaleTransaction)
+    private readonly saleRepo: Repository<SaleTransaction>,
   ) {}
 
   async create(ctx: ActorContext, dto: CreateExpenseDto): Promise<Expense> {
@@ -89,6 +109,29 @@ export class ExpensesService {
       ) {
         amountUsd = amountOriginal.mul(buyingRate).div(systemRate);
         rateSnapshot = buyingRate.toFixed(4);
+      }
+    }
+
+    // Full employees are capped per day: their expenses for a given day may not
+    // exceed the employer-set percentage of what THEY sold that day on the
+    // employer's books. Distinct from the mini-employee allowance, which caps a
+    // whole handover cycle in FC — this one is USD-native and resets each day.
+    // Compared in ledger USD (System Rate), so an FC expense counts at the same
+    // value the ledger books it at.
+    if (ctx.tier === 'FULL_EMPLOYEE' && ctx.employment) {
+      const ledgerUsd =
+        dto.currency === ExpenseCurrency.FC && systemRate
+          ? amountOriginal.div(systemRate)
+          : amountOriginal;
+      const allowance = await this.dailyAllowance(ctx, requestedDate);
+      if (ledgerUsd.gt(new Decimal(allowance.remainingUsd))) {
+        const usd = (v: string) => `$${new Decimal(v).toFixed(2, Decimal.ROUND_DOWN)}`;
+        throw new BadRequestException(
+          // toFixed() with no argument drops trailing zeros: "5", not "5.00".
+          `Daily expenses are capped at ${new Decimal(allowance.pct).toFixed()}% of what you sell that day. ` +
+            `You have sold ${usd(allowance.soldUsd)} that day, giving you ${usd(allowance.allowanceUsd)} ` +
+            `to spend — ${usd(allowance.spentUsd)} already spent, so ${usd(allowance.remainingUsd)} left.`,
+        );
       }
     }
 
@@ -204,11 +247,77 @@ export class ExpensesService {
     };
   }
 
+  /**
+   * A full employee's expense budget for one calendar day (defaults to today):
+   * `pct` (from their employment, 2% default) of the sale value they personally
+   * recorded that day, minus what they have already spent that day. Sales and
+   * spending both live on the employer's books; both sides are ledger USD at
+   * the System Rate so the arithmetic matches the user-visible "$100 sold at
+   * 5% → $5 to spend". The window is a server-local day — it resets at midnight.
+   */
+  async dailyAllowance(
+    ctx: ActorContext,
+    onDate: Date = new Date(),
+  ): Promise<FullEmployeeDailyAllowance> {
+    if (ctx.tier !== 'FULL_EMPLOYEE' || !ctx.employment) {
+      throw new ForbiddenException('Only a full employee has a daily expense allowance');
+    }
+    const ownerId = ctx.effectiveOwnerId;
+    const from = startOfDay(onDate);
+    const to = endOfDay(onDate);
+
+    const soldAgg = await this.saleRepo
+      .createQueryBuilder('s')
+      .select('COALESCE(SUM(CAST(s.salePrice AS DECIMAL) * s.qtySold), 0)', 'revenue')
+      .where('s.ownerId = :ownerId', { ownerId })
+      .andWhere('s.actorId = :actorId', { actorId: ctx.actorId })
+      .andWhere('s.date BETWEEN :from AND :to', { from, to })
+      .getRawOne<{ revenue: string }>();
+    const soldUsd = new Decimal(soldAgg?.revenue ?? 0);
+
+    const rateRow = await this.currencyService.getRate();
+    const fallbackRate = rateRow?.usdToFcRate ? new Decimal(rateRow.usdToFcRate) : null;
+
+    const dayExpenses = await this.expenseRepo.find({
+      where: { ownerId, actorId: ctx.actorId, date: Between(from, to) },
+    });
+    let spentUsd = new Decimal(0);
+    for (const e of dayExpenses) {
+      spentUsd = spentUsd.plus(this.toLedgerUsd(e, fallbackRate));
+    }
+
+    const pct = ctx.employment.expenseAllowancePct ?? '2';
+    const allowanceUsd = soldUsd.mul(new Decimal(pct)).div(100);
+    const remainingUsd = Decimal.max(allowanceUsd.minus(spentUsd), 0);
+    return {
+      pct: new Decimal(pct).toFixed(2),
+      soldUsd: soldUsd.toFixed(4),
+      allowanceUsd: allowanceUsd.toFixed(4),
+      spentUsd: spentUsd.toFixed(4),
+      remainingUsd: remainingUsd.toFixed(4),
+    };
+  }
+
   async remove(ctx: ActorContext, id: string): Promise<void> {
     const ownerId = ctx.effectiveOwnerId;
     const expense = await this.expenseRepo.findOne({ where: { id, ownerId } });
     if (!expense) throw new NotFoundException('Expense not found');
     await this.expenseRepo.remove(expense);
+  }
+
+  /**
+   * Ledger (System Rate) USD value of a stored expense — the same arithmetic
+   * `dashboard.getCashPosition` uses for totalExpenses: USD rows count at face
+   * value, FC rows at their snapshot System Rate (current rate as fallback).
+   */
+  private toLedgerUsd(e: Expense, systemRateFallback: Decimal | null): Decimal {
+    const amount = new Decimal(e.amount);
+    if (e.currency === ExpenseCurrency.USD) return amount;
+    const rate = e.usdToFcRateSnapshot
+      ? new Decimal(e.usdToFcRateSnapshot)
+      : systemRateFallback;
+    if (!rate || rate.lte(0)) return new Decimal(0);
+    return amount.div(rate);
   }
 
   /**

@@ -27,6 +27,9 @@ export const QK = {
   salarySummary: (employmentId: string, periodMonth: string) =>
     ['salary-payments', 'summary', employmentId, periodMonth] as const,
   expenses: (params?: object) => ['expenses', params ?? {}] as const,
+  // Prefixed 'expenses' so the blanket ['expenses'] invalidation after an
+  // expense mutation refreshes the full-employee daily allowance too.
+  expenseAllowance: ['expenses', 'allowance'] as const,
   cashPosition: ['dashboard', 'cash-position'] as const,
   employments: (filters?: object) => ['employments', filters] as const,
   consignmentsIncoming: ['consignments', 'incoming'] as const,

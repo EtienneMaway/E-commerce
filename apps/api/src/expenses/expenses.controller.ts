@@ -39,6 +39,22 @@ export class ExpensesController {
     return this.service.create(ctx, dto);
   }
 
+  @Get('allowance')
+  @AllowedFor('FULL_EMPLOYEE')
+  @ApiOperation({
+    summary: 'How much I may still spend today (full employee)',
+    description:
+      "The employer caps a full employee's expenses at a percentage of what that employee has sold " +
+      'today on the employer books. The ceiling grows with the day sales and resets the next day.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '{ pct, soldUsd, allowanceUsd, spentUsd, remainingUsd }',
+  })
+  allowance(@CurrentActorContext() ctx: ActorContext) {
+    return this.service.dailyAllowance(ctx);
+  }
+
   @Get()
   @ApiOperation({
     summary: 'List expenses with filters and USD totals',

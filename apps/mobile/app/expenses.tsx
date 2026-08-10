@@ -23,11 +23,14 @@ import { QK } from '../lib/query-keys';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
+import { StatCard } from '../components/ui/StatCard';
 import { AddExpenseModal } from '../components/forms/AddExpenseModal';
 import { MiniExpensesView } from '../components/MiniExpensesView';
 import { formatDate, getErrorMessage } from '../lib/utils';
+import { useFormatCurrency } from '../lib/currency';
 import { useOfflineStore } from '../store/offline.store';
 import { useAuthStore } from '../store/auth.store';
+import { usePersonaStore } from '../store/persona.store';
 import { useT } from '../lib/i18n';
 
 type FilterKey = 'all' | 'today' | 'week' | 'month' | 'lastN';
@@ -86,6 +89,17 @@ function OwnerExpensesScreen() {
     queryFn: currencyApi.getRate,
     staleTime: 5 * 60_000,
     retry: false,
+  });
+
+  // Full employees are capped per day at a share of what they sold today.
+  // Only meaningful (and only authorized) while acting on the employer's books.
+  const isFullEmployee = useAuthStore((s) => s.user?.activeEmployment?.tier) === 'FULL';
+  const persona = usePersonaStore((s) => s.kind);
+  const fmtFc = useFormatCurrency();
+  const { data: allowance } = useQuery({
+    queryKey: QK.expenseAllowance,
+    queryFn: expensesApi.allowance,
+    enabled: !isOffline && isFullEmployee && persona === 'employer',
   });
 
   const buyingRate = rate?.sellingRate ? parseFloat(rate.sellingRate) : null;
@@ -171,6 +185,31 @@ function OwnerExpensesScreen() {
             {list.totals.count} {t.expenses.countLabel}
           </Text>
         </Card>
+
+        {/* Full-employee daily ceiling, side by side: today's budget and what
+            is left of it — known before they start typing an amount. */}
+        {allowance && (
+          <>
+            <View className="flex-row gap-3 mt-4">
+              <StatCard
+                label={t.expenses.allowanceToSpendToday}
+                value={fmtFc(allowance.allowanceUsd)}
+              />
+              <StatCard
+                label={t.expenses.allowanceLeftToday}
+                value={fmtFc(allowance.remainingUsd)}
+                // Nothing left reads as a stop sign, not a neutral figure.
+                color={parseFloat(allowance.remainingUsd) > 0 ? 'success' : 'danger'}
+              />
+            </View>
+            <Text className="text-muted dark:text-slate-500 text-xs mt-2 px-1">
+              {t.expenses.allowanceHint(
+                String(parseFloat(allowance.pct)),
+                fmtFc(allowance.soldUsd),
+              )}
+            </Text>
+          </>
+        )}
 
         {/* Period filter chips */}
         <View className="mt-4">

@@ -126,9 +126,25 @@ export interface ExpenseListParams {
   limit?: number;
 }
 
+/**
+ * A full employee's spending ceiling for today: the employer-set percentage of
+ * what the employee has sold today. All figures are USD strings; resets daily.
+ */
+export interface FullDailyAllowance {
+  pct: string;
+  soldUsd: string;
+  allowanceUsd: string;
+  spentUsd: string;
+  remainingUsd: string;
+}
+
 export const expensesApi = {
   list: (params?: ExpenseListParams): Promise<ExpenseListResponse> =>
     api.get('/expenses', { params }).then((r) => r.data),
+
+  // Full employees only (403 otherwise) — how much they may still spend today.
+  allowance: (): Promise<FullDailyAllowance> =>
+    api.get('/expenses/allowance').then((r) => r.data),
 
   create: (body: {
     amount: string;
