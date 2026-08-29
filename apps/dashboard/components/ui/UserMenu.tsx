@@ -232,6 +232,27 @@ export function UserMenu() {
             <span>{t.nav.updatePassword}</span>
           </button>
 
+          {/* Visit website. Mirrors the sidebar link, which is the primary
+              one; this is the reachable copy on mobile, where the sidebar is a
+              closed drawer. A plain <a> so the landing page's pre-paint session
+              script runs — a client-side transition would skip it. */}
+          <a
+            href="/?site=1"
+            className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors"
+            style={{ color: 'var(--foreground)', borderBottom: '1px solid var(--border)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'var(--surface)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'transparent'; }}
+          >
+            <span style={{ color: 'var(--muted)' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3.2 9h17.6M3.2 15h17.6" />
+                <path d="M12 3a15 15 0 010 18a15 15 0 010-18z" />
+              </svg>
+            </span>
+            <span>{t.nav.website}</span>
+          </a>
+
           {/* Sign out */}
           <button
             onClick={handleSignOut}

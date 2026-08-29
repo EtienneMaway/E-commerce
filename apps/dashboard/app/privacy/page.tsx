@@ -14,7 +14,7 @@ import { Markdown } from './markdown';
 export const dynamic = 'force-static';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — KMB-Talk',
+  title: 'Privacy Policy',
   description:
     'How the KMB-Talk app collects, uses, and protects your information.',
 };

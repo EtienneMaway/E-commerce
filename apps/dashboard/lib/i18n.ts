@@ -28,6 +28,7 @@ const en = {
     more: 'More',
     language: 'Language',
     updatePassword: 'Update password',
+    website: 'Visit website',
   },
   persona: {
     viewAs: 'Viewing as',
@@ -1394,6 +1395,7 @@ const fr: Translations = {
     more: 'Plus',
     language: 'Langue',
     updatePassword: 'Modifier le mot de passe',
+    website: 'Voir le site',
   },
   persona: {
     viewAs: 'Vue',

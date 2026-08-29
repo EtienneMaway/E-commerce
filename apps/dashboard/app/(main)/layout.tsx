@@ -19,6 +19,7 @@ import { ToastProvider } from '../../components/ui/Toast';
 import { usePermissions } from '../../lib/permissions';
 import { NAV_SERVICE, serviceForPath } from '../../lib/nav-services';
 import { RouteGuard } from '../../components/ui/RouteGuard';
+import { AppProviders } from './app-providers';
 
 const NAV_ICONS = [
   <svg key="dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -101,7 +102,7 @@ function UserAvatar({ username }: { username: string }) {
   );
 }
 
-export default function MainLayout({ children }: { children: React.ReactNode }) {
+function MainShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { token, user, hydrate, logout, setUser } = useAuthStore();
@@ -372,6 +373,30 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
         {/* Bottom section */}
         <div className="relative p-3" style={{ borderTop: '1px solid rgba(var(--sidebar-fg-rgb),0.06)' }}>
+          {/*
+            Visit website. `/` sends a signed-in reader straight back here, so
+            `?site=1` is the only way to reach the public page — which makes
+            this the one link that has to be somewhere you can see. It is also
+            in the user menu for mobile, where the sidebar is a closed drawer.
+
+            A plain <a>, not next/link: the landing page's pre-paint session
+            script has to run, and a client-side route transition would skip it.
+          */}
+          <a
+            href="/?site=1"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
+            style={{ color: 'rgba(var(--sidebar-fg-rgb),0.5)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(var(--sidebar-fg-rgb),0.06)'; (e.currentTarget as HTMLAnchorElement).style.color = 'var(--sidebar-fg)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'transparent'; (e.currentTarget as HTMLAnchorElement).style.color = 'rgba(var(--sidebar-fg-rgb),0.5)'; }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 flex-shrink-0">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3.2 9h17.6M3.2 15h17.6" />
+              <path d="M12 3a15 15 0 010 18a15 15 0 010-18z" />
+            </svg>
+            <span className="flex-1 text-left truncate">{t.nav.website}</span>
+          </a>
+
           <button
             onClick={() => { logout(); router.push('/login'); }}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
@@ -404,5 +429,17 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     </div>
     </ToastProvider>
     </ConfirmProvider>
+  );
+}
+
+/**
+ * React Query wraps the shell rather than sitting in the root layout, because
+ * `MainShell` itself calls `useQuery` and so must be a child of the provider.
+ */
+export default function MainLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AppProviders>
+      <MainShell>{children}</MainShell>
+    </AppProviders>
   );
 }
