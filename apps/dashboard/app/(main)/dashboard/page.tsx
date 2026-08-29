@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi, salesApi, type DashboardProfitSummary } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
+import { usePermissions } from '../../../lib/permissions';
 import { formatDate } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { KpiCard } from '../../../components/ui/KpiCard';
@@ -74,6 +75,10 @@ export default function DashboardPage() {
   // cards stay all-time — they aren't period metrics.
   const [sel, setSel] = useState<PeriodState>(DEFAULT_PERIOD);
   const periodParams = periodToParams(sel);
+  // This page is gated on cash.overview, but two of its widgets read from
+  // other services — skip those queries rather than firing 403s.
+  const { can } = usePermissions();
+
   const { data: profitSummary, isFetching: profitFetching } = useQuery({
     queryKey: QK.dashboardProfitSummary(periodParams),
     queryFn: () => dashboardApi.profitSummary(periodParams),
@@ -92,6 +97,7 @@ export default function DashboardPage() {
   const { data: topProducts } = useQuery({
     queryKey: QK.topProducts({ rankBy: 'profit', period: '30d' }),
     queryFn: () => dashboardApi.profitByProduct({ limit: 5 }),
+    enabled: can('sales.analytics'),
   });
   const { data: sourceData } = useQuery({
     queryKey: QK.profitBySource,
@@ -100,6 +106,7 @@ export default function DashboardPage() {
   const { data: recentSales } = useQuery({
     queryKey: QK.salesHistory({ limit: 10 }),
     queryFn: () => salesApi.list({ limit: 10 }),
+    enabled: can('sales.history'),
   });
   const { data: alertsData } = useQuery({
     queryKey: QK.alerts,

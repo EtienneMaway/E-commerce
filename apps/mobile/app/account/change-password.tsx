@@ -45,7 +45,7 @@ export default function ChangePasswordScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-surface dark:bg-slate-900"
+      className="flex-1 bg-background"
       contentContainerClassName="px-4 pt-4 pb-8"
       keyboardShouldPersistTaps="handled"
     >

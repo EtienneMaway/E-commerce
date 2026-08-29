@@ -20,8 +20,9 @@ export {
   NOTES_REQUIRED_REASONS,
 } from './stock-movement.entity';
 export { Employment, EmploymentTier, EmploymentStatus } from './employment.entity';
+export { EmployeeRole } from './employee-role.entity';
 export { ProductPrice } from './product-price.entity';
-export { SalaryPayment, SalaryPaymentStatus } from './salary-payment.entity';
+export { SalaryPayment, SalaryPaymentKind, SalaryPaymentStatus } from './salary-payment.entity';
 export {
   MiniSettlement,
   MiniSettlementStatus,

@@ -30,9 +30,9 @@ export function PersonaBanner() {
     <div
       className="flex items-center justify-between gap-3 px-4 py-2 text-xs"
       style={{
-        background: 'rgba(99,102,241,0.12)',
-        color: '#A5B4FC',
-        borderBottom: '1px solid rgba(99,102,241,0.25)',
+        background: 'rgba(var(--primary-rgb),0.12)',
+        color: 'var(--primary-dark)',
+        borderBottom: '1px solid rgba(var(--primary-rgb),0.25)',
       }}
     >
       <div className="flex items-center gap-2 min-w-0">

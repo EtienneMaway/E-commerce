@@ -8,14 +8,20 @@ import { AuthGuard } from '@nestjs/passport';
 import { EmploymentTier, User } from '../../entities';
 import { EmploymentsService } from '../../employments/employments.service';
 import { ALLOWED_FOR_KEY } from '../decorators/allowed-for.decorator';
+import { REQUIRES_SERVICE_KEY } from '../decorators/requires-service.decorator';
 import { ActorContext, ActorTier } from '../types/actor-context';
+import { ServiceKey, resolveGrantedServices } from '../services/service-catalog';
 
 const DEFAULT_ALLOWED: ActorTier[] = ['OWNER', 'FULL_EMPLOYEE'];
 
 /**
  * Authenticates via JWT (Passport) and, on success:
- *   1. Resolves the request's ActorContext (actor / effectiveOwnerId / tier).
+ *   1. Resolves the request's ActorContext (actor / effectiveOwnerId / tier /
+ *      the services granted by the employment's role).
  *   2. Enforces the @AllowedFor tier allowlist (default: OWNER + FULL_EMPLOYEE).
+ *   3. Enforces the @RequiresService catalogue gate. Order matters: the tier is
+ *      the ceiling and a role can only narrow it, so a service granted above the
+ *      tier is still refused at step 2.
  *
  * Combining auth + context + permission in one guard avoids ordering issues with
  * NestJS's lifecycle (interceptors run after guards, so context can't be resolved
@@ -83,12 +89,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
           // and settle by handover. Full employees operate on the employer's books.
           effectiveOwnerId: tier === 'MINI_EMPLOYEE' ? user.id : employment.employerId,
           tier,
+          // No role assigned resolves to the tier's defaults — the access this
+          // employment had before roles existed.
+          services: resolveGrantedServices(employment.role?.services ?? null, tier),
           employment,
         }
       : {
           actorId: user.id,
           effectiveOwnerId: user.id,
           tier: 'OWNER',
+          services: resolveGrantedServices(null, 'OWNER'),
           employment: null,
         };
     req.actorContext = ctx;
@@ -104,6 +114,17 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         ctx.tier === 'MINI_EMPLOYEE'
           ? 'This action is not permitted for mini employees'
           : 'This action is not permitted while acting on behalf of an employer',
+      );
+    }
+
+    // Any-of: a route reachable from two features passes on either service.
+    const required = this.reflector.getAllAndOverride<ServiceKey[] | undefined>(
+      REQUIRES_SERVICE_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (required?.length && !required.some((s) => ctx.services.has(s))) {
+      throw new ForbiddenException(
+        'Your role does not include this feature — ask your employer to enable it',
       );
     }
     return true;

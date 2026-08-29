@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Adaptive-icon background: the badge's pale field. Flat on purpose — the
+       launcher masks this layer to whatever shape it uses, and the gradient
+       lives on the disc in adaptive-foreground.svg. -->
+  <rect width="512" height="512" fill="#D3CEFB"/>
+</svg>

@@ -18,6 +18,7 @@ import { QuantityDiscountsService } from './quantity-discounts.service';
 import { UpdateQuantityDiscountDto } from './dto/update-quantity-discount.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 
@@ -29,6 +30,7 @@ export class QuantityDiscountsController {
   constructor(private readonly service: QuantityDiscountsService) {}
 
   @Get()
+  @RequiresService('inventory.view')
   // Every tier that can record a sale needs to read the tiers to compute the
   // discount at checkout — mini employees included (they sell on their own
   // books). The default allowlist (OWNER/FULL_EMPLOYEE) would 403 a mini.
@@ -54,7 +56,8 @@ export class QuantityDiscountsController {
   }
 
   @Put()
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('pricing.catalog')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Set or update the shop's quantity-discount tiers" })
   @ApiBody({ type: UpdateQuantityDiscountDto })

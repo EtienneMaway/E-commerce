@@ -83,19 +83,19 @@ export function AddExpenseModal({ visible, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <ScrollView
-        className="flex-1 bg-surface dark:bg-slate-900"
+        className="flex-1 bg-background"
         contentContainerClassName="px-6 py-8"
         keyboardShouldPersistTaps="handled"
       >
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-xl font-bold text-text dark:text-slate-100">{t.expenses.addBtn}</Text>
+          <Text className="text-xl font-bold text-text">{t.expenses.addBtn}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
         </View>
 
         <View className="mb-4">
-          <Text className="text-sm font-medium text-text dark:text-slate-100 mb-1.5">
+          <Text className="text-sm font-medium text-text mb-1.5">
             {t.expenses.amount} (FC)
           </Text>
           <Input
@@ -108,7 +108,7 @@ export function AddExpenseModal({ visible, onClose }: Props) {
         </View>
 
         <View className="mb-4">
-          <Text className="text-sm font-medium text-text dark:text-slate-100 mb-1.5">
+          <Text className="text-sm font-medium text-text mb-1.5">
             {t.expenses.category}
           </Text>
           <View className="flex-row flex-wrap gap-2">
@@ -119,12 +119,12 @@ export function AddExpenseModal({ visible, onClose }: Props) {
                 className={`px-3 py-2 rounded-full border ${
                   category === c
                     ? 'bg-primary border-primary'
-                    : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
+                    : 'bg-card border-border'
                 }`}
               >
                 <Text
                   className={`text-xs font-semibold ${
-                    category === c ? 'text-white' : 'text-muted dark:text-slate-300'
+                    category === c ? 'text-white' : 'text-muted'
                   }`}
                 >
                   {catLabel(c)}
@@ -143,7 +143,7 @@ export function AddExpenseModal({ visible, onClose }: Props) {
         />
 
         <View className="mb-4">
-          <Text className="text-sm font-medium text-text dark:text-slate-100 mb-1.5">
+          <Text className="text-sm font-medium text-text mb-1.5">
             {t.expenses.description}
           </Text>
           <Input

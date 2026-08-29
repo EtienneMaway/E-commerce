@@ -10,6 +10,7 @@ import { Badge } from '../../../components/ui/Badge';
 import { ActorPill } from '../../../components/ui/ActorPill';
 import { SendConsignmentDialog } from '../../../components/forms/SendConsignmentDialog';
 import { useT } from '@/lib/i18n';
+import { usePermissions } from '@/lib/permissions';
 import { consignmentHtml } from '../../../lib/print-templates';
 import { PrintDialog } from '../../../components/ui/PrintDialog';
 import { useAuthStore } from '../../../store/auth.store';
@@ -55,14 +56,19 @@ type Tab = 'outgoing' | 'incoming';
 
 export default function ConsignmentsPage() {
   const t = useT();
-  const [tab, setTab] = useState<Tab>('outgoing');
+  const { can } = usePermissions();
   const [sendOpen, setSendOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Sending and receiving are separate grants, so a role may open one tab only.
+  // Both the tab strip and the initial tab follow what is actually permitted —
+  // otherwise clicking the other tab just 403s.
   const TABS: { value: Tab; label: string }[] = [
-    { value: 'outgoing', label: t.consignments.tabOutgoing },
-    { value: 'incoming', label: t.consignments.tabIncoming },
+    ...(can('consignments.send') ? [{ value: 'outgoing' as Tab, label: t.consignments.tabOutgoing }] : []),
+    ...(can('consignments.receive') ? [{ value: 'incoming' as Tab, label: t.consignments.tabIncoming }] : []),
   ];
+  const [tab, setTab] = useState<Tab>(can('consignments.send') ? 'outgoing' : 'incoming');
+  const activeTab: Tab = TABS.some((tb) => tb.value === tab) ? tab : (TABS[0]?.value ?? 'incoming');
 
   return (
     <div>
@@ -74,13 +80,13 @@ export default function ConsignmentsPage() {
           <p className="page-sub">{t.consignments.sub}</p>
           <div className="flex gap-1.5 mt-3">
             {TABS.map((tb) => (
-              <button key={tb.value} onClick={() => setTab(tb.value)} className={`pill${tab === tb.value ? ' active' : ''}`}>
+              <button key={tb.value} onClick={() => setTab(tb.value)} className={`pill${activeTab === tb.value ? ' active' : ''}`}>
                 {tb.label}
               </button>
             ))}
           </div>
         </div>
-        {tab === 'outgoing' && (
+        {activeTab === 'outgoing' && can('consignments.send') && (
           <button onClick={() => setSendOpen(true)} className="btn btn-primary flex-shrink-0">
             {t.consignments.sendConsignment}
           </button>
@@ -88,7 +94,7 @@ export default function ConsignmentsPage() {
       </div>
 
       <div className="page-content">
-        {tab === 'outgoing' ? (
+        {activeTab === 'outgoing' ? (
           <OutgoingTab expandedId={expandedId} setExpandedId={setExpandedId} />
         ) : (
           <IncomingTab expandedId={expandedId} setExpandedId={setExpandedId} />
@@ -100,12 +106,14 @@ export default function ConsignmentsPage() {
 
 function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null; setExpandedId: (id: string | null) => void }) {
   const t = useT();
+  const { can } = usePermissions();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
   const [printRow, setPrintRow] = useState<ConsignmentRequest | null>(null);
   const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
     queryKey: QK.inventoryProducts,
     queryFn: () => inventoryApi.listProducts(),
+    enabled: can('inventory.view'),
     staleTime: 60_000,
   });
   const ppcMap = new Map((productsData ?? []).map((p) => [p.productName, p.piecesPerCarton]));
@@ -184,7 +192,7 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
                     >
                       🖨️
                     </button>
-                    {row.status === 'PENDING' && (
+                    {row.status === 'PENDING' && can('consignments.send') && (
                       <button
                         onClick={() => cancelMutation.mutate(row.id)}
                         disabled={cancelMutation.isPending}
@@ -216,6 +224,7 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
 
 function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null; setExpandedId: (id: string | null) => void }) {
   const t = useT();
+  const { can } = usePermissions();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
   const [actionError, setActionError] = useState<Record<string, string>>({});
@@ -223,6 +232,7 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
   const { data: productsData2 } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
     queryKey: QK.inventoryProducts,
     queryFn: () => inventoryApi.listProducts(),
+    enabled: can('inventory.view'),
     staleTime: 60_000,
   });
   const ppcMap = new Map((productsData2 ?? []).map((p) => [p.productName, p.piecesPerCarton]));
@@ -312,7 +322,7 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
                     >
                       🖨️
                     </button>
-                    {row.status === 'PENDING' && (
+                    {row.status === 'PENDING' && can('consignments.receive') && (
                       <>
                         <button
                           onClick={() => confirmMutation.mutate(row.id)}

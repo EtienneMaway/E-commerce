@@ -15,6 +15,7 @@ import {
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { salesApi, inventoryApi, quantityDiscountsApi, type ProductSummary, type ProductVariantSummary } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useBrand } from '../../lib/theme';
 import {
   resolveQuantityDiscountPercent,
   quantityTierFor,
@@ -155,6 +156,7 @@ function deriveCartonPrice(unitPrice: string, ppc: number | null): string {
 }
 
 export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Props) {
+  const brand = useBrand();
   const t = useT();
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
@@ -969,7 +971,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       <View
         key={product.productName}
         className={`rounded-2xl border mb-2 ${
-          hasSelection ? 'bg-primary/5 border-primary' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
+          hasSelection ? 'bg-primary/5 border-primary' : 'bg-card border-border'
         }`}
       >
         <TouchableOpacity
@@ -978,11 +980,11 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
           className="flex-row items-start justify-between p-4"
         >
           <View className="flex-1 mr-3">
-            <Text className="text-text dark:text-slate-100 font-semibold capitalize text-base" numberOfLines={1}>
+            <Text className="text-text font-semibold capitalize text-base" numberOfLines={1}>
               {product.productName}
             </Text>
             <View className="flex-row flex-wrap items-center gap-x-3 mt-1">
-              <Text className="text-muted dark:text-slate-500 text-xs">
+              <Text className="text-muted text-xs">
                 {hasSelection ? t.sizedSale.sizesSelected(groupLines.length) : t.sizedSale.pickSize}
               </Text>
               {hasSelection && (
@@ -992,7 +994,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
           </View>
           <View
             className={`w-6 h-6 rounded-full border-2 items-center justify-center ${
-              hasSelection ? 'bg-primary border-primary' : 'border-border dark:border-slate-700 bg-card dark:bg-slate-800'
+              hasSelection ? 'bg-primary border-primary' : 'border-border bg-card'
             }`}
           >
             {hasSelection && <Text className="text-white text-xs font-bold leading-none">✓</Text>}
@@ -1001,7 +1003,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
         {isExpanded && (
           <View className="px-4 pb-4 pt-1 border-t border-primary/20">
-            <Text className="text-muted dark:text-slate-500 text-xs mb-2">{t.sizedSale.multiSizeHint}</Text>
+            <Text className="text-muted text-xs mb-2">{t.sizedSale.multiSizeHint}</Text>
             {variants.map((v) => {
               const key = `${product.productName}::${v.variantId}`;
               const row = sizedLines.get(key);
@@ -1011,7 +1013,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                 <View
                   key={v.variantId}
                   className={`rounded-xl mb-2 border ${
-                    isSel ? 'border-primary bg-primary/10' : 'border-border dark:border-slate-700'
+                    isSel ? 'border-primary bg-primary/10' : 'border-border'
                   }`}
                   style={{ opacity: out ? 0.45 : 1 }}
                 >
@@ -1021,17 +1023,17 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                     className="flex-row justify-between items-center px-3 py-2.5"
                   >
                     <View className="flex-1 mr-2">
-                      <Text className="text-text dark:text-slate-100 font-medium capitalize text-sm">{v.label}</Text>
-                      <Text className="text-muted dark:text-slate-500 text-xs">
+                      <Text className="text-text font-medium capitalize text-sm">{v.label}</Text>
+                      <Text className="text-muted text-xs">
                         {out ? t.sizedSale.outOfStock : t.sizedSale.sizeAvailable(v.available)}
                       </Text>
                     </View>
-                    <Text className="text-text dark:text-slate-100 text-sm font-medium mr-2">
+                    <Text className="text-text text-sm font-medium mr-2">
                       {formatMoney(v.sellingPrice, isMini && v.usdToFcRateSnapshot ? v.usdToFcRateSnapshot : rateForProduct(product))}
                     </Text>
                     <View
                       className={`w-5 h-5 rounded-full border-2 items-center justify-center ${
-                        isSel ? 'bg-primary border-primary' : 'border-border dark:border-slate-700'
+                        isSel ? 'bg-primary border-primary' : 'border-border'
                       }`}
                     >
                       {isSel && <Text className="text-white text-[10px] font-bold leading-none">✓</Text>}
@@ -1039,20 +1041,20 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                   </Pressable>
                   {isSel && row && (
                     <View className="flex-row justify-between items-center px-3 pb-2.5 pt-0.5">
-                      <Text className="text-muted dark:text-slate-400 text-xs">{t.sizedSale.quantity}</Text>
+                      <Text className="text-muted text-xs">{t.sizedSale.quantity}</Text>
                       <View className="flex-row items-center gap-2">
                         <TouchableOpacity
                           onPress={() => adjustSizedQty(key, -1)}
-                          className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                          className="w-7 h-7 rounded-full bg-background items-center justify-center"
                         >
-                          <Text className="text-text dark:text-slate-100 font-bold leading-none">−</Text>
+                          <Text className="text-text font-bold leading-none">−</Text>
                         </TouchableOpacity>
-                        <Text className="text-text dark:text-slate-100 font-bold w-5 text-center">{row.qty}</Text>
+                        <Text className="text-text font-bold w-5 text-center">{row.qty}</Text>
                         <TouchableOpacity
                           onPress={() => adjustSizedQty(key, +1)}
-                          className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                          className="w-7 h-7 rounded-full bg-background items-center justify-center"
                         >
-                          <Text className="text-text dark:text-slate-100 font-bold leading-none">+</Text>
+                          <Text className="text-text font-bold leading-none">+</Text>
                         </TouchableOpacity>
                         <Text className="text-primary font-semibold text-xs ml-1">
                           {formatFcValue(row.unitPriceFc * row.qty)}
@@ -1079,7 +1081,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
           style={{ flex: 1 }}
         >
           <ScrollView
-            className="flex-1 bg-surface dark:bg-slate-900"
+            className="flex-1 bg-background"
             contentContainerClassName="px-6 py-8"
             keyboardShouldPersistTaps="handled"
           >
@@ -1096,12 +1098,12 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
             {discountPending.map((d, idx) => (
               <View
                 key={d.cartItem.productName}
-                className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-3 mb-3"
+                className="bg-card border border-border rounded-2xl px-4 py-3 mb-3"
               >
-                <Text className="text-text dark:text-slate-100 font-semibold capitalize">
+                <Text className="text-text font-semibold capitalize">
                   {d.cartItem.productName}
                 </Text>
-                <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">
+                <Text className="text-muted text-xs mt-0.5">
                   {t.recordSaleModal.pricedBelow(
                     formatCurrency(d.standardPrice),
                   )}
@@ -1109,7 +1111,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                 <Text className="text-amber-700 dark:text-amber-400 text-xs mb-2">
                   → {formatCurrency(d.submittedPrice)}
                 </Text>
-                <Text className="text-muted dark:text-slate-400 text-xs mb-1">
+                <Text className="text-muted text-xs mb-1">
                   {t.recordSaleModal.discountReasonLabel}
                 </Text>
                 <TextInput
@@ -1120,9 +1122,9 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                     )
                   }
                   placeholder={t.recordSaleModal.discountReasonPlaceholder}
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={brand.mutedSubtle}
                   multiline
-                  className="bg-surface dark:bg-slate-900 border border-border dark:border-slate-700 rounded-xl px-3 py-2 text-text dark:text-slate-100 text-sm"
+                  className="bg-surface border border-border rounded-xl px-3 py-2 text-text text-sm"
                   style={{ minHeight: 60, textAlignVertical: 'top' }}
                 />
               </View>
@@ -1145,22 +1147,22 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
     return (
       <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
         <ScrollView
-          className="flex-1 bg-surface dark:bg-slate-900"
+          className="flex-1 bg-background"
           contentContainerClassName="px-6 py-8"
         >
-          <View className="bg-card dark:bg-slate-800 border border-danger rounded-2xl p-5 mb-5">
+          <View className="bg-card border border-danger rounded-2xl p-5 mb-5">
             <Text className="text-2xl mb-2">⚠️</Text>
             <Text className="text-danger font-bold text-lg mb-1">{t.recordSaleModal.priceGuardTitle}</Text>
-            <Text className="text-muted dark:text-slate-500 text-sm mb-4">
+            <Text className="text-muted text-sm mb-4">
               {t.recordSaleModal.priceGuardSub(priceGuardPending.length)}
             </Text>
             {priceGuardPending.map((p) => {
               const label = p.kind === 'simple' ? p.cartItem.productName : `${p.line.productName} · ${p.line.variantLabel}`;
               const key = p.kind === 'simple' ? p.cartItem.productName : p.line.key;
               return (
-                <View key={key} className="border-t border-border dark:border-slate-700 pt-3 mb-2">
-                  <Text className="text-text dark:text-slate-100 font-semibold capitalize">{label}</Text>
-                  <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">{p.warning}</Text>
+                <View key={key} className="border-t border-border pt-3 mb-2">
+                  <Text className="text-text font-semibold capitalize">{label}</Text>
+                  <Text className="text-muted text-xs mt-0.5">{p.warning}</Text>
                 </View>
               );
             })}
@@ -1186,11 +1188,11 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <View className="flex-1 bg-surface dark:bg-slate-900">
+        <View className="flex-1 bg-background">
           {/* Header */}
           <View className="flex-row justify-between items-center px-6 pt-8 pb-4">
             <View className="flex-row items-center gap-2">
-              <Text className="text-xl font-bold text-text dark:text-slate-100">{t.recordSaleModal.title}</Text>
+              <Text className="text-xl font-bold text-text">{t.recordSaleModal.title}</Text>
               {isOffline && (
                 <View className="bg-amber-100 dark:bg-amber-900 rounded-full px-2 py-0.5">
                   <Text className="text-amber-700 dark:text-amber-300 text-xs font-bold">📴 OFFLINE</Text>
@@ -1204,19 +1206,19 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
           {/* Search bar */}
           <View className="px-4 mb-3">
-            <View className="flex-row items-center bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4">
-              <Text className="text-muted dark:text-slate-500 mr-2 text-base">🔍</Text>
+            <View className="flex-row items-center bg-card border border-border rounded-xl px-4">
+              <Text className="text-muted mr-2 text-base">🔍</Text>
               <TextInput
                 value={search}
                 onChangeText={setSearch}
                 placeholder={t.recordSaleModal.searchPlaceholder}
-                placeholderTextColor="#94A3B8"
-                className="flex-1 py-3 text-text dark:text-slate-100 text-base"
+                placeholderTextColor={brand.mutedSubtle}
+                className="flex-1 py-3 text-text text-base"
                 autoCapitalize="none"
               />
               {search.length > 0 && (
                 <TouchableOpacity onPress={() => setSearch('')} hitSlop={8}>
-                  <Text className="text-muted dark:text-slate-500 text-xl px-1">×</Text>
+                  <Text className="text-muted text-xl px-1">×</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1229,12 +1231,12 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
             keyboardShouldPersistTaps="handled"
           >
             {inventoryLoading ? (
-              <ActivityIndicator className="mt-12" color="#2563EB" />
+              <ActivityIndicator className="mt-12" color={brand.primary} />
             ) : filteredProducts.length === 0 ? (
               <View className="items-center mt-12">
                 <Text className="text-4xl mb-3">📦</Text>
-                <Text className="text-text dark:text-slate-100 font-semibold">{t.recordSaleModal.noProductsTitle}</Text>
-                <Text className="text-muted dark:text-slate-500 text-sm text-center mt-1">
+                <Text className="text-text font-semibold">{t.recordSaleModal.noProductsTitle}</Text>
+                <Text className="text-muted text-sm text-center mt-1">
                   {search.trim() ? t.recordSaleModal.noProductsSearchMsg : t.recordSaleModal.noProductsEmptyMsg}
                 </Text>
               </View>
@@ -1251,7 +1253,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                     className={`rounded-2xl border mb-2 ${
                       isSelected
                         ? 'bg-primary/5 border-primary'
-                        : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
+                        : 'bg-card border-border'
                     }`}
                   >
                     {/* Header row — tap to toggle */}
@@ -1261,17 +1263,17 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                       className="flex-row items-start justify-between p-4"
                     >
                       <View className="flex-1 mr-3">
-                        <Text className="text-text dark:text-slate-100 font-semibold capitalize text-base" numberOfLines={1}>
+                        <Text className="text-text font-semibold capitalize text-base" numberOfLines={1}>
                           {product.productName}
                         </Text>
                         <View className="flex-row flex-wrap gap-x-3 mt-1">
-                          <Text className="text-muted dark:text-slate-500 text-xs">
+                          <Text className="text-muted text-xs">
                             {t.recordSaleModal.costPerUnit(formatMoney(product.latestUnitCost, rateForProduct(product)))}
                           </Text>
                           <Text className="text-success text-xs font-semibold">
                             {t.recordSaleModal.sellAt(formatMoney(product.latestSellingPrice, rateForProduct(product)))}
                           </Text>
-                          <Text className="text-muted dark:text-slate-500 text-xs">
+                          <Text className="text-muted text-xs">
                             {t.recordSaleModal.inStock(product.totalAvailable)}
                           </Text>
                         </View>
@@ -1280,7 +1282,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                         className={`w-6 h-6 rounded-full border-2 items-center justify-center ${
                           isSelected
                             ? 'bg-primary border-primary'
-                            : 'border-border dark:border-slate-700 bg-card dark:bg-slate-800'
+                            : 'border-border bg-card'
                         }`}
                       >
                         {isSelected && <Text className="text-white text-xs font-bold leading-none">✓</Text>}
@@ -1294,7 +1296,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                             (most sales here are by the piece); for a simple product this is
                             just its plain Quantity, bound to `cartons`. */}
                         <View className="flex-row items-center gap-3 mt-3">
-                          <Text className="text-muted dark:text-slate-400 text-xs flex-shrink-0">
+                          <Text className="text-muted text-xs flex-shrink-0">
                             {cartItem.piecesPerCarton ? t.recordSaleModal.piecesLabel : t.recordSaleModal.qtyLabel}
                           </Text>
                           <View className="flex-row items-center gap-1">
@@ -1304,9 +1306,9 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                                   ? setExtraPiecesAdj(product.productName, -1)
                                   : setCartonsAdj(product.productName, -1)
                               }
-                              className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                              className="w-8 h-8 rounded-full bg-background items-center justify-center"
                             >
-                              <Text className="text-text dark:text-slate-100 font-bold text-lg leading-none">−</Text>
+                              <Text className="text-text font-bold text-lg leading-none">−</Text>
                             </TouchableOpacity>
                             <TextInput
                               value={cartItem.piecesPerCarton ? cartItem.extraPieces : cartItem.cartons}
@@ -1329,8 +1331,8 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                               keyboardType="number-pad"
                               selectTextOnFocus
                               placeholder="0"
-                              placeholderTextColor="#94A3B8"
-                              className="text-text dark:text-slate-100 font-bold text-base text-center w-12 border-b border-border dark:border-slate-700 mx-1"
+                              placeholderTextColor={brand.mutedSubtle}
+                              className="text-text font-bold text-base text-center w-12 border-b border-border mx-1"
                             />
                             <TouchableOpacity
                               onPress={() =>
@@ -1338,14 +1340,14 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                                   ? setExtraPiecesAdj(product.productName, +1)
                                   : setCartonsAdj(product.productName, +1)
                               }
-                              className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                              className="w-8 h-8 rounded-full bg-background items-center justify-center"
                             >
-                              <Text className="text-text dark:text-slate-100 font-bold text-lg leading-none">+</Text>
+                              <Text className="text-text font-bold text-lg leading-none">+</Text>
                             </TouchableOpacity>
                           </View>
                         </View>
                         {cartItem.piecesPerCarton ? (
-                          <Text className="text-muted dark:text-slate-500 text-[10px] mt-1 italic">
+                          <Text className="text-muted text-[10px] mt-1 italic">
                             {t.recordSaleModal.extraPiecesHint(cartItem.piecesPerCarton)}
                           </Text>
                         ) : null}
@@ -1355,29 +1357,29 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                           cartItem.showCartons ? (
                             <View className="mt-2">
                               <View className="flex-row items-center gap-3">
-                                <Text className="text-muted dark:text-slate-400 text-xs flex-shrink-0">
+                                <Text className="text-muted text-xs flex-shrink-0">
                                   {t.recordSaleModal.cartonsLabel}
                                 </Text>
                                 <TouchableOpacity
                                   onPress={() => setCartonsAdj(product.productName, -1)}
-                                  className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                                  className="w-7 h-7 rounded-full bg-background items-center justify-center"
                                 >
-                                  <Text className="text-text dark:text-slate-100 font-bold leading-none">−</Text>
+                                  <Text className="text-text font-bold leading-none">−</Text>
                                 </TouchableOpacity>
                                 <TextInput
                                   value={cartItem.cartons}
                                   onChangeText={(v) => updateItem(product.productName, { cartons: v.replace(/[^0-9]/g, '') })}
                                   keyboardType="number-pad"
                                   selectTextOnFocus
-                                  className="text-text dark:text-slate-100 font-semibold text-base w-12 text-center border-b border-border dark:border-slate-700"
+                                  className="text-text font-semibold text-base w-12 text-center border-b border-border"
                                 />
                                 <TouchableOpacity
                                   onPress={() => setCartonsAdj(product.productName, +1)}
-                                  className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                                  className="w-7 h-7 rounded-full bg-background items-center justify-center"
                                 >
-                                  <Text className="text-text dark:text-slate-100 font-bold leading-none">+</Text>
+                                  <Text className="text-text font-bold leading-none">+</Text>
                                 </TouchableOpacity>
-                                <Text className="text-muted dark:text-slate-500 text-[11px] flex-1">
+                                <Text className="text-muted text-[11px] flex-1">
                                   × {cartItem.piecesPerCarton} pcs
                                 </Text>
                                 <TouchableOpacity
@@ -1401,14 +1403,14 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
                         {/* Total pieces (when carton mode) */}
                         {cartItem.piecesPerCarton ? (
-                          <Text className="text-muted dark:text-slate-500 text-[11px] mt-1">
+                          <Text className="text-muted text-[11px] mt-1">
                             {t.recordSaleModal.totalPieces(totalPiecesOf(cartItem))}
                           </Text>
                         ) : null}
 
                         {/* Price inputs — FC native */}
                         <View className="mt-3">
-                          <Text className="text-muted dark:text-slate-400 text-xs mb-1">
+                          <Text className="text-muted text-xs mb-1">
                             {t.recordSaleModal.sellingPriceLabel}
                           </Text>
                           <TextInput
@@ -1416,11 +1418,11 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                             onChangeText={(v) => setUnitPriceFc(product.productName, v.replace(/[^0-9]/g, ''))}
                             keyboardType="number-pad"
                             placeholder="0"
-                            placeholderTextColor="#94A3B8"
-                            className="bg-surface dark:bg-slate-900 border border-border dark:border-slate-700 rounded-xl px-3 py-2 text-text dark:text-slate-100 text-base"
+                            placeholderTextColor={brand.mutedSubtle}
+                            className="bg-surface border border-border rounded-xl px-3 py-2 text-text text-base"
                           />
                           {cartItem.dashboardPriceFc && cartItem.unitPriceFc === cartItem.dashboardPriceFc ? (
-                            <Text className="text-muted dark:text-slate-500 text-[11px] mt-1 italic">
+                            <Text className="text-muted text-[11px] mt-1 italic">
                               {t.recordSaleModal.dashboardPriceHint}
                             </Text>
                           ) : null}
@@ -1428,7 +1430,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
 
                         {cartItem.piecesPerCarton ? (
                           <View className="mt-2">
-                            <Text className="text-muted dark:text-slate-400 text-xs mb-1">
+                            <Text className="text-muted text-xs mb-1">
                               {t.recordSaleModal.cartonPriceLabel}
                             </Text>
                             <TextInput
@@ -1436,15 +1438,15 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                               onChangeText={(v) => setCartonPriceFc(product.productName, v.replace(/[^0-9]/g, ''))}
                               keyboardType="number-pad"
                               placeholder="0"
-                              placeholderTextColor="#94A3B8"
-                              className="bg-surface dark:bg-slate-900 border border-border dark:border-slate-700 rounded-xl px-3 py-2 text-text dark:text-slate-100 text-base"
+                              placeholderTextColor={brand.mutedSubtle}
+                              className="bg-surface border border-border rounded-xl px-3 py-2 text-text text-base"
                             />
                           </View>
                         ) : null}
 
                         {/* Quantity ("group of prices") discount */}
                         {qdConfig?.enabled ? (
-                          <View className="mt-3 rounded-xl border border-border dark:border-slate-700 px-3 py-2.5">
+                          <View className="mt-3 rounded-xl border border-border px-3 py-2.5">
                             <Pressable
                               onPress={() =>
                                 updateItem(product.productName, {
@@ -1453,12 +1455,12 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                               }
                               className="flex-row items-center justify-between"
                             >
-                              <Text className="text-text dark:text-slate-100 text-sm font-medium flex-1 mr-2">
+                              <Text className="text-text text-sm font-medium flex-1 mr-2">
                                 {t.recordSaleModal.qdToggle}
                               </Text>
                               <View
                                 className={`w-11 h-6 rounded-full px-0.5 justify-center ${
-                                  cartItem.applyDiscount ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
+                                  cartItem.applyDiscount ? 'bg-primary' : 'bg-muted-subtle'
                                 }`}
                               >
                                 <View
@@ -1480,7 +1482,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                                 );
                                 if (auto <= 0 && !cartItem.discountPctOverride.trim()) {
                                   return (
-                                    <Text className="text-muted dark:text-slate-500 text-[11px] mt-2">
+                                    <Text className="text-muted text-[11px] mt-2">
                                       {t.recordSaleModal.qdNotQualified}
                                     </Text>
                                   );
@@ -1488,7 +1490,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                                 return (
                                   <View className="mt-2">
                                     <View className="flex-row items-center gap-2">
-                                      <Text className="text-muted dark:text-slate-400 text-xs flex-1">
+                                      <Text className="text-muted text-xs flex-1">
                                         {tier
                                           ? t.recordSaleModal.qdTierApplied(tierName(tier))
                                           : t.recordSaleModal.qdCustom}
@@ -1502,11 +1504,11 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                                         }
                                         keyboardType="decimal-pad"
                                         placeholder={String(auto)}
-                                        placeholderTextColor="#94A3B8"
+                                        placeholderTextColor={brand.mutedSubtle}
                                         selectTextOnFocus
-                                        className="text-text dark:text-slate-100 font-semibold text-base w-14 text-center border-b border-border dark:border-slate-700"
+                                        className="text-text font-semibold text-base w-14 text-center border-b border-border"
                                       />
-                                      <Text className="text-muted dark:text-slate-500 text-sm">%</Text>
+                                      <Text className="text-muted text-sm">%</Text>
                                     </View>
                                     <Text className="text-success text-[11px] mt-1.5">
                                       {t.recordSaleModal.qdPreview(
@@ -1540,8 +1542,8 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
                         })()}
 
                         {/* Row total — pure FC, no exchange-rate conversion. */}
-                        <View className="mt-3 pt-2 border-t border-border dark:border-slate-700 flex-row justify-between items-center">
-                          <Text className="text-muted dark:text-slate-500 text-xs">
+                        <View className="mt-3 pt-2 border-t border-border flex-row justify-between items-center">
+                          <Text className="text-muted text-xs">
                             {formatFcValue(effectiveUnitPriceFc(cartItem) || 0)} × {totalPiecesOf(cartItem)}
                           </Text>
                           <Text className="text-primary font-bold text-base">
@@ -1557,13 +1559,13 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
           </ScrollView>
 
           {/* Footer */}
-          <View className="px-4 pb-8 pt-3 border-t border-border dark:border-slate-700 bg-surface dark:bg-slate-900">
+          <View className="px-4 pb-8 pt-3 border-t border-border bg-surface">
             {(cart.size > 0 || sizedLinesArray.length > 0) && (
               <View className="flex-row justify-between items-center mb-3">
-                <Text className="text-muted dark:text-slate-500 text-sm">
+                <Text className="text-muted text-sm">
                   {t.recordSaleModal.productsSelected(cart.size + sizedLinesArray.length)}
                 </Text>
-                <Text className="text-text dark:text-slate-100 font-bold text-lg">
+                <Text className="text-text font-bold text-lg">
                   {t.recordSaleModal.total(formatFcValue(grandTotal + sizedGrandTotalFc))}
                 </Text>
               </View>
@@ -1597,26 +1599,26 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1 justify-center bg-black/50 px-6"
       >
-        <View className="bg-surface dark:bg-slate-900 rounded-2xl p-5">
-          <Text className="text-text dark:text-slate-100 font-bold text-lg">
+        <View className="bg-surface rounded-2xl p-5">
+          <Text className="text-text font-bold text-lg">
             {t.recordSaleModal.receiptPromptTitle}
           </Text>
-          <Text className="text-muted dark:text-slate-400 text-sm mt-1 mb-4">
+          <Text className="text-muted text-sm mt-1 mb-4">
             {t.recordSaleModal.receiptPromptSubtitle}
           </Text>
 
-          <Text className="text-text dark:text-slate-200 text-xs font-semibold mb-1">
+          <Text className="text-text text-xs font-semibold mb-1">
             {t.recordSaleModal.receiptClientNameLabel}
           </Text>
           <TextInput
             value={receiptClientName}
             onChangeText={setReceiptClientName}
             placeholder=""
-            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-lg px-3 py-2.5 text-text dark:text-slate-100 mb-3"
+            className="bg-card border border-border rounded-lg px-3 py-2.5 text-text mb-3"
             autoCapitalize="words"
           />
 
-          <Text className="text-text dark:text-slate-200 text-xs font-semibold mb-1">
+          <Text className="text-text text-xs font-semibold mb-1">
             {t.recordSaleModal.receiptClientPhoneLabel}
           </Text>
           <TextInput
@@ -1624,7 +1626,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
             onChangeText={setReceiptClientPhone}
             placeholder="+243 …"
             keyboardType="phone-pad"
-            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-lg px-3 py-2.5 text-text dark:text-slate-100 mb-4"
+            className="bg-card border border-border rounded-lg px-3 py-2.5 text-text mb-4"
           />
 
           <View className="flex-row gap-2">

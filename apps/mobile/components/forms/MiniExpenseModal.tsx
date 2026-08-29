@@ -113,26 +113,26 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScrollView className="flex-1 bg-surface dark:bg-slate-900" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
+      <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-xl font-bold text-text dark:text-slate-100">{t.miniEmployee.expenseTitle}</Text>
+          <Text className="text-xl font-bold text-text">{t.miniEmployee.expenseTitle}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
         </View>
-        <Text className="text-muted dark:text-slate-500 text-sm mb-5">{t.miniEmployee.expenseSubtitle}</Text>
+        <Text className="text-muted text-sm mb-5">{t.miniEmployee.expenseSubtitle}</Text>
 
         {allowance && (
           <View className="bg-primary/10 border border-primary/30 rounded-2xl px-4 py-3 mb-4">
             <View className="flex-row justify-between">
-              <Text className="text-muted dark:text-slate-400 text-sm">
+              <Text className="text-muted text-sm">
                 {t.miniEmployee.expenseAllowanceLeft}
               </Text>
-              <Text className="text-text dark:text-slate-100 font-bold">
+              <Text className="text-text font-bold">
                 {formatFcValue(allowance.remainingFc)}
               </Text>
             </View>
-            <Text className="text-muted dark:text-slate-500 text-xs mt-1">
+            <Text className="text-muted text-xs mt-1">
               {t.miniEmployee.expenseAllowanceHint(
                 allowance.pct,
                 formatFcValue(allowance.soldFc),
@@ -149,15 +149,15 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
           keyboardType="number-pad"
         />
 
-        <Text className="text-xs font-medium mb-1 mt-2 text-text dark:text-slate-300">{t.miniEmployee.expenseCategory}</Text>
+        <Text className="text-xs font-medium mb-1 mt-2 text-text">{t.miniEmployee.expenseCategory}</Text>
         <View className="flex-row flex-wrap gap-2 mb-3">
           {MINI_EXPENSE_CATEGORIES.map((c) => (
             <TouchableOpacity
               key={c}
               onPress={() => setCategory(c)}
-              className={`px-3 py-1.5 rounded-lg border ${category === c ? 'bg-primary border-primary' : 'border-border dark:border-slate-700'}`}
+              className={`px-3 py-1.5 rounded-lg border ${category === c ? 'bg-primary border-primary' : 'border-border'}`}
             >
-              <Text className={`text-xs font-medium ${category === c ? 'text-white' : 'text-text dark:text-slate-300'}`}>
+              <Text className={`text-xs font-medium ${category === c ? 'text-white' : 'text-text'}`}>
                 {t.miniEmployee.expenseCat[c as keyof typeof t.miniEmployee.expenseCat]}
               </Text>
             </TouchableOpacity>

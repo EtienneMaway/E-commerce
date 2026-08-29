@@ -180,7 +180,7 @@ export default function MySalaryPage() {
           <SummaryCard
             label={t.salary.remaining}
             value={summary?.balanceRemaining ? formatCurrency(summary.balanceRemaining) : '—'}
-            accent="#818CF8"
+            accent="var(--primary-dark)"
             hint={
               summary?.balanceRemaining && parseFloat(summary.balanceRemaining) === 0
                 ? t.salary.fullyPaid
@@ -197,8 +197,8 @@ export default function MySalaryPage() {
             onClick={() => setTab(k)}
             className="px-4 py-2 text-sm font-medium transition-colors"
             style={{
-              color: tab === k ? '#818CF8' : 'rgba(127,127,127,0.8)',
-              borderBottom: tab === k ? '2px solid #818CF8' : '2px solid transparent',
+              color: tab === k ? 'var(--primary-dark)' : 'rgba(127,127,127,0.8)',
+              borderBottom: tab === k ? '2px solid var(--primary-dark)' : '2px solid transparent',
             }}
           >
             {k === 'pending' ? t.salary.tabPending(pending?.length ?? 0) : t.salary.tabHistory}

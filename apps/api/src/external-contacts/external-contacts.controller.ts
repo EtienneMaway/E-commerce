@@ -29,6 +29,7 @@ import { RecordProductInBatchDto } from './dto/record-product-in-batch.dto';
 import { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 
@@ -42,6 +43,7 @@ export class ExternalContactsController {
   // ─── CRUD ────────────────────────────────────────────────────────────────
 
   @Post()
+  @RequiresService('external_contacts.manage')
   @ApiOperation({ summary: 'Create a new external contact' })
   @ApiResponse({ status: 201, description: 'Contact created' })
   create(@CurrentActorContext() ctx: ActorContext, @Body() dto: CreateExternalContactDto) {
@@ -49,6 +51,7 @@ export class ExternalContactsController {
   }
 
   @Get()
+  @RequiresService('external_contacts.view')
   @ApiOperation({ summary: 'List all external contacts for the current trader' })
   @ApiResponse({ status: 200, description: 'Array of contacts with balances' })
   findAll(@CurrentActorContext() ctx: ActorContext) {
@@ -56,6 +59,7 @@ export class ExternalContactsController {
   }
 
   @Get(':id')
+  @RequiresService('external_contacts.view')
   @ApiOperation({
     summary: 'Get one external contact (balances + metadata only — fetch transactions via the dedicated endpoint)',
   })
@@ -66,6 +70,7 @@ export class ExternalContactsController {
   }
 
   @Get(':id/transactions')
+  @RequiresService('external_contacts.view')
   @ApiOperation({ summary: 'List a contact\'s transactions (paginated, newest first)' })
   @ApiResponse({ status: 200, description: '{ data, pagination }' })
   listTransactions(
@@ -77,6 +82,7 @@ export class ExternalContactsController {
   }
 
   @Patch(':id')
+  @RequiresService('external_contacts.manage')
   @ApiOperation({ summary: 'Update external contact info' })
   @ApiResponse({ status: 200, description: 'Contact updated' })
   update(@CurrentActorContext() ctx: ActorContext, @Param('id') id: string, @Body() dto: UpdateExternalContactDto) {
@@ -84,6 +90,7 @@ export class ExternalContactsController {
   }
 
   @Delete(':id')
+  @RequiresService('external_contacts.manage')
   @ApiOperation({ summary: 'Delete external contact (cascade-deletes transactions)' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiResponse({ status: 204, description: 'Contact deleted' })
@@ -94,6 +101,7 @@ export class ExternalContactsController {
   // ─── Transactions ─────────────────────────────────────────────────────────
 
   @Post(':id/product-out')
+  @RequiresService('external_contacts.give')
   @ApiOperation({ summary: 'Give products to external debtor (deducts inventory)' })
   @ApiResponse({ status: 201, description: 'Transaction recorded, inventory deducted' })
   @ApiResponse({ status: 400, description: 'Insufficient stock or contact not a debtor' })
@@ -107,6 +115,7 @@ export class ExternalContactsController {
   }
 
   @Post(':id/product-out-batch')
+  @RequiresService('external_contacts.give')
   @ApiOperation({
     summary: 'Give multiple products in one order (atomic; shared batch_id)',
     description:
@@ -123,6 +132,7 @@ export class ExternalContactsController {
   }
 
   @Post(':id/payment-in')
+  @RequiresService('external_contacts.payments')
   @ApiOperation({ summary: 'Record cash received from external debtor' })
   @ApiResponse({ status: 201, description: 'Payment recorded, debtorBalance decreased' })
   recordPaymentIn(
@@ -135,6 +145,7 @@ export class ExternalContactsController {
 
   @Post(':id/product-in')
   @AllowedFor('OWNER')
+  @RequiresService('external_contacts.give')
   @ApiOperation({ summary: 'Record products received from external supplier (adds to inventory)' })
   @ApiResponse({ status: 201, description: 'Transaction recorded, inventory created' })
   recordProductIn(
@@ -147,6 +158,7 @@ export class ExternalContactsController {
 
   @Post(':id/product-in-batch')
   @AllowedFor('OWNER')
+  @RequiresService('external_contacts.give')
   @ApiOperation({
     summary: 'Receive multiple products in one delivery (atomic; shared batch_id)',
     description:
@@ -162,6 +174,7 @@ export class ExternalContactsController {
   }
 
   @Post(':id/payment-out')
+  @RequiresService('external_contacts.payments')
   @ApiOperation({ summary: 'Record cash paid to external supplier' })
   @ApiResponse({ status: 201, description: 'Payment recorded, supplierBalance decreased' })
   recordPaymentOut(
@@ -174,6 +187,7 @@ export class ExternalContactsController {
 
   @Delete(':id/transactions/:txId')
   @AllowedFor('OWNER')
+  @RequiresService('external_contacts.give')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Delete a transaction and reverse its balance effect',

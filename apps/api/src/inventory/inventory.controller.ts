@@ -17,6 +17,7 @@ import { RenameProductDto } from './dto/rename-product.dto';
 import { UpdateMiniCartonPriceDto } from './dto/update-mini-carton-price.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 
@@ -28,6 +29,7 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get('products')
+  @RequiresService('inventory.view')
   // Minis operate on their own books (effectiveOwnerId = own id) and must be
   // able to browse their consigned-in stock to sell/re-price it.
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
@@ -39,6 +41,7 @@ export class InventoryController {
 
   @Get()
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @RequiresService('inventory.view')
   @ApiOperation({ summary: 'List all inventory entries for the authenticated user' })
   @ApiResponse({ status: 200, description: 'Array of inventory entries' })
   findAll(@CurrentActorContext() ctx: ActorContext, @Query() filter: InventoryFilterDto) {
@@ -46,17 +49,19 @@ export class InventoryController {
   }
 
   @Post('personal')
-  @AllowedFor('OWNER')
-  @ApiOperation({ summary: 'Add a product purchased with personal funds (owner only)' })
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('inventory.add_personal')
+  @ApiOperation({ summary: 'Add a product purchased with personal funds (owner, or an employee whose role grants it)' })
   @ApiResponse({ status: 201, description: 'Inventory entry created' })
   addPersonal(@CurrentActorContext() ctx: ActorContext, @Body() dto: AddPersonalDto) {
     return this.inventoryService.addPersonal(ctx.effectiveOwnerId, dto);
   }
 
   @Post('personal/bulk')
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('inventory.add_personal')
   @ApiOperation({
-    summary: 'Add multiple personal products in one atomic transaction (owner only)',
+    summary: 'Add multiple personal products in one atomic transaction (owner, or an employee whose role grants it)',
     description:
       'Creates or upserts inventory entries for each item in a single DB transaction. ' +
       'If any item fails validation or persistence, the whole batch is rolled back.',
@@ -70,9 +75,10 @@ export class InventoryController {
   }
 
   @Post('receive')
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('inventory.receive')
   @ApiOperation({
-    summary: 'Receive product from a supplier on credit (owner only)',
+    summary: 'Receive product from a supplier on credit (owner, or an employee whose role grants it)',
     description:
       'Creates an inventory entry (source: SUPPLIER) and increases the debt owed to that supplier.',
   })
@@ -86,9 +92,10 @@ export class InventoryController {
   }
 
   @Patch('products/:name/rename')
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('products.manage')
   @ApiOperation({
-    summary: 'Rename a product, cascading the new name across all owner-scoped tables (owner only)',
+    summary: 'Rename a product, cascading the new name across all owner-scoped tables (owner, or an employee whose role grants it)',
     description:
       'Atomically renames a product across inventory_entries (PERSONAL+SUPPLIER only), sale_transactions, ' +
       'external_transactions, and product_prices. Blocked when the product has CONSIGNED_IN or ' +
@@ -108,11 +115,13 @@ export class InventoryController {
   }
 
   @Patch(':id/selling-price')
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('inventory.price')
   @ApiOperation({
-    summary: 'Update selling price on an inventory entry (owner only)',
+    summary: 'Update selling price on an inventory entry (owner, or an employee whose role grants it)',
     description:
-      'Owner-only because changing a product\'s standard price affects all subsequent sales — ' +
+      'Not open to employees by default because changing a product\'s standard price affects all ' +
+      'subsequent sales; an employer can delegate it with the `inventory.price` service — ' +
       'employees use per-transaction discountReason instead.',
   })
   @ApiResponse({ status: 200, description: 'Selling price updated' })
@@ -129,6 +138,7 @@ export class InventoryController {
 
   @Patch(':id/mini-selling-price')
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('inventory.price')
   @ApiOperation({
     summary: 'Mini employee raises the selling price on their own consigned-in stock',
     description:
@@ -148,6 +158,7 @@ export class InventoryController {
 
   @Patch('mini-carton-price')
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('inventory.price')
   @ApiOperation({
     summary: 'Mini employee sets the whole-carton selling price for a sized product',
     description:
@@ -167,9 +178,10 @@ export class InventoryController {
   }
 
   @Post(':entryId/adjust')
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('inventory.adjust')
   @ApiOperation({
-    summary: 'Manually adjust stock for an inventory entry with a typed reason (owner only)',
+    summary: 'Manually adjust stock for an inventory entry with a typed reason (owner, or an employee whose role grants it)',
     description:
       'Records a stock movement (audit ledger) and updates quantity_remaining. ' +
       'SUPPLIER_RETURN also reduces the linked supplier debt. ' +
@@ -188,9 +200,10 @@ export class InventoryController {
   }
 
   @Post('variant/:variantId/adjust')
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('inventory.adjust')
   @ApiOperation({
-    summary: 'Adjust stock for one size of a sized product with a typed reason (owner only)',
+    summary: 'Adjust stock for one size of a sized product with a typed reason (owner, or an employee whose role grants it)',
     description:
       'Finds the owner\'s own lot for the size (PERSONAL first, else SUPPLIER) and applies the ' +
       'same typed adjustment as POST /inventory/:entryId/adjust.',
@@ -207,6 +220,7 @@ export class InventoryController {
   }
 
   @Post('consign')
+  @RequiresService('consignments.send')
   @ApiOperation({
     summary: 'Consign a product to a debtor on credit',
     description:

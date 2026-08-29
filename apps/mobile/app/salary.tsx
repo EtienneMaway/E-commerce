@@ -23,12 +23,13 @@ import { useLocaleStore } from '../store/locale.store';
 import { formatDate, getErrorMessage } from '../lib/utils';
 import { useFormatCurrency, formatFcValue } from '../lib/currency';
 import { useT } from '../lib/i18n';
+import { useBrand } from '../lib/theme';
 
 const STATUS_PILL: Record<SalaryPaymentStatus, string> = {
   PENDING_CONFIRMATION: 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300',
   CONFIRMED: 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300',
   REJECTED: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300',
-  CANCELLED: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400',
+  CANCELLED: 'bg-background text-muted',
 };
 
 function currentPeriod(): string {
@@ -130,7 +131,7 @@ export default function SalaryScreen() {
   // No active employment — show the "not employed" message.
   if (user && !user.activeEmployment) {
     return (
-      <View className="flex-1 bg-surface dark:bg-slate-900 p-6">
+      <View className="flex-1 bg-background p-6">
         <Stack.Screen options={{ title: t.salary.title, headerBackTitle: t.salary.headerBack }} />
         <EmptyState emoji="🏢" title={t.salary.title} subtitle={t.salary.noEmployment} />
       </View>
@@ -138,7 +139,7 @@ export default function SalaryScreen() {
   }
 
   return (
-    <View className="flex-1 bg-surface dark:bg-slate-900">
+    <View className="flex-1 bg-background">
       <Stack.Screen options={{ title: t.salary.title, headerBackTitle: t.salary.headerBack }} />
 
       <ScrollView
@@ -149,8 +150,8 @@ export default function SalaryScreen() {
         {/* Employer banner */}
         {employerName && (
           <View className="flex-row items-center justify-between mb-3 gap-3">
-            <Text className="text-muted dark:text-slate-400 text-sm flex-1">
-              {t.salary.employerLabel}: <Text className="font-bold text-text dark:text-slate-100">@{employerName}</Text>
+            <Text className="text-muted text-sm flex-1">
+              {t.salary.employerLabel}: <Text className="font-bold text-text">@{employerName}</Text>
             </Text>
             <Pressable
               onPress={() => setAdvanceOpen(true)}
@@ -166,10 +167,10 @@ export default function SalaryScreen() {
         <Card className="mb-4">
           <View className="flex-row items-center justify-between mb-3">
             <View>
-              <Text className="text-text dark:text-slate-100 font-semibold text-base">
+              <Text className="text-text font-semibold text-base">
                 {formatPeriodMonth(period)}
               </Text>
-              <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">
+              <Text className="text-muted text-xs mt-0.5">
                 {summary?.monthlyPay ? t.salary.monthlyTarget : t.salary.monthlyTargetNotSet}
               </Text>
             </View>
@@ -177,23 +178,23 @@ export default function SalaryScreen() {
               <Pressable
                 onPress={() => setPeriod((p) => shiftPeriod(p, -1))}
                 hitSlop={8}
-                className="bg-surface dark:bg-slate-700 border border-border dark:border-slate-600 rounded-lg px-3 py-1"
+                className="bg-surface border border-border rounded-lg px-3 py-1"
               >
-                <Text className="text-text dark:text-slate-200 font-bold">‹</Text>
+                <Text className="text-text font-bold">‹</Text>
               </Pressable>
               <Pressable
                 onPress={() => setPeriod(currentPeriod())}
                 hitSlop={8}
-                className="bg-surface dark:bg-slate-700 border border-border dark:border-slate-600 rounded-lg px-2 py-1"
+                className="bg-surface border border-border rounded-lg px-2 py-1"
               >
-                <Text className="text-text dark:text-slate-200 text-[11px] font-semibold">●</Text>
+                <Text className="text-text text-[11px] font-semibold">●</Text>
               </Pressable>
               <Pressable
                 onPress={() => setPeriod((p) => shiftPeriod(p, +1))}
                 hitSlop={8}
-                className="bg-surface dark:bg-slate-700 border border-border dark:border-slate-600 rounded-lg px-3 py-1"
+                className="bg-surface border border-border rounded-lg px-3 py-1"
               >
-                <Text className="text-text dark:text-slate-200 font-bold">›</Text>
+                <Text className="text-text font-bold">›</Text>
               </Pressable>
             </View>
           </View>
@@ -231,6 +232,43 @@ export default function SalaryScreen() {
           </View>
         </Card>
 
+        {/* Handover commission — minis whose employer pays a % of each
+            approved handover. Earned grows as handovers are approved; the
+            employer's payments land in the pending list below to confirm. */}
+        {summary?.commission && (
+          <Card className="mb-4">
+            <Text className="text-text font-semibold text-base">
+              {t.salary.commissionTitle}
+            </Text>
+            <Text className="text-muted text-xs mt-0.5 mb-3">
+              {summary.commission.pct
+                ? t.salary.commissionHint(String(parseFloat(summary.commission.pct)))
+                : t.salary.commissionNoRate}
+            </Text>
+            <View className="flex-row flex-wrap -mx-1">
+              <SummaryCell
+                label={t.salary.commissionEarned}
+                value={formatCurrency(summary.commission.earned)}
+              />
+              <SummaryCell
+                label={t.salary.collectedSoFar}
+                value={formatCurrency(summary.commission.paidConfirmed)}
+                tone="success"
+              />
+              <SummaryCell
+                label={t.salary.pending}
+                value={formatCurrency(summary.commission.pendingConfirmation)}
+                tone={parseFloat(summary.commission.pendingConfirmation) > 0 ? 'warning' : undefined}
+              />
+              <SummaryCell
+                label={t.salary.commissionRemaining}
+                value={formatCurrency(summary.commission.remaining)}
+                tone="info"
+              />
+            </View>
+          </Card>
+        )}
+
         {/* Tabs */}
         <View className="flex-row gap-2 mb-3">
           <TabButton
@@ -246,8 +284,8 @@ export default function SalaryScreen() {
           <View className="flex-row flex-wrap -mx-1 mb-3">
             {periodSummary.map(([p, totals]) => (
               <View key={p} className="w-1/2 px-1 mb-2">
-                <View className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-3 py-2">
-                  <Text className="text-muted dark:text-slate-500 text-[10px]">{formatPeriodMonth(p)}</Text>
+                <View className="bg-card border border-border rounded-xl px-3 py-2">
+                  <Text className="text-muted text-[10px]">{formatPeriodMonth(p)}</Text>
                   <Text className="text-success font-bold text-sm">
                     {formatCurrency(totals.confirmed.toFixed(4))}
                   </Text>
@@ -320,15 +358,15 @@ function SummaryCell({
         ? 'text-amber-600 dark:text-amber-400'
         : tone === 'info'
           ? 'text-indigo-600 dark:text-indigo-300'
-          : 'text-text dark:text-slate-100';
+          : 'text-text';
   return (
     <View className="w-1/2 px-1 mb-2">
-      <Text className="text-muted dark:text-slate-500 text-[10px] uppercase tracking-wide">
+      <Text className="text-muted text-[10px] uppercase tracking-wide">
         {label}
       </Text>
       <Text className={`text-base font-bold mt-0.5 ${toneCls}`}>{value}</Text>
       {hint && (
-        <Text className="text-muted dark:text-slate-500 text-[10px] mt-0.5">{hint}</Text>
+        <Text className="text-muted text-[10px] mt-0.5">{hint}</Text>
       )}
     </View>
   );
@@ -339,10 +377,10 @@ function TabButton({ active, onPress, label }: { active: boolean; onPress: () =>
     <Pressable
       onPress={onPress}
       className={`flex-1 py-2.5 rounded-xl items-center ${
-        active ? 'bg-primary' : 'bg-card dark:bg-slate-800 border border-border dark:border-slate-700'
+        active ? 'bg-primary' : 'bg-card border border-border'
       }`}
     >
-      <Text className={`font-semibold text-sm ${active ? 'text-white' : 'text-text dark:text-slate-200'}`}>
+      <Text className={`font-semibold text-sm ${active ? 'text-white' : 'text-text'}`}>
         {label}
       </Text>
     </Pressable>
@@ -376,11 +414,21 @@ function PaymentCard({
     <Card>
       <View className="flex-row items-start justify-between">
         <View className="flex-1 mr-3">
-          <Text className="text-2xl font-bold text-text dark:text-slate-100">
-            {formatCurrency(p.amount)}
-          </Text>
-          <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">
-            From @{p.employer?.username ?? '—'} · {formatPeriodMonth(p.periodMonth)}
+          <View className="flex-row items-center gap-2 flex-wrap">
+            <Text className="text-2xl font-bold text-text">
+              {formatCurrency(p.amount)}
+            </Text>
+            {p.kind === 'COMMISSION' && (
+              <View className="bg-emerald-100 dark:bg-emerald-900 rounded-md px-2 py-0.5">
+                <Text className="text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
+                  {t.salary.commissionTag}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text className="text-muted text-xs mt-0.5">
+            From @{p.employer?.username ?? '—'}
+            {p.kind === 'COMMISSION' ? '' : ` · ${formatPeriodMonth(p.periodMonth)}`}
           </Text>
         </View>
         <View className={`px-2.5 py-1 rounded-md ${STATUS_PILL[p.status]}`}>
@@ -390,14 +438,14 @@ function PaymentCard({
         </View>
       </View>
 
-      <Text className="text-muted dark:text-slate-500 text-xs mt-2">
+      <Text className="text-muted text-xs mt-2">
         {formatDate(p.paidAt)}
         {p.confirmedAt ? ` · ${t.salary.statusConfirmed} ${formatDate(p.confirmedAt)}` : ''}
         {p.rejectedAt ? ` · ${t.salary.statusRejected} ${formatDate(p.rejectedAt)}` : ''}
       </Text>
 
       {p.note && (
-        <Text className="text-text dark:text-slate-300 text-sm mt-2 italic">
+        <Text className="text-text text-sm mt-2 italic">
           "{p.note}"
         </Text>
       )}
@@ -438,6 +486,7 @@ function RejectModal({
   onSuccess: () => void;
   t: ReturnType<typeof useT>;
 }) {
+  const brand = useBrand();
   const [reason, setReason] = useState('');
   const m = useMutation({
     mutationFn: (id: string) => salaryPaymentsApi.reject(id, reason || undefined),
@@ -457,18 +506,18 @@ function RejectModal({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1 justify-end bg-black/50"
       >
-        <View className="bg-surface dark:bg-slate-900 rounded-t-3xl p-5">
-          <Text className="text-text dark:text-slate-100 font-bold text-lg mb-2">
+        <View className="bg-background rounded-t-3xl p-5">
+          <Text className="text-text font-bold text-lg mb-2">
             {t.salary.rejectBtn}
           </Text>
           <TextInput
             value={reason}
             onChangeText={setReason}
             placeholder=""
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={brand.mutedSubtle}
             multiline
             numberOfLines={3}
-            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 text-text dark:text-slate-100 text-base"
+            className="bg-card border border-border rounded-xl px-4 py-3 text-text text-base"
             style={{ minHeight: 80, textAlignVertical: 'top' }}
           />
           <View className="flex-row gap-2 mt-4">
@@ -498,6 +547,7 @@ function RequestAdvanceModal({
   employerName: string;
   t: ReturnType<typeof useT>;
 }) {
+  const brand = useBrand();
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [sending, setSending] = useState(false);
@@ -537,15 +587,15 @@ function RequestAdvanceModal({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1 justify-end bg-black/50"
       >
-        <View className="bg-surface dark:bg-slate-900 rounded-t-3xl p-5">
-          <Text className="text-text dark:text-slate-100 font-bold text-lg">
+        <View className="bg-background rounded-t-3xl p-5">
+          <Text className="text-text font-bold text-lg">
             {t.salary.requestAdvanceTitle}
           </Text>
-          <Text className="text-muted dark:text-slate-400 text-xs mt-1 mb-4">
+          <Text className="text-muted text-xs mt-1 mb-4">
             {t.salary.requestAdvanceSubtitle(employerName)}
           </Text>
 
-          <Text className="text-text dark:text-slate-200 text-sm mb-1">
+          <Text className="text-text text-sm mb-1">
             {t.salary.requestAdvanceAmount}
           </Text>
           <TextInput
@@ -553,21 +603,21 @@ function RequestAdvanceModal({
             onChangeText={setAmount}
             keyboardType="decimal-pad"
             placeholder="0.00"
-            placeholderTextColor="#94A3B8"
-            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 text-text dark:text-slate-100 text-base mb-3"
+            placeholderTextColor={brand.mutedSubtle}
+            className="bg-card border border-border rounded-xl px-4 py-3 text-text text-base mb-3"
           />
 
-          <Text className="text-text dark:text-slate-200 text-sm mb-1">
+          <Text className="text-text text-sm mb-1">
             {t.salary.requestAdvanceReason}
           </Text>
           <TextInput
             value={reason}
             onChangeText={setReason}
             placeholder={t.salary.requestAdvanceReasonPlaceholder}
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={brand.mutedSubtle}
             multiline
             numberOfLines={3}
-            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 text-text dark:text-slate-100 text-base"
+            className="bg-card border border-border rounded-xl px-4 py-3 text-text text-base"
             style={{ minHeight: 80, textAlignVertical: 'top' }}
           />
 

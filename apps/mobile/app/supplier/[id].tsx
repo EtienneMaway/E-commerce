@@ -4,12 +4,14 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useBrand } from '../../lib/theme';
 import { formatDate } from '../../lib/utils';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { Badge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PaySupplierModal } from '../../components/forms/PaySupplierModal';
+import { useRequireService } from '../../hooks/use-require-service';
 
 interface InventoryRow {
   id: string;
@@ -47,6 +49,10 @@ interface SupplierDetail {
 type Section = 'products' | 'payments';
 
 export default function SupplierDetailScreen() {
+  const brand = useBrand();
+  // Redirects away if the role does not cover this screen. The API refuses
+  // the queries below regardless; this makes the outcome a bounce, not errors.
+  useRequireService('suppliers.view');
   const { id } = useLocalSearchParams<{ id: string }>();
   const [section, setSection] = useState<Section>('products');
   const [payModal, setPayModal] = useState(false);
@@ -64,15 +70,15 @@ export default function SupplierDetailScreen() {
 
   if (isFetching && !detail) {
     return (
-      <View className="flex-1 bg-surface dark:bg-slate-900 items-center justify-center">
-        <ActivityIndicator color="#2563EB" />
+      <View className="flex-1 bg-background items-center justify-center">
+        <ActivityIndicator color={brand.primary} />
       </View>
     );
   }
 
   if (!detail) {
     return (
-      <View className="flex-1 bg-surface dark:bg-slate-900 items-center justify-center px-6">
+      <View className="flex-1 bg-background items-center justify-center px-6">
         <EmptyState emoji="❓" title="Supplier not found" subtitle="This supplier could not be loaded." />
       </View>
     );
@@ -82,20 +88,20 @@ export default function SupplierDetailScreen() {
   const hasPendingPayment = detail.payments.some((p) => p.status === 'PENDING');
 
   return (
-    <View className="flex-1 bg-surface dark:bg-slate-900">
+    <View className="flex-1 bg-background">
       {/* Header */}
-      <View className="bg-card dark:bg-slate-800 border-b border-border dark:border-slate-700 px-6 pt-14 pb-4">
+      <View className="bg-card border-b border-border px-6 pt-14 pb-4">
         <TouchableOpacity onPress={() => router.back()} className="mb-3">
           <Text className="text-primary font-medium">{t.common.back}</Text>
         </TouchableOpacity>
         <View className="flex-row justify-between items-start">
           <View className="flex-1 mr-3">
-            <Text className="text-2xl font-bold text-text dark:text-slate-100">@{detail.supplierUsername}</Text>
-            <Text className="text-muted dark:text-slate-500 text-sm mt-0.5">Supplier</Text>
+            <Text className="text-2xl font-bold text-text">@{detail.supplierUsername}</Text>
+            <Text className="text-muted text-sm mt-0.5">Supplier</Text>
             {(detail.supplierEmail || detail.supplierPhone) && (
               <View className="mt-2 gap-1">
                 {detail.supplierEmail && (
-                  <Text className="text-muted dark:text-slate-400 text-sm">✉️ {detail.supplierEmail}</Text>
+                  <Text className="text-muted text-sm">✉️ {detail.supplierEmail}</Text>
                 )}
                 {detail.supplierPhone && (
                   <TouchableOpacity onPress={() => void Linking.openURL(`tel:${detail.supplierPhone}`)}>
@@ -108,9 +114,9 @@ export default function SupplierDetailScreen() {
           <TouchableOpacity
             onPress={() => setPayModal(true)}
             disabled={balance <= 0 || hasPendingPayment}
-            className={`px-4 py-2 rounded-xl ${balance > 0 && !hasPendingPayment ? 'bg-primary' : 'bg-slate-200 dark:bg-slate-700'}`}
+            className={`px-4 py-2 rounded-xl ${balance > 0 && !hasPendingPayment ? 'bg-primary' : 'bg-muted-subtle'}`}
           >
-            <Text className={`font-semibold text-sm ${balance > 0 && !hasPendingPayment ? 'text-white' : 'text-muted dark:text-slate-500'}`}>{t.supplierDetail.pay}</Text>
+            <Text className={`font-semibold text-sm ${balance > 0 && !hasPendingPayment ? 'text-white' : 'text-muted'}`}>{t.supplierDetail.pay}</Text>
           </TouchableOpacity>
         </View>
 
@@ -120,13 +126,13 @@ export default function SupplierDetailScreen() {
             <Text className="text-danger text-xs">{t.supplierDetail.iOwe}</Text>
             <Text className="text-danger font-bold text-lg">{formatCurrency(detail.debt.outstandingBalance)}</Text>
           </View>
-          <View className="flex-1 bg-surface dark:bg-slate-900 border border-border dark:border-slate-700 rounded-xl px-3 py-2">
-            <Text className="text-muted dark:text-slate-500 text-xs">{t.supplierDetail.totalReceived}</Text>
-            <Text className="text-text dark:text-slate-100 font-bold text-lg">{formatCurrency(detail.debt.totalCreditReceived)}</Text>
+          <View className="flex-1 bg-surface border border-border rounded-xl px-3 py-2">
+            <Text className="text-muted text-xs">{t.supplierDetail.totalReceived}</Text>
+            <Text className="text-text font-bold text-lg">{formatCurrency(detail.debt.totalCreditReceived)}</Text>
           </View>
-          <View className="flex-1 bg-surface dark:bg-slate-900 border border-border dark:border-slate-700 rounded-xl px-3 py-2">
-            <Text className="text-muted dark:text-slate-500 text-xs">{t.supplierDetail.totalPaid}</Text>
-            <Text className="text-text dark:text-slate-100 font-bold text-lg">{formatCurrency(detail.debt.totalPaid)}</Text>
+          <View className="flex-1 bg-surface border border-border rounded-xl px-3 py-2">
+            <Text className="text-muted text-xs">{t.supplierDetail.totalPaid}</Text>
+            <Text className="text-text font-bold text-lg">{formatCurrency(detail.debt.totalPaid)}</Text>
           </View>
         </View>
 
@@ -139,20 +145,20 @@ export default function SupplierDetailScreen() {
         )}
 
         {/* Section toggle */}
-        <View className="flex-row mt-4 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
+        <View className="flex-row mt-4 bg-background rounded-xl p-1">
           <TouchableOpacity
             onPress={() => setSection('products')}
-            className={`flex-1 py-2 rounded-lg items-center ${section === 'products' ? 'bg-white dark:bg-slate-600 shadow-sm' : ''}`}
+            className={`flex-1 py-2 rounded-lg items-center ${section === 'products' ? 'bg-card shadow-sm' : ''}`}
           >
-            <Text className={`text-sm font-semibold ${section === 'products' ? 'text-text dark:text-slate-100' : 'text-muted dark:text-slate-500'}`}>
+            <Text className={`text-sm font-semibold ${section === 'products' ? 'text-text' : 'text-muted'}`}>
               {t.supplierDetail.products(detail.productsReceived.length)}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setSection('payments')}
-            className={`flex-1 py-2 rounded-lg items-center ${section === 'payments' ? 'bg-white dark:bg-slate-600 shadow-sm' : ''}`}
+            className={`flex-1 py-2 rounded-lg items-center ${section === 'payments' ? 'bg-card shadow-sm' : ''}`}
           >
-            <Text className={`text-sm font-semibold ${section === 'payments' ? 'text-text dark:text-slate-100' : 'text-muted dark:text-slate-500'}`}>
+            <Text className={`text-sm font-semibold ${section === 'payments' ? 'text-text' : 'text-muted'}`}>
               {t.supplierDetail.payments(detail.payments.length)}
             </Text>
           </TouchableOpacity>
@@ -164,31 +170,31 @@ export default function SupplierDetailScreen() {
         <FlatList
           data={detail.productsReceived}
           keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor="#2563EB" />}
+          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />}
           contentContainerClassName="px-4 pt-4 pb-8"
           renderItem={({ item }) => {
             const isLowStock = item.quantityRemaining <= 5;
             return (
-              <View className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3">
+              <View className="bg-card border border-border rounded-2xl p-4 mb-3">
                 <View className="flex-row justify-between items-start mb-2">
-                  <Text className="text-text dark:text-slate-100 font-semibold flex-1 mr-2" numberOfLines={2}>
+                  <Text className="text-text font-semibold flex-1 mr-2" numberOfLines={2}>
                     {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
                   </Text>
                   <Badge label={t.inventory.badgeSupplier} variant="supplier" />
                 </View>
                 <View className="flex-row justify-between">
                   <View>
-                    <Text className="text-muted dark:text-slate-500 text-xs">{t.supplierDetail.costSell}</Text>
-                    <Text className="text-text dark:text-slate-100 text-sm">{formatCurrency(item.unitCost)} · {formatCurrency(item.sellingPrice)}</Text>
+                    <Text className="text-muted text-xs">{t.supplierDetail.costSell}</Text>
+                    <Text className="text-text text-sm">{formatCurrency(item.unitCost)} · {formatCurrency(item.sellingPrice)}</Text>
                   </View>
                   <View className="items-end">
-                    <Text className="text-muted dark:text-slate-500 text-xs">{t.supplierDetail.remainingOriginal}</Text>
-                    <Text className={`text-sm font-bold ${isLowStock ? 'text-danger' : 'text-text dark:text-slate-100'}`}>
+                    <Text className="text-muted text-xs">{t.supplierDetail.remainingOriginal}</Text>
+                    <Text className={`text-sm font-bold ${isLowStock ? 'text-danger' : 'text-text'}`}>
                       {item.quantityRemaining} / {item.quantityOriginal}
                     </Text>
                   </View>
                 </View>
-                <Text className="text-muted dark:text-slate-500 text-xs mt-1">{formatDate(item.createdAt)}</Text>
+                <Text className="text-muted text-xs mt-1">{formatDate(item.createdAt)}</Text>
               </View>
             );
           }}
@@ -200,22 +206,22 @@ export default function SupplierDetailScreen() {
         <FlatList
           data={detail.payments}
           keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor="#2563EB" />}
+          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />}
           contentContainerClassName="px-4 pt-4 pb-8"
           renderItem={({ item }) => (
-            <View className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3">
+            <View className="bg-card border border-border rounded-2xl p-4 mb-3">
               <View className="flex-row justify-between items-center mb-1">
-                <Text className="text-text dark:text-slate-100 font-semibold text-base">{formatCurrency(item.amount)}</Text>
+                <Text className="text-text font-semibold text-base">{formatCurrency(item.amount)}</Text>
                 <Badge
                   variant={item.status === 'PENDING' ? 'pending' : item.status === 'REJECTED' ? 'rejected' : 'approved'}
                   label={item.status === 'PENDING' ? t.supplierDetail.statusPending : item.status === 'REJECTED' ? t.supplierDetail.statusRejected : t.supplierDetail.statusApproved}
                 />
               </View>
-              <Text className="text-muted dark:text-slate-500 text-xs mb-1">{formatDate(item.date)}</Text>
-              {item.note && <Text className="text-muted dark:text-slate-500 text-sm mb-1">{item.note}</Text>}
+              <Text className="text-muted text-xs mb-1">{formatDate(item.date)}</Text>
+              {item.note && <Text className="text-muted text-sm mb-1">{item.note}</Text>}
               {item.remainingBalance !== null && (
                 <View className="flex-row justify-between">
-                  <Text className="text-muted dark:text-slate-500 text-xs">{t.supplierDetail.balanceAfter}</Text>
+                  <Text className="text-muted text-xs">{t.supplierDetail.balanceAfter}</Text>
                   <Text className={`text-xs font-bold ${parseFloat(item.remainingBalance) > 0 ? 'text-danger' : 'text-success'}`}>
                     {formatCurrency(item.remainingBalance)}
                   </Text>

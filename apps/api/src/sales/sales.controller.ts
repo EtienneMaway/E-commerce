@@ -26,6 +26,7 @@ import {
 import { PriceGuardWarningDto } from './dto/price-guard-warning.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 
@@ -38,6 +39,7 @@ export class SalesController {
 
   @Post()
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @RequiresService('sales.record')
   @ApiOperation({
     summary: 'Record a sale',
     description:
@@ -60,6 +62,7 @@ export class SalesController {
 
   @Get()
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @RequiresService('sales.history')
   @ApiOperation({ summary: 'List sales history with optional filters' })
   @ApiResponse({ status: 200, description: 'Paginated sales list with total count' })
   findAll(@CurrentActorContext() ctx: ActorContext, @Query() filter: SalesFilterDto) {
@@ -67,6 +70,7 @@ export class SalesController {
   }
 
   @Get('top-products')
+  @RequiresService('sales.analytics')
   @ApiOperation({
     summary: 'Get top sold products ranked by quantity, revenue, or profit',
   })
@@ -77,6 +81,7 @@ export class SalesController {
 
   @Get('profit-summary')
   @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('sales.analytics')
   @ApiOperation({
     summary: 'Aggregate direct-sales profit for a period or date range',
     description:
@@ -94,6 +99,7 @@ export class SalesController {
 
   @Get('by-receipt/:receiptId')
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @RequiresService('sales.history')
   @ApiOperation({
     summary: 'Fetch every sale row sharing a receipt id',
     description:
@@ -108,6 +114,7 @@ export class SalesController {
 
   @Patch(':id/client')
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @RequiresService('sales.history')
   @ApiOperation({
     summary: 'Attach (or update) buyer name + phone on a recorded sale',
     description:

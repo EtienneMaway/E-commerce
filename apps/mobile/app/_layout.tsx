@@ -5,6 +5,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Appearance } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'nativewind';
 import { useAuthStore } from '../store/auth.store';
@@ -92,7 +93,14 @@ function ThemeSync() {
   }, []);
 
   useEffect(() => {
+    // NativeWind: drives every `bg-card` / `text-text` token in the tree.
     setColorScheme(theme);
+    // React Native: drives the chrome NativeWind cannot reach — `Alert.alert`
+    // dialogs, the keyboard, action sheets. Without this they follow the OS,
+    // so a merchant on a light phone who picks dark in-app got a white alert
+    // over a dark screen. Needs `userInterfaceStyle: "automatic"` in app.json;
+    // pinning that to "light" makes this call a no-op on iOS.
+    Appearance.setColorScheme(theme);
   }, [theme, setColorScheme]);
 
   return null;
@@ -151,10 +159,16 @@ function AuthGuard() {
         .then(async (user) => {
           await useAuthStore.getState().login(token, user);
           router.replace('/(tabs)');
-          // Schedule alert notifications after confirmed auth
-          dashboardApi.alerts()
-            .then((alerts) => scheduleAlertNotifications(alerts))
-            .catch(() => {/* non-critical — ignore */});
+          // Schedule alert notifications after confirmed auth. Alerts are part
+          // of the money picture (cash.overview), so skip the call entirely for
+          // an employee whose role does not include it rather than firing a 403
+          // into the void on every launch.
+          const services = user.activeEmployment?.services;
+          if (!services || services.includes('cash.overview')) {
+            dashboardApi.alerts()
+              .then((alerts) => scheduleAlertNotifications(alerts))
+              .catch(() => {/* non-critical — ignore */});
+          }
         })
         .catch((err: unknown) => {
           // Only a real rejection of the token ends the session. Previously ANY

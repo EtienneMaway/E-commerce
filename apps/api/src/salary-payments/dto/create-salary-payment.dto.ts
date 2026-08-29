@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsEnum,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -10,6 +11,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { SalaryPaymentKind } from '../../entities';
 
 export class CreateSalaryPaymentDto {
   @ApiProperty({ example: 'uuid-v4', description: 'Employment to pay against' })
@@ -21,6 +23,15 @@ export class CreateSalaryPaymentDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   amount: number;
+
+  @ApiPropertyOptional({
+    enum: SalaryPaymentKind,
+    description:
+      "MONTHLY (default) counts toward the period's monthly budget; COMMISSION settles a mini employee's handover commission and needs a commission percentage set on the employment.",
+  })
+  @IsOptional()
+  @IsEnum(SalaryPaymentKind)
+  kind?: SalaryPaymentKind;
 
   @ApiPropertyOptional({
     example: '2026-05',

@@ -25,6 +25,12 @@
   --primary-light: #EEF2FF;
   --primary-rgb:   79, 70, 229;
 
+  /* Brand gradient — the indigo→violet of the app icon and KmbLogo.
+     Use var(--brand-gradient) rather than re-typing the stops. */
+  --brand-violet:     #7C3AED;
+  --brand-violet-rgb: 124, 58, 237;
+  --brand-gradient:   linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+
   /* Semantic */
   --success:       #10B981;
   --success-light: #ECFDF5;
@@ -70,6 +76,10 @@
   --primary-dark:  #818CF8;
   --primary-light: #1E1B4B;
   --primary-rgb:   99, 102, 241;
+
+  --brand-violet:     #8B5CF6;
+  --brand-violet-rgb: 139, 92, 246;
+  --brand-gradient:   linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
 
   --success:       #34D399;
   --success-light: #022C22;
@@ -491,4 +501,54 @@ body {
   border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin-slow 0.7s linear infinite;
+}
+
+/* ─── Public privacy policy (/privacy) ──────────────────────────────────────── */
+/* Standalone page: no sidebar, no auth chrome. Styled for reading rather than
+   for the app shell, and legible on the reviewer's phone as well as desktop. */
+.policy {
+  min-height: 100vh;
+  background: var(--background);
+  padding: 40px 20px 64px;
+}
+.policy-body {
+  max-width: 760px;
+  margin: 0 auto;
+  color: var(--foreground-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+}
+.policy-body h1 {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--foreground);
+  letter-spacing: -0.4px;
+  margin-bottom: 8px;
+}
+.policy-body h2 {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--foreground);
+  letter-spacing: -0.2px;
+  margin: 32px 0 10px;
+}
+.policy-body h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 20px 0 6px;
+}
+.policy-body p { margin: 10px 0; }
+.policy-body ul { margin: 10px 0; padding-left: 20px; list-style: disc; }
+.policy-body li { margin: 6px 0; }
+.policy-body strong { color: var(--foreground); font-weight: 600; }
+.policy-body hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 28px 0;
+}
+@media (max-width: 640px) {
+  .policy { padding: 28px 16px 48px; }
+  .policy-body h1 { font-size: 25px; }
+  .policy-body h2 { font-size: 17px; }
 }

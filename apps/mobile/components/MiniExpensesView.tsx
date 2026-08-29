@@ -116,18 +116,18 @@ export function MiniExpensesView() {
   };
 
   return (
-    <View className="flex-1 bg-surface dark:bg-slate-900">
+    <View className="flex-1 bg-background">
       <ScrollView
         contentContainerClassName="px-4 pt-4 pb-24"
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} enabled={!isOffline} />}
       >
         {/* Total card */}
         <Card>
-          <Text className="text-muted dark:text-slate-500 text-xs font-medium uppercase tracking-wide">
+          <Text className="text-muted text-xs font-medium uppercase tracking-wide">
             {t.miniEmployee.expensesTotalSpent}
           </Text>
-          <Text className="text-3xl font-bold text-text dark:text-slate-100 mt-1">{formatFcValue(totalFc)}</Text>
-          <Text className="text-muted dark:text-slate-500 text-xs mt-1">
+          <Text className="text-3xl font-bold text-text mt-1">{formatFcValue(totalFc)}</Text>
+          <Text className="text-muted text-xs mt-1">
             {expenses.length + queued.length} {t.expenses.countLabel}
           </Text>
         </Card>
@@ -149,7 +149,7 @@ export function MiniExpensesView() {
                 color={parseFloat(allowance.remainingFc) > 0 ? 'success' : 'danger'}
               />
             </View>
-            <Text className="text-muted dark:text-slate-500 text-xs mt-2 px-1">
+            <Text className="text-muted text-xs mt-2 px-1">
               {t.miniEmployee.expenseAllowanceHint(
                 allowance.pct,
                 formatFcValue(allowance.soldFc),
@@ -171,13 +171,13 @@ export function MiniExpensesView() {
                 className="flex-row justify-between items-center py-1.5"
               >
                 <View className="flex-1 pr-3">
-                  <Text className="text-text dark:text-slate-200 text-sm">{catLabel(e.category)}</Text>
+                  <Text className="text-text text-sm">{catLabel(e.category)}</Text>
                   {e.description ? (
-                    <Text className="text-muted dark:text-slate-400 text-xs" numberOfLines={1}>{e.description}</Text>
+                    <Text className="text-muted text-xs" numberOfLines={1}>{e.description}</Text>
                   ) : null}
                 </View>
                 <View className="items-end gap-1">
-                  <Text className="text-text dark:text-slate-100 font-semibold text-sm">{formatFcValue(e.amount)}</Text>
+                  <Text className="text-text font-semibold text-sm">{formatFcValue(e.amount)}</Text>
                   <StatusBadge label={t.miniEmployee.expenseStatusSyncing} tone="sync" />
                 </View>
               </Pressable>
@@ -200,20 +200,20 @@ export function MiniExpensesView() {
                 <Pressable
                   key={e.id}
                   onLongPress={() => confirmDelete(e)}
-                  className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 mb-2"
+                  className="bg-card border border-border rounded-xl px-4 py-3 mb-2"
                 >
                   <View className="flex-row justify-between items-start">
                     <View className="flex-1 pr-3">
-                      <Text className="text-text dark:text-slate-100 font-semibold text-sm">{catLabel(e.category)}</Text>
+                      <Text className="text-text font-semibold text-sm">{catLabel(e.category)}</Text>
                       {e.description ? (
-                        <Text className="text-muted dark:text-slate-400 text-xs mt-0.5" numberOfLines={2}>
+                        <Text className="text-muted text-xs mt-0.5" numberOfLines={2}>
                           {e.description}
                         </Text>
                       ) : null}
-                      <Text className="text-muted dark:text-slate-500 text-xs mt-1">{formatDate(e.createdAt)}</Text>
+                      <Text className="text-muted text-xs mt-1">{formatDate(e.createdAt)}</Text>
                     </View>
                     <View className="items-end gap-1">
-                      <Text className="text-text dark:text-slate-100 font-bold text-base">{formatFcValue(e.amount)}</Text>
+                      <Text className="text-text font-bold text-base">{formatFcValue(e.amount)}</Text>
                       <StatusBadge
                         label={handedOver ? t.miniEmployee.expenseStatusHandedOver : t.miniEmployee.expenseStatusPending}
                         tone={handedOver ? 'done' : 'pending'}

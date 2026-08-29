@@ -18,6 +18,7 @@ import { usePersonaStore } from '../../store/persona.store';
 import { usePrinterStore } from '../../store/printer.store';
 import { Button } from '../ui/Button';
 import { useT } from '../../lib/i18n';
+import { useBrand } from '../../lib/theme';
 
 interface Props {
   visible: boolean;
@@ -54,6 +55,7 @@ interface SizePriceGuardPending {
  * print/share/skip receipt prompt used by the regular sale flow.
  */
 export function SellSizedProductModal({ visible, onClose, group }: Props) {
+  const brand = useBrand();
   const t = useT();
   const qc = useQueryClient();
   const exchangeRate = useExchangeRate();
@@ -418,16 +420,16 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
   if (sizePriceGuardPending.length > 0) {
     return (
       <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-        <ScrollView className="flex-1 bg-surface dark:bg-slate-900" contentContainerClassName="px-6 py-8">
-          <View className="bg-card dark:bg-slate-800 border border-danger rounded-2xl p-5 mb-5">
+        <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8">
+          <View className="bg-card border border-danger rounded-2xl p-5 mb-5">
             <Text className="text-2xl mb-2">⚠️</Text>
             <Text className="text-danger font-bold text-lg mb-1">{t.sizedSale.priceGuardTitle}</Text>
             {sizePriceGuardPending.map(({ row, warning }) => (
-              <View key={row.variantId} className="border-t border-border dark:border-slate-700 pt-3 mb-2">
-                <Text className="text-text dark:text-slate-100 font-semibold capitalize">
+              <View key={row.variantId} className="border-t border-border pt-3 mb-2">
+                <Text className="text-text font-semibold capitalize">
                   {group.productName} · {row.label}
                 </Text>
-                <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">{warning}</Text>
+                <Text className="text-muted text-xs mt-0.5">{warning}</Text>
               </View>
             ))}
           </View>
@@ -448,12 +450,12 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
     <>
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <ScrollView
-        className="flex-1 bg-surface dark:bg-slate-900"
+        className="flex-1 bg-background"
         contentContainerClassName="px-6 py-8"
         keyboardShouldPersistTaps="handled"
       >
         <View className="flex-row justify-between items-center mb-4">
-          <Text className="text-xl font-bold text-text dark:text-slate-100 capitalize flex-1 mr-2" numberOfLines={2}>
+          <Text className="text-xl font-bold text-text capitalize flex-1 mr-2" numberOfLines={2}>
             {group.productName}
           </Text>
           <Pressable onPress={onClose}>
@@ -462,7 +464,7 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
         </View>
 
         {/* Mode tabs */}
-        <View className="flex-row bg-card dark:bg-slate-800 rounded-xl p-1 mb-5">
+        <View className="flex-row bg-card rounded-xl p-1 mb-5">
           <Pressable
             onPress={() => {
               if (!canCarton) return;
@@ -472,7 +474,7 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
             className={`flex-1 py-2.5 rounded-lg items-center ${mode === 'carton' ? 'bg-primary' : ''}`}
             style={{ opacity: canCarton ? 1 : 0.4 }}
           >
-            <Text className={mode === 'carton' ? 'text-white font-semibold' : 'text-text dark:text-slate-200'}>
+            <Text className={mode === 'carton' ? 'text-white font-semibold' : 'text-text'}>
               {t.sizedSale.cartonTab}
             </Text>
           </Pressable>
@@ -480,7 +482,7 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
             onPress={() => setMode('size')}
             className={`flex-1 py-2.5 rounded-lg items-center ${mode === 'size' ? 'bg-primary' : ''}`}
           >
-            <Text className={mode === 'size' ? 'text-white font-semibold' : 'text-text dark:text-slate-200'}>
+            <Text className={mode === 'size' ? 'text-white font-semibold' : 'text-text'}>
               {t.sizedSale.sizeTab}
             </Text>
           </Pressable>
@@ -488,10 +490,10 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
 
         {mode === 'carton' ? (
           <>
-            <View className="bg-card dark:bg-slate-800 rounded-xl px-4 py-4 mb-4">
+            <View className="bg-card rounded-xl px-4 py-4 mb-4">
               {canCarton ? (
                 <>
-                  <Text className="text-muted dark:text-slate-500 text-sm mb-1">
+                  <Text className="text-muted text-sm mb-1">
                     {t.sizedSale.cartonPriceEditable}
                   </Text>
                   <View className="flex-row items-center gap-2">
@@ -500,39 +502,39 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
                       onChangeText={(v) => setCartonPriceFc(v.replace(/[^0-9]/g, ''))}
                       keyboardType="number-pad"
                       placeholder="0"
-                      placeholderTextColor="#94a3b8"
-                      className="flex-1 bg-surface dark:bg-slate-900 border border-border dark:border-slate-700 rounded-xl px-4 py-3 text-text dark:text-slate-100 text-base"
+                      placeholderTextColor={brand.mutedSubtle}
+                      className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-text text-base"
                     />
-                    <Text className="text-muted dark:text-slate-500 text-sm">
+                    <Text className="text-muted text-sm">
                       FC {t.sizedSale.perCarton}
                     </Text>
                   </View>
-                  <Text className="text-muted dark:text-slate-500 text-xs mt-1.5">
+                  <Text className="text-muted text-xs mt-1.5">
                     {t.sizedSale.cartonsAvailable(cartonsAvailable)}
                   </Text>
                 </>
               ) : (
-                <Text className="text-muted dark:text-slate-500 text-sm">{t.sizedSale.noCartonPrice}</Text>
+                <Text className="text-muted text-sm">{t.sizedSale.noCartonPrice}</Text>
               )}
             </View>
 
             {/* Quantity stepper */}
             {canCarton && (
-              <View className="flex-row justify-between items-center bg-card dark:bg-slate-800 rounded-xl px-4 py-3 mb-4">
-                <Text className="text-text dark:text-slate-100 font-medium">{t.sizedSale.cartonQtyLabel}</Text>
+              <View className="flex-row justify-between items-center bg-card rounded-xl px-4 py-3 mb-4">
+                <Text className="text-text font-medium">{t.sizedSale.cartonQtyLabel}</Text>
                 <View className="flex-row items-center gap-4">
                   <Pressable
                     onPress={() => setQty((q) => Math.max(1, q - 1))}
-                    className="w-10 h-10 rounded-full bg-surface dark:bg-slate-700 items-center justify-center"
+                    className="w-10 h-10 rounded-full bg-surface items-center justify-center"
                   >
-                    <Text className="text-text dark:text-slate-100 text-xl">−</Text>
+                    <Text className="text-text text-xl">−</Text>
                   </Pressable>
-                  <Text className="text-text dark:text-slate-100 text-lg font-bold w-8 text-center">{clampedQty}</Text>
+                  <Text className="text-text text-lg font-bold w-8 text-center">{clampedQty}</Text>
                   <Pressable
                     onPress={() => setQty((q) => Math.min(maxQty, q + 1))}
-                    className="w-10 h-10 rounded-full bg-surface dark:bg-slate-700 items-center justify-center"
+                    className="w-10 h-10 rounded-full bg-surface items-center justify-center"
                   >
-                    <Text className="text-text dark:text-slate-100 text-xl">+</Text>
+                    <Text className="text-text text-xl">+</Text>
                   </Pressable>
                 </View>
               </View>
@@ -540,17 +542,17 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
 
             {/* Quantity discount — whole-carton sales only (sizes are single products) */}
             {canCarton && qdConfig?.enabled && (
-              <View className="rounded-xl border border-border dark:border-slate-700 px-4 py-3 mb-4">
+              <View className="rounded-xl border border-border px-4 py-3 mb-4">
                 <Pressable
                   onPress={() => setApplyDiscount((v) => !v)}
                   className="flex-row items-center justify-between"
                 >
-                  <Text className="text-text dark:text-slate-100 text-sm font-medium flex-1 mr-2">
+                  <Text className="text-text text-sm font-medium flex-1 mr-2">
                     {t.recordSaleModal.qdToggle}
                   </Text>
                   <View
                     className={`w-11 h-6 rounded-full px-0.5 justify-center ${
-                      applyDiscount ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
+                      applyDiscount ? 'bg-primary' : 'bg-muted-subtle'
                     }`}
                   >
                     <View className={`w-5 h-5 rounded-full bg-white ${applyDiscount ? 'self-end' : 'self-start'}`} />
@@ -559,13 +561,13 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
 
                 {applyDiscount &&
                   (cartonAutoPct <= 0 && !discountPctOverride.trim() ? (
-                    <Text className="text-muted dark:text-slate-500 text-[11px] mt-2">
+                    <Text className="text-muted text-[11px] mt-2">
                       {t.recordSaleModal.qdNotQualified}
                     </Text>
                   ) : (
                     <View className="mt-2">
                       <View className="flex-row items-center gap-2">
-                        <Text className="text-muted dark:text-slate-400 text-xs flex-1">
+                        <Text className="text-muted text-xs flex-1">
                           {cartonTier
                             ? t.recordSaleModal.qdTierApplied(tierName(cartonTier))
                             : t.recordSaleModal.qdCustom}
@@ -575,11 +577,11 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
                           onChangeText={(v) => setDiscountPctOverride(v.replace(/[^0-9.]/g, ''))}
                           keyboardType="decimal-pad"
                           placeholder={String(cartonAutoPct)}
-                          placeholderTextColor="#94A3B8"
+                          placeholderTextColor={brand.mutedSubtle}
                           selectTextOnFocus
-                          className="text-text dark:text-slate-100 font-semibold text-base w-14 text-center border-b border-border dark:border-slate-700"
+                          className="text-text font-semibold text-base w-14 text-center border-b border-border"
                         />
-                        <Text className="text-muted dark:text-slate-500 text-sm">%</Text>
+                        <Text className="text-muted text-sm">%</Text>
                       </View>
                       <Text className="text-success text-[11px] mt-1.5">
                         −{cartonDiscountPct}% → {formatMoney(discountedCartonUsd.toString(), groupRate)}{' '}
@@ -593,8 +595,8 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
             {/* Total */}
             {canCarton && (
               <View className="flex-row justify-between items-center mb-5">
-                <Text className="text-muted dark:text-slate-500">{t.sizedSale.total}</Text>
-                <Text className="text-text dark:text-slate-100 text-xl font-bold">
+                <Text className="text-muted">{t.sizedSale.total}</Text>
+                <Text className="text-text text-xl font-bold">
                   {formatMoney(cartonLineTotalUsd.toString(), groupRate)}
                 </Text>
               </View>
@@ -602,8 +604,8 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
           </>
         ) : (
           <>
-            <Text className="text-muted dark:text-slate-500 text-sm mb-1">{t.sizedSale.pickSize}</Text>
-            <Text className="text-muted dark:text-slate-500 text-xs mb-3">{t.sizedSale.multiSizeHint}</Text>
+            <Text className="text-muted text-sm mb-1">{t.sizedSale.pickSize}</Text>
+            <Text className="text-muted text-xs mb-3">{t.sizedSale.multiSizeHint}</Text>
             {variants.map((v) => {
               const row = sizeCart.get(v.variantId);
               const isSel = !!row;
@@ -612,7 +614,7 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
                 <View
                   key={v.variantId}
                   className={`rounded-xl mb-2 border ${
-                    isSel ? 'border-primary bg-primary/5' : 'border-border dark:border-slate-700 bg-card dark:bg-slate-800'
+                    isSel ? 'border-primary bg-primary/5' : 'border-border bg-card'
                   }`}
                   style={{ opacity: out ? 0.45 : 1 }}
                 >
@@ -622,19 +624,19 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
                     className="flex-row justify-between items-center px-4 py-3"
                   >
                     <View className="flex-1 mr-2">
-                      <Text className="text-text dark:text-slate-100 font-semibold capitalize">{v.label}</Text>
-                      <Text className="text-muted dark:text-slate-500 text-xs">
+                      <Text className="text-text font-semibold capitalize">{v.label}</Text>
+                      <Text className="text-muted text-xs">
                         {out ? t.sizedSale.outOfStock : t.sizedSale.sizeAvailable(v.available)}
                       </Text>
                     </View>
                     <View className="flex-row items-center gap-2">
-                      <Text className="text-text dark:text-slate-100 font-medium">
+                      <Text className="text-text font-medium">
                         {formatMoney(v.sellingPrice, rateFor(v))}{' '}
-                        <Text className="text-muted dark:text-slate-500 text-xs">{t.sizedSale.perPiece}</Text>
+                        <Text className="text-muted text-xs">{t.sizedSale.perPiece}</Text>
                       </Text>
                       <View
                         className={`w-6 h-6 rounded-full border-2 items-center justify-center ${
-                          isSel ? 'bg-primary border-primary' : 'border-border dark:border-slate-700'
+                          isSel ? 'bg-primary border-primary' : 'border-border'
                         }`}
                       >
                         {isSel && <Text className="text-white text-xs font-bold leading-none">✓</Text>}
@@ -644,20 +646,20 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
 
                   {isSel && row && (
                     <View className="flex-row justify-between items-center px-4 pb-3 pt-1 border-t border-primary/20">
-                      <Text className="text-muted dark:text-slate-400 text-xs">{t.sizedSale.quantity}</Text>
+                      <Text className="text-muted text-xs">{t.sizedSale.quantity}</Text>
                       <View className="flex-row items-center gap-3">
                         <TouchableOpacity
                           onPress={() => adjustSizeQty(v.variantId, -1)}
-                          className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                          className="w-8 h-8 rounded-full bg-background items-center justify-center"
                         >
-                          <Text className="text-text dark:text-slate-100 font-bold text-lg leading-none">−</Text>
+                          <Text className="text-text font-bold text-lg leading-none">−</Text>
                         </TouchableOpacity>
-                        <Text className="text-text dark:text-slate-100 font-bold w-6 text-center">{row.qty}</Text>
+                        <Text className="text-text font-bold w-6 text-center">{row.qty}</Text>
                         <TouchableOpacity
                           onPress={() => adjustSizeQty(v.variantId, 1)}
-                          className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 items-center justify-center"
+                          className="w-8 h-8 rounded-full bg-background items-center justify-center"
                         >
-                          <Text className="text-text dark:text-slate-100 font-bold text-lg leading-none">+</Text>
+                          <Text className="text-text font-bold text-lg leading-none">+</Text>
                         </TouchableOpacity>
                         <Text className="text-primary font-semibold text-sm ml-1">
                           {formatFcValue(row.unitPriceFc * row.qty)}
@@ -671,10 +673,10 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
 
             {sizeCartArray.length > 0 && (
               <View className="flex-row justify-between items-center mt-3 mb-5">
-                <Text className="text-muted dark:text-slate-500">
+                <Text className="text-muted">
                   {t.sizedSale.sizesSelected(sizeCartArray.length)}
                 </Text>
-                <Text className="text-text dark:text-slate-100 text-xl font-bold">
+                <Text className="text-text text-xl font-bold">
                   {formatFcValue(sizeGrandTotalFc)}
                 </Text>
               </View>
@@ -694,11 +696,11 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
     {/* Post-sale: print/share/skip the receipt (covers whole-carton and by-size sales alike). */}
     <Modal visible={receiptPrompt !== null} transparent animationType="fade" onRequestClose={handleSkipReceipt}>
       <View className="flex-1 justify-center bg-black/50 px-6">
-        <View className="bg-surface dark:bg-slate-900 rounded-2xl p-5">
-          <Text className="text-text dark:text-slate-100 font-bold text-lg">
+        <View className="bg-surface rounded-2xl p-5">
+          <Text className="text-text font-bold text-lg">
             {t.recordSaleModal.receiptPromptTitle}
           </Text>
-          <Text className="text-muted dark:text-slate-400 text-sm mt-1 mb-4">
+          <Text className="text-muted text-sm mt-1 mb-4">
             {t.sizedSale.receiptPromptSubtitle}
           </Text>
           <View className="flex-row gap-2">

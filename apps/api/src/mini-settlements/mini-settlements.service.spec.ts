@@ -11,6 +11,7 @@ import {
   SupplierDebt,
 } from '../entities';
 import type { ActorContext } from '../common/types/actor-context';
+import { resolveGrantedServices } from '../common/services/service-catalog';
 
 /**
  * Unit-level coverage of the money math in approve(): a mini consigned 20 units
@@ -152,6 +153,7 @@ describe('MiniSettlementsService.approve', () => {
     actorId: OWNER,
     effectiveOwnerId: OWNER,
     tier: 'OWNER',
+    services: resolveGrantedServices(null, 'OWNER'),
     employment: null,
   };
 
@@ -390,6 +392,7 @@ describe('MiniSettlementsService.create — one open handover at a time', () => 
     actorId: MINI,
     effectiveOwnerId: MINI, // a mini operates on their own books
     tier: 'MINI_EMPLOYEE',
+    services: resolveGrantedServices(null, 'MINI_EMPLOYEE'),
     employment: { employerId: OWNER } as never,
   };
 

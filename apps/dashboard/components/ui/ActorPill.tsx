@@ -21,7 +21,7 @@ export function ActorPill({ actor, viewerId, discount }: ActorPillProps) {
         style={
           isSelf
             ? { background: 'rgba(127,127,127,0.12)', color: 'var(--foreground)' }
-            : { background: 'rgba(99,102,241,0.15)', color: '#818CF8' }
+            : { background: 'rgba(var(--primary-rgb),0.15)', color: 'var(--primary-dark)' }
         }
       >
         {label}

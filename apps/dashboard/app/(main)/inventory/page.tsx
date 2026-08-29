@@ -24,6 +24,7 @@ import {
   type GroupAdjustTarget,
 } from '../../../components/forms/AdjustGroupStockDialog';
 import { useT } from '../../../lib/i18n';
+import { usePermissions } from '../../../lib/permissions';
 import { Fragment, useEffect, useState } from 'react';
 
 interface RowVariant {
@@ -60,6 +61,7 @@ interface Row {
 
 export default function InventoryPage() {
   const t = useT();
+  const { can } = usePermissions();
   const formatCurrency = useFormatCurrency();
   const [addOpen, setAddOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
@@ -227,15 +229,21 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="flex gap-2 flex-shrink-0 flex-wrap">
-          <button onClick={() => setAddOpen(true)} className="btn btn-primary">
-            {t.inventory.addProduct}
-          </button>
-          <button onClick={() => setReceiveOpen(true)} className="btn btn-secondary">
-            {t.inventory.receiveFromSupplier}
-          </button>
-          <button onClick={() => setSizedOpen(true)} className="btn btn-secondary">
-            {t.sizedProducts.createBtn}
-          </button>
+          {can('inventory.add_personal') && (
+            <button onClick={() => setAddOpen(true)} className="btn btn-primary">
+              {t.inventory.addProduct}
+            </button>
+          )}
+          {can('inventory.receive') && (
+            <button onClick={() => setReceiveOpen(true)} className="btn btn-secondary">
+              {t.inventory.receiveFromSupplier}
+            </button>
+          )}
+          {can('products.manage') && (
+            <button onClick={() => setSizedOpen(true)} className="btn btn-secondary">
+              {t.sizedProducts.createBtn}
+            </button>
+          )}
         </div>
       </div>
 
@@ -290,6 +298,7 @@ function SizedProductsSection({
   onAddStock: (g: GroupStockTarget) => void;
 }) {
   const t = useT();
+  const { can } = usePermissions();
   const formatCurrency = useFormatCurrency();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [priceGroup, setPriceGroup] = useState<GroupPriceTarget | null>(null);
@@ -395,6 +404,7 @@ function SizedProductsSection({
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1.5 justify-end flex-wrap">
+                        {can('inventory.price') && (
                         <button
                           onClick={() =>
                             setPriceGroup({
@@ -414,6 +424,8 @@ function SizedProductsSection({
                         >
                           {t.sizedProducts.editPricesBtn}
                         </button>
+                        )}
+                        {can('inventory.adjust') && (
                         <button
                           onClick={() =>
                             setAdjustGroup({
@@ -431,6 +443,8 @@ function SizedProductsSection({
                         >
                           {t.sizedProducts.adjustBtn}
                         </button>
+                        )}
+                        {can('inventory.add_personal') && (
                         <button
                           onClick={() =>
                             onAddStock({
@@ -448,6 +462,7 @@ function SizedProductsSection({
                         >
                           {t.sizedProducts.addStockBtn}
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -18,6 +18,7 @@ import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useCurrencyStore } from '../../../store/currency.store';
 import { useT } from '../../../lib/i18n';
+import { usePermissions } from '../../../lib/permissions';
 import { KpiCard } from '../../../components/ui/KpiCard';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
@@ -43,6 +44,7 @@ function todayISO(): string {
 
 export default function ExpensesPage() {
   const t = useT();
+  const { can } = usePermissions();
   const confirmDialog = useConfirm();
   const formatCurrency = useFormatCurrency();
   const { displayCurrency } = useCurrencyStore();
@@ -100,6 +102,8 @@ export default function ExpensesPage() {
   const { data: cashData } = useQuery({
     queryKey: QK.cashPosition,
     queryFn: () => dashboardApi.cashPosition(),
+    // Budget headroom comes from the money picture, a separate grant.
+    enabled: can('cash.overview'),
   });
   const { data: rateData } = useQuery({
     queryKey: QK.exchangeRate,
@@ -270,6 +274,8 @@ export default function ExpensesPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ── Left: add form ──────────────────────────────────────── */}
+        {/* Seeing expenses and being allowed to add one are separate grants. */}
+        {can('expenses.record') && (
         <div className="card" style={{ padding: '24px', height: 'fit-content' }}>
           <h2 className="font-bold text-sm tracking-tight mb-4" style={{ color: 'var(--foreground)' }}>
             {t.expenses.addBtn}
@@ -374,6 +380,7 @@ export default function ExpensesPage() {
             </button>
           </form>
         </div>
+        )}
 
         {/* ── Right: totals + list ────────────────────────────────── */}
         <div className="lg:col-span-2 space-y-4">
@@ -548,7 +555,7 @@ export default function ExpensesPage() {
                               style={
                                 isViewer
                                   ? { background: 'rgba(127,127,127,0.12)', color: 'var(--foreground)' }
-                                  : { background: 'rgba(99,102,241,0.15)', color: '#818CF8' }
+                                  : { background: 'rgba(var(--primary-rgb),0.15)', color: 'var(--primary-dark)' }
                               }
                             >
                               @{actorName || '—'}

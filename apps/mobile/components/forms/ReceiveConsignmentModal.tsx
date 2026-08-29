@@ -105,14 +105,14 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
-      <ScrollView className="flex-1 bg-surface dark:bg-slate-900" contentContainerClassName="px-6 py-8">
+      <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-xl font-bold text-text dark:text-slate-100">{t.miniEmployee.receiveTitle}</Text>
+          <Text className="text-xl font-bold text-text">{t.miniEmployee.receiveTitle}</Text>
           <TouchableOpacity onPress={close}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
         </View>
-        <Text className="text-muted dark:text-slate-500 text-sm mb-5">{t.miniEmployee.receiveSubtitle}</Text>
+        <Text className="text-muted text-sm mb-5">{t.miniEmployee.receiveSubtitle}</Text>
 
         {receivedSlip && (
           <View className="bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-900 rounded-2xl px-4 py-4 mb-4">
@@ -149,7 +149,7 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
                 onPress={() => setJustReceived(null)}
                 className="px-4 rounded-xl py-2.5 items-center justify-center"
               >
-                <Text className="text-muted dark:text-slate-400 font-semibold text-sm">
+                <Text className="text-muted font-semibold text-sm">
                   {t.miniEmployee.printDone}
                 </Text>
               </TouchableOpacity>
@@ -160,17 +160,17 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
         {isLoading ? (
           <ActivityIndicator className="mt-8" />
         ) : pending.length === 0 ? (
-          <Text className="text-muted dark:text-slate-500 text-center mt-10">{t.miniEmployee.receiveEmpty}</Text>
+          <Text className="text-muted text-center mt-10">{t.miniEmployee.receiveEmpty}</Text>
         ) : (
           pending.map((c) => (
             <View
               key={c.id}
-              className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4 mb-3"
+              className="bg-card border border-border rounded-2xl px-4 py-4 mb-3"
             >
-              <Text className="text-text dark:text-slate-100 font-semibold">
+              <Text className="text-text font-semibold">
                 {t.miniEmployee.receiveFrom} @{c.supplier?.username ?? '—'}
               </Text>
-              {c.note ? <Text className="text-muted dark:text-slate-500 text-xs mt-0.5 italic">{c.note}</Text> : null}
+              {c.note ? <Text className="text-muted text-xs mt-0.5 italic">{c.note}</Text> : null}
               <View className="mt-2 gap-2">
                 {(() => {
                   // Composite (sized) items share a groupId — show them as ONE
@@ -200,30 +200,30 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
                           0,
                         );
                         return (
-                          <View key={gid} className="border-t border-border dark:border-slate-700 pt-2">
+                          <View key={gid} className="border-t border-border pt-2">
                             <View className="flex-row justify-between items-center">
-                              <Text className="text-text dark:text-slate-100 font-semibold capitalize">
+                              <Text className="text-text font-semibold capitalize">
                                 {name}
                               </Text>
-                              <Text className="text-xs rounded px-2 py-0.5 bg-surface dark:bg-slate-900 text-text dark:text-slate-200">
+                              <Text className="text-xs rounded px-2 py-0.5 bg-surface text-text">
                                 {t.sizedSale.cartonCount(cartons)}
                               </Text>
                             </View>
                             {items.map((it) => (
                               <View key={it.id} className="flex-row justify-between mt-0.5">
-                                <Text className="text-muted dark:text-slate-400 text-sm capitalize">
+                                <Text className="text-muted text-sm capitalize">
                                   {it.variantLabel ?? '—'}
                                 </Text>
-                                <Text className="text-muted dark:text-slate-500 text-xs">
+                                <Text className="text-muted text-xs">
                                   {t.sizedSale.perCartonPieces(it.piecesPerCarton || 1)} · {it.quantity} pcs
                                 </Text>
                               </View>
                             ))}
                             <View className="flex-row justify-between mt-1">
-                              <Text className="text-muted dark:text-slate-500 text-xs">
+                              <Text className="text-muted text-xs">
                                 {t.sizedSale.owed}
                               </Text>
-                              <Text className="text-text dark:text-slate-100 text-sm font-medium">
+                              <Text className="text-text text-sm font-medium">
                                 {formatCurrency(owed.toString())}
                               </Text>
                             </View>
@@ -240,10 +240,10 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
                         const priceSuffix = ppc ? t.miniEmployee.perCarton : t.miniEmployee.perPiece;
                         return (
                           <View key={it.id} className="flex-row justify-between">
-                            <Text className="text-text dark:text-slate-200 text-sm capitalize">
+                            <Text className="text-text text-sm capitalize">
                               {formatBreakdown(bd)} · {it.productName}
                             </Text>
-                            <Text className="text-muted dark:text-slate-400 text-sm">
+                            <Text className="text-muted text-sm">
                               {formatCurrency(priceValue)} {priceSuffix}
                             </Text>
                           </View>

@@ -17,7 +17,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { PairMiniEmployeeDto } from './dto/pair-mini-employee.dto';
 import { AuthChangePasswordDto } from './dto/change-password.dto';
-import { AuthResponseDto, UserPublicDto } from './dto/auth-response.dto';
+import { AuthResponseDto, UserPublicDto, toActiveEmploymentDto } from './dto/auth-response.dto';
 import { ACCOUNT_DELETION_GRACE_MS, BCRYPT_SALT_ROUNDS } from '../common/constants';
 
 @Injectable()
@@ -223,15 +223,7 @@ export class AuthService {
       isMiniEmployee: user.isMiniEmployee,
       isExternalEmployee: user.isExternalEmployee,
       createdAt: user.createdAt,
-      activeEmployment: employment
-        ? {
-            id: employment.id,
-            tier: employment.tier,
-            status: employment.status as 'ACTIVE' | 'TERMINATION_REQUESTED',
-            employer: { id: employment.employer.id, username: employment.employer.username },
-            terminationRequestedBy: employment.terminationRequestedBy,
-          }
-        : null,
+      activeEmployment: toActiveEmploymentDto(employment),
     };
   }
 }

@@ -8,6 +8,7 @@ import {
 import { ActivityLogsService } from './activity-logs.service';
 import { ListActivityLogsDto } from './dto/list-activity-logs.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 
@@ -19,6 +20,7 @@ export class ActivityLogsController {
   constructor(private readonly service: ActivityLogsService) {}
 
   @Get()
+  @RequiresService('activity.log')
   @ApiOperation({
     summary: 'Unified activity feed across sales, consignments, external transactions, payments, expenses, and inventory registrations',
     description:

@@ -8,6 +8,7 @@ import {
 import { StockMovementsService } from './stock-movements.service';
 import { StockMovementsFilterDto } from './dto/stock-movements-filter.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 
@@ -19,6 +20,7 @@ export class StockMovementsController {
   constructor(private readonly service: StockMovementsService) {}
 
   @Get('movements')
+  @RequiresService('inventory.movements')
   @ApiOperation({
     summary: 'List stock movements (audit ledger) — paginated, filterable',
   })
@@ -28,6 +30,7 @@ export class StockMovementsController {
   }
 
   @Get('entries/:entryId/movements')
+  @RequiresService('inventory.movements')
   @ApiOperation({
     summary: 'List all movements for one inventory entry (no pagination)',
   })

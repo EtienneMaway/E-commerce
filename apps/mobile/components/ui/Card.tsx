@@ -8,7 +8,7 @@ export function Card({ children, className, ...props }: Props) {
   return (
     <View
       {...props}
-      className={`bg-card dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-border dark:border-slate-700 ${className ?? ''}`}
+      className={`bg-card rounded-2xl p-4 shadow-sm border border-border ${className ?? ''}`}
     >
       {children}
     </View>

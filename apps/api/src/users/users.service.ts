@@ -15,7 +15,7 @@ import { User } from '../entities';
 import { UserSearchResultDto } from './dto/user-search-result.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserChangePasswordDto } from './dto/change-password.dto';
-import { UserPublicDto } from '../auth/dto/auth-response.dto';
+import { UserPublicDto, toActiveEmploymentDto } from '../auth/dto/auth-response.dto';
 import { EmploymentsService } from '../employments/employments.service';
 import {
   ACCOUNT_DELETION_GRACE_MS,
@@ -48,15 +48,7 @@ export class UsersService implements OnModuleInit {
       isMiniEmployee: user.isMiniEmployee,
       isExternalEmployee: user.isExternalEmployee,
       createdAt: user.createdAt,
-      activeEmployment: employment
-        ? {
-            id: employment.id,
-            tier: employment.tier,
-            status: employment.status as 'ACTIVE' | 'TERMINATION_REQUESTED',
-            employer: { id: employment.employer.id, username: employment.employer.username },
-            terminationRequestedBy: employment.terminationRequestedBy,
-          }
-        : null,
+      activeEmployment: toActiveEmploymentDto(employment),
     };
   }
 

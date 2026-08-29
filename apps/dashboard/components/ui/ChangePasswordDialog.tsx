@@ -96,14 +96,14 @@ export function ChangePasswordDialog({ open, onClose }: ChangePasswordDialogProp
         style={{
           background: 'var(--card)',
           border: '1px solid var(--border)',
-          boxShadow: '0 20px 60px -10px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.35)',
+          boxShadow: '0 20px 60px -10px rgba(0,0,0,0.5), 0 0 0 1px rgba(var(--primary-rgb),0.35)',
         }}
       >
         <div className="p-6">
           <div className="flex items-start gap-4 mb-5">
             <div
               className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(99,102,241,0.12)', color: '#6366F1' }}
+              style={{ background: 'rgba(var(--primary-rgb),0.12)', color: 'var(--primary)' }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
@@ -152,7 +152,7 @@ export function ChangePasswordDialog({ open, onClose }: ChangePasswordDialogProp
                 type="submit"
                 disabled={mutation.isPending || !currentPassword || !newPassword || !confirmPassword}
                 className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
-                style={{ background: '#6366F1', boxShadow: '0 4px 12px -2px rgba(99,102,241,0.35)' }}
+                style={{ background: 'var(--primary)', boxShadow: '0 4px 12px -2px rgba(var(--primary-rgb),0.35)' }}
               >
                 {mutation.isPending ? t.settings.passwordSaving : t.settings.passwordSave}
               </button>

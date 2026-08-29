@@ -23,6 +23,7 @@ import { AddGroupStockDto } from './dto/add-group-stock.dto';
 import { RenameGroupDto } from './dto/rename-group.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 
@@ -34,6 +35,7 @@ export class ProductGroupsController {
   constructor(private readonly service: ProductGroupsService) {}
 
   @Get()
+  @RequiresService('inventory.view')
   // Minis browse their consigned-in sized stock to sell/re-price it, so reads
   // must allow MINI_EMPLOYEE (default allowlist would 403 them).
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
@@ -47,6 +49,7 @@ export class ProductGroupsController {
 
   @Get(':id')
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @RequiresService('inventory.view')
   @ApiOperation({
     summary: 'Get one sized product group with per-size availability',
   })
@@ -57,9 +60,10 @@ export class ProductGroupsController {
   }
 
   @Post()
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('products.manage')
   @ApiOperation({
-    summary: 'Create a sized product group with its sizes (owner only)',
+    summary: 'Create a sized product group with its sizes (owner, or an employee whose role grants it)',
   })
   @ApiResponse({ status: 201, description: 'Group created' })
   @ApiResponse({
@@ -74,7 +78,8 @@ export class ProductGroupsController {
   }
 
   @Patch(':id')
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('products.manage')
   @ApiOperation({
     summary:
       'Update a group (category, carton price, archive). Renaming is Phase 6.',
@@ -90,9 +95,10 @@ export class ProductGroupsController {
   }
 
   @Patch(':id/rename')
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('products.manage')
   @ApiOperation({
-    summary: 'Rename a group, cascading across its stock + sales (owner only)',
+    summary: 'Rename a group, cascading across its stock + sales (owner, or an employee whose role grants it)',
     description:
       'Atomically renames the group and cascades the new name across the owner\'s ' +
       'PERSONAL/SUPPLIER lots and their sale rows. Blocked while active consigned stock exists.',
@@ -110,8 +116,9 @@ export class ProductGroupsController {
   }
 
   @Post(':id/variants')
-  @AllowedFor('OWNER')
-  @ApiOperation({ summary: 'Add a size to an existing group (owner only)' })
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('products.manage')
+  @ApiOperation({ summary: 'Add a size to an existing group (owner, or an employee whose role grants it)' })
   @ApiResponse({ status: 201, description: 'Size added' })
   @ApiResponse({
     status: 409,
@@ -126,9 +133,10 @@ export class ProductGroupsController {
   }
 
   @Patch(':id/variants/:variantId')
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('products.manage')
   @ApiOperation({
-    summary: 'Edit a size (cost, price, pieces/carton, label) (owner only)',
+    summary: 'Edit a size (cost, price, pieces/carton, label) (owner, or an employee whose role grants it)',
   })
   @ApiResponse({ status: 200, description: 'Size updated' })
   @ApiResponse({ status: 404, description: 'Size not found' })
@@ -142,9 +150,10 @@ export class ProductGroupsController {
   }
 
   @Delete(':id/variants/:variantId')
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('products.manage')
   @ApiOperation({
-    summary: 'Archive a size — blocked while it still has stock (owner only)',
+    summary: 'Archive a size — blocked while it still has stock (owner, or an employee whose role grants it)',
   })
   @ApiResponse({ status: 200, description: 'Size archived' })
   @ApiResponse({ status: 400, description: 'Size still has stock' })
@@ -158,10 +167,11 @@ export class ProductGroupsController {
   }
 
   @Post(':id/stock')
-  @AllowedFor('OWNER')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE')
+  @RequiresService('inventory.add_personal', 'inventory.receive')
   @ApiOperation({
     summary:
-      'Add per-size personal stock to a group in one atomic transaction (owner only)',
+      'Add per-size personal stock to a group in one atomic transaction (owner, or an employee whose role grants it)',
   })
   @ApiResponse({
     status: 201,

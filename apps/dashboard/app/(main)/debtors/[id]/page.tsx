@@ -12,6 +12,7 @@ import { Badge } from '../../../../components/ui/Badge';
 import { ActorPill } from '../../../../components/ui/ActorPill';
 import { useAuthStore } from '../../../../store/auth.store';
 import { useT } from '../../../../lib/i18n';
+import { usePermissions } from '../../../../lib/permissions';
 
 interface InventoryRow {
   id: string;
@@ -50,6 +51,7 @@ interface Detail {
 export default function DebtorDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const t = useT();
+  const { can } = usePermissions();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
   const { user } = useAuthStore();
@@ -209,7 +211,7 @@ export default function DebtorDetailPage({ params }: { params: Promise<{ id: str
                         {row.remainingBalance ? formatCurrency(row.remainingBalance) : '—'}
                       </td>
                       <td className="px-4 py-3">
-                        {row.status === 'PENDING' && (
+                        {row.status === 'PENDING' && can('debtors.collect') && (
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => approveMutation.mutate(row.id)}

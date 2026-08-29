@@ -89,7 +89,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
           <Pressable
             onPress={this.handleReset}
-            className="bg-blue-600 active:bg-blue-700 rounded-xl py-3 px-6"
+            className="bg-primary active:bg-primary-dark rounded-xl py-3 px-6"
           >
             <Text className="text-white font-semibold text-center">Try again</Text>
           </Pressable>

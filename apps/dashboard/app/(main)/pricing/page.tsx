@@ -6,14 +6,16 @@ import { ProductPrice, pricingApi } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
-import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
+import { usePageAccess } from '../../../hooks/use-page-access';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { useT } from '../../../lib/i18n';
 
 export default function PricingPage() {
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
-  const isOwner = useOwnerOnlyPage();
+  // pricing.catalog can be granted to a full employee, so gate on the service
+  // rather than on the persona — otherwise the grant is unreachable.
+  const isOwner = usePageAccess('pricing.catalog');
   const [productName, setProductName] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
 
@@ -80,7 +82,7 @@ export default function PricingPage() {
           type="submit"
           disabled={!productName || !unitPrice || upsert.isPending}
           className="px-4 py-2 rounded-md text-sm text-white font-medium disabled:opacity-50"
-          style={{ background: '#6366F1' }}
+          style={{ background: 'var(--primary)' }}
         >
           {upsert.isPending ? 'Saving…' : 'Save'}
         </button>
@@ -168,7 +170,7 @@ function PricingRow({
               onClick={() => update.mutate()}
               disabled={update.isPending}
               className="px-2 py-1 rounded-md text-xs text-white disabled:opacity-50"
-              style={{ background: '#6366F1' }}
+              style={{ background: 'var(--primary)' }}
             >
               Save
             </button>

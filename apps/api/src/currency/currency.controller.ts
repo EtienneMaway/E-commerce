@@ -19,6 +19,7 @@ import { CurrencyService } from './currency.service';
 import { SetRateDto } from './dto/set-rate.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 
 @ApiTags('currency')
 @ApiBearerAuth('jwt')
@@ -48,6 +49,7 @@ export class CurrencyController {
 
   @Put('rate')
   @AllowedFor('OWNER')
+  @RequiresService('currency.rates')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Set or update the system-wide USD → FC exchange rate' })
   @ApiBody({ type: SetRateDto })

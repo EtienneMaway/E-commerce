@@ -16,6 +16,9 @@ import { PersonaSwitcher } from '../../components/ui/PersonaSwitcher';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { ConfirmProvider } from '../../components/ui/ConfirmDialog';
 import { ToastProvider } from '../../components/ui/Toast';
+import { usePermissions } from '../../lib/permissions';
+import { NAV_SERVICE, serviceForPath } from '../../lib/nav-services';
+import { RouteGuard } from '../../components/ui/RouteGuard';
 
 const NAV_ICONS = [
   <svg key="dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -88,9 +91,9 @@ function UserAvatar({ username }: { username: string }) {
     <div
       className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
       style={{
-        background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+        background: 'var(--brand-gradient)',
         color: '#fff',
-        boxShadow: '0 2px 8px rgba(99,102,241,0.4)',
+        boxShadow: '0 2px 8px rgba(var(--primary-rgb),0.4)',
       }}
     >
       {initials}
@@ -128,7 +131,18 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   // they have an active employment AND (b) they've explicitly switched to it.
   const isEmployee = !!user?.activeEmployment && persona.kind === 'employer';
   const hasEmployment = !!user?.activeEmployment;
-  const NAV = [
+  const { canAny } = usePermissions();
+
+  // A second, finer filter on top of the persona rule above: the employer's role
+  // decides which of the remaining entries this employee actually sees. Entries
+  // mapped to `null` in NAV_SERVICE are always shown — see that file.
+  const permitted = (href: string): boolean => {
+    const required = NAV_SERVICE[href];
+    if (required === null || required === undefined) return true;
+    return canAny(...(Array.isArray(required) ? required : [required]));
+  };
+
+  const NAV_ALL = [
     { href: '/dashboard', label: t.nav.dashboard, icon: NAV_ICONS[0] },
     { href: '/inventory', label: t.nav.inventory, icon: NAV_ICONS[1] },
     { href: '/inventory/movements', label: t.nav.movements, icon: NAV_ICONS[2] },
@@ -142,15 +156,31 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     ...(hasEmployment
       ? [{ href: '/my-salary', label: t.nav.mySalary, icon: NAV_ICONS[14] }]
       : []),
+    // Delegatable: shown to an employee whose role grants them, and filtered by
+    // `permitted` below like everything else.
+    { href: '/employees', label: t.nav.employees, icon: NAV_ICONS[11] },
+    { href: '/pricing', label: t.nav.pricing, icon: NAV_ICONS[12] },
+    // Never delegatable — owner's own books only.
     ...(isEmployee
       ? []
       : [
           { href: '/withdrawals', label: t.nav.withdrawals, icon: NAV_ICONS[9] },
-          { href: '/employees', label: t.nav.employees, icon: NAV_ICONS[11] },
-          { href: '/pricing', label: t.nav.pricing, icon: NAV_ICONS[12] },
           { href: '/settings', label: t.nav.settings, icon: NAV_ICONS[10] },
         ]),
   ];
+
+  const NAV = NAV_ALL.filter((item) => permitted(item.href));
+
+  // Hiding a nav entry is not a boundary — a typed URL, a stale bookmark or a
+  // link would still land on the page and fire queries the API refuses. Guarding
+  // here rather than in each page keeps one implementation and covers dynamic
+  // routes (`/suppliers/[id]` inherits `/suppliers`) for free.
+  const routeService = serviceForPath(pathname);
+  const routeAllowed =
+    routeService === null ||
+    routeService === undefined ||
+    canAny(...(Array.isArray(routeService) ? routeService : [routeService]));
+
 
   useEffect(() => {
     hydrate();
@@ -181,7 +211,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     queryFn: () => authApi.me(),
     enabled: hydrated && !!token,
     retry: (failureCount, err) => !isAuthError(err) && failureCount < 3,
-    staleTime: 5 * 60_000,
+    // Short, because this response carries the employee's granted services: an
+    // employer opening or closing a feature should land on the next refresh or
+    // tab focus, not up to five minutes later.
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   useEffect(() => {
@@ -263,14 +297,14 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <div
           className="absolute inset-x-0 top-0 h-48 pointer-events-none"
           style={{
-            background: 'radial-gradient(ellipse at 60% 0%, rgba(99,102,241,0.2) 0%, transparent 70%)',
+            background: 'radial-gradient(ellipse at 60% 0%, rgba(var(--primary-rgb),0.2) 0%, transparent 70%)',
           }}
         />
 
         {/* Logo */}
         <div className="relative px-5 pt-6 pb-5">
           <div className="flex items-center gap-3">
-            <div className="flex-shrink-0" style={{ filter: 'drop-shadow(0 4px 12px rgba(99,102,241,0.45))' }}>
+            <div className="flex-shrink-0" style={{ filter: 'drop-shadow(0 4px 12px rgba(var(--primary-rgb),0.45))' }}>
               <KmbLogo size={36} />
             </div>
             <div>
@@ -310,14 +344,14 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 {active && (
                   <div
                     className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full"
-                    style={{ background: '#6366F1', boxShadow: '0 0 8px rgba(99,102,241,0.8)' }}
+                    style={{ background: 'var(--primary)', boxShadow: '0 0 8px rgba(var(--primary-rgb),0.8)' }}
                   />
                 )}
 
                 {/* Icon */}
                 <span
                   className="transition-colors duration-200 flex-shrink-0"
-                  style={{ color: active ? '#818CF8' : 'rgba(var(--sidebar-fg-rgb),0.35)', }}
+                  style={{ color: active ? 'var(--primary-dark)' : 'rgba(var(--sidebar-fg-rgb),0.35)', }}
                 >
                   {item.icon}
                 </span>
@@ -359,9 +393,12 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         className="flex-1 overflow-auto pt-14"
         style={{ background: 'var(--background)' }}
       >
+        <RouteGuard allowed={routeAllowed || !hydrated || !user} />
         <PersonaBanner />
         <div className={!isMobile && !sidebarOpen ? 'max-w-7xl mx-auto' : ''}>
-          {children}
+          {/* Suppress the page while the redirect above is in flight, so a
+              forbidden page never flashes its (failing) queries. */}
+          {routeAllowed || !hydrated || !user ? children : null}
         </div>
       </main>
     </div>

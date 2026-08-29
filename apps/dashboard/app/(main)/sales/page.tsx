@@ -17,6 +17,7 @@ import {
 } from '../../../components/ui/ActorFilter';
 import { useAuthStore } from '../../../store/auth.store';
 import { useT } from '../../../lib/i18n';
+import { usePermissions } from '../../../lib/permissions';
 import { saleReceiptHtml } from '../../../lib/print-templates';
 import { PrintDialog } from '../../../components/ui/PrintDialog';
 import { generateReceiptId, type ReceiptData } from '../../../lib/thermal-receipt';
@@ -93,6 +94,7 @@ interface Row {
 
 export default function SalesPage() {
   const t = useT();
+  const { can } = usePermissions();
   const formatCurrency = useFormatCurrency();
   const { user } = useAuthStore();
   const [period, setPeriod] = useState<Period>('30d');
@@ -103,6 +105,7 @@ export default function SalesPage() {
   const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
     queryKey: QK.inventoryProducts,
     queryFn: () => inventoryApi.listProducts(),
+    enabled: can('inventory.view'),
     staleTime: 60_000,
   });
   const ppcMap = new Map((productsData ?? []).map((p) => [p.productName, p.piecesPerCarton]));
@@ -215,6 +218,8 @@ export default function SalesPage() {
   const { data: summary } = useQuery({
     queryKey: QK.salesProfitSummary(sParams),
     queryFn: () => salesApi.profitSummary(sParams),
+    // Revenue/profit header — a role may include the sales list without the analysis.
+    enabled: can('sales.analytics'),
     staleTime: 60_000,
     placeholderData: keepPreviousData,
   });
@@ -310,9 +315,11 @@ export default function SalesPage() {
             <ActorFilter value={actorFilter} onChange={setActorFilter} />
           </div>
         </div>
+{can('sales.analytics') && (
         <Link href="/sales/top-products" className="btn btn-primary flex-shrink-0">
           {t.sales.topProducts}
         </Link>
+        )}
       </div>
 
       <div className="page-content">

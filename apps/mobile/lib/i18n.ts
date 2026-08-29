@@ -46,6 +46,18 @@ const en = {
     loginFailed: 'Login failed',
     registrationFailed: 'Registration failed',
   },
+  roles: {
+    noAccessTitle: 'Nothing has been shared with you yet',
+    noAccessBody: (employer: string) =>
+      `@${employer} hasn't opened any part of the app for you. Once they do, it will appear here straight away — you won't need to sign in again.`,
+    noAccessBodyGeneric:
+      "Your employer hasn't opened any part of the app for you yet. Once they do, it will appear here straight away.",
+    noAccessRole: (role: string) => `Your role "${role}" currently includes no features.`,
+    noAccessLeaveHint:
+      'You can still see your salary below. Ask your employer for access, or end the employment from your account.',
+    noAccessPersonaHint:
+      "This only applies while you're working on your employer's books. Your own account is unaffected.",
+  },
   tabs: {
     home: 'Home',
     inventory: 'Inventory',
@@ -738,6 +750,13 @@ const en = {
     monthlyTargetNotSet: "Your employer hasn't set a monthly pay target yet.",
     monthlyPay: 'Monthly pay',
     collectedSoFar: 'Collected so far',
+    commissionTitle: 'Handover commission',
+    commissionHint: (pct: string) =>
+      `Your employer pays you ${pct}% of the sold value of each handover they approve.`,
+    commissionNoRate: 'No rate is set right now — what you already earned can still be paid.',
+    commissionEarned: 'Earned',
+    commissionRemaining: 'Left to receive',
+    commissionTag: 'COMMISSION',
     pending: 'Pending',
     pendingHint: 'Confirm below to add to Collected',
     remaining: 'Remaining',
@@ -952,6 +971,18 @@ const fr: Translations = {
     contactRequiredMsg: 'Fournissez au moins un email ou un numéro de téléphone.',
     loginFailed: 'Connexion échouée',
     registrationFailed: "Échec de l'inscription",
+  },
+  roles: {
+    noAccessTitle: "Rien ne vous a encore été partagé",
+    noAccessBody: (employer: string) =>
+      `@${employer} ne vous a ouvert aucune partie de l'application. Dès que ce sera fait, cela apparaîtra ici immédiatement — sans avoir à vous reconnecter.`,
+    noAccessBodyGeneric:
+      "Votre employeur ne vous a encore ouvert aucune partie de l'application. Dès que ce sera fait, cela apparaîtra ici immédiatement.",
+    noAccessRole: (role: string) => `Votre rôle « ${role} » ne comprend actuellement aucune fonctionnalité.`,
+    noAccessLeaveHint:
+      "Vous pouvez toujours consulter votre salaire ci-dessous. Demandez l'accès à votre employeur, ou mettez fin à l'emploi depuis votre compte.",
+    noAccessPersonaHint:
+      "Cela ne s'applique que lorsque vous travaillez sur les livres de votre employeur. Votre propre compte n'est pas affecté.",
   },
   tabs: {
     home: 'Accueil',
@@ -1638,6 +1669,13 @@ const fr: Translations = {
     monthlyTargetNotSet: "Votre employeur n'a pas encore fixé de cible mensuelle.",
     monthlyPay: 'Salaire mensuel',
     collectedSoFar: 'Perçu à ce jour',
+    commissionTitle: 'Commission sur remises',
+    commissionHint: (pct: string) =>
+      `Votre employeur vous paie ${pct} % de la valeur vendue de chaque remise qu'il approuve.`,
+    commissionNoRate: "Aucun taux défini pour l'instant — ce que vous avez déjà gagné peut encore être payé.",
+    commissionEarned: 'Gagné',
+    commissionRemaining: 'Reste à recevoir',
+    commissionTag: 'COMMISSION',
     pending: 'En attente',
     pendingHint: 'Confirmez ci-dessous pour ajouter au Perçu',
     remaining: 'Restant',

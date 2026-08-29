@@ -18,7 +18,8 @@ import {
  * Munbyn, etc.).
  *
  * Talking to a thermal printer involves four phases:
- *   1. Permissions (Android 12+ asks separately for BLUETOOTH_CONNECT/SCAN).
+ *   1. Permissions (Android 12+ needs runtime BLUETOOTH_CONNECT; we never
+ *      scan, so no BLUETOOTH_SCAN and no location — see plugins/with-bt-no-location.js).
  *   2. Pairing happens in the OS Bluetooth settings, not this app — we only
  *      list devices the user has already paired.
  *   3. RFCOMM connect to the paired device's SPP socket.
@@ -36,18 +37,18 @@ export interface PairedPrinter {
 async function requestBtPermissions(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
   // Android 12 (API 31) split the legacy BLUETOOTH permission into two runtime
-  // ones. PermissionsAndroid is the cleanest way to ask without pulling in an
-  // extra package. Older Androids ignore the unknown strings.
-  const perms: string[] = [
-    'android.permission.BLUETOOTH_CONNECT',
-    'android.permission.BLUETOOTH_SCAN',
-  ];
-  const result = await PermissionsAndroid.requestMultiple(
-    perms as Parameters<typeof PermissionsAndroid.requestMultiple>[0],
+  // ones. We only need BLUETOOTH_CONNECT: it covers reading the bonded-device
+  // list and opening the RFCOMM socket. BLUETOOTH_SCAN is for *discovery*,
+  // which we never do — asking for it anyway would let a user who declines one
+  // extra prompt break printing outright. PermissionsAndroid is the cleanest
+  // way to ask without pulling in an extra package; older Androids ignore the
+  // unknown string and grant at install time.
+  const result = await PermissionsAndroid.request(
+    'android.permission.BLUETOOTH_CONNECT' as Parameters<
+      typeof PermissionsAndroid.request
+    >[0],
   );
-  return Object.values(result).every(
-    (v) => v === PermissionsAndroid.RESULTS.GRANTED,
-  );
+  return result === PermissionsAndroid.RESULTS.GRANTED;
 }
 
 export async function isBluetoothEnabled(): Promise<boolean> {

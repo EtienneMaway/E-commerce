@@ -592,6 +592,8 @@ export interface SalaryPayment {
   amount: string;
   periodMonth: string;
   status: SalaryPaymentStatus;
+  /** MONTHLY pay against the period target, or a mini's handover COMMISSION. */
+  kind: 'MONTHLY' | 'COMMISSION';
   note: string | null;
   rejectionReason: string | null;
   paidAt: string;
@@ -600,6 +602,14 @@ export interface SalaryPayment {
   cancelledAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CommissionSummary {
+  pct: string | null;
+  earned: string;
+  paidConfirmed: string;
+  pendingConfirmation: string;
+  remaining: string;
 }
 
 export interface SalarySummary {
@@ -611,6 +621,8 @@ export interface SalarySummary {
   rejected: string;
   balanceRemaining: string | null;
   paymentCount: number;
+  /** Mini-employee handover commission; null when never in play for this employment. */
+  commission: CommissionSummary | null;
 }
 
 export const salaryPaymentsApi = {

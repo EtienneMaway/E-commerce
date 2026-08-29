@@ -10,6 +10,7 @@ import { PaySupplierDto } from './dto/pay-supplier.dto';
 import { RecordDebtorPaymentDto } from './dto/record-debtor-payment.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 
@@ -21,6 +22,7 @@ export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @Post('to-supplier')
+  @RequiresService('suppliers.pay')
   @ApiOperation({
     summary: 'Submit a payment to a supplier (creates as PENDING)',
     description:
@@ -33,6 +35,7 @@ export class PaymentsController {
   }
 
   @Get('pending-from-debtors')
+  @RequiresService('debtors.collect')
   @ApiOperation({
     summary: 'List pending payments submitted by debtors to this supplier',
     description: 'Returns all PENDING payments where the current user is the recipient.',
@@ -43,6 +46,7 @@ export class PaymentsController {
   }
 
   @Patch(':id/approve')
+  @RequiresService('debtors.collect')
   @ApiOperation({
     summary: 'Approve a pending payment from a debtor',
     description:
@@ -56,6 +60,7 @@ export class PaymentsController {
   }
 
   @Patch(':id/reject')
+  @RequiresService('debtors.collect')
   @ApiOperation({
     summary: 'Reject a pending payment from a debtor',
     description: 'Marks the payment as REJECTED. No balance changes are made.',
@@ -67,6 +72,7 @@ export class PaymentsController {
   }
 
   @Post('from-debtor')
+  @RequiresService('debtors.collect')
   @ApiOperation({
     summary: 'Record a payment received directly from a debtor',
     description:

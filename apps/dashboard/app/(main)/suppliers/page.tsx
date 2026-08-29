@@ -11,6 +11,7 @@ import { KpiCard } from '../../../components/ui/KpiCard';
 import { Badge } from '../../../components/ui/Badge';
 import { PaySupplierDialog } from '../../../components/forms/PaySupplierDialog';
 import { useT } from '../../../lib/i18n';
+import { usePermissions } from '../../../lib/permissions';
 
 interface Row {
   supplierUserId: string;
@@ -28,6 +29,7 @@ interface PayTarget {
 
 export default function SuppliersPage() {
   const t = useT();
+  const { can } = usePermissions();
   const formatCurrency = useFormatCurrency();
   const [payTarget, setPayTarget] = useState<PayTarget | null>(null);
 
@@ -84,7 +86,7 @@ export default function SuppliersPage() {
       key: 'actions', header: '',
       render: (r) => (
         <div className="flex items-center gap-2">
-          {parseFloat(r.outstandingBalance) > 0 && (
+          {parseFloat(r.outstandingBalance) > 0 && can('suppliers.pay') && (
             <button
               onClick={() => setPayTarget({ id: r.supplierUserId, username: r.supplierUsername, outstanding: r.outstandingBalance })}
               className="btn btn-primary"

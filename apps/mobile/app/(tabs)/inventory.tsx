@@ -15,8 +15,10 @@ import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useBrand } from '../../lib/theme';
 import { useFormatCurrency, useExchangeRate, formatMoney } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
+import { usePermissions } from '../../lib/permissions';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { HandoverStatusBanner } from '../../components/ui/HandoverStatusBanner';
@@ -66,26 +68,26 @@ function ProductCard({
     <Pressable
       onPress={() => router.push(`/product/${encodeURIComponent(item.productName)}`)}
       onLongPress={() => onSell(item)}
-      className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3"
+      className="bg-card border border-border rounded-2xl p-4 mb-3"
       style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
     >
       {/* Name row */}
       <View className="flex-row justify-between items-start mb-1">
         <Text
-          className="text-text dark:text-slate-100 font-semibold text-base flex-1 mr-2"
+          className="text-text font-semibold text-base flex-1 mr-2"
           numberOfLines={2}
         >
           {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
         </Text>
         {isOutOfStock ? (
-          <Text className="text-muted dark:text-slate-500 text-xs font-medium">Out of stock</Text>
+          <Text className="text-muted text-xs font-medium">Out of stock</Text>
         ) : isLowStock ? (
           <Text className="text-danger text-xs font-semibold">⚠️ {t.inventory.low}</Text>
         ) : null}
       </View>
 
       {item.category && (
-        <Text className="text-muted dark:text-slate-500 text-xs mb-2">{item.category}</Text>
+        <Text className="text-muted text-xs mb-2">{item.category}</Text>
       )}
 
       {/* Stock + prices row */}
@@ -93,15 +95,15 @@ function ProductCard({
         <View className="mt-2">
           <View className="flex-row justify-between items-start">
             <View>
-              <Text className="text-muted dark:text-slate-500 text-sm mb-0.5">{t.inventory.available}</Text>
+              <Text className="text-muted text-sm mb-0.5">{t.inventory.available}</Text>
               <Text
                 className={`text-base font-bold ${
-                  isOutOfStock ? 'text-muted dark:text-slate-500' : 'text-text dark:text-slate-100'
+                  isOutOfStock ? 'text-muted' : 'text-text'
                 }`}
               >
                 {t.sizedSale.cartonsAvailable(item.cartonsAvailable ?? 0)}
               </Text>
-              <Text className="text-muted dark:text-slate-500 text-sm">{item.totalAvailable} pcs</Text>
+              <Text className="text-muted text-sm">{item.totalAvailable} pcs</Text>
               {soldOfflinePending > 0 && (
                 <Text className="text-amber-600 dark:text-amber-400 text-xs mt-1 font-medium">
                   ⏳ {soldOfflinePending} sold · pending sync
@@ -110,8 +112,8 @@ function ProductCard({
             </View>
             {item.cartonSellingPrice ? (
               <View className="items-end">
-                <Text className="text-muted dark:text-slate-500 text-sm">{t.sizedSale.cartonPrice}</Text>
-                <Text className="text-text dark:text-slate-100 text-sm font-semibold">
+                <Text className="text-muted text-sm">{t.sizedSale.cartonPrice}</Text>
+                <Text className="text-text text-sm font-semibold">
                   {money(item.cartonSellingPrice)}
                 </Text>
               </View>
@@ -121,10 +123,10 @@ function ProductCard({
           <View className="mt-2 gap-1">
             {(item.variants ?? []).map((v) => (
               <View key={v.variantId} className="flex-row justify-between items-center">
-                <Text className="text-muted dark:text-slate-500 text-sm capitalize">
+                <Text className="text-muted text-sm capitalize">
                   {v.label} · {v.available} pcs
                 </Text>
-                <Text className="text-text dark:text-slate-100 text-sm font-medium">
+                <Text className="text-text text-sm font-medium">
                   {variantMoney(v)}
                 </Text>
               </View>
@@ -135,20 +137,20 @@ function ProductCard({
         <View className="flex-row justify-between items-end mt-2">
           {/* Available breakdown */}
           <View>
-            <Text className="text-muted dark:text-slate-500 text-sm mb-0.5">{t.inventory.available}</Text>
+            <Text className="text-muted text-sm mb-0.5">{t.inventory.available}</Text>
             <Text
               className={`text-base font-bold ${
                 isOutOfStock
-                  ? 'text-muted dark:text-slate-500'
+                  ? 'text-muted'
                   : isLowStock
                   ? 'text-danger'
-                  : 'text-text dark:text-slate-100'
+                  : 'text-text'
               }`}
             >
               {formatBreakdown(bd)}
             </Text>
             {item.piecesPerCarton ? (
-              <Text className="text-muted dark:text-slate-500 text-sm">
+              <Text className="text-muted text-sm">
                 1 ctn = {item.piecesPerCarton} pcs
               </Text>
             ) : null}
@@ -161,8 +163,8 @@ function ProductCard({
 
           {/* Cost · sell + source chips */}
           <View className="items-end">
-            <Text className="text-muted dark:text-slate-500 text-sm">{t.inventory.costSell}</Text>
-            <Text className="text-text dark:text-slate-100 text-sm font-medium">
+            <Text className="text-muted text-sm">{t.inventory.costSell}</Text>
+            <Text className="text-text text-sm font-medium">
               {money(item.latestUnitCost)} · {money(item.latestSellingPrice)}
             </Text>
             <View className="flex-row gap-1.5 mt-1.5 flex-wrap justify-end">
@@ -182,7 +184,7 @@ function ProductCard({
                 </Text>
               )}
               {item.sourceBreakdown.consignedOut > 0 && (
-                <Text className="text-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded px-1.5 py-0.5">
+                <Text className="text-sm bg-background text-muted rounded px-1.5 py-0.5">
                   OUT: {item.sourceBreakdown.consignedOut}
                 </Text>
               )}
@@ -191,7 +193,7 @@ function ProductCard({
         </View>
       )}
 
-      <Text className="text-muted dark:text-slate-500 text-sm mt-2 italic">
+      <Text className="text-muted text-sm mt-2 italic">
         {t.inventory.longPressToSell}
       </Text>
     </Pressable>
@@ -199,6 +201,7 @@ function ProductCard({
 }
 
 export default function InventoryScreen() {
+  const brand = useBrand();
   const t = useT();
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState<Modal>('none');
@@ -213,7 +216,12 @@ export default function InventoryScreen() {
   // minis and normal users who accepted a sales-only invite).
   const isMini = useAuthStore((s) => s.user?.activeEmployment?.tier === 'SALES_ONLY');
   // Minis manage a consigned pool: no add-stock FAB, but they can re-price.
-  const canAddProducts = persona === 'self' && !isMini;
+  // Roles refine this further: an employer can now delegate stock intake, so a
+  // full employee on the employer's books may add products if their role says
+  // so. Acting as Self is unrestricted, which the hook already reflects.
+  const { can } = usePermissions();
+  const canAddProducts =
+    !isMini && (persona === 'self' || can('inventory.add_personal') || can('inventory.receive'));
   // Once a handover is submitted the mini has handed the goods back, so selling
   // is off until the employer approves or rejects it.
   const { isBlocked: handoverPending } = usePendingHandover();
@@ -356,7 +364,7 @@ export default function InventoryScreen() {
   };
 
   return (
-    <View className="flex-1 bg-surface dark:bg-slate-900">
+    <View className="flex-1 bg-background">
       <View className="px-4 pt-4"><PersonaBanner /><HandoverStatusBanner /></View>
 
       {/* Search bar */}
@@ -365,8 +373,8 @@ export default function InventoryScreen() {
           value={search}
           onChangeText={setSearch}
           placeholder={t.inventory.searchProducts}
-          placeholderTextColor="#94a3b8"
-          className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 text-text dark:text-slate-100 text-base"
+          placeholderTextColor={brand.mutedSubtle}
+          className="bg-card border border-border rounded-xl px-4 py-3 text-text text-base"
         />
       </View>
 
@@ -383,11 +391,11 @@ export default function InventoryScreen() {
         )}
         contentContainerClassName="px-4 pt-3 pb-32"
         refreshControl={
-          <RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor="#2563EB" />
+          <RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />
         }
         ListHeaderComponent={
           isFetching && filtered.length === 0 ? (
-            <ActivityIndicator className="mt-12" color="#2563EB" />
+            <ActivityIndicator className="mt-12" color={brand.primary} />
           ) : null
         }
         ListEmptyComponent={
@@ -401,7 +409,7 @@ export default function InventoryScreen() {
         }
       />
 
-      {/* FAB — hidden when in Employer persona (employees can't add stock). */}
+      {/* FAB — hidden unless the actor may actually put stock on the books. */}
       {canAddProducts && (
         <Pressable
           onPress={openFAB}

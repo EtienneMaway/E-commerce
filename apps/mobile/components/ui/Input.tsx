@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TextInputProps, TouchableOpacity } from 'react-native';
+import { useBrand } from '../../lib/theme';
 
 interface Props extends TextInputProps {
   label: string;
@@ -9,20 +10,21 @@ interface Props extends TextInputProps {
 }
 
 export function Input({ label, error, passwordToggle, ...props }: Props) {
+  const brand = useBrand();
   const [visible, setVisible] = useState(false);
   const isSecure = passwordToggle ? !visible : !!props.secureTextEntry;
 
   return (
     <View className="mb-4">
-      <Text className="text-sm font-medium text-text dark:text-slate-100 mb-1.5">{label}</Text>
+      <Text className="text-sm font-medium text-text mb-1.5">{label}</Text>
       <View style={{ position: 'relative' }}>
         <TextInput
           {...props}
           secureTextEntry={isSecure}
-          className={`border rounded-xl px-4 py-3 text-text dark:text-slate-100 bg-card dark:bg-slate-800 text-base ${
+          className={`border rounded-xl px-4 py-3 text-text bg-card text-base ${
             passwordToggle ? 'pr-12' : ''
-          } ${error ? 'border-danger' : 'border-border dark:border-slate-700'}`}
-          placeholderTextColor="#94A3B8"
+          } ${error ? 'border-danger' : 'border-border'}`}
+          placeholderTextColor={brand.mutedSubtle}
         />
         {passwordToggle && (
           <TouchableOpacity

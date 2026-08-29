@@ -12,6 +12,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useBrand } from '../../lib/theme';
 import { formatDate, breakdownQuantity, formatBreakdown } from '../../lib/utils';
 import { useFormatCurrency, useExchangeRate, formatMoney } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
@@ -23,6 +24,7 @@ import { EditMiniPriceModal } from '../../components/forms/EditMiniPriceModal';
 import { useAuthStore } from '../../store/auth.store';
 import { usePendingHandover } from '../../hooks/use-pending-handover';
 import type { InventoryEntry, ProductSummary } from '@trading-app/types';
+import { useRequireService } from '../../hooks/use-require-service';
 
 const LOW_STOCK = 5;
 
@@ -50,44 +52,44 @@ function EntryCard({ entry }: { entry: InventoryEntry }) {
       : null;
 
   return (
-    <View className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3">
+    <View className="bg-card border border-border rounded-2xl p-4 mb-3">
       <View className="flex-row items-center justify-between mb-2">
         <View className="flex-row items-center gap-2 flex-1">
           <Badge label={badge.label} variant={badge.variant} />
           {counterparty && (
-            <Text className="text-muted dark:text-slate-500 text-xs">
+            <Text className="text-muted text-xs">
               {t.productDetail.counterparty} @{counterparty}
             </Text>
           )}
         </View>
-        <Text className="text-muted dark:text-slate-500 text-xs ml-2">{formatDate(entry.createdAt)}</Text>
+        <Text className="text-muted text-xs ml-2">{formatDate(entry.createdAt)}</Text>
       </View>
 
       <View className="flex-row justify-between items-end">
         <View>
-          <Text className="text-muted dark:text-slate-500 text-xs mb-0.5">
+          <Text className="text-muted text-xs mb-0.5">
             {t.productDetail.remaining} / {t.productDetail.original}
           </Text>
           <Text
             className={`text-base font-bold ${
-              isLowStock ? 'text-danger' : 'text-text dark:text-slate-100'
+              isLowStock ? 'text-danger' : 'text-text'
             }`}
           >
             {formatBreakdown(bd)}
           </Text>
-          <Text className="text-muted dark:text-slate-500 text-xs">
+          <Text className="text-muted text-xs">
             {entry.quantityRemaining} / {entry.quantityOriginal} pcs
             {isLowStock && <Text className="text-danger"> · ⚠️ {t.inventory.low}</Text>}
           </Text>
         </View>
 
         <View className="items-end">
-          <Text className="text-muted dark:text-slate-500 text-xs">{t.inventory.costSell}</Text>
-          <Text className="text-text dark:text-slate-100 text-sm font-medium">
+          <Text className="text-muted text-xs">{t.inventory.costSell}</Text>
+          <Text className="text-text text-sm font-medium">
             {formatCurrency(entry.unitCost)} · {formatCurrency(entry.sellingPrice)}
           </Text>
           {entry.piecesPerCarton && (
-            <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">
+            <Text className="text-muted text-xs mt-0.5">
               1 ctn = {entry.piecesPerCarton} pcs
             </Text>
           )}
@@ -98,6 +100,10 @@ function EntryCard({ entry }: { entry: InventoryEntry }) {
 }
 
 export default function ProductDetailScreen() {
+  const brand = useBrand();
+  // Redirects away if the role does not cover this screen. The API refuses
+  // the queries below regardless; this makes the outcome a bounce, not errors.
+  useRequireService('inventory.view');
   const { name } = useLocalSearchParams<{ name: string }>();
   const productName = decodeURIComponent(name ?? '');
   const t = useT();
@@ -160,13 +166,13 @@ export default function ProductDetailScreen() {
       formatMoney(usd, isMini && r ? r : groupRate);
 
     return (
-      <View className="flex-1 bg-surface dark:bg-slate-900">
-        <View className="bg-card dark:bg-slate-800 border-b border-border dark:border-slate-700 px-6 pt-14 pb-4">
+      <View className="flex-1 bg-background">
+        <View className="bg-card border-b border-border px-6 pt-14 pb-4">
           <TouchableOpacity onPress={() => router.back()} className="mb-3">
             <Text className="text-primary font-medium">{t.common.back}</Text>
           </TouchableOpacity>
           <View className="flex-row justify-between items-start">
-            <Text className="text-2xl font-bold text-text dark:text-slate-100 flex-1 mr-3" numberOfLines={2}>
+            <Text className="text-2xl font-bold text-text flex-1 mr-3" numberOfLines={2}>
               {titleCased}
             </Text>
             <View className="flex-row gap-2">
@@ -190,19 +196,19 @@ export default function ProductDetailScreen() {
           </View>
 
           {/* Carton summary */}
-          <View className="mt-3 bg-surface dark:bg-slate-900 border border-border dark:border-slate-700 rounded-xl px-4 py-3">
+          <View className="mt-3 bg-surface border border-border rounded-xl px-4 py-3">
             <View className="flex-row justify-between items-center">
               <View>
-                <Text className="text-muted dark:text-slate-500 text-xs mb-0.5">{t.productDetail.totalAvailable}</Text>
-                <Text className="text-text dark:text-slate-100 text-lg font-bold">
+                <Text className="text-muted text-xs mb-0.5">{t.productDetail.totalAvailable}</Text>
+                <Text className="text-text text-lg font-bold">
                   {t.sizedSale.cartonCount(group.cartonsAvailable ?? 0)}
                 </Text>
-                <Text className="text-muted dark:text-slate-500 text-xs">{group.totalAvailable} pcs</Text>
+                <Text className="text-muted text-xs">{group.totalAvailable} pcs</Text>
               </View>
               {cartonPriceUsd != null && (
                 <View className="items-end">
-                  <Text className="text-muted dark:text-slate-500 text-xs">{t.sizedSale.cartonPrice}</Text>
-                  <Text className="text-text dark:text-slate-100 text-base font-semibold">
+                  <Text className="text-muted text-xs">{t.sizedSale.cartonPrice}</Text>
+                  <Text className="text-text text-base font-semibold">
                     {money(cartonPriceUsd.toString())}
                   </Text>
                 </View>
@@ -214,23 +220,23 @@ export default function ProductDetailScreen() {
         {/* Per-size breakdown */}
         <ScrollView
           contentContainerClassName="px-4 pt-4 pb-8"
-          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor="#2563EB" />}
+          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />}
         >
-          <Text className="text-text dark:text-slate-100 font-semibold text-sm mb-3 uppercase tracking-wide">
+          <Text className="text-text font-semibold text-sm mb-3 uppercase tracking-wide">
             {t.sizedSale.sizesHeader}
           </Text>
           {variants.map((v) => (
             <View
               key={v.variantId}
-              className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-3 mb-2 flex-row justify-between items-center"
+              className="bg-card border border-border rounded-2xl px-4 py-3 mb-2 flex-row justify-between items-center"
             >
               <View>
-                <Text className="text-text dark:text-slate-100 font-semibold capitalize">{v.label}</Text>
-                <Text className="text-muted dark:text-slate-500 text-xs">
+                <Text className="text-text font-semibold capitalize">{v.label}</Text>
+                <Text className="text-muted text-xs">
                   {v.available} pcs · {t.sizedSale.perCartonPieces(v.piecesPerCarton)}
                 </Text>
               </View>
-              <Text className="text-text dark:text-slate-100 text-sm font-medium">
+              <Text className="text-text text-sm font-medium">
                 {money(v.sellingPrice, v.usdToFcRateSnapshot)} {t.sizedSale.perPiece}
               </Text>
             </View>
@@ -260,21 +266,21 @@ export default function ProductDetailScreen() {
 
   if (isFetching && entries.length === 0) {
     return (
-      <View className="flex-1 bg-surface dark:bg-slate-900 items-center justify-center">
-        <ActivityIndicator color="#2563EB" />
+      <View className="flex-1 bg-background items-center justify-center">
+        <ActivityIndicator color={brand.primary} />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-surface dark:bg-slate-900">
-      <View className="bg-card dark:bg-slate-800 border-b border-border dark:border-slate-700 px-6 pt-14 pb-4">
+    <View className="flex-1 bg-background">
+      <View className="bg-card border-b border-border px-6 pt-14 pb-4">
         <TouchableOpacity onPress={() => router.back()} className="mb-3">
           <Text className="text-primary font-medium">{t.common.back}</Text>
         </TouchableOpacity>
 
         <View className="flex-row justify-between items-start">
-          <Text className="text-2xl font-bold text-text dark:text-slate-100 flex-1 mr-3" numberOfLines={2}>
+          <Text className="text-2xl font-bold text-text flex-1 mr-3" numberOfLines={2}>
             {titleCased}
           </Text>
           <TouchableOpacity
@@ -287,11 +293,11 @@ export default function ProductDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        <View className="mt-3 bg-surface dark:bg-slate-900 border border-border dark:border-slate-700 rounded-xl px-4 py-3">
-          <Text className="text-muted dark:text-slate-500 text-xs mb-0.5">{t.productDetail.totalAvailable}</Text>
-          <Text className="text-text dark:text-slate-100 text-lg font-bold">{formatBreakdown(bd)}</Text>
+        <View className="mt-3 bg-surface border border-border rounded-xl px-4 py-3">
+          <Text className="text-muted text-xs mb-0.5">{t.productDetail.totalAvailable}</Text>
+          <Text className="text-text text-lg font-bold">{formatBreakdown(bd)}</Text>
           {piecesPerCarton && (
-            <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">1 ctn = {piecesPerCarton} pcs</Text>
+            <Text className="text-muted text-xs mt-0.5">1 ctn = {piecesPerCarton} pcs</Text>
           )}
         </View>
       </View>
@@ -301,9 +307,9 @@ export default function ProductDetailScreen() {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <EntryCard entry={item} />}
         contentContainerClassName="px-4 pt-4 pb-8"
-        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor="#2563EB" />}
+        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />}
         ListHeaderComponent={
-          <Text className="text-text dark:text-slate-100 font-semibold text-sm mb-3 uppercase tracking-wide">
+          <Text className="text-text font-semibold text-sm mb-3 uppercase tracking-wide">
             {t.productDetail.stockLedger} ({entries.length})
           </Text>
         }

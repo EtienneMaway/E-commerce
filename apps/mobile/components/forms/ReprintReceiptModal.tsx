@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { salesApi, inventoryApi } from '../../lib/api';
 import { useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
+import { useBrand } from '../../lib/theme';
 import { useAuthStore } from '../../store/auth.store';
 import { usePersonaStore } from '../../store/persona.store';
 import { usePrinterStore } from '../../store/printer.store';
@@ -54,6 +55,7 @@ interface Props {
  * renders when the product has a known `piecesPerCarton`.
  */
 export function ReprintReceiptModal({ source, onClose }: Props) {
+  const brand = useBrand();
   const t = useT();
   const user = useAuthStore((s) => s.user);
   const exchangeRate = useExchangeRate();
@@ -177,18 +179,18 @@ export function ReprintReceiptModal({ source, onClose }: Props) {
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View className="flex-1 justify-end bg-black/50">
-        <View className="bg-surface dark:bg-slate-900 rounded-t-3xl px-5 py-6 max-h-[85%]">
-          <Text className="text-text dark:text-slate-100 font-bold text-lg mb-1">
+        <View className="bg-background rounded-t-3xl px-5 py-6 max-h-[85%]">
+          <Text className="text-text font-bold text-lg mb-1">
             {t.sales.reprintTitle}
           </Text>
-          <Text className="text-muted dark:text-slate-500 text-xs mb-3">
+          <Text className="text-muted text-xs mb-3">
             {formatDate(source.date)}
           </Text>
 
           {isLoading ? (
             <View className="items-center py-8">
-              <ActivityIndicator color="#2563EB" />
-              <Text className="text-muted dark:text-slate-500 text-sm mt-2">
+              <ActivityIndicator color={brand.primary} />
+              <Text className="text-muted text-sm mt-2">
                 {t.sales.reprintLoading}
               </Text>
             </View>
@@ -196,21 +198,21 @@ export function ReprintReceiptModal({ source, onClose }: Props) {
             <ScrollView className="max-h-72 mb-3">
               {/* Client info */}
               {receiptData?.clientName || receiptData?.clientPhone ? (
-                <View className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-3 py-2 mb-3">
-                  <Text className="text-muted dark:text-slate-500 text-xs">
+                <View className="bg-card border border-border rounded-xl px-3 py-2 mb-3">
+                  <Text className="text-muted text-xs">
                     {t.sales.clientLabel}
                   </Text>
-                  <Text className="text-text dark:text-slate-100 font-semibold">
+                  <Text className="text-text font-semibold">
                     {receiptData?.clientName ?? ''}
                   </Text>
                   {receiptData?.clientPhone ? (
-                    <Text className="text-muted dark:text-slate-400 text-sm">
+                    <Text className="text-muted text-sm">
                       {receiptData.clientPhone}
                     </Text>
                   ) : null}
                 </View>
               ) : (
-                <Text className="text-muted dark:text-slate-500 text-xs italic mb-3">
+                <Text className="text-muted text-xs italic mb-3">
                   {t.sales.reprintNoClient}
                 </Text>
               )}
@@ -219,27 +221,27 @@ export function ReprintReceiptModal({ source, onClose }: Props) {
               {receiptData?.items.map((it, idx) => (
                 <View
                   key={`${it.productName}-${idx}`}
-                  className="flex-row justify-between py-1.5 border-b border-border dark:border-slate-800"
+                  className="flex-row justify-between py-1.5 border-b border-border"
                 >
                   <View className="flex-1 mr-2">
-                    <Text className="text-text dark:text-slate-100 capitalize">
+                    <Text className="text-text capitalize">
                       {it.productName} × {it.qty}
                     </Text>
                     {it.piecesPerCarton ? (
-                      <Text className="text-muted dark:text-slate-500 text-xs">
+                      <Text className="text-muted text-xs">
                         {Math.round(it.unitPriceFc * it.piecesPerCarton).toLocaleString('fr-CD')} FC / ctn ({it.piecesPerCarton} pcs)
                       </Text>
                     ) : null}
                   </View>
-                  <Text className="text-text dark:text-slate-100 font-semibold">
+                  <Text className="text-text font-semibold">
                     {Math.round(it.totalFc).toLocaleString('fr-CD')} FC
                   </Text>
                 </View>
               ))}
 
-              <View className="flex-row justify-between mt-3 pt-2 border-t-2 border-text dark:border-slate-100">
-                <Text className="text-text dark:text-slate-100 font-bold text-base">TOTAL</Text>
-                <Text className="text-text dark:text-slate-100 font-bold text-base">
+              <View className="flex-row justify-between mt-3 pt-2 border-t-2 border-text">
+                <Text className="text-text font-bold text-base">TOTAL</Text>
+                <Text className="text-text font-bold text-base">
                   {Math.round(total).toLocaleString('fr-CD')} FC
                 </Text>
               </View>

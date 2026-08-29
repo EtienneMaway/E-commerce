@@ -1,4 +1,5 @@
 import { Pressable, Text, ActivityIndicator, ViewStyle } from 'react-native';
+import { useBrand } from '../../lib/theme';
 
 interface Props {
   label: string;
@@ -18,6 +19,7 @@ const variantStyles = {
 };
 
 export function Button({ label, loading, variant = 'primary', disabled, className, onPress, style }: Props) {
+  const brand = useBrand();
   const styles = variantStyles[variant];
   const isDisabled = disabled || loading;
   return (
@@ -31,7 +33,7 @@ export function Button({ label, loading, variant = 'primary', disabled, classNam
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' || variant === 'danger' ? '#fff' : '#2563EB'} />
+        <ActivityIndicator color={variant === 'primary' || variant === 'danger' ? brand.onPrimary : brand.primary} />
       ) : (
         <Text className={`font-semibold text-base ${styles.text}`}>{label}</Text>
       )}

@@ -8,6 +8,7 @@ import { currencyApi, externalContactsApi, inventoryApi } from '../../../../lib/
 import { QK } from '../../../../lib/query-keys';
 import { useFormatCurrency } from '../../../../lib/currency';
 import { useT } from '../../../../lib/i18n';
+import { usePermissions } from '../../../../lib/permissions';
 import { singleExternalTxHtml, externalBatchHtml } from '../../../../lib/print-templates';
 import { PrintDialog } from '../../../../components/ui/PrintDialog';
 import { ActorPill } from '../../../../components/ui/ActorPill';
@@ -759,6 +760,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
   const t = useT();
+  const { can } = usePermissions();
   const { user } = useAuthStore();
   const confirm = useConfirm();
   const [openModal, setOpenModal] = useState<Modal>(null);
@@ -769,6 +771,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
   const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
     queryKey: QK.inventoryProducts,
     queryFn: () => inventoryApi.listProducts(),
+    enabled: can('inventory.view'),
     staleTime: 60_000,
   });
   const ppcMap = new Map((productsData ?? []).map((p) => [p.productName, p.piecesPerCarton]));
@@ -834,6 +837,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
             {contact.phone && <p className="text-sm mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{contact.phone}</p>}
             {contact.notes && <p className="text-xs mt-1 italic" style={{ color: 'var(--muted-foreground)' }}>{contact.notes}</p>}
           </div>
+{can('external_contacts.manage') && (
           <button
             onClick={async () => {
               const ok = await confirm({
@@ -849,6 +853,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
           >
             {t.externalContacts.deleteBtn}
           </button>
+          )}
         </div>
 
         {/* Balances */}
@@ -870,25 +875,29 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
 
       {/* Action buttons */}
       <div className="flex flex-wrap gap-2 mb-5">
-        {isDebtor && (
+        {isDebtor && can('external_contacts.give') && (
           <>
             <button onClick={() => setOpenModal('product-out')} className="px-4 py-2 rounded-xl text-sm font-medium border transition-all" style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
               {t.externalContacts.giveProducts}
             </button>
-            <button onClick={() => setOpenModal('payment-in')} className="px-4 py-2 rounded-xl text-sm font-medium border transition-all" style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
-              {t.externalContacts.receivePayment}
-            </button>
           </>
         )}
-        {isSupplier && (
+        {isDebtor && can('external_contacts.payments') && (
+          <button onClick={() => setOpenModal('payment-in')} className="px-4 py-2 rounded-xl text-sm font-medium border transition-all" style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
+            {t.externalContacts.receivePayment}
+          </button>
+        )}
+        {isSupplier && can('external_contacts.give') && (
           <>
             <button onClick={() => setOpenModal('product-in')} className="px-4 py-2 rounded-xl text-sm font-medium border transition-all" style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
               {t.externalContacts.receiveProducts}
             </button>
-            <button onClick={() => setOpenModal('payment-out')} className="px-4 py-2 rounded-xl text-sm font-medium border transition-all" style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
-              {t.externalContacts.makePayment}
-            </button>
           </>
+        )}
+        {isSupplier && can('external_contacts.payments') && (
+          <button onClick={() => setOpenModal('payment-out')} className="px-4 py-2 rounded-xl text-sm font-medium border transition-all" style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
+            {t.externalContacts.makePayment}
+          </button>
         )}
       </div>
 
@@ -958,6 +967,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                         </span>
                         <div className="flex items-center gap-2">
                           <span style={{ color: 'var(--muted-foreground)' }}>{formatCurrency(it.amount)}</span>
+                          {can('external_contacts.give') && (
                           <button
                             onClick={async () => {
                               const ok = await confirm({
@@ -973,6 +983,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                           >
                             ✕
                           </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1027,6 +1038,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                     >
                       🖨️
                     </button>
+                    {can('external_contacts.give') && (
                     <button
                       onClick={async () => {
                         const ok = await confirm({
@@ -1042,6 +1054,7 @@ export default function ExternalContactDetailPage({ params }: { params: Promise<
                     >
                       {t.externalContacts.deleteBtn}
                     </button>
+                    )}
                   </div>
                 </div>
               </div>

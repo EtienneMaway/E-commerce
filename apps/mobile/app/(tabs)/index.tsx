@@ -3,10 +3,13 @@ import { ScrollView, View, Text, RefreshControl, TouchableOpacity, Pressable, Al
 import Constants from 'expo-constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { dashboardApi, inventoryApi, salaryPaymentsApi, currencyApi, miniSettlementsApi, type SalaryPayment, type DashboardHome } from '../../lib/api';
+import { authApi, dashboardApi, inventoryApi, salaryPaymentsApi, currencyApi, miniSettlementsApi, type SalaryPayment, type DashboardHome } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useBrand } from '../../lib/theme';
 import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
+import { usePermissions } from '../../lib/permissions';
+import { NoAccessNotice } from '../../components/NoAccessNotice';
 import { StatCard } from '../../components/ui/StatCard';
 import { Card } from '../../components/ui/Card';
 import { PersonaSwitcher } from '../../components/ui/PersonaSwitcher';
@@ -36,10 +39,12 @@ interface ProductSummary {
 }
 
 export default function DashboardScreen() {
+  const brand = useBrand();
   const t = useT();
   const user = useAuthStore((s) => s.user);
   // Show salary surfaces whenever the user has an active employment — the
   // salary is theirs regardless of which persona they're currently acting as.
+  const { can, canAny, hasNoAccess } = usePermissions();
   const isEmployee = !!user?.activeEmployment;
   // A mini (SALES_ONLY) employee sees their own handover-oriented stats instead
   // of the owner dashboard cards. A FULL employee sees the owner cards plus a
@@ -232,12 +237,21 @@ export default function DashboardScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-surface dark:bg-slate-900"
+      className="flex-1 bg-background"
       contentContainerClassName="px-4 pt-14 pb-8"
       refreshControl={
         <RefreshControl
           refreshing={isRefetching}
           onRefresh={() => {
+            // Re-read the profile so a role the employer changed since app start
+            // takes effect here — otherwise granted features would stay hidden
+            // (and revoked ones visible) until the app was restarted.
+            void authApi
+              .me()
+              .then((user) => useAuthStore.getState().setUser(user))
+              .catch(() => {
+                /* offline or transient — the cached profile still applies */
+              });
             // For minis the dashboard query is disabled, so refetch() is a no-op;
             // invalidate their stats explicitly so pull-to-refresh still works.
             if (isMini) qc.invalidateQueries({ queryKey: ['mini-settlements'] });
@@ -250,9 +264,9 @@ export default function DashboardScreen() {
       {/* Header */}
       <View className="flex-row items-center justify-between mb-4">
         <View className="flex-1 pr-2">
-          <Text className="text-2xl font-bold text-text dark:text-slate-100">{t.home.title}</Text>
+          <Text className="text-2xl font-bold text-text">{t.home.title}</Text>
           <View className="flex-row items-center gap-2 mt-0.5">
-            <Text className="text-muted dark:text-slate-500 text-sm">@{user?.username}</Text>
+            <Text className="text-muted text-sm">@{user?.username}</Text>
             {/* Always rendered for any active employment (PersonaSwitcher itself
                 no-ops without one) — a mini (SALES_ONLY) employee needs this too,
                 since PersonaBanner's "switch to self" link is a one-way door for
@@ -264,14 +278,14 @@ export default function DashboardScreen() {
           <TouchableOpacity onPress={toggle}>
             <Text className="text-xl">{theme === 'dark' ? '☀️' : '🌙'}</Text>
           </TouchableOpacity>
-          <View className="flex-row items-center gap-1 bg-card dark:bg-slate-800 rounded-lg px-1 py-0.5">
+          <View className="flex-row items-center gap-1 bg-card rounded-lg px-1 py-0.5">
             {(['en', 'fr'] as const).map((l) => (
               <TouchableOpacity
                 key={l}
                 onPress={() => void useLocaleStore.getState().setLocale(l)}
                 className={`px-2 py-1 rounded-md ${locale === l ? 'bg-primary' : ''}`}
               >
-                <Text className={`text-xs font-bold ${locale === l ? 'text-white' : 'text-muted dark:text-slate-500'}`}>
+                <Text className={`text-xs font-bold ${locale === l ? 'text-white' : 'text-muted'}`}>
                   {l.toUpperCase()}
                 </Text>
               </TouchableOpacity>
@@ -295,18 +309,18 @@ export default function DashboardScreen() {
         className={`flex-row items-center justify-between rounded-2xl px-4 py-3 mb-4 border ${
           isOffline
             ? 'bg-amber-50 dark:bg-amber-950 border-amber-300 dark:border-amber-700'
-            : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
+            : 'bg-card border-border'
         }`}
         activeOpacity={0.8}
       >
         <View className="flex-row items-center gap-3">
           {preparingOffline ? (
-            <ActivityIndicator size="small" color="#d97706" />
+            <ActivityIndicator size="small" color={brand.warning} />
           ) : (
             <Text className="text-base">{isOffline ? '📴' : '📶'}</Text>
           )}
           <View>
-            <Text className={`font-semibold text-sm ${isOffline ? 'text-amber-700 dark:text-amber-300' : 'text-text dark:text-slate-100'}`}>
+            <Text className={`font-semibold text-sm ${isOffline ? 'text-amber-700 dark:text-amber-300' : 'text-text'}`}>
               {preparingOffline ? t.home.preparingOffline : isOffline ? t.home.offlineModeActive : t.home.goOffline}
             </Text>
             {isOffline && snapshotLabel && (
@@ -315,8 +329,8 @@ export default function DashboardScreen() {
           </View>
         </View>
         {!preparingOffline && (
-          <View className={`px-3 py-1 rounded-full ${isOffline ? 'bg-amber-200 dark:bg-amber-800' : 'bg-slate-100 dark:bg-slate-700'}`}>
-            <Text className={`text-xs font-bold ${isOffline ? 'text-amber-800 dark:text-amber-200' : 'text-muted dark:text-slate-400'}`}>
+          <View className={`px-3 py-1 rounded-full ${isOffline ? 'bg-amber-200 dark:bg-amber-800' : 'bg-background'}`}>
+            <Text className={`text-xs font-bold ${isOffline ? 'text-amber-800 dark:text-amber-200' : 'text-muted'}`}>
               {isOffline ? t.home.goOnline : 'OFF'}
             </Text>
           </View>
@@ -356,13 +370,13 @@ export default function DashboardScreen() {
                 partial failure; a single Sync button otherwise. */}
             {isSyncing ? (
               <View className="px-4 py-2 rounded-xl bg-blue-200 dark:bg-blue-800">
-                <ActivityIndicator size="small" color="#3b82f6" />
+                <ActivityIndicator size="small" color={brand.primary} />
               </View>
             ) : hasSyncErrors ? (
               <View className="flex-row gap-2">
                 <TouchableOpacity
                   onPress={handleSync}
-                  className="px-3 py-2 rounded-xl bg-blue-600"
+                  className="px-3 py-2 rounded-xl bg-primary"
                   activeOpacity={0.8}
                 >
                   <Text className="text-white font-semibold text-sm">{t.home.syncResume}</Text>
@@ -380,7 +394,7 @@ export default function DashboardScreen() {
             ) : (
               <TouchableOpacity
                 onPress={handleSync}
-                className="px-4 py-2 rounded-xl bg-blue-600"
+                className="px-4 py-2 rounded-xl bg-primary"
                 activeOpacity={0.8}
               >
                 <Text className="text-white font-semibold text-sm">{t.home.syncNow}</Text>
@@ -392,7 +406,7 @@ export default function DashboardScreen() {
           {(isSyncing || (syncProgress && syncProgress.completed < syncProgress.total)) && (
             <View className="h-1.5 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden mt-1">
               <View
-                className="h-full bg-blue-500 rounded-full"
+                className="h-full bg-primary rounded-full"
                 style={{ width: `${syncPct}%` }}
               />
             </View>
@@ -404,14 +418,14 @@ export default function DashboardScreen() {
               {pendingSales
                 .filter((s) => s.syncError)
                 .map((s) => (
-                  <Text key={s.id} className="text-red-500 text-xs">
+                  <Text key={s.id} className="text-danger text-xs">
                     ⚠ {s.productName} ×{s.qtySold} — {s.syncError}
                   </Text>
                 ))}
               {pendingExpenses
                 .filter((e) => e.syncError)
                 .map((e) => (
-                  <Text key={e.id} className="text-red-500 text-xs">
+                  <Text key={e.id} className="text-danger text-xs">
                     ⚠ 🧾 {e.amount} — {e.syncError}
                   </Text>
                 ))}
@@ -487,30 +501,38 @@ export default function DashboardScreen() {
 
           <Pressable
             onPress={() => router.push('/expenses')}
-            className="mt-4 self-stretch flex-row items-center bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-xl px-4 py-3"
+            className="mt-4 self-stretch flex-row items-center bg-card border border-amber-300 dark:border-amber-700 rounded-xl px-4 py-3"
             style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
           >
             <Text className="text-2xl mr-3">🧾</Text>
             <View className="flex-1">
-              <Text className="text-text dark:text-slate-100 font-semibold text-sm">{t.expenses.title}</Text>
-              <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">{t.home.recordExpenseOffline}</Text>
+              <Text className="text-text font-semibold text-sm">{t.expenses.title}</Text>
+              <Text className="text-muted text-xs mt-0.5">{t.home.recordExpenseOffline}</Text>
             </View>
-            <Text className="text-muted dark:text-slate-500 text-lg">›</Text>
+            <Text className="text-muted text-lg">›</Text>
           </Pressable>
         </View>
       ) : (
         <>
+          {/* Employer has opened nothing: every tab but this one is hidden and
+              the cards below render empty, so say why. */}
+          {hasNoAccess && <NoAccessNotice />}
+
           {isMini ? (
             /* Mini employee: handover-oriented stats (cash to hand over, I owe,
                profit) scoped to their current cycle, with a date filter. */
             <MiniHomeStats />
           ) : (
           <>
+          {/* The business money picture — one grant covers the lot. An employee
+              without it still sees their own scoped activity below. */}
+          {can('cash.overview') && (
+          <>
           {/* Net Position */}
           <Card className="mb-3">
-            <Text className="text-muted dark:text-slate-500 text-sm font-medium uppercase tracking-wide mb-1">{t.home.netPosition}</Text>
+            <Text className="text-muted text-sm font-medium uppercase tracking-wide mb-1">{t.home.netPosition}</Text>
             {isLoading ? (
-              <Text className="text-3xl font-bold text-text dark:text-slate-100">—</Text>
+              <Text className="text-3xl font-bold text-text">—</Text>
             ) : (
               <Text
                 className={`text-3xl font-bold ${
@@ -520,12 +542,12 @@ export default function DashboardScreen() {
                 {formatCurrency(data?.netPosition ?? '0')}
               </Text>
             )}
-            <Text className="text-muted dark:text-slate-500 text-sm mt-1">{t.home.netPositionSub}</Text>
+            <Text className="text-muted text-sm mt-1">{t.home.netPositionSub}</Text>
           </Card>
 
           {/* Available Business Cash — what's actually in the till. Honors persona via X-Acting-As. */}
           <Card className="mb-4">
-            <Text className="text-muted dark:text-slate-500 text-sm font-medium uppercase tracking-wide mb-1">
+            <Text className="text-muted text-sm font-medium uppercase tracking-wide mb-1">
               {t.home.availableBusinessCash}
             </Text>
             {cashData ? (
@@ -537,9 +559,9 @@ export default function DashboardScreen() {
                 {formatCurrency(cashData.availableBusinessCash)}
               </Text>
             ) : (
-              <Text className="text-3xl font-bold text-text dark:text-slate-100">—</Text>
+              <Text className="text-3xl font-bold text-text">—</Text>
             )}
-            <Text className="text-muted dark:text-slate-500 text-sm mt-1">
+            <Text className="text-muted text-sm mt-1">
               {cashData && parseFloat(cashData.availableBusinessCash) < 0
                 ? t.home.availableBusinessCashOver
                 : t.home.availableBusinessCashSub}
@@ -567,10 +589,16 @@ export default function DashboardScreen() {
             color={parseFloat(data?.totalProfitAllTime ?? '0') >= 0 ? 'success' : 'danger'}
             className="mb-6"
           />
+          </>
+          )}
 
           {/* Full employee acting on the employer's books: their own scoped
               activity, on top of the shared owner cards above. */}
-          {isFullEmployee && persona === 'employer' && <EmployeeActivityStats />}
+          {/* Queries dashboard/profit-summary, which needs cash.overview — without
+              the check a restricted employee just fires a 403. */}
+          {isFullEmployee && persona === 'employer' && can('cash.overview') && (
+            <EmployeeActivityStats />
+          )}
           </>
           )}
 
@@ -579,52 +607,54 @@ export default function DashboardScreen() {
           <MiniEmployeeHome />
 
           {/* Expenses entry tile */}
+          {canAny('expenses.view', 'expenses.record') && (
           <Pressable
             onPress={() => router.push('/expenses')}
-            className="flex-row items-center bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4 mb-3"
+            className="flex-row items-center bg-card border border-border rounded-2xl px-4 py-4 mb-3"
             style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
           >
             <Text className="text-2xl mr-3">🧾</Text>
             <View className="flex-1">
-              <Text className="text-text dark:text-slate-100 font-semibold text-base">{t.expenses.title}</Text>
-              <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">{t.expenses.subtitle}</Text>
+              <Text className="text-text font-semibold text-base">{t.expenses.title}</Text>
+              <Text className="text-muted text-xs mt-0.5">{t.expenses.subtitle}</Text>
             </View>
-            <Text className="text-muted dark:text-slate-500 text-xl">›</Text>
+            <Text className="text-muted text-xl">›</Text>
           </Pressable>
+          )}
 
           {/* Salary entry tile — shown to anyone with an active employment */}
           {isEmployee && (
             <Pressable
               onPress={() => router.push('/salary')}
-              className="flex-row items-center bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4 mb-5"
+              className="flex-row items-center bg-card border border-border rounded-2xl px-4 py-4 mb-5"
               style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
             >
               <Text className="text-2xl mr-3">💵</Text>
               <View className="flex-1">
-                <Text className="text-text dark:text-slate-100 font-semibold text-base">{t.salary.title}</Text>
-                <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">{t.salary.homeSubtitle}</Text>
+                <Text className="text-text font-semibold text-base">{t.salary.title}</Text>
+                <Text className="text-muted text-xs mt-0.5">{t.salary.homeSubtitle}</Text>
               </View>
-              <Text className="text-muted dark:text-slate-500 text-xl">›</Text>
+              <Text className="text-muted text-xl">›</Text>
             </Pressable>
           )}
 
           {/* Top Suppliers — owner/full-employee only; a mini's only "supplier"
               is their employer, already surfaced as "I owe". */}
-          {!isMini && (suppliers?.length ?? 0) > 0 && (
+          {!isMini && can('suppliers.view') && (suppliers?.length ?? 0) > 0 && (
             <View className="mb-5">
-              <Text className="text-text dark:text-slate-100 font-semibold text-lg mb-2">{t.home.topSuppliers}</Text>
+              <Text className="text-text font-semibold text-lg mb-2">{t.home.topSuppliers}</Text>
               {(suppliers as Array<{ supplierUserId: string; supplierUsername: string; outstandingBalance: string }>)
                 .slice(0, 3)
                 .map((s) => (
                   <Pressable
                     key={s.supplierUserId}
                     onPress={() => router.push(`/supplier/${s.supplierUserId}`)}
-                    className="flex-row items-center justify-between bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 mb-2"
+                    className="flex-row items-center justify-between bg-card border border-border rounded-xl px-4 py-3 mb-2"
                     style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
                   >
                     <View>
-                      <Text className="text-text dark:text-slate-100 font-semibold text-base">@{s.supplierUsername}</Text>
-                      <Text className="text-muted dark:text-slate-500 text-sm">{t.home.youOwe}</Text>
+                      <Text className="text-text font-semibold text-base">@{s.supplierUsername}</Text>
+                      <Text className="text-muted text-sm">{t.home.youOwe}</Text>
                     </View>
                     <Text className="text-danger font-bold text-base">{formatCurrency(s.outstandingBalance)}</Text>
                   </Pressable>
@@ -640,7 +670,7 @@ export default function DashboardScreen() {
 
       {/* App version footer — keep last so the value is easy for users to read out during bug reports. */}
       <View className="items-center mt-8 mb-4">
-        <Text className="text-muted dark:text-slate-500 text-xs tabular-nums">
+        <Text className="text-muted text-xs tabular-nums">
           v{Constants.expoConfig?.version ?? Constants.nativeAppVersion ?? '—'}
           {Constants.nativeBuildVersion ? ` (${Constants.nativeBuildVersion})` : ''}
         </Text>

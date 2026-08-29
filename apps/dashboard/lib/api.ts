@@ -713,8 +713,12 @@ export interface Employment {
   terminationRequestedBy: string | null;
   monthlyPay: string | null;
   payrollActive: boolean;
-  /** Mini employees: share of their sales claimable as expenses. Always set (2% by default). */
+  /** Share of their sales claimable as expenses. Always set (2% by default). */
   expenseAllowancePct?: string;
+  /** Mini employees: % of each approved handover's sold value the employer pays them. Null = no commission. */
+  commissionPct?: string | null;
+  /** Role gating which services this employee may use. Null = full access for their tier. */
+  roleId?: string | null;
   acceptedAt: string | null;
   terminatedAt: string | null;
   createdAt: string;
@@ -727,6 +731,8 @@ export type SalaryPaymentStatus =
   | 'REJECTED'
   | 'CANCELLED';
 
+export type SalaryPaymentKind = 'MONTHLY' | 'COMMISSION';
+
 export interface SalaryPayment {
   id: string;
   employmentId: string;
@@ -738,6 +744,7 @@ export interface SalaryPayment {
   amount: string;
   periodMonth: string;
   status: SalaryPaymentStatus;
+  kind: SalaryPaymentKind;
   note: string | null;
   rejectionReason: string | null;
   paidAt: string;
@@ -746,6 +753,14 @@ export interface SalaryPayment {
   cancelledAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CommissionSummary {
+  pct: string | null;
+  earned: string;
+  paidConfirmed: string;
+  pendingConfirmation: string;
+  remaining: string;
 }
 
 export interface SalarySummary {
@@ -757,6 +772,8 @@ export interface SalarySummary {
   rejected: string;
   balanceRemaining: string | null;
   paymentCount: number;
+  /** Mini-employee handover commission; null when never in play for this employment. */
+  commission: CommissionSummary | null;
 }
 
 export interface CreateMiniEmployeeResult {
@@ -790,6 +807,8 @@ export const employmentsApi = {
     api.patch(`/employments/${id}/salary`, { monthlyPay }).then((r) => r.data),
   setExpenseAllowance: (id: string, expenseAllowancePct: string): Promise<Employment> =>
     api.patch(`/employments/${id}/expense-allowance`, { expenseAllowancePct }).then((r) => r.data),
+  setCommission: (id: string, commissionPct: number | null): Promise<Employment> =>
+    api.patch(`/employments/${id}/commission`, { commissionPct }).then((r) => r.data),
   setPayrollActive: (id: string, active: boolean): Promise<Employment> =>
     api.patch(`/employments/${id}/payroll-active`, { active }).then((r) => r.data),
   createExternalEmployee: (body: {
@@ -808,6 +827,70 @@ export const employmentsApi = {
     body: { name?: string; dateOfBirth?: string; role?: string },
   ): Promise<EmploymentParty> =>
     api.patch(`/employments/${id}/profile`, body).then((r) => r.data),
+  /** Pass null to clear — note that clearing WIDENS access back to tier defaults. */
+  setRole: (id: string, roleId: string | null): Promise<Employment> =>
+    api.patch(`/employments/${id}/role`, { roleId }).then((r) => r.data),
+};
+
+// ─── Employee roles (which services an employee may use) ─────────────────────
+
+export type ServiceGroup = 'SALES' | 'STOCK' | 'NETWORK' | 'MONEY' | 'PEOPLE';
+export type ActorTier = 'OWNER' | 'FULL_EMPLOYEE' | 'MINI_EMPLOYEE';
+
+export interface ServiceDefinition {
+  key: string;
+  group: ServiceGroup;
+  /** Tiers a role CAN grant this to — outside these the checkbox has no effect. */
+  tiers: ActorTier[];
+  /** Tiers that hold this unconditionally, even on an empty role. */
+  mandatory: ActorTier[];
+  /** Reads granted implicitly with this one. */
+  implies: string[];
+}
+
+export interface RolePreset {
+  key: string;
+  tier: ActorTier;
+  services: string[];
+}
+
+export interface ServiceCatalog {
+  groups: ServiceGroup[];
+  services: ServiceDefinition[];
+  presets: RolePreset[];
+}
+
+export interface EmployeeRole {
+  id: string;
+  ownerId: string;
+  name: string;
+  description: string | null;
+  services: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmployeeRoleWithUsage extends EmployeeRole {
+  assignedCount: number;
+}
+
+export const employeeRolesApi = {
+  catalog: (): Promise<ServiceCatalog> =>
+    api.get('/employee-roles/catalog').then((r) => r.data),
+  list: (): Promise<EmployeeRoleWithUsage[]> =>
+    api.get('/employee-roles').then((r) => r.data),
+  get: (id: string): Promise<EmployeeRole> =>
+    api.get(`/employee-roles/${id}`).then((r) => r.data),
+  create: (body: {
+    name: string;
+    description?: string | null;
+    services: string[];
+  }): Promise<EmployeeRole> => api.post('/employee-roles', body).then((r) => r.data),
+  update: (
+    id: string,
+    body: { name?: string; description?: string | null; services?: string[] },
+  ): Promise<EmployeeRole> => api.patch(`/employee-roles/${id}`, body).then((r) => r.data),
+  delete: (id: string): Promise<void> => api.delete(`/employee-roles/${id}`),
 };
 
 // ─── Salary Payments ──────────────────────────────────────────────────────────
@@ -829,6 +912,7 @@ export const salaryPaymentsApi = {
   create: (body: {
     employmentId: string;
     amount: number;
+    kind?: SalaryPaymentKind;
     periodMonth?: string;
     note?: string;
     confirmedOverride?: boolean;

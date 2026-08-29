@@ -12,7 +12,8 @@ import {
 import { QK } from '../../../lib/query-keys';
 import { useAuthStore } from '../../../store/auth.store';
 import { formatCurrency, formatDate, getErrorMessage } from '../../../lib/utils';
-import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
+import { usePageAccess } from '../../../hooks/use-page-access';
+import { usePermissions } from '../../../lib/permissions';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { UserSearchInput } from '../../../components/ui/UserSearchInput';
 import { useT, type Translations } from '../../../lib/i18n';
@@ -71,7 +72,10 @@ function tabLabel(t: Translations, k: TabKey): string {
 export default function EmployeesPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
-  const isOwner = useOwnerOnlyPage();
+  // A supervisor granted handovers.approve needs the list to reach a mini's
+  // oversight tab; hiring and payroll stay behind employees.manage below.
+  const isOwner = usePageAccess('employees.manage', 'handovers.approve');
+  const { can } = usePermissions();
   const t = useT();
   const [tab, setTab] = useState<TabKey>('active');
   const [showHire, setShowHire] = useState(false);
@@ -114,7 +118,9 @@ export default function EmployeesPage() {
             {isCurrentlyEmployee ? t.employees.subEmployee : t.employees.subOwner}
           </p>
         </div>
-        {!isCurrentlyEmployee && (
+        {/* Hiring is employees.manage; a supervisor reaches this page through
+            handovers.approve and only needs the list. */}
+        {!isCurrentlyEmployee && can('employees.manage') && (
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => setShowExternal(true)}
@@ -126,7 +132,7 @@ export default function EmployeesPage() {
             <button
               onClick={() => setShowHire(true)}
               className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-              style={{ background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)' }}
+              style={{ background: 'var(--brand-gradient)' }}
             >
               {t.employees.hireUser}
             </button>
@@ -141,8 +147,8 @@ export default function EmployeesPage() {
             onClick={() => setTab(k)}
             className="px-4 py-2 text-sm font-medium transition-colors"
             style={{
-              color: tab === k ? '#818CF8' : 'rgba(127,127,127,0.8)',
-              borderBottom: tab === k ? '2px solid #818CF8' : '2px solid transparent',
+              color: tab === k ? 'var(--primary-dark)' : 'rgba(127,127,127,0.8)',
+              borderBottom: tab === k ? '2px solid var(--primary-dark)' : '2px solid transparent',
             }}
           >
             {tabLabel(t, k)}
@@ -178,7 +184,12 @@ function EmploymentRow({
   qc: ReturnType<typeof useQueryClient>;
 }) {
   const isEmployer = e.employerId === myId;
-  const counterparty = isEmployer ? e.employee : e.employer;
+  // A supervisor (handovers.approve) sees their employer's minis without being
+  // party to those employments. Showing the "counterparty" would name the
+  // employer and claim the viewer is the employee — so identify the row by the
+  // employee, and offer none of the relationship actions.
+  const isParty = e.employerId === myId || e.employeeId === myId;
+  const counterparty = isParty ? (isEmployer ? e.employee : e.employer) : e.employee;
   const counterpartyName = counterparty?.name?.trim();
   const counterpartyUsername = counterparty?.username ?? (isEmployer ? 'employee' : 'employer');
   const isExternal = !!counterparty?.isExternalEmployee;
@@ -231,7 +242,10 @@ function EmploymentRow({
             ) : (
               <span className="font-semibold">@{counterpartyUsername}</span>
             )}
-            <span className="text-xs opacity-60">({isEmployer ? t.employees.amTheEmployer : t.employees.amTheEmployee})</span>
+            {isParty && (
+              <span className="text-xs opacity-60">({isEmployer ? t.employees.amTheEmployer : t.employees.amTheEmployee})</span>
+            )}
+            {!isParty && <span className="text-xs opacity-60">({t.employees.supervising})</span>}
             <span
               className="px-2 py-0.5 text-xs rounded-md font-medium"
               style={{ background: statusColor.bg, color: statusColor.fg }}
@@ -275,7 +289,7 @@ function EmploymentRow({
                 : t.employees.otherPartyRequested}
             </div>
           )}
-          {isEmployer && (e.status === 'ACTIVE' || e.status === 'TERMINATION_REQUESTED') && (
+          {isParty && isEmployer && (e.status === 'ACTIVE' || e.status === 'TERMINATION_REQUESTED') && (
             <div className="text-xs mt-2 flex items-center gap-3 flex-wrap">
               <span className="opacity-70">
                 {t.employees.monthlyPay}:{' '}
@@ -294,7 +308,18 @@ function EmploymentRow({
           )}
         </div>
         <div className="flex gap-2 flex-wrap">
-          {e.status === 'PENDING' && !isEmployer && (
+          {/* Supervised row: the only thing on offer is the oversight view. Every
+              relationship action below belongs to the two parties. */}
+          {!isParty && (e.status === 'ACTIVE' || e.status === 'TERMINATION_REQUESTED') && (
+            <Link
+              href={`/employees/${e.id}`}
+              className="px-3 py-1.5 rounded-md text-xs font-medium text-white"
+              style={{ background: 'var(--primary)' }}
+            >
+              {t.employees.tabActivities}
+            </Link>
+          )}
+          {isParty && e.status === 'PENDING' && !isEmployer && (
             <>
               <ActionBtn label={t.employees.accept} onClick={() => acceptM.mutate()} disabled={inFlight} primary />
               <ActionBtn label={t.employees.reject} onClick={() => rejectM.mutate()} disabled={inFlight} />
@@ -304,21 +329,21 @@ function EmploymentRow({
             <Link
               href={`/employees/${e.id}`}
               className="px-3 py-1.5 rounded-md text-xs font-medium text-white"
-              style={{ background: '#6366F1' }}
+              style={{ background: 'var(--primary)' }}
             >
               {t.employees.managePayroll}
             </Link>
           )}
-          {isEmployer && isExternal && e.status === 'ACTIVE' && (
+          {isParty && isEmployer && isExternal && e.status === 'ACTIVE' && (
             <ActionBtn label={t.employees.remove} onClick={handleRemoveExternal} disabled={inFlight} />
           )}
-          {!isExternal && e.status === 'ACTIVE' && (
+          {isParty && !isExternal && e.status === 'ACTIVE' && (
             <ActionBtn label={t.employees.requestTermination} onClick={() => reqTerm.mutate()} disabled={inFlight} />
           )}
-          {e.status === 'TERMINATION_REQUESTED' && e.terminationRequestedBy === myId && (
+          {isParty && e.status === 'TERMINATION_REQUESTED' && e.terminationRequestedBy === myId && (
             <ActionBtn label={t.employees.cancelMyRequest} onClick={() => cancelTerm.mutate()} disabled={inFlight} />
           )}
-          {e.status === 'TERMINATION_REQUESTED' && e.terminationRequestedBy !== myId && (
+          {isParty && e.status === 'TERMINATION_REQUESTED' && e.terminationRequestedBy !== myId && (
             <>
               <ActionBtn label={t.employees.approveTermination} onClick={() => apprTerm.mutate()} disabled={inFlight} primary />
               <ActionBtn label={t.employees.refuse} onClick={() => rejectTerm.mutate()} disabled={inFlight} />
@@ -342,7 +367,7 @@ function ActionBtn({ label, onClick, disabled, primary }: { label: string; onCli
       disabled={disabled}
       className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50"
       style={primary
-        ? { background: '#6366F1', color: '#fff' }
+        ? { background: 'var(--primary)', color: '#fff' }
         : { border: '1px solid rgba(127,127,127,0.3)' }}
     >
       {label}
@@ -395,7 +420,7 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
             onClick={() => create.mutate()}
             disabled={!selected || create.isPending}
             className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
-            style={{ background: '#6366F1' }}
+            style={{ background: 'var(--primary)' }}
           >
             {t.employees.sendRequest}
           </button>

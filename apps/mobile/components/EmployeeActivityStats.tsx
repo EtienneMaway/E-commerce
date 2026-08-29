@@ -38,11 +38,11 @@ export function EmployeeActivityStats() {
   return (
     <Card className="mb-4">
       <View className="flex-row items-center justify-between mb-1">
-        <Text className="text-muted dark:text-slate-500 text-sm font-medium uppercase tracking-wide">
+        <Text className="text-muted text-sm font-medium uppercase tracking-wide">
           {t.home.myActivityTitle}
         </Text>
       </View>
-      <Text className="text-muted dark:text-slate-500 text-xs mb-3">{t.home.myActivitySub}</Text>
+      <Text className="text-muted text-xs mb-3">{t.home.myActivitySub}</Text>
 
       {/* Period selector */}
       <ScrollView
@@ -60,12 +60,12 @@ export function EmployeeActivityStats() {
               className={`px-3.5 py-1.5 rounded-full border ${
                 active
                   ? 'bg-primary border-primary'
-                  : 'bg-surface dark:bg-slate-900 border-border dark:border-slate-700'
+                  : 'bg-surface border-border'
               }`}
             >
               <Text
                 className={`text-xs font-semibold ${
-                  active ? 'text-white' : 'text-muted dark:text-slate-400'
+                  active ? 'text-white' : 'text-muted'
                 }`}
               >
                 {p.label}
@@ -77,23 +77,23 @@ export function EmployeeActivityStats() {
 
       <View className="flex-row gap-3">
         <View className="flex-1">
-          <Text className="text-muted dark:text-slate-500 text-xs mb-0.5">
+          <Text className="text-muted text-xs mb-0.5">
             {t.home.myActivitySales}
           </Text>
-          <Text className="text-lg font-bold text-text dark:text-slate-100 tabular-nums">
+          <Text className="text-lg font-bold text-text tabular-nums">
             {isLoading ? '—' : (data?.salesCount ?? 0)}
           </Text>
         </View>
         <View className="flex-1">
-          <Text className="text-muted dark:text-slate-500 text-xs mb-0.5">
+          <Text className="text-muted text-xs mb-0.5">
             {t.home.myActivityRevenue}
           </Text>
-          <Text className="text-lg font-bold text-text dark:text-slate-100">
+          <Text className="text-lg font-bold text-text">
             {isLoading ? '—' : formatCurrency(data?.totalRevenue ?? '0')}
           </Text>
         </View>
         <View className="flex-1">
-          <Text className="text-muted dark:text-slate-500 text-xs mb-0.5">
+          <Text className="text-muted text-xs mb-0.5">
             {t.home.myActivityProfit}
           </Text>
           <Text

@@ -48,5 +48,8 @@ export const QK = {
   miniUnsold: (miniUserId: string) => ['mini-settlements', 'unsold', miniUserId] as const,
   miniActivity: (miniUserId: string, filters?: object) =>
     ['mini-settlements', 'activity', miniUserId, filters] as const,
+  employeeRoles: ['employee-roles'] as const,
+  employeeRole: (id: string) => ['employee-roles', id] as const,
+  serviceCatalog: ['employee-roles', 'catalog'] as const,
   syncSignal: ['sync', 'signal'] as const,
 } as const;

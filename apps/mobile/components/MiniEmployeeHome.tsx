@@ -13,6 +13,7 @@ import { QK } from '../lib/query-keys';
 import { useAuthStore } from '../store/auth.store';
 import { getErrorMessage } from '../lib/utils';
 import { useT } from '../lib/i18n';
+import { usePermissions } from '../lib/permissions';
 import { ReceiveConsignmentModal } from './forms/ReceiveConsignmentModal';
 import { HandoverModal } from './forms/HandoverModal';
 import { HandoverStatusBanner } from './ui/HandoverStatusBanner';
@@ -34,6 +35,9 @@ export function MiniEmployeeHome() {
   // A handover awaiting approval locks the card — a second one would claim the
   // same unsold units, since stock only leaves the mini's books on approval.
   const { isBlocked: handoverPending } = usePendingHandover();
+  // Receiving stock and handing takings back are separate grants, so an
+  // employer can open one without the other.
+  const { can } = usePermissions();
 
   // A mini is identified by a Sales-only (SALES_ONLY) employment — not the
   // legacy synthetic-account flag — so a normal user who accepts a sales-only
@@ -95,8 +99,8 @@ export function MiniEmployeeHome() {
     const busy = acceptM.isPending || rejectM.isPending;
     return (
       <View className="bg-primary/10 border border-primary/30 rounded-2xl px-4 py-4 mb-4">
-        <Text className="text-text dark:text-slate-100 font-bold text-base">{t.miniEmployee.inviteTitle}</Text>
-        <Text className="text-muted dark:text-slate-400 text-sm mt-1">
+        <Text className="text-text font-bold text-base">{t.miniEmployee.inviteTitle}</Text>
+        <Text className="text-muted text-sm mt-1">
           {t.miniEmployee.inviteFrom(pendingInvite.employer?.username ?? '—')}
         </Text>
         <View className="flex-row gap-2 mt-3">
@@ -125,52 +129,58 @@ export function MiniEmployeeHome() {
   return (
     <View className="mb-4 gap-3">
       <HandoverStatusBanner />
+      {can('consignments.receive') && (
       <Pressable
         onPress={() => setReceiveOpen(true)}
-        className="flex-row items-center bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4"
+        className="flex-row items-center bg-card border border-border rounded-2xl px-4 py-4"
         style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
       >
         <Text className="text-2xl mr-3">📥</Text>
         <View className="flex-1">
-          <Text className="text-text dark:text-slate-100 font-semibold text-base">{t.miniEmployee.receiveCardTitle}</Text>
-          <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">{t.miniEmployee.receiveCardSub}</Text>
+          <Text className="text-text font-semibold text-base">{t.miniEmployee.receiveCardTitle}</Text>
+          <Text className="text-muted text-xs mt-0.5">{t.miniEmployee.receiveCardSub}</Text>
         </View>
         {pendingReceiveCount > 0 && (
           <View className="bg-primary rounded-full min-w-6 h-6 px-1.5 items-center justify-center mr-1">
             <Text className="text-white text-xs font-bold">{pendingReceiveCount}</Text>
           </View>
         )}
-        <Text className="text-muted dark:text-slate-500 text-xl">›</Text>
+        <Text className="text-muted text-xl">›</Text>
       </Pressable>
+      )}
 
+      {can('handovers.mini') && (
+      <>
       <Pressable
         onPress={() => setHandoverOpen(true)}
         disabled={handoverPending}
-        className="flex-row items-center bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4"
+        className="flex-row items-center bg-card border border-border rounded-2xl px-4 py-4"
         style={({ pressed }) => ({ opacity: handoverPending ? 0.5 : pressed ? 0.8 : 1 })}
       >
         <Text className="text-2xl mr-3">🤲</Text>
         <View className="flex-1">
-          <Text className="text-text dark:text-slate-100 font-semibold text-base">{t.miniEmployee.handoverCardTitle}</Text>
-          <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">
+          <Text className="text-text font-semibold text-base">{t.miniEmployee.handoverCardTitle}</Text>
+          <Text className="text-muted text-xs mt-0.5">
             {handoverPending ? t.miniEmployee.handoverCardWaiting : t.miniEmployee.handoverCardSub}
           </Text>
         </View>
-        {!handoverPending && <Text className="text-muted dark:text-slate-500 text-xl">›</Text>}
+        {!handoverPending && <Text className="text-muted text-xl">›</Text>}
       </Pressable>
 
       <Pressable
         onPress={() => router.push('/handovers')}
-        className="flex-row items-center bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4"
+        className="flex-row items-center bg-card border border-border rounded-2xl px-4 py-4"
         style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
       >
         <Text className="text-2xl mr-3">🧾</Text>
         <View className="flex-1">
-          <Text className="text-text dark:text-slate-100 font-semibold text-base">{t.miniEmployee.historyCardTitle}</Text>
-          <Text className="text-muted dark:text-slate-400 text-xs mt-0.5">{t.miniEmployee.historyCardSub}</Text>
+          <Text className="text-text font-semibold text-base">{t.miniEmployee.historyCardTitle}</Text>
+          <Text className="text-muted text-xs mt-0.5">{t.miniEmployee.historyCardSub}</Text>
         </View>
-        <Text className="text-muted dark:text-slate-500 text-xl">›</Text>
+        <Text className="text-muted text-xl">›</Text>
       </Pressable>
+      </>
+      )}
 
       <ReceiveConsignmentModal visible={receiveOpen} onClose={() => setReceiveOpen(false)} />
       <HandoverModal visible={handoverOpen} onClose={() => setHandoverOpen(false)} />

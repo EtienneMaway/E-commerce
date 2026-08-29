@@ -1,6 +1,7 @@
 import { ExpensesService } from './expenses.service';
 import { ExpenseCategory, ExpenseCurrency } from '../entities';
 import type { ActorContext } from '../common/types/actor-context';
+import { resolveGrantedServices } from '../common/services/service-catalog';
 
 /**
  * A full employee's expenses are capped per calendar day at a share of what
@@ -15,6 +16,7 @@ describe('ExpensesService.dailyAllowance (full employee)', () => {
     actorId: EMPLOYEE,
     effectiveOwnerId: OWNER,
     tier: 'FULL_EMPLOYEE',
+    services: resolveGrantedServices(null, 'FULL_EMPLOYEE'),
     employment: { employerId: OWNER, expenseAllowancePct: pct } as never,
   });
 
@@ -22,6 +24,7 @@ describe('ExpensesService.dailyAllowance (full employee)', () => {
     actorId: OWNER,
     effectiveOwnerId: OWNER,
     tier: 'OWNER',
+    services: resolveGrantedServices(null, 'OWNER'),
     employment: null,
   };
 

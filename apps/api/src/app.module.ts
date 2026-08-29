@@ -20,6 +20,7 @@ import {
   Expense,
   Withdrawal,
   Employment,
+  EmployeeRole,
   ProductPrice,
   SalaryPayment,
   MiniSettlement,
@@ -43,6 +44,7 @@ import { StockMovementsModule } from './stock-movements/stock-movements.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
 import { EmploymentsModule } from './employments/employments.module';
+import { EmployeeRolesModule } from './employee-roles/employee-roles.module';
 import { SalaryPaymentsModule } from './salary-payments/salary-payments.module';
 import { PricingModule } from './pricing/pricing.module';
 import { ActivityLogsModule } from './activity-logs/activity-logs.module';
@@ -79,6 +81,7 @@ import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts
           Expense,
           Withdrawal,
           Employment,
+          EmployeeRole,
           ProductPrice,
           SalaryPayment,
           MiniSettlement,
@@ -116,6 +119,7 @@ import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts
     ExpensesModule,
     WithdrawalsModule,
     EmploymentsModule,
+    EmployeeRolesModule,
     SalaryPaymentsModule,
     PricingModule,
     ActivityLogsModule,

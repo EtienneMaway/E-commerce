@@ -16,6 +16,7 @@ import { EditProductSellingPriceDialog } from '../../../../components/forms/Edit
 import { RenameProductDialog } from '../../../../components/forms/RenameProductDialog';
 import { SalesProfitWidget } from '../../../../components/ui/SalesProfitWidget';
 import { useT } from '../../../../lib/i18n';
+import { usePermissions } from '../../../../lib/permissions';
 
 interface InventoryEntry {
   id: string;
@@ -57,6 +58,7 @@ export default function ProductDetailPage({
   const { name } = use(params);
   const productName = decodeURIComponent(name);
   const t = useT();
+  const { can } = usePermissions();
   const router = useRouter();
   const formatCurrency = useFormatCurrency();
   const [editPriceTarget, setEditPriceTarget] = useState<EditPriceTarget | null>(null);
@@ -336,7 +338,7 @@ export default function ProductDetailPage({
               const hasOwned = entries.some(
                 (e) => e.source === 'PERSONAL' || e.source === 'SUPPLIER',
               );
-              if (!hasOwned) return null;
+              if (!hasOwned || !can('products.manage')) return null;
               return (
                 <button
                   type="button"
@@ -379,6 +381,7 @@ export default function ProductDetailPage({
         </div>
         {activeEntries.length > 0 && (
           <div className="flex gap-2 flex-shrink-0 self-end sm:self-auto">
+            {can('inventory.adjust') && (
             <button
               onClick={() => {
                 if (activeEntries.length === 1) {
@@ -397,9 +400,12 @@ export default function ProductDetailPage({
             >
               {t.inventory.adjustStockTopBtn}
             </button>
+            )}
+            {can('inventory.price') && (
             <button onClick={() => setBulkPriceOpen(true)} className="btn btn-primary">
               {t.inventory.editSellingPriceTopBtn}
             </button>
+            )}
           </div>
         )}
       </div>

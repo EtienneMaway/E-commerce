@@ -45,18 +45,18 @@ export default function EditProfileScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-surface dark:bg-slate-900"
+      className="flex-1 bg-background"
       contentContainerClassName="px-4 pt-4 pb-8"
       keyboardShouldPersistTaps="handled"
     >
       <View className="mb-4">
-        <Text className="text-sm font-medium text-text dark:text-slate-100 mb-1.5">
+        <Text className="text-sm font-medium text-text mb-1.5">
           {t.account.username}
         </Text>
-        <View className="border rounded-xl px-4 py-3 bg-card dark:bg-slate-800 border-border dark:border-slate-700">
-          <Text className="text-text dark:text-slate-100 text-base">@{user?.username}</Text>
+        <View className="border rounded-xl px-4 py-3 bg-card border-border">
+          <Text className="text-text text-base">@{user?.username}</Text>
         </View>
-        <Text className="text-muted dark:text-slate-500 text-xs mt-1">
+        <Text className="text-muted text-xs mt-1">
           {t.account.usernameReadOnly}
         </Text>
       </View>

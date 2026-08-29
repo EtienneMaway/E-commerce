@@ -12,6 +12,13 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { User } from './user.entity';
 import { Employment } from './employment.entity';
 
+export enum SalaryPaymentKind {
+  /** Regular pay against the employment's monthly target (periodMonth budget). */
+  MONTHLY = 'MONTHLY',
+  /** Commission pay against what a mini employee earned from approved handovers. */
+  COMMISSION = 'COMMISSION',
+}
+
 export enum SalaryPaymentStatus {
   /** Employer recorded the payment; awaiting employee confirmation that they received the cash. */
   PENDING_CONFIRMATION = 'PENDING_CONFIRMATION',
@@ -67,6 +74,15 @@ export class SalaryPayment {
   @ApiProperty({ enum: SalaryPaymentStatus })
   @Column({ type: 'enum', enum: SalaryPaymentStatus })
   status: SalaryPaymentStatus;
+
+  @ApiProperty({
+    enum: SalaryPaymentKind,
+    default: SalaryPaymentKind.MONTHLY,
+    description:
+      'What this payment settles: MONTHLY pay (counts toward the periodMonth budget) or a mini employee’s handover COMMISSION (counts toward commission earned, all-time).',
+  })
+  @Column({ type: 'varchar', length: 12, default: SalaryPaymentKind.MONTHLY })
+  kind: SalaryPaymentKind;
 
   @ApiPropertyOptional({ example: 'May installment #1' })
   @Column({ type: 'varchar', nullable: true })

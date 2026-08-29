@@ -44,7 +44,7 @@ export default function LoginPage() {
         style={{
           width: 600, height: 600,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(var(--primary-rgb),0.15) 0%, transparent 70%)',
           top: '-150px', left: '-150px',
         }}
       />
@@ -53,7 +53,7 @@ export default function LoginPage() {
         style={{
           width: 500, height: 500,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(139,92,246,0.1) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(var(--brand-violet-rgb),0.1) 0%, transparent 70%)',
           bottom: '-100px', right: '-100px',
         }}
       />
@@ -63,7 +63,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div
             className="inline-block mb-4"
-            style={{ filter: 'drop-shadow(0 8px 32px rgba(79,70,229,0.4))' }}
+            style={{ filter: 'drop-shadow(0 8px 32px rgba(var(--primary-rgb),0.4))' }}
           >
             <KmbLogo size={56} />
           </div>

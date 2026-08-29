@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { User } from './user.entity';
+import { EmployeeRole } from './employee-role.entity';
 
 export enum EmploymentTier {
   /** Dashboard + mobile login. Permitted: direct sales, send consignments, give to external contacts, accept debtor payments, register external-contact payments, register expenses. */
@@ -58,6 +59,17 @@ export class Employment {
   @Column({ type: 'enum', enum: EmploymentStatus })
   status: EmploymentStatus;
 
+  @ApiPropertyOptional({
+    description:
+      "The employer-defined role that decides which services this employee can use, on the dashboard and on mobile. Null means unrestricted for the tier — the behaviour every employment had before roles existed, and still the default for a new hire until the employer assigns one. A role can only NARROW what the tier already permits; it can never widen it.",
+  })
+  @Column({ name: 'role_id', type: 'uuid', nullable: true })
+  roleId: string | null;
+
+  @ManyToOne(() => EmployeeRole, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'role_id' })
+  role: EmployeeRole | null;
+
   @ApiPropertyOptional({ description: 'User id of whichever party requested termination' })
   @Column({ name: 'termination_requested_by', type: 'uuid', nullable: true })
   terminationRequestedBy: string | null;
@@ -80,6 +92,14 @@ export class Employment {
   })
   @Column({ name: 'expense_allowance_pct', type: 'decimal', precision: 5, scale: 2, default: '2.00' })
   expenseAllowancePct: string;
+
+  @ApiPropertyOptional({
+    example: '10.00',
+    description:
+      'Mini employees only, optional: commission the employer pays the mini, as a percentage of the sold value of each APPROVED handover. Sealed onto each handover at approval, so it accrues only from handovers approved after it was set, and a later change never rewrites past handovers. Null = no commission (monthly pay only). Can be combined with monthlyPay.',
+  })
+  @Column({ name: 'commission_pct', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  commissionPct: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

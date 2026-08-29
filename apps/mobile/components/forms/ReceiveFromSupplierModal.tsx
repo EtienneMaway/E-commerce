@@ -60,9 +60,9 @@ export function ReceiveFromSupplierModal({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScrollView className="flex-1 bg-surface dark:bg-slate-900" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
+      <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-xl font-bold text-text dark:text-slate-100">{t.receiveSupplierModal.title}</Text>
+          <Text className="text-xl font-bold text-text">{t.receiveSupplierModal.title}</Text>
           <TouchableOpacity onPress={onClose}><Text className="text-primary font-medium">{t.common.cancel}</Text></TouchableOpacity>
         </View>
         <UserSearchField label={t.receiveSupplierModal.selectSupplier} selected={supplier} onSelect={setSupplier} />
@@ -72,8 +72,8 @@ export function ReceiveFromSupplierModal({ visible, onClose }: Props) {
         <Input label={t.receiveSupplierModal.quantity} value={form.quantity} onChangeText={set('quantity')} placeholder={t.receiveSupplierModal.quantityPlaceholder} keyboardType="number-pad" />
         <Input label={t.receiveSupplierModal.category} value={form.category} onChangeText={set('category')} placeholder={t.receiveSupplierModal.categoryPlaceholder} />
         <Input label={t.receiveSupplierModal.piecesPerCarton} value={form.piecesPerCarton} onChangeText={set('piecesPerCarton')} placeholder="e.g. 20" keyboardType="number-pad" />
-        <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
-          <Text className="text-blue-700 text-xs">
+        <View className="bg-primary-light border border-primary/30 rounded-xl p-3 mb-4">
+          <Text className="text-primary text-xs">
             {t.receiveSupplierModal.debtHint(
               form.unitCost && form.quantity
                 ? formatFcValue(parseFloat(form.unitCost || '0') * parseInt(form.quantity || '0', 10))

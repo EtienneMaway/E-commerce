@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { dashboardApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useBrand } from '../../lib/theme';
 import { useFormatCurrency } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -29,22 +30,23 @@ function SupplierCard({ item }: { item: SupplierRow }) {
   return (
     <Pressable
       onPress={() => router.push(`/supplier/${item.supplierUserId}`)}
-      className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3"
+      className="bg-card border border-border rounded-2xl p-4 mb-3"
       style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
     >
       <View className="flex-row justify-between items-center mb-1.5">
-        <Text className="text-text dark:text-slate-100 font-semibold text-base">@{item.supplierUsername}</Text>
+        <Text className="text-text font-semibold text-base">@{item.supplierUsername}</Text>
         <Text className="text-danger font-bold text-base">{formatCurrency(item.outstandingBalance)}</Text>
       </View>
       <View className="flex-row justify-between">
-        <Text className="text-muted dark:text-slate-500 text-sm">{t.network.totalReceived} {formatCurrency(item.totalCreditReceived)}</Text>
-        <Text className="text-muted dark:text-slate-500 text-sm">{t.network.paid} {formatCurrency(item.totalPaid)}</Text>
+        <Text className="text-muted text-sm">{t.network.totalReceived} {formatCurrency(item.totalCreditReceived)}</Text>
+        <Text className="text-muted text-sm">{t.network.paid} {formatCurrency(item.totalPaid)}</Text>
       </View>
     </Pressable>
   );
 }
 
 export default function NetworkScreen() {
+  const brand = useBrand();
   const t = useT();
   const formatCurrency = useFormatCurrency();
 
@@ -57,12 +59,12 @@ export default function NetworkScreen() {
   const supplierList = (suppliers as SupplierRow[] | undefined) ?? [];
 
   return (
-    <View className="flex-1 bg-surface dark:bg-slate-900">
+    <View className="flex-1 bg-background">
       <View className="px-4 pt-4"><PersonaBanner /></View>
 
       {/* Header label */}
       <View className="mx-4 mt-4 mb-3">
-        <Text className="text-text dark:text-slate-100 font-bold text-lg">
+        <Text className="text-text font-bold text-lg">
           {t.network.suppliers(supplierList.length)}
         </Text>
       </View>
@@ -86,8 +88,8 @@ export default function NetworkScreen() {
         keyExtractor={(item) => item.supplierUserId}
         renderItem={({ item }) => <SupplierCard item={item} />}
         contentContainerClassName="px-4 pb-8"
-        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor="#2563EB" />}
-        ListHeaderComponent={isFetching && supplierList.length === 0 ? <ActivityIndicator className="mt-12" color="#2563EB" /> : null}
+        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />}
+        ListHeaderComponent={isFetching && supplierList.length === 0 ? <ActivityIndicator className="mt-12" color={brand.primary} /> : null}
         ListEmptyComponent={
           !isFetching ? (
             <EmptyState emoji="🤝" title={t.network.noSuppliers} subtitle={t.network.noSuppliersSub} />

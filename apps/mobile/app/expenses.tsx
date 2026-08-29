@@ -32,12 +32,16 @@ import { useOfflineStore } from '../store/offline.store';
 import { useAuthStore } from '../store/auth.store';
 import { usePersonaStore } from '../store/persona.store';
 import { useT } from '../lib/i18n';
+import { useRequireService } from '../hooks/use-require-service';
 
 type FilterKey = 'all' | 'today' | 'week' | 'month' | 'lastN';
 
 const PAGE_SIZE = 20;
 
 export default function ExpensesScreen() {
+  // Redirects away if the role does not cover this screen. The API refuses
+  // the queries below regardless; this makes the outcome a bounce, not errors.
+  useRequireService('expenses.view', 'expenses.record');
   // Mini employees have their own expense system (MiniExpense, FC, tied to
   // handovers) and no access to the owner/full-employee `/expenses` endpoints,
   // so they get a dedicated history view + "+". Branch before any other hooks so
@@ -166,22 +170,22 @@ function OwnerExpensesScreen() {
   };
 
   return (
-    <View className="flex-1 bg-surface dark:bg-slate-900">
+    <View className="flex-1 bg-background">
       <ScrollView
         contentContainerClassName="px-4 pt-4 pb-24"
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
       >
         {/* Total card */}
         <Card>
-          <Text className="text-muted dark:text-slate-500 text-xs font-medium uppercase tracking-wide">
+          <Text className="text-muted text-xs font-medium uppercase tracking-wide">
             {t.expenses.totalLabel}
           </Text>
-          <Text className="text-3xl font-bold text-text dark:text-slate-100 mt-1">
+          <Text className="text-3xl font-bold text-text mt-1">
             {fmtAtBuyingRate(
               cash?.totalExpensesAtBuyingRate ?? cash?.totalExpenses ?? '0',
             )}
           </Text>
-          <Text className="text-muted dark:text-slate-500 text-xs mt-1">
+          <Text className="text-muted text-xs mt-1">
             {list.totals.count} {t.expenses.countLabel}
           </Text>
         </Card>
@@ -202,7 +206,7 @@ function OwnerExpensesScreen() {
                 color={parseFloat(allowance.remainingUsd) > 0 ? 'success' : 'danger'}
               />
             </View>
-            <Text className="text-muted dark:text-slate-500 text-xs mt-2 px-1">
+            <Text className="text-muted text-xs mt-2 px-1">
               {t.expenses.allowanceHint(
                 String(parseFloat(allowance.pct)),
                 fmtFc(allowance.soldUsd),
@@ -222,12 +226,12 @@ function OwnerExpensesScreen() {
                   className={`px-3 py-1.5 rounded-full border ${
                     filter === tab.key
                       ? 'bg-primary border-primary'
-                      : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
+                      : 'bg-card border-border'
                   }`}
                 >
                   <Text
                     className={`text-xs font-semibold ${
-                      filter === tab.key ? 'text-white' : 'text-muted dark:text-slate-300'
+                      filter === tab.key ? 'text-white' : 'text-muted'
                     }`}
                   >
                     {tab.label}
@@ -247,12 +251,12 @@ function OwnerExpensesScreen() {
                 className={`px-3 py-1.5 rounded-full border ${
                   categoryFilter === ''
                     ? 'bg-primary border-primary'
-                    : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
+                    : 'bg-card border-border'
                 }`}
               >
                 <Text
                   className={`text-xs font-semibold ${
-                    categoryFilter === '' ? 'text-white' : 'text-muted dark:text-slate-300'
+                    categoryFilter === '' ? 'text-white' : 'text-muted'
                   }`}
                 >
                   {t.expenses.filterAllCategories}
@@ -265,12 +269,12 @@ function OwnerExpensesScreen() {
                   className={`px-3 py-1.5 rounded-full border ${
                     categoryFilter === c
                       ? 'bg-primary border-primary'
-                      : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
+                      : 'bg-card border-border'
                   }`}
                 >
                   <Text
                     className={`text-xs font-semibold ${
-                      categoryFilter === c ? 'text-white' : 'text-muted dark:text-slate-300'
+                      categoryFilter === c ? 'text-white' : 'text-muted'
                     }`}
                   >
                     {catLabel(c)}
@@ -284,13 +288,13 @@ function OwnerExpensesScreen() {
         {/* By-category breakdown */}
         {list.totals.byCategory.length > 0 && (
           <Card className="mt-4">
-            <Text className="text-muted dark:text-slate-500 text-xs font-medium uppercase tracking-wide mb-2">
+            <Text className="text-muted text-xs font-medium uppercase tracking-wide mb-2">
               {t.expenses.byCategory}
             </Text>
             {list.totals.byCategory.map((c) => (
               <View key={c.category} className="flex-row justify-between py-1.5">
-                <Text className="text-text dark:text-slate-200 text-sm">{catLabel(c.category)}</Text>
-                <Text className="text-text dark:text-slate-100 font-semibold text-sm">
+                <Text className="text-text text-sm">{catLabel(c.category)}</Text>
+                <Text className="text-text font-semibold text-sm">
                   {fmtAtBuyingRate(c.totalUsd)}
                 </Text>
               </View>
@@ -307,12 +311,12 @@ function OwnerExpensesScreen() {
             {pendingOffline.map((e) => (
               <View key={e.id} className="flex-row justify-between py-1.5">
                 <View className="flex-1 pr-3">
-                  <Text className="text-text dark:text-slate-200 text-sm">{catLabel(e.category as ExpenseCategory)}</Text>
+                  <Text className="text-text text-sm">{catLabel(e.category as ExpenseCategory)}</Text>
                   {e.description ? (
-                    <Text className="text-muted dark:text-slate-400 text-xs" numberOfLines={1}>{e.description}</Text>
+                    <Text className="text-muted text-xs" numberOfLines={1}>{e.description}</Text>
                   ) : null}
                 </View>
-                <Text className="text-text dark:text-slate-100 font-semibold text-sm">
+                <Text className="text-text font-semibold text-sm">
                   {e.currency === 'USD'
                     ? `$${e.amount}`
                     : `${new Intl.NumberFormat('fr-CD').format(parseFloat(e.amount))} FC`}
@@ -335,28 +339,28 @@ function OwnerExpensesScreen() {
               <Pressable
                 key={e.id}
                 onLongPress={() => confirmDelete(e.id)}
-                className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 mb-2"
+                className="bg-card border border-border rounded-xl px-4 py-3 mb-2"
               >
                 <View className="flex-row justify-between items-start">
                   <View className="flex-1 pr-3">
-                    <Text className="text-text dark:text-slate-100 font-semibold text-sm">
+                    <Text className="text-text font-semibold text-sm">
                       {catLabel(e.category)}
                     </Text>
                     {e.description ? (
-                      <Text className="text-muted dark:text-slate-400 text-xs mt-0.5" numberOfLines={2}>
+                      <Text className="text-muted text-xs mt-0.5" numberOfLines={2}>
                         {e.description}
                       </Text>
                     ) : null}
-                    <Text className="text-muted dark:text-slate-500 text-xs mt-1">
+                    <Text className="text-muted text-xs mt-1">
                       {formatDate(e.date)}
                       {e.actor ? ` · @${e.actor.username}` : ''}
                     </Text>
                   </View>
                   <View className="items-end">
-                    <Text className="text-text dark:text-slate-100 font-bold text-base">
+                    <Text className="text-text font-bold text-base">
                       {fmtAtBuyingRate(e.amountUsd)}
                     </Text>
-                    <Text className="text-muted dark:text-slate-500 text-xs">
+                    <Text className="text-muted text-xs">
                       {e.currency === 'USD'
                         ? `$${e.amount}`
                         : `${new Intl.NumberFormat('fr-CD').format(parseFloat(e.amount))} FC`}
@@ -377,7 +381,7 @@ function OwnerExpensesScreen() {
               disabled={page <= 1}
               onPress={() => setPage((p) => Math.max(1, p - 1))}
             />
-            <Text className="text-muted dark:text-slate-400 text-sm">
+            <Text className="text-muted text-sm">
               {list.pagination.page} / {list.pagination.totalPages}
             </Text>
             <Button

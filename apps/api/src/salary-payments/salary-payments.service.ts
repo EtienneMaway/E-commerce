@@ -11,13 +11,27 @@ import Decimal from 'decimal.js';
 import {
   Employment,
   EmploymentStatus,
+  MiniSettlement,
+  MiniSettlementStatus,
   SalaryPayment,
+  SalaryPaymentKind,
   SalaryPaymentStatus,
 } from '../entities';
 import { CreateSalaryPaymentDto } from './dto/create-salary-payment.dto';
 import { ListSalaryPaymentsDto, SalaryRoleFilter } from './dto/list-salary-payments.dto';
 import { RejectSalaryPaymentDto } from './dto/reject-salary-payment.dto';
 import { SalarySummaryQueryDto } from './dto/salary-summary-query.dto';
+
+export interface CommissionSummary {
+  /** The employment's current rate — what future handovers will seal. */
+  pct: string | null;
+  /** Σ cashAmount × sealed pct over APPROVED handovers (all-time; only handovers approved while a rate was set). */
+  earned: string;
+  paidConfirmed: string;
+  pendingConfirmation: string;
+  /** earned − paidConfirmed (clamped to ≥0). */
+  remaining: string;
+}
 
 export interface SalarySummary {
   employmentId: string;
@@ -29,6 +43,11 @@ export interface SalarySummary {
   /** monthlyPay - paidConfirmed (clamped to ≥0). null when monthlyPay is unset. */
   balanceRemaining: string | null;
   paymentCount: number;
+  /**
+   * Mini-employee handover commission. Null when the employment has no
+   * commission set and none was ever paid — the UI hides the whole block.
+   */
+  commission: CommissionSummary | null;
 }
 
 @Injectable()
@@ -38,6 +57,8 @@ export class SalaryPaymentsService {
     private readonly paymentRepo: Repository<SalaryPayment>,
     @InjectRepository(Employment)
     private readonly employmentRepo: Repository<Employment>,
+    @InjectRepository(MiniSettlement)
+    private readonly settlementRepo: Repository<MiniSettlement>,
   ) {}
 
   // ─── Employer: record a new payment (PENDING_CONFIRMATION) ───────────────
@@ -57,20 +78,26 @@ export class SalaryPaymentsService {
     if (!employment.payrollActive) {
       throw new BadRequestException('Payroll is paused for this employee — reactivate before recording a payment');
     }
-    if (!employment.monthlyPay) {
+    const kind = dto.kind ?? SalaryPaymentKind.MONTHLY;
+    if (kind === SalaryPaymentKind.MONTHLY && !employment.monthlyPay) {
       throw new BadRequestException('Set a monthly pay before recording a payment');
+    }
+    if (kind === SalaryPaymentKind.COMMISSION && !employment.commissionPct) {
+      throw new BadRequestException('Set a commission percentage before recording a commission payment');
     }
     const isExternal = !!employment.employee?.isExternalEmployee;
 
     const periodMonth = dto.periodMonth ?? currentPeriodMonth();
     const amount = new Decimal(dto.amount);
 
-    // Budget guard (warning, overridable): planned + new payment must not exceed monthly target.
-    if (!dto.confirmedOverride) {
+    // Budget guards (warning, overridable): planned + new payment must not
+    // exceed the target — the monthly pay for MONTHLY, what the mini's
+    // approved handovers have earned so far for COMMISSION.
+    if (!dto.confirmedOverride && kind === SalaryPaymentKind.MONTHLY) {
       const totals = await this.periodTotals(employment.id, periodMonth);
       const planned = totals.confirmed.plus(totals.pending);
       const projected = planned.plus(amount);
-      const monthly = new Decimal(employment.monthlyPay);
+      const monthly = new Decimal(employment.monthlyPay as string);
       if (projected.gt(monthly)) {
         throw new UnprocessableEntityException({
           warning: true,
@@ -83,6 +110,22 @@ export class SalaryPaymentsService {
         });
       }
     }
+    if (!dto.confirmedOverride && kind === SalaryPaymentKind.COMMISSION) {
+      const totals = await this.commissionTotals(employment);
+      const planned = totals.confirmed.plus(totals.pending);
+      const projected = planned.plus(amount);
+      if (projected.gt(totals.earned)) {
+        throw new UnprocessableEntityException({
+          warning: true,
+          code: 'COMMISSION_OVERFLOW',
+          commissionEarned: totals.earned.toFixed(4),
+          alreadyPlanned: planned.toFixed(4),
+          attemptedAmount: amount.toFixed(4),
+          projected: projected.toFixed(4),
+          message: `This payment would put ${projected.toFixed(4)} USD against ${totals.earned.toFixed(4)} USD of commission earned so far — confirm to override.`,
+        });
+      }
+    }
 
     const now = new Date();
     const payment = this.paymentRepo.create({
@@ -91,6 +134,7 @@ export class SalaryPaymentsService {
       employeeId: employment.employeeId,
       amount: amount.toFixed(4),
       periodMonth,
+      kind,
       // External employees can't log in to confirm — payment is settled immediately.
       status: isExternal ? SalaryPaymentStatus.CONFIRMED : SalaryPaymentStatus.PENDING_CONFIRMATION,
       note: dto.note ?? null,
@@ -156,6 +200,23 @@ export class SalaryPaymentsService {
       ? Decimal.max(new Decimal(monthlyPay).minus(totals.confirmed), new Decimal(0)).toFixed(4)
       : null;
 
+    // Commission block: only for employments where it is (or was) in play, so
+    // regular full-employee summaries stay unchanged.
+    let commission: CommissionSummary | null = null;
+    const commissionTotals = await this.commissionTotals(employment);
+    if (employment.commissionPct || commissionTotals.earned.gt(0) || commissionTotals.count > 0) {
+      commission = {
+        pct: employment.commissionPct ? new Decimal(employment.commissionPct).toFixed(2) : null,
+        earned: commissionTotals.earned.toFixed(4),
+        paidConfirmed: commissionTotals.confirmed.toFixed(4),
+        pendingConfirmation: commissionTotals.pending.toFixed(4),
+        remaining: Decimal.max(
+          commissionTotals.earned.minus(commissionTotals.confirmed),
+          new Decimal(0),
+        ).toFixed(4),
+      };
+    }
+
     return {
       employmentId: employment.id,
       periodMonth,
@@ -165,6 +226,7 @@ export class SalaryPaymentsService {
       rejected: totals.rejected.toFixed(4),
       balanceRemaining,
       paymentCount: totals.count,
+      commission,
     };
   }
 
@@ -221,12 +283,52 @@ export class SalaryPaymentsService {
     return payment;
   }
 
+  /**
+   * What a mini's approved handovers have earned them in commission, against
+   * what has been paid for it. Earned = Σ cashAmount × the pct SEALED on each
+   * handover (all-time; handovers approved before a rate was set carry null
+   * and earn nothing). Payments are the employment's COMMISSION-kind rows —
+   * they don't touch the monthly budget and the monthly rows don't touch this.
+   */
+  private async commissionTotals(
+    employment: Employment,
+  ): Promise<{ earned: Decimal; confirmed: Decimal; pending: Decimal; count: number }> {
+    const settlements = await this.settlementRepo.find({
+      where: {
+        ownerId: employment.employerId,
+        miniId: employment.employeeId,
+        status: MiniSettlementStatus.APPROVED,
+      },
+    });
+    let earned = new Decimal(0);
+    for (const s of settlements) {
+      if (!s.commissionPct) continue;
+      earned = earned.plus(
+        new Decimal(s.cashAmount).mul(new Decimal(s.commissionPct)).div(100),
+      );
+    }
+
+    const rows = await this.paymentRepo.find({
+      where: { employmentId: employment.id, kind: SalaryPaymentKind.COMMISSION },
+    });
+    let confirmed = new Decimal(0);
+    let pending = new Decimal(0);
+    for (const row of rows) {
+      const amt = new Decimal(row.amount);
+      if (row.status === SalaryPaymentStatus.CONFIRMED) confirmed = confirmed.plus(amt);
+      else if (row.status === SalaryPaymentStatus.PENDING_CONFIRMATION) pending = pending.plus(amt);
+    }
+    return { earned, confirmed, pending, count: rows.length };
+  }
+
   private async periodTotals(
     employmentId: string,
     periodMonth: string,
   ): Promise<{ confirmed: Decimal; pending: Decimal; rejected: Decimal; count: number }> {
+    // Only MONTHLY rows: commission payments have their own budget and must
+    // not consume the month's salary target.
     const rows = await this.paymentRepo.find({
-      where: { employmentId, periodMonth },
+      where: { employmentId, periodMonth, kind: SalaryPaymentKind.MONTHLY },
     });
     let confirmed = new Decimal(0);
     let pending = new Decimal(0);

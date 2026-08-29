@@ -70,25 +70,25 @@ export default function PrinterScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-surface dark:bg-slate-900"
+      className="flex-1 bg-background"
       contentContainerClassName="px-4 pt-4 pb-8"
     >
-      <Text className="text-muted dark:text-slate-400 text-sm mb-4">
+      <Text className="text-muted text-sm mb-4">
         {t.printer.subtitle}
       </Text>
 
       {/* Currently selected */}
       <Card>
-        <Text className="text-muted dark:text-slate-500 text-xs uppercase font-medium tracking-wide mb-1">
+        <Text className="text-muted text-xs uppercase font-medium tracking-wide mb-1">
           {t.printer.pairedLabel}
         </Text>
         {selected ? (
           <View>
-            <Text className="text-text dark:text-slate-100 text-base font-semibold">
+            <Text className="text-text text-base font-semibold">
               🖨 {selected.name}
             </Text>
             {selected.kind === 'bluetooth' ? (
-              <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">
+              <Text className="text-muted text-xs mt-0.5">
                 {selected.address}
               </Text>
             ) : null}
@@ -111,7 +111,7 @@ export default function PrinterScreen() {
             </View>
           </View>
         ) : (
-          <Text className="text-muted dark:text-slate-400 text-sm">{t.printer.none}</Text>
+          <Text className="text-muted text-sm">{t.printer.none}</Text>
         )}
       </Card>
 
@@ -121,17 +121,17 @@ export default function PrinterScreen() {
           print time whether to use Sunmi's SDK or the system print dialog. */}
       {Platform.OS === 'android' && !(selected?.kind === 'builtin') && (
         <Card className="mt-4">
-          <Text className="text-text dark:text-slate-100 font-semibold text-sm">
+          <Text className="text-text font-semibold text-sm">
             🖨 {t.printer.builtInName}
           </Text>
-          <Text className="text-muted dark:text-slate-500 text-xs mt-0.5 mb-3">
+          <Text className="text-muted text-xs mt-0.5 mb-3">
             {t.printer.builtInDetected}
           </Text>
           <Button label={t.printer.useBuiltInBtn} onPress={() => void handleSelectBuiltIn()} variant="outline" />
         </Card>
       )}
 
-      <Text className="text-muted dark:text-slate-500 text-xs mt-5 mb-3 leading-5">
+      <Text className="text-muted text-xs mt-5 mb-3 leading-5">
         {t.printer.pairInOsHint}
       </Text>
 
@@ -159,21 +159,21 @@ export default function PrinterScreen() {
               <Pressable
                 key={d.address}
                 onPress={() => !isSelected && handleSelectBluetooth(d)}
-                className={`bg-card dark:bg-slate-800 border rounded-xl px-4 py-3 mb-2 flex-row items-center justify-between ${
+                className={`bg-card border rounded-xl px-4 py-3 mb-2 flex-row items-center justify-between ${
                   isSelected
                     ? 'border-primary'
-                    : 'border-border dark:border-slate-700'
+                    : 'border-border'
                 }`}
               >
                 <View className="flex-1 pr-3">
-                  <Text className="text-text dark:text-slate-100 font-semibold text-sm">
+                  <Text className="text-text font-semibold text-sm">
                     {d.name}
                   </Text>
-                  <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">
+                  <Text className="text-muted text-xs mt-0.5">
                     {d.address}
                   </Text>
                 </View>
-                <Text className={`text-xs font-semibold ${isSelected ? 'text-primary' : 'text-muted dark:text-slate-400'}`}>
+                <Text className={`text-xs font-semibold ${isSelected ? 'text-primary' : 'text-muted'}`}>
                   {isSelected ? `✓ ${t.printer.selectedBtn}` : t.printer.selectBtn}
                 </Text>
               </Pressable>

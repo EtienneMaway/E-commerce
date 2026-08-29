@@ -7,6 +7,7 @@ import { authApi } from '../../lib/api';
 import { useAuthStore } from '../../store/auth.store';
 import { getErrorMessage, getPendingDeletion, formatDate } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+import { KmbLogo } from '../../components/ui/KmbLogo';
 
 export default function LoginScreen() {
   const t = useT();
@@ -72,37 +73,43 @@ export default function LoginScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-surface dark:bg-slate-900"
-      contentContainerClassName="flex-1 justify-center px-6 py-12"
+      className="flex-1 bg-background"
+      contentContainerClassName="flex-grow justify-center px-6 py-12"
       keyboardShouldPersistTaps="handled"
     >
-      <View className="mb-10">
-        <Text className="text-4xl font-bold text-text dark:text-slate-100">{t.auth.welcomeBack}</Text>
-        <Text className="text-muted dark:text-slate-500 mt-2 text-base">{t.auth.signInSubtitle}</Text>
+      {/* Brand block — same order as the web login: mark, title, subtitle. */}
+      <View className="items-center mb-8">
+        <KmbLogo size={56} className="mb-4" />
+        <Text className="text-2xl font-bold text-text tracking-tight">{t.auth.welcomeBack}</Text>
+        <Text className="text-muted mt-1 text-sm font-medium">{t.auth.signInSubtitle}</Text>
       </View>
 
-      <Input
-        label={t.auth.emailOrPhone}
-        value={emailOrPhone}
-        onChangeText={setEmailOrPhone}
-        placeholder={t.auth.emailOrPhonePlaceholder}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-      <Input
-        label={t.auth.password}
-        value={password}
-        onChangeText={setPassword}
-        placeholder={t.auth.passwordPlaceholder}
-        secureTextEntry
-        passwordToggle
-      />
+      {/* Card — the dashboard puts the form on a raised card over the page
+          background, rather than letting the fields float on the page. */}
+      <View className="bg-card border border-border rounded-2xl p-6">
+        <Input
+          label={t.auth.emailOrPhone}
+          value={emailOrPhone}
+          onChangeText={setEmailOrPhone}
+          placeholder={t.auth.emailOrPhonePlaceholder}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Input
+          label={t.auth.password}
+          value={password}
+          onChangeText={setPassword}
+          placeholder={t.auth.passwordPlaceholder}
+          secureTextEntry
+          passwordToggle
+        />
 
-      <Button label={t.auth.signIn} onPress={handleLogin} loading={loading} className="mt-2" />
+        <Button label={t.auth.signIn} onPress={handleLogin} loading={loading} className="mt-2" />
+      </View>
 
       <View className="flex-row justify-center mt-6">
-        <Text className="text-muted dark:text-slate-500">{t.auth.noAccount}</Text>
+        <Text className="text-muted">{t.auth.noAccount}</Text>
         <Link href="/(auth)/register">
           <Text className="text-primary font-semibold">{t.auth.signUpLink}</Text>
         </Link>

@@ -14,16 +14,16 @@ function MenuItem({ title, subtitle, onPress, destructive }: MenuItemProps) {
   return (
     <Pressable
       onPress={onPress}
-      className="flex-row items-center justify-between bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4 mb-3"
+      className="flex-row items-center justify-between bg-card border border-border rounded-2xl px-4 py-4 mb-3"
       style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
     >
       <View className="flex-1 pr-3">
-        <Text className={`font-semibold text-base ${destructive ? 'text-danger' : 'text-text dark:text-slate-100'}`}>
+        <Text className={`font-semibold text-base ${destructive ? 'text-danger' : 'text-text'}`}>
           {title}
         </Text>
-        <Text className="text-muted dark:text-slate-400 text-sm mt-0.5">{subtitle}</Text>
+        <Text className="text-muted text-sm mt-0.5">{subtitle}</Text>
       </View>
-      <Text className="text-muted dark:text-slate-500 text-xl">›</Text>
+      <Text className="text-muted text-xl">›</Text>
     </Pressable>
   );
 }
@@ -49,17 +49,17 @@ export default function AccountMenuScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-surface dark:bg-slate-900"
+      className="flex-1 bg-background"
       contentContainerClassName="px-4 pt-4 pb-8"
     >
-      <View className="mb-5 bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4">
-        <Text className="text-muted dark:text-slate-400 text-xs uppercase">{t.account.username}</Text>
-        <Text className="text-text dark:text-slate-100 font-semibold text-base mt-1">@{user?.username}</Text>
+      <View className="mb-5 bg-card border border-border rounded-2xl px-4 py-4">
+        <Text className="text-muted text-xs uppercase">{t.account.username}</Text>
+        <Text className="text-text font-semibold text-base mt-1">@{user?.username}</Text>
         {user?.email ? (
-          <Text className="text-muted dark:text-slate-400 text-sm mt-1">{user.email}</Text>
+          <Text className="text-muted text-sm mt-1">{user.email}</Text>
         ) : null}
         {user?.phone ? (
-          <Text className="text-muted dark:text-slate-400 text-sm">{user.phone}</Text>
+          <Text className="text-muted text-sm">{user.phone}</Text>
         ) : null}
       </View>
 

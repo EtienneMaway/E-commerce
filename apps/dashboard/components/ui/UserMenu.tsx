@@ -115,9 +115,9 @@ export function UserMenu() {
               <div
                 className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
                 style={{
-                  background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                  background: 'var(--brand-gradient)',
                   color: '#fff',
-                  boxShadow: '0 2px 6px rgba(99,102,241,0.35)',
+                  boxShadow: '0 2px 6px rgba(var(--primary-rgb),0.35)',
                 }}
               >
                 {(user.username || user.email || '?').slice(0, 2).toUpperCase()}

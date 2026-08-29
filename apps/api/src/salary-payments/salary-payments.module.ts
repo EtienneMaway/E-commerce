@@ -2,10 +2,10 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SalaryPaymentsController } from './salary-payments.controller';
 import { SalaryPaymentsService } from './salary-payments.service';
-import { Employment, SalaryPayment } from '../entities';
+import { Employment, MiniSettlement, SalaryPayment } from '../entities';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SalaryPayment, Employment])],
+  imports: [TypeOrmModule.forFeature([SalaryPayment, Employment, MiniSettlement])],
   controllers: [SalaryPaymentsController],
   providers: [SalaryPaymentsService],
   exports: [SalaryPaymentsService],

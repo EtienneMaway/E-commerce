@@ -17,6 +17,14 @@ interface UserProfile {
     status: 'ACTIVE' | 'TERMINATION_REQUESTED';
     employer: { id: string; username: string };
     terminationRequestedBy: string | null;
+    /** The employer-assigned role, or null when the employee has their tier's defaults. */
+    role?: { id: string; name: string } | null;
+    /**
+     * Every service this employee holds, already expanded and tier-trimmed by the
+     * API. Drives what the UI shows; the API enforces the same set independently,
+     * so hiding a control is a convenience, never the security boundary.
+     */
+    services?: string[];
   } | null;
 }
 
@@ -25,6 +33,12 @@ interface AuthState {
   user: UserProfile | null;
   isLoading: boolean;
   login: (token: string, user: UserProfile) => Promise<void>;
+  /**
+   * Replace the cached profile without touching the token or persona. Used to
+   * pick up a role the employer changed mid-session — the granted services ride
+   * on this object, so refreshing it is what re-opens or closes UI.
+   */
+  setUser: (user: UserProfile) => void;
   logout: () => Promise<void>;
   hydrate: () => Promise<void>;
 }
@@ -33,6 +47,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   token: null,
   user: null,
   isLoading: true,
+
+  setUser: (user) => set({ user }),
 
   login: async (token, user) => {
     await SecureStore.setItemAsync(TOKEN_KEY, token);

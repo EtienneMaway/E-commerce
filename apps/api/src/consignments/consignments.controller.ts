@@ -16,6 +16,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 import { ConsignmentsService } from './consignments.service';
@@ -32,6 +33,7 @@ export class ConsignmentsController {
   // ─── Supplier actions ──────────────────────────────────────────────────────
 
   @Post()
+  @RequiresService('consignments.send')
   @ApiOperation({ summary: 'Send a consignment request to a debtor (supplier action)' })
   @ApiResponse({ status: 201, type: ConsignmentRequest, description: 'Request created with PENDING status' })
   @ApiResponse({ status: 400, description: 'Insufficient stock or invalid debtor' })
@@ -44,6 +46,7 @@ export class ConsignmentsController {
   }
 
   @Get('outgoing')
+  @RequiresService('consignments.send')
   @ApiOperation({ summary: 'List all consignment requests sent by the current user (as supplier)' })
   @ApiResponse({ status: 200, type: [ConsignmentRequest] })
   findOutgoing(@CurrentActorContext() ctx: ActorContext): Promise<ConsignmentRequest[]> {
@@ -51,6 +54,7 @@ export class ConsignmentsController {
   }
 
   @Patch(':id/cancel')
+  @RequiresService('consignments.send')
   @ApiOperation({ summary: 'Cancel a PENDING consignment request (supplier action)' })
   @ApiResponse({ status: 200, type: ConsignmentRequest })
   @ApiResponse({ status: 400, description: 'Request is not PENDING' })
@@ -66,6 +70,7 @@ export class ConsignmentsController {
 
   @Get('incoming')
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @RequiresService('consignments.receive')
   @ApiOperation({ summary: 'List all consignment requests sent to the current user (as debtor)' })
   @ApiResponse({ status: 200, type: [ConsignmentRequest] })
   findIncoming(@CurrentActorContext() ctx: ActorContext): Promise<ConsignmentRequest[]> {
@@ -74,6 +79,7 @@ export class ConsignmentsController {
 
   @Patch(':id/confirm')
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @RequiresService('consignments.receive')
   @ApiOperation({
     summary: 'Confirm receipt of a consignment (debtor action)',
     description:
@@ -91,6 +97,7 @@ export class ConsignmentsController {
 
   @Patch(':id/reject')
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @RequiresService('consignments.receive')
   @ApiOperation({ summary: 'Reject a PENDING consignment request (debtor action)' })
   @ApiResponse({ status: 200, type: ConsignmentRequest, description: 'Status set to REJECTED' })
   @ApiResponse({ status: 400, description: 'Request is not PENDING' })

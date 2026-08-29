@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { User } from '../entities';
 import { SalaryPaymentsService } from './salary-payments.service';
@@ -30,6 +31,7 @@ export class SalaryPaymentsController {
   constructor(private readonly service: SalaryPaymentsService) {}
 
   @Post()
+  @RequiresService('payroll.pay')
   @ApiOperation({
     summary: 'Employer records a salary payment (full or installment)',
     description:
@@ -75,6 +77,7 @@ export class SalaryPaymentsController {
   }
 
   @Delete(':id')
+  @RequiresService('payroll.pay')
   @ApiOperation({ summary: 'Employer cancels a pending payment they recorded by mistake' })
   cancel(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.cancel(user.id, id);

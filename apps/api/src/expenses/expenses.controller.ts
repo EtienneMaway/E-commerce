@@ -22,6 +22,7 @@ import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ListExpensesQueryDto } from './dto/list-expenses-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 
@@ -33,6 +34,7 @@ export class ExpensesController {
   constructor(private readonly service: ExpensesService) {}
 
   @Post()
+  @RequiresService('expenses.record')
   @ApiOperation({ summary: 'Record a new expense' })
   @ApiResponse({ status: 201, description: 'Expense created' })
   create(@CurrentActorContext() ctx: ActorContext, @Body() dto: CreateExpenseDto) {
@@ -41,6 +43,7 @@ export class ExpensesController {
 
   @Get('allowance')
   @AllowedFor('FULL_EMPLOYEE')
+  @RequiresService('expenses.record')
   @ApiOperation({
     summary: 'How much I may still spend today (full employee)',
     description:
@@ -56,6 +59,7 @@ export class ExpensesController {
   }
 
   @Get()
+  @RequiresService('expenses.view')
   @ApiOperation({
     summary: 'List expenses with filters and USD totals',
     description:
@@ -68,6 +72,7 @@ export class ExpensesController {
   }
 
   @Delete(':id')
+  @RequiresService('expenses.view')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete an expense entry' })
   @ApiResponse({ status: 204, description: 'Expense deleted' })

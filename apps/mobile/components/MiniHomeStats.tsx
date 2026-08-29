@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-nati
 import { useQuery } from '@tanstack/react-query';
 import { miniSettlementsApi, type MiniStatsPeriod } from '../lib/api';
 import { QK } from '../lib/query-keys';
+import { useBrand } from '../lib/theme';
 import { formatFcValue } from '../lib/currency';
 import { formatDate, getErrorMessage } from '../lib/utils';
 import { useT } from '../lib/i18n';
@@ -20,6 +21,7 @@ import { StatCard } from './ui/StatCard';
  * No "owed to me" — nobody owes a mini employee.
  */
 export function MiniHomeStats() {
+  const brand = useBrand();
   const t = useT();
   const [period, setPeriod] = useState<MiniStatsPeriod>('since_handover');
 
@@ -70,12 +72,12 @@ export function MiniHomeStats() {
               className={`px-3.5 py-1.5 rounded-full border ${
                 active
                   ? 'bg-primary border-primary'
-                  : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'
+                  : 'bg-card border-border'
               }`}
             >
               <Text
                 className={`text-xs font-semibold ${
-                  active ? 'text-white' : 'text-muted dark:text-slate-400'
+                  active ? 'text-white' : 'text-muted'
                 }`}
               >
                 {p.label}
@@ -93,13 +95,13 @@ export function MiniHomeStats() {
         <>
           {/* Cash to hand over — the mini's "available business cash". */}
           <Card className="mb-3">
-            <Text className="text-muted dark:text-slate-500 text-sm font-medium uppercase tracking-wide mb-1">
+            <Text className="text-muted text-sm font-medium uppercase tracking-wide mb-1">
               {t.miniEmployee.statsCashToHandover}
             </Text>
             <Text className="text-3xl font-bold text-success">
               {isLoading ? '—' : formatFcValue(netFc)}
             </Text>
-            <Text className="text-muted dark:text-slate-500 text-sm mt-1">
+            <Text className="text-muted text-sm mt-1">
               {t.miniEmployee.statsCashToHandoverSub}
             </Text>
           </Card>
@@ -123,11 +125,11 @@ export function MiniHomeStats() {
           {/* Memory-jogging notice about the active window */}
           <View className="flex-row items-start gap-2 bg-primary/5 border border-primary/20 rounded-xl px-3 py-2.5 mb-1">
             {isLoading ? (
-              <ActivityIndicator size="small" color="#2563EB" />
+              <ActivityIndicator size="small" color={brand.primary} />
             ) : (
               <Text className="text-sm">💡</Text>
             )}
-            <Text className="flex-1 text-muted dark:text-slate-400 text-xs leading-4">{notice}</Text>
+            <Text className="flex-1 text-muted text-xs leading-4">{notice}</Text>
           </View>
         </>
       )}

@@ -1,6 +1,7 @@
 import { MiniSettlementsService } from './mini-settlements.service';
 import { EmploymentTier, ExpenseCategory } from '../entities';
 import type { ActorContext } from '../common/types/actor-context';
+import { resolveGrantedServices } from '../common/services/service-catalog';
 
 /**
  * A mini's expenses are capped at a share of what they have SOLD this cycle —
@@ -14,6 +15,7 @@ describe('MiniSettlementsService.expenseAllowance', () => {
     actorId: MINI,
     effectiveOwnerId: MINI,
     tier: 'MINI_EMPLOYEE',
+    services: resolveGrantedServices(null, 'MINI_EMPLOYEE'),
     employment: { employerId: OWNER } as never,
   };
 

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 import { SalesSummaryFilterDto } from '../sales/dto/sales-filter.dto';
@@ -20,6 +21,7 @@ export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('home')
+  @RequiresService('cash.overview')
   @ApiOperation({
     summary: 'Everything the mobile home screen needs, in one request',
     description:
@@ -33,6 +35,7 @@ export class DashboardController {
   }
 
   @Get()
+  @RequiresService('cash.overview')
   @ApiOperation({
     summary: 'Financial summary dashboard',
     description:
@@ -44,6 +47,7 @@ export class DashboardController {
   }
 
   @Get('cash-position')
+  @RequiresService('cash.overview')
   @ApiOperation({
     summary: 'Cash position overview',
     description:
@@ -57,6 +61,7 @@ export class DashboardController {
   }
 
   @Get('profit-summary')
+  @RequiresService('cash.overview')
   @ApiOperation({
     summary: 'Combined period profit (direct sales + external-contact payments)',
     description:
@@ -73,6 +78,7 @@ export class DashboardController {
   }
 
   @Get('suppliers')
+  @RequiresService('suppliers.view')
   @ApiOperation({ summary: 'List all suppliers with outstanding balances' })
   @ApiResponse({ status: 200, description: 'Supplier list sorted by balance desc' })
   getSuppliers(@CurrentActorContext() ctx: ActorContext) {
@@ -80,6 +86,7 @@ export class DashboardController {
   }
 
   @Get('suppliers/:supplierUserId')
+  @RequiresService('suppliers.view')
   @ApiOperation({
     summary: 'Supplier detail view',
     description:
@@ -96,6 +103,7 @@ export class DashboardController {
   }
 
   @Get('debtors')
+  @RequiresService('debtors.view')
   @ApiOperation({ summary: 'List all debtors with outstanding balances' })
   @ApiResponse({ status: 200, description: 'Debtor list sorted by balance desc' })
   getDebtors(@CurrentActorContext() ctx: ActorContext) {
@@ -103,6 +111,7 @@ export class DashboardController {
   }
 
   @Get('debtors/:debtorUserId')
+  @RequiresService('debtors.view')
   @ApiOperation({
     summary: 'Debtor detail view',
     description:
@@ -119,6 +128,7 @@ export class DashboardController {
   }
 
   @Get('profit-by-product')
+  @RequiresService('sales.analytics')
   @ApiOperation({ summary: 'Profit breakdown per product (all time)' })
   @ApiResponse({ status: 200, description: 'Products sorted by total profit desc' })
   getProfitByProduct(@CurrentActorContext() ctx: ActorContext) {
@@ -126,6 +136,7 @@ export class DashboardController {
   }
 
   @Get('profit-by-source')
+  @RequiresService('cash.overview')
   @ApiOperation({
     summary: 'Profit split by stock source (personal vs each supplier)',
   })
@@ -135,6 +146,7 @@ export class DashboardController {
   }
 
   @Get('alerts')
+  @RequiresService('cash.overview')
   @ApiOperation({
     summary: 'Business alerts — overdue debtors and low-stock items',
     description:

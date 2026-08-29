@@ -56,9 +56,9 @@ export function PersonaSwitcher() {
     qc.resetQueries();
   }
 
-  const accent = isEmployerMode ? '#A5B4FC' : 'rgba(var(--sidebar-fg-rgb),0.7)';
-  const bg = isEmployerMode ? 'rgba(99,102,241,0.15)' : 'rgba(var(--sidebar-fg-rgb),0.06)';
-  const border = isEmployerMode ? 'rgba(99,102,241,0.35)' : 'rgba(var(--sidebar-fg-rgb),0.12)';
+  const accent = isEmployerMode ? 'var(--primary-dark)' : 'rgba(var(--sidebar-fg-rgb),0.7)';
+  const bg = isEmployerMode ? 'rgba(var(--primary-rgb),0.15)' : 'rgba(var(--sidebar-fg-rgb),0.06)';
+  const border = isEmployerMode ? 'rgba(var(--primary-rgb),0.35)' : 'rgba(var(--sidebar-fg-rgb),0.12)';
 
   return (
     <div ref={ref} className="relative">
@@ -132,7 +132,7 @@ export function PersonaSwitcher() {
             onClick={() => choose('employer')}
             className="w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors"
             style={{
-              background: kind === 'employer' ? 'rgba(99,102,241,0.12)' : 'transparent',
+              background: kind === 'employer' ? 'rgba(var(--primary-rgb),0.12)' : 'transparent',
             }}
           >
             <span aria-hidden className="text-base mt-0.5">🪪</span>
@@ -145,7 +145,7 @@ export function PersonaSwitcher() {
               </div>
             </div>
             {kind === 'employer' && (
-              <span aria-hidden className="text-xs" style={{ color: '#A5B4FC' }}>
+              <span aria-hidden className="text-xs" style={{ color: 'var(--primary-dark)' }}>
                 ✓
               </span>
             )}

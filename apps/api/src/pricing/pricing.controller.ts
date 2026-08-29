@@ -21,13 +21,15 @@ import { PricingService } from './pricing.service';
 import { UpdatePricingDto, UpsertPricingDto } from './dto/upsert-pricing.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 
 @ApiTags('pricing')
 @ApiBearerAuth('jwt')
 @UseGuards(JwtAuthGuard)
-@AllowedFor('OWNER')
+@AllowedFor('OWNER', 'FULL_EMPLOYEE')
+@RequiresService('pricing.catalog')
 @Controller('pricing')
 export class PricingController {
   constructor(private readonly service: PricingService) {}

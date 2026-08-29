@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!--
+    Splash logo. app.json sets splash.backgroundColor to the app's page
+    background (#EEF1FA) with resizeMode contain, so this is the badge on
+    transparent — the pale ring reads as a halo against that background and the
+    launch screen shows the same mark as the login screen.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="108" y1="108" x2="916" y2="916" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <circle cx="512" cy="512" r="458" fill="none" stroke="#D3CEFB" stroke-width="108"/>
+  <circle cx="512" cy="512" r="404" fill="url(#bg)"/>
+  <g transform="translate(512,512) scale(0.851) translate(-512,-512)"
+     stroke="#FFFFFF" stroke-width="108" stroke-linecap="round"
+     stroke-linejoin="round" fill="none">
+    <path d="M364 268 V 756"/>
+    <path d="M364 512 L 660 268"/>
+    <path d="M364 512 L 660 756"/>
+  </g>
+</svg>

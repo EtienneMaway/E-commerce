@@ -6,11 +6,11 @@
     "scheme": "kmb-app",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#EEF1FA"
     },
     "ios": {
       "supportsTablet": false,
@@ -22,7 +22,7 @@
     "android": {
       "package": "com.kmb.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#D3CEFB",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -37,7 +37,10 @@
       "expo-router",
       "expo-secure-store",
       "expo-notifications",
-      "expo-sharing"
+      "expo-sharing",
+      "./plugins/with-cleartext-local",
+      "./plugins/with-brand-colors",
+      "./plugins/with-bt-no-location"
     ],
     "experiments": {
       "typedRoutes": true

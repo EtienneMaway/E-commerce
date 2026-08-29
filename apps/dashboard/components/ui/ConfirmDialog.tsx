@@ -110,10 +110,10 @@ function ConfirmDialog({
       };
     }
     return {
-      accent: '#6366F1',
-      accentSoft: 'rgba(99,102,241,0.12)',
-      accentBorder: 'rgba(99,102,241,0.35)',
-      ring: 'rgba(99,102,241,0.35)',
+      accent: 'var(--primary)',
+      accentSoft: 'rgba(var(--primary-rgb),0.12)',
+      accentBorder: 'rgba(var(--primary-rgb),0.35)',
+      ring: 'rgba(var(--primary-rgb),0.35)',
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
           <circle cx="12" cy="12" r="10" />

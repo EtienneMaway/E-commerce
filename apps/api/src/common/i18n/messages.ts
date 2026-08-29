@@ -246,6 +246,22 @@ export const FR_TRANSLATIONS: Translation[] = [
     fr: (m) => `Un autre produit utilise déjà le nom "${m[1]}". Choisissez un autre nom.`,
   },
 
+  // ─── Permissions (tier + role services) ──────────────────────────────────
+  {
+    pattern: /^Your role does not include this feature — ask your employer to enable it$/,
+    fr: () =>
+      "Votre rôle ne comprend pas cette fonctionnalité — demandez à votre employeur de l'activer",
+  },
+  {
+    pattern: /^This action is not permitted for mini employees$/,
+    fr: () => 'Cette action n\'est pas autorisée pour les mini-employés',
+  },
+  {
+    pattern: /^This action is not permitted while acting on behalf of an employer$/,
+    fr: () =>
+      "Cette action n'est pas autorisée lorsque vous agissez pour le compte d'un employeur",
+  },
+
   // ─── Validation (class-validator) ────────────────────────────────────────
   {
     pattern: /^Forbidden resource$/i,

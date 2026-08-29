@@ -200,21 +200,21 @@ export function EditMiniPriceModal({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScrollView className="flex-1 bg-surface dark:bg-slate-900" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
+      <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-xl font-bold text-text dark:text-slate-100 capitalize">{productName}</Text>
+          <Text className="text-xl font-bold text-text capitalize">{productName}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
         </View>
-        <Text className="text-muted dark:text-slate-500 text-sm mb-5">
+        <Text className="text-muted text-sm mb-5">
           {isSized ? t.sizedSale.editPricesSub : t.miniEmployee.priceSubtitle}
         </Text>
 
         {isLoading ? (
           <ActivityIndicator className="mt-6" />
         ) : !hasStock ? (
-          <Text className="text-muted dark:text-slate-500 text-center mt-8">{t.miniEmployee.priceNoStock}</Text>
+          <Text className="text-muted text-center mt-8">{t.miniEmployee.priceNoStock}</Text>
         ) : isSized ? (
           <>
             {sizeGroups.map((g) => {
@@ -242,7 +242,7 @@ export function EditMiniPriceModal({
 
             {/* Whole-carton selling price */}
             {showCarton && (
-              <View className="mt-4 pt-4 border-t border-border dark:border-slate-700">
+              <View className="mt-4 pt-4 border-t border-border">
                 <Text className="text-xs font-bold uppercase tracking-wider text-primary mb-2">
                   {t.sizedSale.cartonTab}
                 </Text>
@@ -265,9 +265,9 @@ export function EditMiniPriceModal({
           </>
         ) : (
           <>
-            <View className="bg-card dark:bg-slate-800 rounded-xl px-4 py-3 mb-4">
-              <Text className="text-muted dark:text-slate-500 text-xs">{t.miniEmployee.priceAgreed}</Text>
-              <Text className="text-text dark:text-slate-100 font-semibold">{formatFcValue(Math.ceil(agreedUsd * r))}</Text>
+            <View className="bg-card rounded-xl px-4 py-3 mb-4">
+              <Text className="text-muted text-xs">{t.miniEmployee.priceAgreed}</Text>
+              <Text className="text-text font-semibold">{formatFcValue(Math.ceil(agreedUsd * r))}</Text>
             </View>
             <Input
               label={t.miniEmployee.priceNew}

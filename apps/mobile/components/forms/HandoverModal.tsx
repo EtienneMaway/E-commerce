@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { miniSettlementsApi, type ActiveTeamMember, type HandoverPreview } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { formatFcValue } from '../../lib/currency';
+import { useBrand } from '../../lib/theme';
 import { breakdownQuantity, formatBreakdown, getErrorMessage } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { useT } from '../../lib/i18n';
@@ -21,6 +22,7 @@ interface Props {
  * handed back. The mini just reviews and confirms.
  */
 export function HandoverModal({ visible, onClose }: Props) {
+  const brand = useBrand();
   const t = useT();
   const qc = useQueryClient();
 
@@ -114,14 +116,14 @@ export function HandoverModal({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScrollView className="flex-1 bg-surface dark:bg-slate-900" contentContainerClassName="px-6 py-8">
+      <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-xl font-bold text-text dark:text-slate-100">{t.miniEmployee.handoverTitle}</Text>
+          <Text className="text-xl font-bold text-text">{t.miniEmployee.handoverTitle}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
         </View>
-        <Text className="text-muted dark:text-slate-500 text-sm mb-5">{t.miniEmployee.handoverAutoSubtitle}</Text>
+        <Text className="text-muted text-sm mb-5">{t.miniEmployee.handoverAutoSubtitle}</Text>
 
         {blocked ? (
           <View className="mt-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-2xl px-4 py-4">
@@ -147,7 +149,7 @@ export function HandoverModal({ visible, onClose }: Props) {
         ) : error ? (
           <Text className="text-danger text-center mt-10">{getErrorMessage(error)}</Text>
         ) : !hasSomething ? (
-          <Text className="text-muted dark:text-slate-500 text-center mt-10">{t.miniEmployee.handoverNothingOwed}</Text>
+          <Text className="text-muted text-center mt-10">{t.miniEmployee.handoverNothingOwed}</Text>
         ) : (
           <>
             {/* ── What you sold ── */}
@@ -155,35 +157,35 @@ export function HandoverModal({ visible, onClose }: Props) {
               {t.miniEmployee.handoverSoldSection}
             </Text>
             {sold.length === 0 ? (
-              <Text className="text-muted dark:text-slate-500 text-sm mb-2">{t.miniEmployee.miniNoSalesShort}</Text>
+              <Text className="text-muted text-sm mb-2">{t.miniEmployee.miniNoSalesShort}</Text>
             ) : (
               sold.map((s) => (
                 <View
                   key={s.variantId ?? s.productName}
-                  className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-3 mb-2"
+                  className="bg-card border border-border rounded-xl px-4 py-3 mb-2"
                 >
                   <View className="flex-row justify-between items-center">
-                    <Text className="text-text dark:text-slate-100 font-semibold capitalize">
+                    <Text className="text-text font-semibold capitalize">
                       {s.productName}
                       {s.variantLabel ? ` · ${s.variantLabel}` : ''}
                     </Text>
-                    <Text className="text-muted dark:text-slate-400 text-xs">
+                    <Text className="text-muted text-xs">
                       {formatBreakdown(breakdownQuantity(s.qtySold, s.piecesPerCarton))}
                     </Text>
                   </View>
                   <View className="flex-row justify-between mt-1.5">
-                    <Text className="text-muted dark:text-slate-400 text-xs">{t.miniEmployee.handoverRevenue}</Text>
-                    <Text className="text-text dark:text-slate-200 text-xs">
+                    <Text className="text-muted text-xs">{t.miniEmployee.handoverRevenue}</Text>
+                    <Text className="text-text text-xs">
                       {formatFcValue((parseFloat(s.agreedValueFc) || 0) + (parseFloat(s.profitFc) || 0))}
                     </Text>
                   </View>
                   <View className="flex-row justify-between mt-0.5">
-                    <Text className="text-muted dark:text-slate-400 text-xs">{t.miniEmployee.handoverProfit}</Text>
-                    <Text className="text-xs" style={{ color: '#10B981' }}>{formatFcValue(s.profitFc)}</Text>
+                    <Text className="text-muted text-xs">{t.miniEmployee.handoverProfit}</Text>
+                    <Text className="text-xs" style={{ color: brand.success }}>{formatFcValue(s.profitFc)}</Text>
                   </View>
                   <View className="flex-row justify-between mt-0.5">
-                    <Text className="text-muted dark:text-slate-400 text-xs">{t.miniEmployee.handoverOwed}</Text>
-                    <Text className="text-text dark:text-slate-100 text-xs font-semibold">{formatFcValue(s.agreedValueFc)}</Text>
+                    <Text className="text-muted text-xs">{t.miniEmployee.handoverOwed}</Text>
+                    <Text className="text-text text-xs font-semibold">{formatFcValue(s.agreedValueFc)}</Text>
                   </View>
                 </View>
               ))
@@ -192,22 +194,22 @@ export function HandoverModal({ visible, onClose }: Props) {
             {/* ── Cash summary ── */}
             <View className="mt-3 bg-primary/10 border border-primary/30 rounded-2xl px-4 py-3">
               <View className="flex-row justify-between">
-                <Text className="text-muted dark:text-slate-400 text-sm">{t.miniEmployee.handoverSoldCash}</Text>
-                <Text className="text-text dark:text-slate-200 text-sm">{formatFcValue(cashForSoldFc)}</Text>
+                <Text className="text-muted text-sm">{t.miniEmployee.handoverSoldCash}</Text>
+                <Text className="text-text text-sm">{formatFcValue(cashForSoldFc)}</Text>
               </View>
               {expensesFc > 0 && (
                 <View className="flex-row justify-between mt-1">
-                  <Text className="text-muted dark:text-slate-400 text-sm">{t.miniEmployee.handoverExpenses}</Text>
+                  <Text className="text-muted text-sm">{t.miniEmployee.handoverExpenses}</Text>
                   <Text className="text-danger text-sm">− {formatFcValue(expensesFc)}</Text>
                 </View>
               )}
               <View className="flex-row justify-between mt-2 pt-2 border-t border-primary/20">
-                <Text className="text-text dark:text-slate-100 font-semibold">{t.miniEmployee.handoverTotalCash}</Text>
-                <Text className="text-text dark:text-slate-100 font-bold text-lg">{formatFcValue(netFc)}</Text>
+                <Text className="text-text font-semibold">{t.miniEmployee.handoverTotalCash}</Text>
+                <Text className="text-text font-bold text-lg">{formatFcValue(netFc)}</Text>
               </View>
               <View className="flex-row justify-between mt-1">
-                <Text className="text-muted dark:text-slate-400 text-sm">{t.miniEmployee.handoverProfitMade}</Text>
-                <Text className="text-sm font-semibold" style={{ color: '#10B981' }}>{formatFcValue(profitFc)}</Text>
+                <Text className="text-muted text-sm">{t.miniEmployee.handoverProfitMade}</Text>
+                <Text className="text-sm font-semibold" style={{ color: brand.success }}>{formatFcValue(profitFc)}</Text>
               </View>
             </View>
 
@@ -220,9 +222,9 @@ export function HandoverModal({ visible, onClose }: Props) {
                 {expenses.map((e, i) => (
                   <View
                     key={`${e.category}-${i}`}
-                    className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-2.5 mb-2 flex-row justify-between"
+                    className="bg-card border border-border rounded-xl px-4 py-2.5 mb-2 flex-row justify-between"
                   >
-                    <Text className="text-text dark:text-slate-200 text-sm">
+                    <Text className="text-text text-sm">
                       {t.miniEmployee.expenseCat[e.category as keyof typeof t.miniEmployee.expenseCat] ?? e.category}
                       {e.description ? ` · ${e.description}` : ''}
                     </Text>
@@ -241,10 +243,10 @@ export function HandoverModal({ visible, onClose }: Props) {
                 {team.map((m) => (
                   <View
                     key={m.id}
-                    className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-2.5 mb-2 flex-row justify-between"
+                    className="bg-card border border-border rounded-xl px-4 py-2.5 mb-2 flex-row justify-between"
                   >
-                    <Text className="text-text dark:text-slate-200 text-sm">{m.name}</Text>
-                    <Text className="text-muted dark:text-slate-400 text-sm">
+                    <Text className="text-text text-sm">{m.name}</Text>
+                    <Text className="text-muted text-sm">
                       {m.phone ?? t.miniEmployee.teamNoPhone}
                     </Text>
                   </View>
@@ -257,18 +259,18 @@ export function HandoverModal({ visible, onClose }: Props) {
               {t.miniEmployee.handoverReturnsSection}
             </Text>
             {returns.length === 0 ? (
-              <Text className="text-muted dark:text-slate-500 text-sm">{t.miniEmployee.handoverNothingToReturn}</Text>
+              <Text className="text-muted text-sm">{t.miniEmployee.handoverNothingToReturn}</Text>
             ) : (
               returns.map((l) => (
                 <View
                   key={l.variantId ?? l.productName}
-                  className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-2.5 mb-2 flex-row justify-between"
+                  className="bg-card border border-border rounded-xl px-4 py-2.5 mb-2 flex-row justify-between"
                 >
-                  <Text className="text-text dark:text-slate-200 text-sm capitalize">
+                  <Text className="text-text text-sm capitalize">
                     {l.productName}
                     {l.variantLabel ? ` · ${l.variantLabel}` : ''}
                   </Text>
-                  <Text className="text-muted dark:text-slate-400 text-sm">
+                  <Text className="text-muted text-sm">
                     {formatBreakdown(breakdownQuantity(l.quantity, l.piecesPerCarton))}
                   </Text>
                 </View>

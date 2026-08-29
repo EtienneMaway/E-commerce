@@ -9,6 +9,14 @@ export interface ActiveEmployment {
   status: 'ACTIVE' | 'TERMINATION_REQUESTED';
   employer: { id: string; username: string };
   terminationRequestedBy: string | null;
+  /** The employer-assigned role, or null when the employee has their tier's defaults. */
+  role?: { id: string; name: string } | null;
+  /**
+   * Every service this employee holds, already expanded and tier-trimmed by the
+   * API. Drives what the UI shows; the API enforces the same set independently,
+   * so hiding a control is a convenience, never the security boundary.
+   */
+  services?: string[];
 }
 
 interface User {

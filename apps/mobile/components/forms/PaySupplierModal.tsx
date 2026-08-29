@@ -8,6 +8,7 @@ import { Button } from '../ui/Button';
 import { getErrorMessage } from '../../lib/utils';
 import { useFormatCurrency, useExchangeRate, fcToUsd } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
+import { useBrand } from '../../lib/theme';
 
 interface Props {
   visible: boolean;
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function PaySupplierModal({ visible, onClose, supplierId, supplierUsername, outstandingBalance }: Props) {
+  const brand = useBrand();
   const t = useT();
   const qc = useQueryClient();
   const formatCurrency = useFormatCurrency();
@@ -54,17 +56,17 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScrollView className="flex-1 bg-surface dark:bg-slate-900" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
+      <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-xl font-bold text-text dark:text-slate-100">{t.paySupplierModal.title}</Text>
+          <Text className="text-xl font-bold text-text">{t.paySupplierModal.title}</Text>
           <TouchableOpacity onPress={onClose}><Text className="text-primary font-medium">{t.common.cancel}</Text></TouchableOpacity>
         </View>
 
-        <View className="bg-surface dark:bg-slate-900 border border-border dark:border-slate-700 rounded-xl p-4 mb-5">
-          <Text className="text-muted dark:text-slate-500 text-xs mb-1">{t.paySupplierModal.paying}</Text>
-          <Text className="text-text dark:text-slate-100 font-bold text-base">@{supplierUsername}</Text>
+        <View className="bg-surface border border-border rounded-xl p-4 mb-5">
+          <Text className="text-muted text-xs mb-1">{t.paySupplierModal.paying}</Text>
+          <Text className="text-text font-bold text-base">@{supplierUsername}</Text>
           <View className="flex-row justify-between mt-2">
-            <Text className="text-muted dark:text-slate-500 text-xs">{t.paySupplierModal.outstandingBalance}</Text>
+            <Text className="text-muted text-xs">{t.paySupplierModal.outstandingBalance}</Text>
             <Text className="text-danger font-bold text-sm">{formatCurrency(outstandingBalance)}</Text>
           </View>
         </View>
@@ -72,7 +74,7 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
         {/* Amount field with Max button */}
         <View className="mb-4">
           <View className="flex-row items-center justify-between mb-1.5">
-            <Text className="text-sm font-medium text-text dark:text-slate-100">{t.paySupplierModal.paymentAmount}</Text>
+            <Text className="text-sm font-medium text-text">{t.paySupplierModal.paymentAmount}</Text>
             <TouchableOpacity
               onPress={() => {
                 const maxFc = Math.round(parseFloat(outstandingBalance) * parseFloat(rate));
@@ -88,8 +90,8 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
             onChangeText={setAmountFc}
             placeholder="0"
             keyboardType="decimal-pad"
-            placeholderTextColor="#94A3B8"
-            className="border rounded-xl px-4 py-3 text-text dark:text-slate-100 bg-card dark:bg-slate-800 text-base border-border dark:border-slate-700"
+            placeholderTextColor={brand.mutedSubtle}
+            className="border rounded-xl px-4 py-3 text-text bg-card text-base border-border"
           />
         </View>
         <Input

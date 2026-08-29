@@ -1398,6 +1398,15 @@ export class MiniSettlementsService {
         await manager.save(MiniTeamMember, m);
       }
 
+      // ── Commission: seal the employment's CURRENT rate onto this handover —
+      // this is the moment it starts earning ("from the day the percentage is
+      // set" = every handover approved after that). A later rate change never
+      // rewrites what this handover pays the mini. Null when no commission. ──
+      const employment = await manager.findOne(Employment, {
+        where: { employerId: ownerId, employeeId: miniId },
+      });
+      settlement.commissionPct = employment?.commissionPct ?? null;
+
       settlement.status = MiniSettlementStatus.APPROVED;
       settlement.approvedAt = new Date();
       settlement.actorId = actorId;

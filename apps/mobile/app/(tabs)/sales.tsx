@@ -12,6 +12,7 @@ import {
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { salesApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
+import { useBrand } from '../../lib/theme';
 import { formatDate } from '../../lib/utils';
 import { useFormatCurrency } from '../../lib/currency';
 import { Badge } from '../../components/ui/Badge';
@@ -56,15 +57,15 @@ function SaleCard({ item, onReprint }: { item: SaleRow; onReprint: (row: SaleRow
   return (
     <Pressable
       onPress={() => onReprint(item)}
-      className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3"
+      className="bg-card border border-border rounded-2xl p-4 mb-3"
       style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
     >
       <View className="flex-row justify-between items-start mb-2">
         <View className="flex-1 mr-2">
-          <Text className="text-text dark:text-slate-100 font-semibold text-base" numberOfLines={1}>
+          <Text className="text-text font-semibold text-base" numberOfLines={1}>
             {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
           </Text>
-          <Text className="text-muted dark:text-slate-500 text-sm">{formatDate(item.date)}</Text>
+          <Text className="text-muted text-sm">{formatDate(item.date)}</Text>
         </View>
         <Badge
           label={item.isLoss ? t.sales.loss(formatCurrency(Math.abs(profitNum).toFixed(4))) : `+${formatCurrency(item.profit)}`}
@@ -72,21 +73,21 @@ function SaleCard({ item, onReprint }: { item: SaleRow; onReprint: (row: SaleRow
         />
       </View>
       <View className="flex-row justify-between">
-        <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.qty}: {item.qtySold}</Text>
-        <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.unitCost}: {formatCurrency(item.unitCost)}</Text>
-        <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.salePrice}: {formatCurrency(item.salePrice)}</Text>
+        <Text className="text-muted text-sm">{t.sales.qty} {item.qtySold}</Text>
+        <Text className="text-muted text-sm">{t.sales.unitCost} {formatCurrency(item.unitCost)}</Text>
+        <Text className="text-muted text-sm">{t.sales.salePrice} {formatCurrency(item.salePrice)}</Text>
       </View>
       {item.source === 'SUPPLIER' && item.supplierUsername && (
-        <Text className="text-muted dark:text-slate-500 text-sm mt-1">{t.sales.via(item.supplierUsername)}</Text>
+        <Text className="text-muted text-sm mt-1">{t.sales.via(item.supplierUsername)}</Text>
       )}
       {(item.clientName || item.clientPhone) && (
-        <View className="mt-2 pt-2 border-t border-border dark:border-slate-700 flex-row items-center gap-2 flex-wrap">
-          <Text className="text-muted dark:text-slate-500 text-xs">👤 {t.sales.clientLabel}:</Text>
+        <View className="mt-2 pt-2 border-t border-border flex-row items-center gap-2 flex-wrap">
+          <Text className="text-muted text-xs">👤 {t.sales.clientLabel}:</Text>
           {item.clientName && (
-            <Text className="text-text dark:text-slate-200 text-xs font-medium">{item.clientName}</Text>
+            <Text className="text-text text-xs font-medium">{item.clientName}</Text>
           )}
           {item.clientPhone && (
-            <Text className="text-muted dark:text-slate-400 text-xs">{item.clientPhone}</Text>
+            <Text className="text-muted text-xs">{item.clientPhone}</Text>
           )}
         </View>
       )}
@@ -99,27 +100,27 @@ function TopProductCard({ item, rank, rankBy }: { item: TopProductRow; rank: num
   const t = useT();
   const formatCurrency = useFormatCurrency();
   return (
-    <View className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl p-4 mb-3">
+    <View className="bg-card border border-border rounded-2xl p-4 mb-3">
       <View className="flex-row items-center mb-2">
         <View className="w-7 h-7 rounded-full bg-primary items-center justify-center mr-3">
           <Text className="text-white text-xs font-bold">#{rank}</Text>
         </View>
-        <Text className="text-text dark:text-slate-100 font-semibold flex-1" numberOfLines={1}>
+        <Text className="text-text font-semibold flex-1" numberOfLines={1}>
           {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
         </Text>
       </View>
       <View className="flex-row justify-between">
         <View className="items-center">
-          <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.qtySold}</Text>
-          <Text className={`text-base font-bold ${rankBy === 'qty' ? 'text-primary' : 'text-text dark:text-slate-100'}`}>{item.totalQtySold}</Text>
+          <Text className="text-muted text-sm">{t.sales.qtySold}</Text>
+          <Text className={`text-base font-bold ${rankBy === 'qty' ? 'text-primary' : 'text-text'}`}>{item.totalQtySold}</Text>
         </View>
         <View className="items-center">
-          <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.revenueLabel}</Text>
-          <Text className={`text-base font-bold ${rankBy === 'revenue' ? 'text-primary' : 'text-text dark:text-slate-100'}`}>{formatCurrency(item.totalRevenue)}</Text>
+          <Text className="text-muted text-sm">{t.sales.revenueLabel}</Text>
+          <Text className={`text-base font-bold ${rankBy === 'revenue' ? 'text-primary' : 'text-text'}`}>{formatCurrency(item.totalRevenue)}</Text>
         </View>
         <View className="items-center">
-          <Text className="text-muted dark:text-slate-500 text-sm">{t.sales.profitLabel}</Text>
-          <Text className={`text-base font-bold ${rankBy === 'profit' ? 'text-primary' : 'text-text dark:text-slate-100'}`}>{formatCurrency(item.totalProfit)}</Text>
+          <Text className="text-muted text-sm">{t.sales.profitLabel}</Text>
+          <Text className={`text-base font-bold ${rankBy === 'profit' ? 'text-primary' : 'text-text'}`}>{formatCurrency(item.totalProfit)}</Text>
         </View>
       </View>
     </View>
@@ -127,6 +128,7 @@ function TopProductCard({ item, rank, rankBy }: { item: TopProductRow; rank: num
 }
 
 export default function SalesScreen() {
+  const brand = useBrand();
   const t = useT();
   const [view, setView] = useState<View_>('history');
   const formatCurrency = useFormatCurrency();
@@ -193,21 +195,21 @@ export default function SalesScreen() {
   const totalRevenue = sales.reduce((s, x) => s + parseFloat(x.salePrice) * Number(x.qtySold), 0);
 
   return (
-    <View className="flex-1 bg-surface dark:bg-slate-900">
+    <View className="flex-1 bg-background">
       <View className="px-4 pt-4"><PersonaBanner /></View>
       {/* View toggle */}
-      <View className="flex-row mx-4 mt-4 mb-3 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
+      <View className="flex-row mx-4 mt-4 mb-3 bg-background rounded-xl p-1">
         <TouchableOpacity
           onPress={() => setView('history')}
-          className={`flex-1 py-2 rounded-lg items-center ${view === 'history' ? 'bg-white dark:bg-slate-600 shadow-sm' : ''}`}
+          className={`flex-1 py-2 rounded-lg items-center ${view === 'history' ? 'bg-card shadow-sm' : ''}`}
         >
-          <Text className={`text-sm font-semibold ${view === 'history' ? 'text-text dark:text-slate-100' : 'text-muted dark:text-slate-500'}`}>{t.sales.history}</Text>
+          <Text className={`text-sm font-semibold ${view === 'history' ? 'text-text' : 'text-muted'}`}>{t.sales.history}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setView('top')}
-          className={`flex-1 py-2 rounded-lg items-center ${view === 'top' ? 'bg-white dark:bg-slate-600 shadow-sm' : ''}`}
+          className={`flex-1 py-2 rounded-lg items-center ${view === 'top' ? 'bg-card shadow-sm' : ''}`}
         >
-          <Text className={`text-sm font-semibold ${view === 'top' ? 'text-text dark:text-slate-100' : 'text-muted dark:text-slate-500'}`}>{t.sales.topProducts}</Text>
+          <Text className={`text-sm font-semibold ${view === 'top' ? 'text-text' : 'text-muted'}`}>{t.sales.topProducts}</Text>
         </TouchableOpacity>
       </View>
 
@@ -218,20 +220,20 @@ export default function SalesScreen() {
               <Pressable
                 key={opt.value}
                 onPress={() => setHistoryPeriod(opt.value)}
-                className={`px-3.5 py-2 rounded-full border ${historyPeriod === opt.value ? 'bg-primary border-primary' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'}`}
+                className={`px-3.5 py-2 rounded-full border ${historyPeriod === opt.value ? 'bg-primary border-primary' : 'bg-card border-border'}`}
                 style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] })}
               >
-                <Text className={`text-sm font-medium ${historyPeriod === opt.value ? 'text-white' : 'text-text dark:text-slate-100'}`}>{opt.label}</Text>
+                <Text className={`text-sm font-medium ${historyPeriod === opt.value ? 'text-white' : 'text-text'}`}>{opt.label}</Text>
               </Pressable>
             ))
           : topPeriodOptions.map((opt) => (
               <Pressable
                 key={opt.value}
                 onPress={() => setTopPeriod(opt.value)}
-                className={`px-3.5 py-2 rounded-full border ${topPeriod === opt.value ? 'bg-primary border-primary' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'}`}
+                className={`px-3.5 py-2 rounded-full border ${topPeriod === opt.value ? 'bg-primary border-primary' : 'bg-card border-border'}`}
                 style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] })}
               >
-                <Text className={`text-sm font-medium ${topPeriod === opt.value ? 'text-white' : 'text-text dark:text-slate-100'}`}>{opt.label}</Text>
+                <Text className={`text-sm font-medium ${topPeriod === opt.value ? 'text-white' : 'text-text'}`}>{opt.label}</Text>
               </Pressable>
             ))}
       </View>
@@ -243,10 +245,10 @@ export default function SalesScreen() {
             <Pressable
               key={r}
               onPress={() => setRankBy(r)}
-              className={`px-3.5 py-2 rounded-full border ${rankBy === r ? 'bg-slate-700 dark:bg-slate-500 border-slate-700 dark:border-slate-500' : 'bg-card dark:bg-slate-800 border-border dark:border-slate-700'}`}
+              className={`px-3.5 py-2 rounded-full border ${rankBy === r ? 'bg-primary border-primary' : 'bg-card border-border'}`}
               style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] })}
             >
-              <Text className={`text-sm font-medium capitalize ${rankBy === r ? 'text-white' : 'text-text dark:text-slate-100'}`}>{rankLabels[r]}</Text>
+              <Text className={`text-sm font-medium capitalize ${rankBy === r ? 'text-white' : 'text-text'}`}>{rankLabels[r]}</Text>
             </Pressable>
           ))}
         </View>
@@ -259,8 +261,8 @@ export default function SalesScreen() {
             value={clientQuery}
             onChangeText={setClientQuery}
             placeholder={t.sales.searchClientPlaceholder}
-            placeholderTextColor="#94a3b8"
-            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl px-4 py-2.5 text-text dark:text-slate-100 text-sm"
+            placeholderTextColor={brand.mutedSubtle}
+            className="bg-card border border-border rounded-xl px-4 py-2.5 text-text text-sm"
           />
         </View>
       )}
@@ -286,8 +288,8 @@ export default function SalesScreen() {
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <SaleCard item={item} onReprint={setReprintSource} />}
           contentContainerClassName="px-4 pb-8"
-          refreshControl={<RefreshControl refreshing={salesLoading} onRefresh={refetch} tintColor="#2563EB" />}
-          ListHeaderComponent={salesLoading && sales.length === 0 ? <ActivityIndicator className="mt-12" color="#2563EB" /> : null}
+          refreshControl={<RefreshControl refreshing={salesLoading} onRefresh={refetch} tintColor={brand.primary} />}
+          ListHeaderComponent={salesLoading && sales.length === 0 ? <ActivityIndicator className="mt-12" color={brand.primary} /> : null}
           ListEmptyComponent={
             !salesLoading ? (
               <EmptyState emoji="💰" title={t.sales.noSales} subtitle={t.sales.noSalesSub} />
@@ -300,8 +302,8 @@ export default function SalesScreen() {
           keyExtractor={(item) => item.productName}
           renderItem={({ item, index }) => <TopProductCard item={item} rank={index + 1} rankBy={rankBy} />}
           contentContainerClassName="px-4 pb-8"
-          refreshControl={<RefreshControl refreshing={topLoading} onRefresh={refetch} tintColor="#2563EB" />}
-          ListHeaderComponent={topLoading && topProducts.length === 0 ? <ActivityIndicator className="mt-12" color="#2563EB" /> : null}
+          refreshControl={<RefreshControl refreshing={topLoading} onRefresh={refetch} tintColor={brand.primary} />}
+          ListHeaderComponent={topLoading && topProducts.length === 0 ? <ActivityIndicator className="mt-12" color={brand.primary} /> : null}
           ListEmptyComponent={
             !topLoading ? (
               <EmptyState emoji="🏆" title={t.sales.noData} subtitle={t.sales.noDataSub} />

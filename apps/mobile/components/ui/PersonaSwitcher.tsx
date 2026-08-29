@@ -42,7 +42,7 @@ export function PersonaSwitcher() {
         className={`flex-row items-center gap-1 px-2.5 py-1 rounded-full ${
           isEmployerMode
             ? 'bg-indigo-100 dark:bg-indigo-950 border border-indigo-300 dark:border-indigo-800'
-            : 'bg-card dark:bg-slate-800 border border-border dark:border-slate-700'
+            : 'bg-card border border-border'
         }`}
         accessibilityLabel={t.persona.switchTo}
       >
@@ -50,12 +50,12 @@ export function PersonaSwitcher() {
         <Text
           numberOfLines={1}
           className={`text-xs font-semibold max-w-[100px] ${
-            isEmployerMode ? 'text-indigo-700 dark:text-indigo-300' : 'text-muted dark:text-slate-400'
+            isEmployerMode ? 'text-indigo-700 dark:text-indigo-300' : 'text-muted'
           }`}
         >
           {isEmployerMode ? t.persona.actingBanner(employerName) : t.persona.self}
         </Text>
-        <Text className={`text-[10px] ${isEmployerMode ? 'text-indigo-700 dark:text-indigo-300' : 'text-muted dark:text-slate-500'}`}>
+        <Text className={`text-[10px] ${isEmployerMode ? 'text-indigo-700 dark:text-indigo-300' : 'text-muted'}`}>
           ▾
         </Text>
       </Pressable>
@@ -71,11 +71,11 @@ export function PersonaSwitcher() {
           onPress={() => setOpen(false)}
         >
           <Pressable
-            className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl w-full max-w-sm overflow-hidden"
+            className="bg-card border border-border rounded-2xl w-full max-w-sm overflow-hidden"
             onPress={(e) => e.stopPropagation()}
           >
-            <View className="px-4 py-3 border-b border-border dark:border-slate-700">
-              <Text className="text-xs font-semibold uppercase tracking-wider text-muted dark:text-slate-500">
+            <View className="px-4 py-3 border-b border-border">
+              <Text className="text-xs font-semibold uppercase tracking-wider text-muted">
                 {t.persona.viewAs}
               </Text>
             </View>
@@ -83,15 +83,15 @@ export function PersonaSwitcher() {
             <Pressable
               onPress={() => choose('self')}
               className={`flex-row items-start gap-3 px-4 py-3.5 ${
-                kind === 'self' ? 'bg-surface dark:bg-slate-900' : ''
+                kind === 'self' ? 'bg-surface' : ''
               }`}
             >
               <Text className="text-lg mt-0.5">👤</Text>
               <View className="flex-1">
-                <Text className="text-sm font-semibold text-text dark:text-slate-100">
+                <Text className="text-sm font-semibold text-text">
                   {t.persona.self}
                 </Text>
-                <Text className="text-xs text-muted dark:text-slate-400 mt-0.5">
+                <Text className="text-xs text-muted mt-0.5">
                   {t.persona.selfSub}
                 </Text>
               </View>
@@ -100,16 +100,16 @@ export function PersonaSwitcher() {
 
             <Pressable
               onPress={() => choose('employer')}
-              className={`flex-row items-start gap-3 px-4 py-3.5 border-t border-border dark:border-slate-700 ${
+              className={`flex-row items-start gap-3 px-4 py-3.5 border-t border-border ${
                 kind === 'employer' ? 'bg-indigo-50 dark:bg-indigo-950' : ''
               }`}
             >
               <Text className="text-lg mt-0.5">🪪</Text>
               <View className="flex-1">
-                <Text className="text-sm font-semibold text-text dark:text-slate-100">
+                <Text className="text-sm font-semibold text-text">
                   {t.persona.employer(employerName)}
                 </Text>
-                <Text className="text-xs text-muted dark:text-slate-400 mt-0.5">
+                <Text className="text-xs text-muted mt-0.5">
                   {t.persona.employerSub(employerName)}
                 </Text>
                 {employment.status === 'TERMINATION_REQUESTED' && (

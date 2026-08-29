@@ -55,9 +55,9 @@ export function AddPersonalModal({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScrollView className="flex-1 bg-surface dark:bg-slate-900" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
+      <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-xl font-bold text-text dark:text-slate-100">{t.addPersonalModal.title}</Text>
+          <Text className="text-xl font-bold text-text">{t.addPersonalModal.title}</Text>
           <TouchableOpacity onPress={onClose}><Text className="text-primary font-medium">{t.common.cancel}</Text></TouchableOpacity>
         </View>
         <Input label={t.addPersonalModal.productName} value={form.productName} onChangeText={set('productName')} placeholder={t.addPersonalModal.productNamePlaceholder} autoCapitalize="words" />

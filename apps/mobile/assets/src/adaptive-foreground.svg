@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!--
+    Adaptive-icon foreground: the gradient disc and the K.
+
+    Sizing differs from icon.svg because Android crops this layer. Of the 108dp
+    canvas only the inner 72dp is guaranteed visible, so the mask shows ~66.7%
+    of the width. The badge proportions are applied to *that* visible circle,
+    not to the canvas:
+
+      visible circle = 0.667 x 512 = 341
+      disc           = 0.79  x 341 = 270  (r = 135)
+      K height       = 0.495 x 341 = 169  (glyph scale 169/596 = 0.2836)
+
+    which lands the disc and the ring of background around it at the same
+    ratios a launcher shows for logo-mark.svg.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="121" y1="121" x2="391" y2="391" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="135" fill="url(#bg)"/>
+  <g transform="translate(256,256) scale(0.2836) translate(-512,-512)"
+     stroke="#FFFFFF" stroke-width="108" stroke-linecap="round"
+     stroke-linejoin="round" fill="none">
+    <path d="M364 268 V 756"/>
+    <path d="M364 512 L 660 268"/>
+    <path d="M364 512 L 660 756"/>
+  </g>
+</svg>

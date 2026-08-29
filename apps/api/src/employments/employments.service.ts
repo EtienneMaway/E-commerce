@@ -10,18 +10,21 @@ import { In, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import {
+  EmployeeRole,
   Employment,
   EmploymentStatus,
   EmploymentTier,
   User,
 } from '../entities';
 import { BCRYPT_SALT_ROUNDS } from '../common/constants';
+import type { ActorContext } from '../common/types/actor-context';
 import { CreateEmploymentDto } from './dto/create-employment.dto';
 import { CreateMiniEmployeeDto } from './dto/create-mini-employee.dto';
 import { EmploymentFilterDto, EmploymentRoleFilter } from './dto/employment-filter.dto';
 import { SetSalaryDto } from './dto/set-salary.dto';
 import { SetPayrollActiveDto } from './dto/set-payroll-active.dto';
 import { SetExpenseAllowanceDto } from './dto/set-expense-allowance.dto';
+import { SetCommissionDto } from './dto/set-commission.dto';
 import { CreateExternalEmployeeDto } from './dto/create-external-employee.dto';
 import { UpdateEmployeeProfileDto } from './dto/update-employee-profile.dto';
 
@@ -47,6 +50,8 @@ export class EmploymentsService {
   constructor(
     @InjectRepository(Employment)
     private readonly employmentRepo: Repository<Employment>,
+    @InjectRepository(EmployeeRole)
+    private readonly employeeRoleRepo: Repository<EmployeeRole>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
   ) {}
@@ -211,7 +216,32 @@ export class EmploymentsService {
 
   // ─── List with filters ───────────────────────────────────────────────────
 
-  async list(userId: string, filter: EmploymentFilterDto): Promise<Employment[]> {
+  /**
+   * A full employee granted `handovers.approve` supervises their employer's mini
+   * employees, so they need to see those employments without being party to
+   * them. This is the only widening of the employer-or-employee rule, and it is
+   * deliberately narrow: mini (SALES_ONLY) rows of that one employer, with pay
+   * redacted by {@link redactForSupervisor}.
+   */
+  private supervisorScope(ctx: ActorContext): string | null {
+    return ctx.tier === 'FULL_EMPLOYEE' && ctx.services.has('handovers.approve')
+      ? ctx.effectiveOwnerId
+      : null;
+  }
+
+  /**
+   * Strip compensation from an employment the viewer is only supervising. They
+   * need to know who the minis are, not what their colleagues are paid.
+   */
+  private redactForSupervisor(emp: Employment): Employment {
+    return Object.assign(emp, { monthlyPay: null, commissionPct: null });
+  }
+
+  async list(
+    userId: string,
+    filter: EmploymentFilterDto,
+    ctx?: ActorContext,
+  ): Promise<Employment[]> {
     const qb = this.employmentRepo
       .createQueryBuilder('emp')
       .leftJoinAndSelect('emp.employer', 'employer')
@@ -226,23 +256,46 @@ export class EmploymentsService {
       qb.where('emp.employerId = :userId OR emp.employeeId = :userId', { userId });
     }
 
+    const supervisedOwnerId = ctx ? this.supervisorScope(ctx) : null;
+    if (supervisedOwnerId) {
+      qb.orWhere(
+        '(emp.employerId = :supervisedOwnerId AND emp.tier = :miniTier)',
+        { supervisedOwnerId, miniTier: EmploymentTier.SALES_ONLY },
+      );
+    }
+
     if (filter.status) {
       qb.andWhere('emp.status = :status', { status: filter.status });
     }
 
-    return qb.getMany();
+    const rows = await qb.getMany();
+    if (!supervisedOwnerId) return rows;
+    return rows.map((emp) =>
+      emp.employerId === userId || emp.employeeId === userId
+        ? emp
+        : this.redactForSupervisor(emp),
+    );
   }
 
-  async findOne(userId: string, id: string): Promise<Employment> {
+  async findOne(userId: string, id: string, ctx?: ActorContext): Promise<Employment> {
     const employment = await this.employmentRepo.findOne({
       where: { id },
       relations: { employer: true, employee: true },
     });
     if (!employment) throw new NotFoundException('Employment not found');
-    if (employment.employerId !== userId && employment.employeeId !== userId) {
-      throw new ForbiddenException('You are not part of this employment');
+    if (employment.employerId === userId || employment.employeeId === userId) {
+      return employment;
     }
-    return employment;
+    // Supervisor read: their employer's minis only, pay redacted.
+    const supervisedOwnerId = ctx ? this.supervisorScope(ctx) : null;
+    if (
+      supervisedOwnerId &&
+      employment.employerId === supervisedOwnerId &&
+      employment.tier === EmploymentTier.SALES_ONLY
+    ) {
+      return this.redactForSupervisor(employment);
+    }
+    throw new ForbiddenException('You are not part of this employment');
   }
 
   // ─── State transitions ───────────────────────────────────────────────────
@@ -388,6 +441,66 @@ export class EmploymentsService {
     return this.employmentRepo.save(employment);
   }
 
+  /**
+   * Employer sets (or clears) a mini's commission: a percentage of the sold
+   * value of each APPROVED handover, paid by the employer on top of — or
+   * instead of — a monthly pay. The rate is sealed onto each handover at
+   * approval, so it starts counting with the first handover approved after it
+   * was set and changing it never rewrites what past handovers earned.
+   */
+  async setCommission(
+    userId: string,
+    id: string,
+    dto: SetCommissionDto,
+  ): Promise<Employment> {
+    const employment = await this.findOne(userId, id);
+    if (employment.employerId !== userId) {
+      throw new ForbiddenException('Only the employer can set a commission');
+    }
+    if (employment.tier !== EmploymentTier.SALES_ONLY) {
+      throw new BadRequestException('Commission applies to mini employees only — they earn it on handovers');
+    }
+    if (employment.status === EmploymentStatus.REJECTED || employment.status === EmploymentStatus.TERMINATED) {
+      throw new BadRequestException('Cannot set a commission on a closed employment');
+    }
+    if (dto.commissionPct === null || dto.commissionPct === undefined) {
+      employment.commissionPct = null;
+    } else {
+      employment.commissionPct = dto.commissionPct.toFixed(2);
+    }
+    return this.employmentRepo.save(employment);
+  }
+
+  /**
+   * Attach a role to an employment, or clear it with `roleId: null`.
+   *
+   * Clearing is a WIDENING action, not a tidy-up: no role means the tier's
+   * default access, which is broader than most roles. The dashboard should word
+   * it as "remove all restrictions", never as "remove access".
+   */
+  async setRole(userId: string, id: string, roleId: string | null): Promise<Employment> {
+    const employment = await this.findOne(userId, id);
+    if (employment.employerId !== userId) {
+      throw new ForbiddenException('Only the employer can set an employee\'s role');
+    }
+    if (
+      employment.status === EmploymentStatus.REJECTED ||
+      employment.status === EmploymentStatus.TERMINATED
+    ) {
+      throw new BadRequestException('Cannot set a role on a closed employment');
+    }
+    if (roleId !== null) {
+      // Scoped to this employer: one employer must never be able to attach
+      // another's role, which would leak the role's name and service list.
+      const role = await this.employeeRoleRepo.findOne({
+        where: { id: roleId, ownerId: userId },
+      });
+      if (!role) throw new NotFoundException('Role not found');
+    }
+    employment.roleId = roleId;
+    return this.employmentRepo.save(employment);
+  }
+
   // ─── Helpers used by other modules ───────────────────────────────────────
 
   /** Returns the single open employment row where this user is the employee, or null. */
@@ -397,7 +510,11 @@ export class EmploymentsService {
         employeeId,
         status: In([EmploymentStatus.ACTIVE, EmploymentStatus.TERMINATION_REQUESTED]),
       },
-      relations: { employer: true },
+      // `role` feeds JwtAuthGuard's @RequiresService check. Joined here rather
+      // than fetched separately because the guard already runs this query on
+      // every authenticated request — a second round-trip per request would be
+      // pure overhead.
+      relations: { employer: true, role: true },
     });
   }
 

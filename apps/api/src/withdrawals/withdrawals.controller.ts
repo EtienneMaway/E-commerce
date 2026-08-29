@@ -22,6 +22,7 @@ import { ListWithdrawalsQueryDto } from './dto/list-withdrawals-query.dto';
 import { CreateWithdrawalDto } from './dto/create-withdrawal.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 
@@ -33,6 +34,7 @@ export class WithdrawalsController {
   constructor(private readonly service: WithdrawalsService) {}
 
   @Get('available')
+  @RequiresService('withdrawals')
   @ApiOperation({
     summary: 'Cash available for withdrawal right now',
     description:
@@ -44,6 +46,7 @@ export class WithdrawalsController {
   }
 
   @Get()
+  @RequiresService('withdrawals')
   @ApiOperation({ summary: 'List withdrawal history (most recent first, paginated)' })
   @ApiResponse({ status: 200, description: '{ data, pagination }' })
   list(@CurrentActorContext() ctx: ActorContext, @Query() query: ListWithdrawalsQueryDto) {
@@ -52,6 +55,7 @@ export class WithdrawalsController {
 
   @Post()
   @AllowedFor('OWNER')
+  @RequiresService('withdrawals')
   @ApiOperation({
     summary: 'Record a withdrawal (owner only — moves business cash to the owner)',
     description:
@@ -65,6 +69,7 @@ export class WithdrawalsController {
 
   @Delete(':id')
   @AllowedFor('OWNER')
+  @RequiresService('withdrawals')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Delete the most recent withdrawal (owner only)',

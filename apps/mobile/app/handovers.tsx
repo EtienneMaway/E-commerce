@@ -32,6 +32,7 @@ import {
   shareReceivedGoodsPdf,
   toReceivedGoodsSlip,
 } from '../lib/handover-receipt';
+import { useRequireService } from '../hooks/use-require-service';
 
 type Tab = 'handovers' | 'received';
 
@@ -44,11 +45,14 @@ type Tab = 'handovers' | 'received';
  * Both share the query caches used elsewhere, so switching tabs is instant.
  */
 export default function HistoryScreen() {
+  // Handover history. Mandatory for minis, so this only bounces a non-mini who
+  // reached the route some other way.
+  useRequireService('handovers.mini');
   const t = useT();
   const [tab, setTab] = useState<Tab>('handovers');
 
   return (
-    <View className="flex-1 bg-surface dark:bg-slate-900">
+    <View className="flex-1 bg-background">
       <Stack.Screen options={{ title: t.miniEmployee.historyTitle, headerBackTitle: t.screens.back }} />
 
       {/* Tabs */}
@@ -191,10 +195,10 @@ function TabButton({ active, onPress, label }: { active: boolean; onPress: () =>
     <Pressable
       onPress={onPress}
       className={`flex-1 py-2.5 rounded-xl items-center ${
-        active ? 'bg-primary' : 'bg-card dark:bg-slate-800 border border-border dark:border-slate-700'
+        active ? 'bg-primary' : 'bg-card border border-border'
       }`}
     >
-      <Text className={`font-semibold text-sm ${active ? 'text-white' : 'text-text dark:text-slate-200'}`}>
+      <Text className={`font-semibold text-sm ${active ? 'text-white' : 'text-text'}`}>
         {label}
       </Text>
     </Pressable>
@@ -227,13 +231,13 @@ function HandoverCard({
         : { label: t.miniEmployee.statusPending, cls: 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300' };
 
   return (
-    <View className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4 mb-3">
+    <View className="bg-card border border-border rounded-2xl px-4 py-4 mb-3">
       <View className="flex-row justify-between items-start">
         <View className="flex-1">
-          <Text className="text-text dark:text-slate-100 font-semibold">
+          <Text className="text-text font-semibold">
             {t.miniEmployee.handoverTotalCash}: {formatFcValue(cashFc)}
           </Text>
-          <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">{formatDate(s.createdAt)}</Text>
+          <Text className="text-muted text-xs mt-0.5">{formatDate(s.createdAt)}</Text>
         </View>
         <View className={`rounded-full px-2.5 py-1 ${badge.cls}`}>
           <Text className={`text-xs font-semibold ${badge.cls}`}>{badge.label}</Text>
@@ -242,11 +246,11 @@ function HandoverCard({
 
       <View className="mt-2 gap-0.5">
         {s.owner?.username ? (
-          <Text className="text-muted dark:text-slate-400 text-xs">
+          <Text className="text-muted text-xs">
             {t.miniEmployee.handoverSlipTo} @{s.owner.username}
           </Text>
         ) : null}
-        <Text className="text-muted dark:text-slate-400 text-xs">
+        <Text className="text-muted text-xs">
           {t.miniEmployee.historyReturns(returnsCount)}
         </Text>
       </View>
@@ -280,16 +284,16 @@ function ReceivedCard({
       ? { label: t.miniEmployee.statusReceived, cls: 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300' }
       : c.status === 'REJECTED'
         ? { label: t.miniEmployee.statusRejected, cls: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' }
-        : { label: t.miniEmployee.statusCancelled, cls: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300' };
+        : { label: t.miniEmployee.statusCancelled, cls: 'bg-background text-muted' };
 
   return (
-    <View className="bg-card dark:bg-slate-800 border border-border dark:border-slate-700 rounded-2xl px-4 py-4 mb-3">
+    <View className="bg-card border border-border rounded-2xl px-4 py-4 mb-3">
       <View className="flex-row justify-between items-start">
         <View className="flex-1">
-          <Text className="text-text dark:text-slate-100 font-semibold">
+          <Text className="text-text font-semibold">
             {t.miniEmployee.receiveFrom} @{c.supplier?.username ?? '—'}
           </Text>
-          <Text className="text-muted dark:text-slate-500 text-xs mt-0.5">{formatDate(c.createdAt)}</Text>
+          <Text className="text-muted text-xs mt-0.5">{formatDate(c.createdAt)}</Text>
         </View>
         <View className={`rounded-full px-2.5 py-1 ${badge.cls}`}>
           <Text className={`text-xs font-semibold ${badge.cls}`}>{badge.label}</Text>
@@ -297,11 +301,11 @@ function ReceivedCard({
       </View>
 
       <View className="mt-2 gap-0.5">
-        <Text className="text-muted dark:text-slate-400 text-xs">
+        <Text className="text-muted text-xs">
           {t.miniEmployee.receivedItemsCount(itemsCount)} · {t.miniEmployee.receivedTotalOwed}: {formatFcValue(owedFc)}
         </Text>
         {c.note ? (
-          <Text className="text-muted dark:text-slate-500 text-xs italic">{c.note}</Text>
+          <Text className="text-muted text-xs italic">{c.note}</Text>
         ) : null}
       </View>
 

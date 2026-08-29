@@ -2,19 +2,97 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Light mode defaults — runtime values are applied via vars() in _layout.tsx */
+/*
+  Design tokens — mirrored from the dashboard.
+
+  `apps/dashboard/app/globals.css` is the source of truth for the brand. The
+  values below are the same tokens with the web-only ones (shadows, sidebar,
+  card-hover) dropped, so a screen styled `bg-card border-border text-text` on
+  mobile lands on exactly the colour the equivalent dashboard panel uses.
+
+  Two consequences worth knowing:
+
+  - The neutrals are indigo-tinted (#EEF1FA, #0D1226), not Tailwind slate.
+    Mobile used slate before, which is why the app read grey-and-purple while
+    the dashboard read blue. Never reach for `dark:*-slate-*` again: every
+    token below already flips under `.dark`, so `bg-card` alone is correct in
+    both themes and a `dark:` override just reintroduces the drift.
+  - `--primary` lightens in dark mode (#4F46E5 → #6366F1), same as the web. For
+    the React Native props that take a literal colour string and cannot read a
+    var, use `useBrand()` from `lib/theme.ts` — it resolves the same pair.
+
+  Values are space-separated RGB channels, not hex, because
+  `tailwind.config.js` consumes them as `rgb(var(--token) / <alpha-value>)`.
+  That is what lets `bg-primary/10` and `border-primary/30` work: with a hex
+  inside the var, Tailwind cannot inject the alpha and drops those utilities
+  from the stylesheet entirely — silently, with no build error. The hex in the
+  trailing comment on each line is the same colour, for reading against the
+  dashboard's `globals.css`.
+*/
+
 :root {
-  --surface: #F8FAFC;
-  --card: #FFFFFF;
-  --border: #E2E8F0;
-  --muted: #94A3B8;
-  --foreground: #1E293B;
+  /* Backgrounds */
+  --background: 238 241 250;            /* #EEF1FA */
+  --surface: 247 249 254;               /* #F7F9FE */
+  --card: 255 255 255;                  /* #FFFFFF */
+
+  /* Borders */
+  --border: 226 230 244;                /* #E2E6F4 */
+  --border-subtle: 237 240 250;         /* #EDF0FA */
+
+  /* Text */
+  --foreground: 13 18 38;               /* #0D1226 */
+  --foreground-secondary: 61 74 107;    /* #3D4A6B */
+  --muted: 132 146 180;                 /* #8492B4 */
+  --muted-subtle: 176 187 219;          /* #B0BBDB */
+
+  /* Brand */
+  --primary: 79 70 229;                 /* #4F46E5 */
+  --primary-dark: 67 56 202;            /* #4338CA */
+  --primary-light: 238 242 255;         /* #EEF2FF */
+  --brand-violet: 124 58 237;           /* #7C3AED */
+
+  /* Semantic */
+  --success: 16 185 129;                /* #10B981 */
+  --success-light: 236 253 245;         /* #ECFDF5 */
+  --danger: 239 68 68;                  /* #EF4444 */
+  --danger-light: 254 242 242;          /* #FEF2F2 */
+  --warning: 245 158 11;                /* #F59E0B */
+  --warning-light: 255 251 235;         /* #FFFBEB */
 }
 
-.dark {
-  --surface: #0F172A;
-  --card: #1E293B;
-  --border: #334155;
-  --muted: #64748B;
-  --foreground: #F1F5F9;
+/*
+  `.dark:root`, not `.dark`.
+
+  NativeWind only promotes a block to *dark root variables* when the selector is
+  `.dark:root` (or `:root[class~="dark"]`) — see `isRootDarkVariableSelector` in
+  react-native-css-interop. A bare `.dark { --x: … }` silently compiles to an
+  ordinary class rule named `dark`, which no element in the tree ever has, so
+  every token below stays on its light value in dark mode. There is no warning;
+  the app just renders light-on-light.
+*/
+.dark:root {
+  --background: 9 12 24;                /* #090C18 */
+  --surface: 15 19 34;                  /* #0F1322 */
+  --card: 19 23 38;                     /* #131726 */
+
+  --border: 30 36 56;                   /* #1E2438 */
+  --border-subtle: 21 25 41;            /* #151929 */
+
+  --foreground: 232 235 248;            /* #E8EBF8 */
+  --foreground-secondary: 138 148 192;  /* #8A94C0 */
+  --muted: 78 90 128;                   /* #4E5A80 */
+  --muted-subtle: 46 53 85;             /* #2E3555 */
+
+  --primary: 99 102 241;                /* #6366F1 */
+  --primary-dark: 129 140 248;          /* #818CF8 */
+  --primary-light: 30 27 75;            /* #1E1B4B */
+  --brand-violet: 139 92 246;           /* #8B5CF6 */
+
+  --success: 52 211 153;                /* #34D399 */
+  --success-light: 2 44 34;             /* #022C22 */
+  --danger: 248 113 113;                /* #F87171 */
+  --danger-light: 45 21 21;             /* #2D1515 */
+  --warning: 252 211 77;                /* #FCD34D */
+  --warning-light: 28 21 0;             /* #1C1500 */
 }

@@ -11,15 +11,19 @@ import {
   type ActiveTeamMember,
   type MiniUnsoldLine,
   SalaryPayment,
+  type SalaryPaymentKind,
   SalaryPaymentStatus,
   employmentsApi,
+  employeeRolesApi,
   miniSettlementsApi,
   salaryPaymentsApi,
   currencyApi,
   inventoryApi,
 } from '../../../../lib/api';
 import { QK } from '../../../../lib/query-keys';
-import { useOwnerOnlyPage } from '../../../../hooks/use-owner-only';
+import { computeRoleFit, tierOfEmployment } from '../../../../lib/role-fit';
+import { usePageAccess } from '../../../../hooks/use-page-access';
+import { usePermissions } from '../../../../lib/permissions';
 import { useConfirm } from '../../../../components/ui/ConfirmDialog';
 import { SendConsignmentDialog } from '../../../../components/forms/SendConsignmentDialog';
 import { useT, type Translations } from '../../../../lib/i18n';
@@ -70,7 +74,12 @@ export default function EmployeePayrollPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
-  const isOwner = useOwnerOnlyPage();
+  const isOwner = usePageAccess('employees.manage', 'handovers.approve');
+  // Which panels this viewer may see: an owner manages, a supervisor only
+  // oversees minis.
+  const { can } = usePermissions();
+  const canManage = can('employees.manage');
+  const canPayroll = can('payroll.pay');
   const t = useT();
   const formatPeriodMonth = useFormatPeriodMonth();
   const employmentId = params?.id ?? '';
@@ -78,6 +87,7 @@ export default function EmployeePayrollPage() {
   const [period, setPeriod] = useState<string>(currentPeriodMonth());
   const [periodFilter, setPeriodFilter] = useState<'current' | 'all'>('current');
   const [showRecord, setShowRecord] = useState(false);
+  const [showPayCommission, setShowPayCommission] = useState(false);
   const [tab, setTab] = useState<'profile' | 'activities' | 'salary'>('profile');
 
   const { data: employment, isLoading: loadingEmp } = useQuery({
@@ -89,7 +99,8 @@ export default function EmployeePayrollPage() {
   const { data: summary } = useQuery({
     queryKey: QK.salarySummary(employmentId, period),
     queryFn: () => salaryPaymentsApi.summary(employmentId, period),
-    enabled: isOwner && !!employmentId,
+    // Payroll figures belong to the Salary tab, which a supervisor cannot open.
+    enabled: isOwner && canPayroll && !!employmentId,
   });
 
   const { data: payments, isLoading: loadingPayments } = useQuery({
@@ -100,7 +111,7 @@ export default function EmployeePayrollPage() {
         employmentId,
         periodMonth: periodFilter === 'current' ? period : undefined,
       }),
-    enabled: isOwner && !!employmentId,
+    enabled: isOwner && canPayroll && !!employmentId,
   });
 
   const invalidate = () => {
@@ -118,7 +129,7 @@ export default function EmployeePayrollPage() {
     return (
       <div className="p-8">
         <p className="text-sm opacity-70">{t.employees.notFound}</p>
-        <Link href="/employees" className="text-sm" style={{ color: '#818CF8' }}>{t.employees.backToEmployees}</Link>
+        <Link href="/employees" className="text-sm" style={{ color: 'var(--primary-dark)' }}>{t.employees.backToEmployees}</Link>
       </div>
     );
   }
@@ -129,7 +140,14 @@ export default function EmployeePayrollPage() {
   const isExternal = !!employee?.isExternalEmployee;
   const isMini = employment.tier === 'SALES_ONLY' && !isExternal && !!employee?.id;
   const displayName = employee?.name?.trim() || employee?.username || t.employees.title.slice(0, -1);
-  const activeTab = tab === 'activities' && !isMini ? 'profile' : tab;
+  // A supervisor (handovers.approve, no employees.manage) only has Activities,
+  // so fall back to it rather than to a Profile tab they cannot see.
+  const fallbackTab = canManage ? 'profile' : 'activities';
+  const requested = tab === 'activities' && !isMini ? fallbackTab : tab;
+  const activeTab =
+    (requested === 'profile' && !canManage) || (requested === 'salary' && !canPayroll)
+      ? fallbackTab
+      : requested;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -137,7 +155,7 @@ export default function EmployeePayrollPage() {
         <button
           onClick={() => router.push('/employees')}
           className="text-sm opacity-70 hover:opacity-100"
-          style={{ color: '#818CF8' }}
+          style={{ color: 'var(--primary-dark)' }}
         >
           {t.employees.backToEmployees}
         </button>
@@ -179,11 +197,15 @@ export default function EmployeePayrollPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
-        <TabButton active={activeTab === 'profile'} onClick={() => setTab('profile')}>{t.employees.tabProfile}</TabButton>
+        {canManage && (
+          <TabButton active={activeTab === 'profile'} onClick={() => setTab('profile')}>{t.employees.tabProfile}</TabButton>
+        )}
         {isMini && (
           <TabButton active={activeTab === 'activities'} onClick={() => setTab('activities')}>{t.employees.tabActivities}</TabButton>
         )}
-        <TabButton active={activeTab === 'salary'} onClick={() => setTab('salary')}>{t.employees.tabSalary}</TabButton>
+        {canPayroll && (
+          <TabButton active={activeTab === 'salary'} onClick={() => setTab('salary')}>{t.employees.tabSalary}</TabButton>
+        )}
       </div>
 
       {activeTab === 'profile' && (
@@ -200,6 +222,11 @@ export default function EmployeePayrollPage() {
           {employment.tier === 'FULL' && !isExternal && (
             <ExpenseAllowanceControl employment={employment} onChange={invalidate} daily />
           )}
+          {/* Which features the employer has opened for this person. External
+              employees never sign in, so a role would have nothing to gate. */}
+          {!isExternal && (
+            <RolePanel employment={employment} disabled={isClosed} onChange={invalidate} />
+          )}
         </>
       )}
 
@@ -207,7 +234,7 @@ export default function EmployeePayrollPage() {
         <MiniOversight
           miniUserId={employee.id}
           miniUsername={employee.username}
-          canGive={!isClosed}
+          canGive={!isClosed && can('consignments.send')}
           employment={employment}
           onEmploymentChange={invalidate}
         />
@@ -215,7 +242,12 @@ export default function EmployeePayrollPage() {
 
       {activeTab === 'salary' && (
         <>
-          <SalaryPanel employment={employment} onChange={invalidate} disabled={isClosed} />
+          <SalaryPanel
+            employment={employment}
+            onChange={invalidate}
+            disabled={isClosed}
+            showCommission={isMini}
+          />
 
           <div className="mt-6 p-5 rounded-xl border" style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}>
             <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
@@ -235,7 +267,7 @@ export default function EmployeePayrollPage() {
                   onClick={() => setShowRecord(true)}
                   disabled={isClosed || !employment.payrollActive || !employment.monthlyPay}
                   className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
-                  style={{ background: '#6366F1' }}
+                  style={{ background: 'var(--primary)' }}
                 >
                   {t.employees.recordPayment}
                 </button>
@@ -249,9 +281,54 @@ export default function EmployeePayrollPage() {
               <SummaryCard
                 label={t.employees.balanceRemaining}
                 value={summary?.balanceRemaining ? formatCurrency(summary.balanceRemaining) : '—'}
-                accent="#818CF8"
+                accent="var(--primary-dark)"
               />
             </div>
+
+            {/* Handover commission — minis only, and only once it is (or was) in play. */}
+            {summary?.commission && (
+              <div className="mt-5 pt-4 border-t" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+                  <div>
+                    <h3 className="font-semibold text-sm">{t.employees.commissionSection}</h3>
+                    <p className="text-xs opacity-60 mt-0.5">
+                      {summary.commission.pct
+                        ? t.employees.commissionSectionHint(String(parseFloat(summary.commission.pct)))
+                        : t.employees.commissionClearedHint}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowPayCommission(true)}
+                    disabled={isClosed || !employment.payrollActive || !employment.commissionPct}
+                    className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
+                    style={{ background: '#10B981' }}
+                  >
+                    {t.employees.payCommission}
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <SummaryCard
+                    label={t.employees.commissionEarned}
+                    value={formatCurrency(summary.commission.earned)}
+                  />
+                  <SummaryCard
+                    label={t.employees.paidConfirmed}
+                    value={formatCurrency(summary.commission.paidConfirmed)}
+                    accent="#10B981"
+                  />
+                  <SummaryCard
+                    label={t.employees.pendingConfirmation}
+                    value={formatCurrency(summary.commission.pendingConfirmation)}
+                    accent="#F59E0B"
+                  />
+                  <SummaryCard
+                    label={t.employees.commissionRemaining}
+                    value={formatCurrency(summary.commission.remaining)}
+                    accent="var(--primary-dark)"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="mt-6">
@@ -294,6 +371,128 @@ export default function EmployeePayrollPage() {
           onSuccess={invalidate}
         />
       )}
+
+      {showPayCommission && (
+        <RecordPaymentModal
+          employment={employment}
+          period={period}
+          kind="COMMISSION"
+          commissionRemaining={summary?.commission?.remaining}
+          onClose={() => setShowPayCommission(false)}
+          onSuccess={invalidate}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Attach one of the employer's roles to this employment.
+ *
+ * "No role" is deliberately worded as full access rather than as no access:
+ * clearing the role WIDENS what the employee can do, back to everything their
+ * level allows. Getting that backwards is the easiest mistake to make here.
+ */
+function RolePanel({
+  employment,
+  disabled,
+  onChange,
+}: {
+  employment: Employment;
+  disabled: boolean;
+  onChange: () => void;
+}) {
+  const t = useT();
+  const qc = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+
+  const { data: roles } = useQuery({
+    queryKey: QK.employeeRoles,
+    queryFn: () => employeeRolesApi.list(),
+  });
+  const { data: catalog } = useQuery({
+    queryKey: QK.serviceCatalog,
+    queryFn: () => employeeRolesApi.catalog(),
+    staleTime: Infinity,
+  });
+
+  const setRole = useMutation({
+    mutationFn: (roleId: string | null) => employmentsApi.setRole(employment.id, roleId),
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: QK.employeeRoles });
+      onChange();
+    },
+    onError: (err) => setError(getErrorMessage(err)),
+  });
+
+  const currentId = employment.roleId ?? '';
+
+  // What this role will actually resolve to for THIS employee's tier. A role
+  // built from owner- or staff-only features can be attached to a mini and give
+  // them almost nothing; the ceiling is working correctly, but the employer
+  // should not have to discover that from the employee.
+  const selected = roles?.find((r) => r.id === currentId);
+  const fit =
+    selected && catalog
+      ? computeRoleFit(selected.services, tierOfEmployment(employment.tier), catalog)
+      : null;
+
+  return (
+    <div
+      className="mt-6 p-5 rounded-xl border"
+      style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}
+    >
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="font-semibold">{t.roles.roleSection}</h2>
+          <p className="text-xs opacity-60 mt-1">{t.roles.roleSectionHint}</p>
+        </div>
+        <Link href="/employees/roles" className="text-xs text-primary hover:underline">
+          {t.roles.manageRoles}
+        </Link>
+      </div>
+
+      <select
+        value={currentId}
+        disabled={disabled || setRole.isPending}
+        onChange={(e) => setRole.mutate(e.target.value || null)}
+        className="mt-3 w-full rounded-lg border px-3 py-2 text-sm bg-transparent disabled:opacity-50"
+        style={{ borderColor: 'rgba(127,127,127,0.25)' }}
+      >
+        <option value="">{t.roles.noRole}</option>
+        {roles?.map((role) => (
+          <option key={role.id} value={role.id}>
+            {role.name}
+          </option>
+        ))}
+      </select>
+
+      {!currentId && (
+        <p className="text-xs mt-2 opacity-70">{t.roles.noRoleWarning}</p>
+      )}
+
+      {fit && fit.addsNothing && (
+        <p
+          className="text-xs mt-3 rounded-lg px-3 py-2"
+          style={{ background: 'rgba(var(--danger-rgb),0.10)', color: 'var(--danger)' }}
+        >
+          {t.roles.fitNothing(employment.tier === 'SALES_ONLY' ? t.roles.tierMini : t.roles.tierFull)}
+        </p>
+      )}
+      {fit && !fit.addsNothing && fit.dropped.length > 0 && (
+        <p
+          className="text-xs mt-3 rounded-lg px-3 py-2"
+          style={{ background: 'rgba(var(--warning-rgb),0.12)', color: 'var(--warning)' }}
+        >
+          {t.roles.fitPartial(
+            fit.dropped.length,
+            fit.granted.length,
+            employment.tier === 'SALES_ONLY' ? t.roles.tierMini : t.roles.tierFull,
+          )}
+        </p>
+      )}
+      {error && <p className="text-xs mt-2 text-danger">{error}</p>}
     </div>
   );
 }
@@ -483,7 +682,7 @@ function EditProfileModal({
               onClick={() => m.mutate()}
               disabled={!name || m.isPending}
               className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
-              style={{ background: '#6366F1' }}
+              style={{ background: 'var(--primary)' }}
             >
               {m.isPending ? t.employees.saving : t.employees.save}
             </button>
@@ -508,6 +707,10 @@ function MiniOversight({
   onEmploymentChange: () => void;
 }) {
   const t = useT();
+  // Oversight is one grant; consigning stock and editing employment settings
+  // are others. This component is reachable by a supervisor who has only the first.
+  const { can } = usePermissions();
+  const canManage = can('employees.manage');
   const qc = useQueryClient();
   // Activity is scoped to one handover cycle at a time, navigated with prev/next
   // arrows. navOffset = how many cycles back from the current (open) one: 0 =
@@ -679,14 +882,18 @@ function MiniOversight({
           </h2>
           <p className="text-xs opacity-60 mt-1 max-w-xl">{t.employees.miniOversightHint}</p>
         </div>
-        <button
-          onClick={() => setGiveOpen(true)}
-          disabled={!canGive}
-          className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
-          style={{ background: '#6366F1' }}
-        >
-          {t.employees.miniGiveProducts}
-        </button>
+        {/* Hidden rather than disabled when the viewer cannot consign at all —
+            a permanently greyed button just raises questions. */}
+        {can('consignments.send') && (
+          <button
+            onClick={() => setGiveOpen(true)}
+            disabled={!canGive}
+            className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
+            style={{ background: 'var(--primary)' }}
+          >
+            {t.employees.miniGiveProducts}
+          </button>
+        )}
       </div>
 
       {/* Summary cards */}
@@ -700,7 +907,7 @@ function MiniOversight({
           value={money(activity?.soldAtAgreedPrice ?? '0', activity?.soldAtAgreedPriceFc ?? '0')}
           accent="#10B981"
         />
-        <SummaryCard label={t.employees.miniMarkup} value={money(activity?.markup ?? '0', activity?.markupFc ?? '0')} accent="#818CF8" />
+        <SummaryCard label={t.employees.miniMarkup} value={money(activity?.markup ?? '0', activity?.markupFc ?? '0')} accent="var(--primary-dark)" />
         <SummaryCard label={t.employees.miniOutstanding} value={fmtLive(activity?.outstanding ?? '0')} accent="#F59E0B" />
         <SummaryCard
           label={t.employees.miniStillOut}
@@ -710,7 +917,9 @@ function MiniOversight({
         />
       </div>
 
-      <ExpenseAllowanceControl employment={employment} onChange={onEmploymentChange} />
+      {canManage && (
+        <ExpenseAllowanceControl employment={employment} onChange={onEmploymentChange} />
+      )}
 
       {/* Handover-cycle navigator — steps the whole activity view through one
           settlement window at a time (previous = older cycle, next = newer). */}
@@ -723,7 +932,7 @@ function MiniOversight({
           // reads as a muted, plainly-disabled button.
           const navStyle = (enabled: boolean) =>
             enabled
-              ? { borderColor: 'rgba(99,102,241,0.5)', color: '#818CF8', background: 'rgba(99,102,241,0.08)' }
+              ? { borderColor: 'rgba(var(--primary-rgb),0.5)', color: 'var(--primary-dark)', background: 'rgba(var(--primary-rgb),0.08)' }
               : { borderColor: 'rgba(127,127,127,0.25)' };
           return (
         <>
@@ -772,7 +981,7 @@ function MiniOversight({
         <>
       {/* What was given (per consignment) */}
       <div className="mt-4">
-        <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#818CF8' }}>{t.employees.miniGivenTitle}</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--primary-dark)' }}>{t.employees.miniGivenTitle}</h3>
         {!activity?.given.length ? (
           <div className="text-sm opacity-60 p-4 text-center rounded-lg border" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
             {t.employees.miniGivenEmpty}
@@ -822,7 +1031,7 @@ function MiniOversight({
 
       {/* Live sales feed */}
       <div className="mt-4">
-        <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#818CF8' }}>{t.employees.miniSalesFeed}</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--primary-dark)' }}>{t.employees.miniSalesFeed}</h3>
         {isLoading ? (
           <div className="text-sm opacity-60 p-4 text-center">{t.employees.loading}</div>
         ) : !activity?.sales.length ? (
@@ -897,7 +1106,7 @@ function MiniOversight({
 
       {subTab === 'handovers' && (
       <div className="mt-4">
-        <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#818CF8' }}>
+        <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--primary-dark)' }}>
           {t.employees.miniHandoverHistory}
           {pending.length > 0 && (
             <span className="ml-1 opacity-60">· {pending.length} {t.employees.miniHoPendingSuffix}</span>
@@ -1139,7 +1348,7 @@ function ExpenseAllowanceControl({
           <button
             onClick={() => { setPct(current); setEditing(true); }}
             className="text-xs font-medium ml-auto"
-            style={{ color: '#818CF8' }}
+            style={{ color: 'var(--primary-dark)' }}
           >
             {t.employees.miniAllowanceEdit}
           </button>
@@ -1448,11 +1657,11 @@ function CycleTeamPanel({
   return (
     <div className="mt-4">
       <div className="flex items-center justify-between mb-1">
-        <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#818CF8' }}>
+        <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--primary-dark)' }}>
           {t.employees.miniTeamTitle}
         </h3>
         {!adding && (
-          <button onClick={() => setAdding(true)} className="text-xs font-medium" style={{ color: '#818CF8' }}>
+          <button onClick={() => setAdding(true)} className="text-xs font-medium" style={{ color: 'var(--primary-dark)' }}>
             {t.employees.miniHoTeamAdd}
           </button>
         )}
@@ -1584,7 +1793,7 @@ function HandoverTeam({ handover, onChange }: { handover: MiniSettlement; onChan
         </span>
       )}
       {!adding ? (
-        <button onClick={() => setAdding(true)} className="ml-2" style={{ color: '#818CF8' }}>
+        <button onClick={() => setAdding(true)} className="ml-2" style={{ color: 'var(--primary-dark)' }}>
           {t.employees.miniHoTeamAdd}
         </button>
       ) : (
@@ -1676,7 +1885,7 @@ function SummaryCard({
       <div className="text-lg font-semibold" style={{ color: accent }}>
         {value}
       </div>
-      {hint && <div className="text-[11px] mt-0.5" style={{ color: '#818CF8' }}>{hint}</div>}
+      {hint && <div className="text-[11px] mt-0.5" style={{ color: 'var(--primary-dark)' }}>{hint}</div>}
     </>
   );
   if (!onClick) {
@@ -1689,8 +1898,8 @@ function SummaryCard({
   return (
     <button
       onClick={onClick}
-      className="p-3 rounded-lg border text-left w-full transition-colors hover:bg-[rgba(129,140,248,0.06)]"
-      style={{ borderColor: 'rgba(129,140,248,0.4)' }}
+      className="p-3 rounded-lg border text-left w-full transition-colors hover:bg-[rgba(var(--primary-rgb),0.06)]"
+      style={{ borderColor: 'rgba(var(--primary-rgb),0.4)' }}
     >
       {body}
     </button>
@@ -1703,8 +1912,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       onClick={onClick}
       className="px-4 py-2 text-sm font-medium transition-colors"
       style={{
-        color: active ? '#818CF8' : 'rgba(127,127,127,0.8)',
-        borderBottom: active ? '2px solid #818CF8' : '2px solid transparent',
+        color: active ? 'var(--primary-dark)' : 'rgba(127,127,127,0.8)',
+        borderBottom: active ? '2px solid var(--primary-dark)' : '2px solid transparent',
       }}
     >
       {children}
@@ -1726,10 +1935,10 @@ function FilterPill({
       onClick={onClick}
       className="px-2.5 py-1 rounded-md font-medium transition-colors"
       style={{
-        background: active ? 'rgba(99,102,241,0.15)' : 'transparent',
-        color: active ? '#818CF8' : 'rgba(127,127,127,0.8)',
+        background: active ? 'rgba(var(--primary-rgb),0.15)' : 'transparent',
+        color: active ? 'var(--primary-dark)' : 'rgba(127,127,127,0.8)',
         border: '1px solid',
-        borderColor: active ? 'rgba(99,102,241,0.3)' : 'rgba(127,127,127,0.2)',
+        borderColor: active ? 'rgba(var(--primary-rgb),0.3)' : 'rgba(127,127,127,0.2)',
       }}
     >
       {children}
@@ -1741,10 +1950,13 @@ function SalaryPanel({
   employment,
   onChange,
   disabled,
+  showCommission = false,
 }: {
   employment: Employment;
   onChange: () => void;
   disabled: boolean;
+  /** Minis only: they can additionally (or instead) earn a % of each approved handover. */
+  showCommission?: boolean;
 }) {
   const t = useT();
   const [editing, setEditing] = useState(false);
@@ -1780,7 +1992,7 @@ function SalaryPanel({
               onClick={() => m.mutate(value)}
               disabled={m.isPending}
               className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
-              style={{ background: '#6366F1' }}
+              style={{ background: 'var(--primary)' }}
             >
               {t.employees.save}
             </button>
@@ -1812,6 +2024,95 @@ function SalaryPanel({
           <div className="text-xs mt-2" style={{ color: '#EF4444' }}>{getErrorMessage(m.error)}</div>
         )}
       </div>
+      {showCommission && (
+        <CommissionControl employment={employment} onChange={onChange} disabled={disabled} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Employer sets the mini's handover commission. It only starts counting with
+ * the first handover approved after it is set (the rate is sealed onto each
+ * handover), so the control spells that out rather than implying back-pay.
+ */
+function CommissionControl({
+  employment,
+  onChange,
+  disabled,
+}: {
+  employment: Employment;
+  onChange: () => void;
+  disabled: boolean;
+}) {
+  const t = useT();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState<string>(employment.commissionPct ?? '');
+  const m = useMutation({
+    mutationFn: (raw: string) =>
+      employmentsApi.setCommission(employment.id, raw === '' ? null : Number(raw)),
+    onSuccess: () => {
+      onChange();
+      setEditing(false);
+    },
+  });
+
+  const current = employment.commissionPct ?? null;
+
+  return (
+    <div>
+      <div className="text-xs opacity-70 mb-1">{t.employees.commissionLabel}</div>
+      {editing ? (
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            max="100"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoFocus
+            className="px-3 py-1.5 rounded-md border bg-transparent text-base font-semibold w-24"
+            style={{ borderColor: 'rgba(127,127,127,0.3)' }}
+            placeholder="10"
+          />
+          <span className="text-sm opacity-70">%</span>
+          <button
+            onClick={() => m.mutate(value)}
+            disabled={m.isPending}
+            className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
+            style={{ background: 'var(--primary)' }}
+          >
+            {t.employees.save}
+          </button>
+          <button
+            onClick={() => { setEditing(false); setValue(employment.commissionPct ?? ''); }}
+            className="px-3 py-1.5 rounded-md text-sm"
+            style={{ border: '1px solid rgba(127,127,127,0.3)' }}
+          >
+            {t.employees.cancel}
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          <span className="text-2xl font-bold">
+            {current ? `${parseFloat(current)}%` : t.employees.notSet}
+          </span>
+          {!disabled && (
+            <button
+              onClick={() => setEditing(true)}
+              className="px-2.5 py-1 rounded-md text-xs"
+              style={{ border: '1px solid rgba(127,127,127,0.3)' }}
+            >
+              {current ? t.employees.editBtn : t.employees.setBtn}
+            </button>
+          )}
+        </div>
+      )}
+      <div className="text-xs opacity-60 mt-1 max-w-xs">{t.employees.commissionSetHint}</div>
+      {!!m.error && (
+        <div className="text-xs mt-2" style={{ color: '#EF4444' }}>{getErrorMessage(m.error)}</div>
+      )}
     </div>
   );
 }
@@ -1896,7 +2197,16 @@ function PaymentRow({ payment, onChange }: { payment: SalaryPayment; onChange: (
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold">{formatCurrency(payment.amount)}</span>
-          <span className="text-xs opacity-60">· {formatPeriodMonth(payment.periodMonth)}</span>
+          {payment.kind === 'COMMISSION' ? (
+            <span
+              className="px-2 py-0.5 text-xs rounded-md font-medium"
+              style={{ background: 'rgba(16,185,129,0.15)', color: '#10B981' }}
+            >
+              {t.employees.commissionChip}
+            </span>
+          ) : (
+            <span className="text-xs opacity-60">· {formatPeriodMonth(payment.periodMonth)}</span>
+          )}
           <span
             className="px-2 py-0.5 text-xs rounded-md font-medium"
             style={{ background: color.bg, color: color.fg }}
@@ -1933,8 +2243,9 @@ function PaymentRow({ payment, onChange }: { payment: SalaryPayment; onChange: (
 
 interface SalaryOverflowError {
   warning: true;
-  code: 'SALARY_OVERFLOW';
-  monthlyPay: string;
+  code: 'SALARY_OVERFLOW' | 'COMMISSION_OVERFLOW';
+  monthlyPay?: string;
+  commissionEarned?: string;
   alreadyPlanned: string;
   attemptedAmount: string;
   projected: string;
@@ -1944,7 +2255,13 @@ interface SalaryOverflowError {
 function isSalaryOverflow(err: unknown): SalaryOverflowError | null {
   if (err && typeof err === 'object' && 'response' in err) {
     const data = (err as { response?: { status?: number; data?: unknown } }).response?.data;
-    if (data && typeof data === 'object' && 'warning' in data && (data as { code?: string }).code === 'SALARY_OVERFLOW') {
+    if (
+      data &&
+      typeof data === 'object' &&
+      'warning' in data &&
+      ((data as { code?: string }).code === 'SALARY_OVERFLOW' ||
+        (data as { code?: string }).code === 'COMMISSION_OVERFLOW')
+    ) {
       return data as SalaryOverflowError;
     }
   }
@@ -1954,11 +2271,16 @@ function isSalaryOverflow(err: unknown): SalaryOverflowError | null {
 function RecordPaymentModal({
   employment,
   period,
+  kind = 'MONTHLY',
+  commissionRemaining,
   onClose,
   onSuccess,
 }: {
   employment: Employment;
   period: string;
+  kind?: SalaryPaymentKind;
+  /** COMMISSION only: what is still owed, shown in the modal header. */
+  commissionRemaining?: string;
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -1968,12 +2290,14 @@ function RecordPaymentModal({
   const [note, setNote] = useState<string>('');
   const [overflow, setOverflow] = useState<SalaryOverflowError | null>(null);
   const [confirmedOverride, setConfirmedOverride] = useState(false);
+  const isCommission = kind === 'COMMISSION';
 
   const m = useMutation({
     mutationFn: () =>
       salaryPaymentsApi.create({
         employmentId: employment.id,
         amount: Number(amount),
+        kind,
         periodMonth: period,
         note: note || undefined,
         confirmedOverride: confirmedOverride || undefined,
@@ -2014,13 +2338,24 @@ function RecordPaymentModal({
         style={{ background: 'var(--card)', borderColor: 'rgba(127,127,127,0.2)' }}
       >
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">{t.employees.recordSalaryPaymentTitle}</h2>
+          <h2 className="font-semibold">
+            {isCommission ? t.employees.payCommissionTitle : t.employees.recordSalaryPaymentTitle}
+          </h2>
           <button onClick={onClose} className="text-xl leading-none opacity-60 hover:opacity-100">
             ×
           </button>
         </div>
         <p className="text-xs opacity-70 mb-4">
-          {t.employees.periodLabel}: <strong>{formatPeriodMonth(period)}</strong> · {t.employees.monthlyTargetLabel}: <strong>{monthlyPay}</strong>
+          {isCommission ? (
+            <>
+              {t.employees.commissionRemaining}:{' '}
+              <strong>{commissionRemaining ? formatCurrency(commissionRemaining) : '—'}</strong>
+            </>
+          ) : (
+            <>
+              {t.employees.periodLabel}: <strong>{formatPeriodMonth(period)}</strong> · {t.employees.monthlyTargetLabel}: <strong>{monthlyPay}</strong>
+            </>
+          )}
           <br />
           {isExternal
             ? t.employees.recordPaymentDescExternal
@@ -2061,7 +2396,9 @@ function RecordPaymentModal({
             style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}
           >
             <div className="font-semibold mb-1" style={{ color: '#F59E0B' }}>
-              {t.employees.exceedsMonthlyTarget}
+              {overflow.code === 'COMMISSION_OVERFLOW'
+                ? t.employees.exceedsCommissionEarned
+                : t.employees.exceedsMonthlyTarget}
             </div>
             <div className="opacity-80">{overflow.message}</div>
             <div className="mt-2 flex gap-2">
@@ -2098,7 +2435,7 @@ function RecordPaymentModal({
             onClick={handleSubmit}
             disabled={!validAmount || m.isPending}
             className="px-3 py-1.5 rounded-md text-sm text-white disabled:opacity-50"
-            style={{ background: '#6366F1' }}
+            style={{ background: 'var(--primary)' }}
           >
             {m.isPending ? t.employees.recording : t.employees.recordPayment.replace('+ ', '')}
           </button>

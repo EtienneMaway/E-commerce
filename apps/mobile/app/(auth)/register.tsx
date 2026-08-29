@@ -7,6 +7,7 @@ import { authApi } from '../../lib/api';
 import { useAuthStore } from '../../store/auth.store';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+import { KmbLogo } from '../../components/ui/KmbLogo';
 
 export default function RegisterScreen() {
   const t = useT();
@@ -46,28 +47,31 @@ export default function RegisterScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-surface dark:bg-slate-900"
+      className="flex-1 bg-background"
       contentContainerClassName="px-6 py-12"
       keyboardShouldPersistTaps="handled"
     >
-      <View className="mb-10">
-        <Text className="text-4xl font-bold text-text dark:text-slate-100">{t.auth.createAccount}</Text>
-        <Text className="text-muted dark:text-slate-500 mt-2 text-base">{t.auth.createAccountSubtitle}</Text>
+      <View className="items-center mb-8">
+        <KmbLogo size={56} className="mb-4" />
+        <Text className="text-2xl font-bold text-text tracking-tight">{t.auth.createAccount}</Text>
+        <Text className="text-muted mt-1 text-sm font-medium">{t.auth.createAccountSubtitle}</Text>
       </View>
 
-      <Input label={t.auth.username} value={username} onChangeText={setUsername}
-        placeholder={t.auth.usernamePlaceholder} autoCapitalize="none" autoCorrect={false} />
-      <Input label={t.auth.emailOptional} value={email} onChangeText={setEmail}
-        placeholder={t.auth.emailPlaceholder} keyboardType="email-address" autoCapitalize="none" />
-      <Input label={t.auth.phoneOptional} value={phone} onChangeText={setPhone}
-        placeholder={t.auth.phonePlaceholder} keyboardType="phone-pad" />
-      <Input label={t.auth.password} value={password} onChangeText={setPassword}
-        placeholder={t.auth.passwordMinChars} secureTextEntry passwordToggle />
+      <View className="bg-card border border-border rounded-2xl p-6">
+        <Input label={t.auth.username} value={username} onChangeText={setUsername}
+          placeholder={t.auth.usernamePlaceholder} autoCapitalize="none" autoCorrect={false} />
+        <Input label={t.auth.emailOptional} value={email} onChangeText={setEmail}
+          placeholder={t.auth.emailPlaceholder} keyboardType="email-address" autoCapitalize="none" />
+        <Input label={t.auth.phoneOptional} value={phone} onChangeText={setPhone}
+          placeholder={t.auth.phonePlaceholder} keyboardType="phone-pad" />
+        <Input label={t.auth.password} value={password} onChangeText={setPassword}
+          placeholder={t.auth.passwordMinChars} secureTextEntry passwordToggle />
 
-      <Button label={t.auth.createAccountBtn} onPress={handleRegister} loading={loading} className="mt-2" />
+        <Button label={t.auth.createAccountBtn} onPress={handleRegister} loading={loading} className="mt-2" />
+      </View>
 
       <View className="flex-row justify-center mt-6">
-        <Text className="text-muted dark:text-slate-500">{t.auth.alreadyHaveAccount}</Text>
+        <Text className="text-muted">{t.auth.alreadyHaveAccount}</Text>
         <Link href="/(auth)/login">
           <Text className="text-primary font-semibold">{t.auth.signInLink}</Text>
         </Link>

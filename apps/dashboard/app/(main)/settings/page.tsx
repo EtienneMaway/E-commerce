@@ -6,6 +6,7 @@ import { currencyApi, quantityDiscountsApi } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { formatDate } from '../../../lib/utils';
 import { useT } from '../../../lib/i18n';
+import { usePermissions } from '../../../lib/permissions';
 import { useCurrencyStore } from '../../../store/currency.store';
 import { formatMoney } from '../../../lib/currency';
 import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
@@ -18,6 +19,7 @@ import {
 
 export default function SettingsPage() {
   const t = useT();
+  const { can } = usePermissions();
   const qc = useQueryClient();
   const { displayCurrency, toggle } = useCurrencyStore();
   const isOwner = useOwnerOnlyPage();
@@ -165,6 +167,10 @@ export default function SettingsPage() {
         </div>
 
         {/* ── Global exchange rate ────────────────────────────────────── */}
+        {/* /settings itself is always reachable (password, language, printer),
+            so the owner-only cards inside it are gated individually. */}
+        {can('currency.rates') && (
+        <>
         <div className="card" style={{ padding: '24px' }}>
           <h2 className="font-bold text-sm mb-1" style={{ color: 'var(--foreground)' }}>
             {t.settings.exchangeRate}
@@ -303,8 +309,10 @@ export default function SettingsPage() {
             </form>
           )}
         </div>
+        </>
+        )}
 
-        <QuantityDiscountsCard />
+        {can('pricing.catalog') && <QuantityDiscountsCard />}
 
         <ThermalPrinterCard />
       </div>

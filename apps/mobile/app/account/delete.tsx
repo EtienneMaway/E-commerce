@@ -48,7 +48,7 @@ export default function DeleteAccountScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-surface dark:bg-slate-900"
+      className="flex-1 bg-background"
       contentContainerClassName="px-4 pt-4 pb-8"
       keyboardShouldPersistTaps="handled"
     >
@@ -56,7 +56,7 @@ export default function DeleteAccountScreen() {
         <Text className="text-danger font-semibold text-base mb-2">
           {t.account.deleteWarningTitle}
         </Text>
-        <Text className="text-text dark:text-slate-100 text-sm leading-5">
+        <Text className="text-text text-sm leading-5">
           {t.account.deleteWarningBody}
         </Text>
       </View>

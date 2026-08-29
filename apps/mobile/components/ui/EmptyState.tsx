@@ -6,8 +6,8 @@ export function EmptyState({ emoji = '📭', title, subtitle }: Props) {
   return (
     <View className="flex-1 items-center justify-center py-20 px-8">
       <Text className="text-5xl mb-4">{emoji}</Text>
-      <Text className="text-text dark:text-slate-100 font-semibold text-lg text-center">{title}</Text>
-      {subtitle ? <Text className="text-muted dark:text-slate-500 text-sm text-center mt-2">{subtitle}</Text> : null}
+      <Text className="text-text font-semibold text-lg text-center">{title}</Text>
+      {subtitle ? <Text className="text-muted text-sm text-center mt-2">{subtitle}</Text> : null}
     </View>
   );
 }

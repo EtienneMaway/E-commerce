@@ -23,11 +23,16 @@ import { EmploymentFilterDto } from './dto/employment-filter.dto';
 import { SetSalaryDto } from './dto/set-salary.dto';
 import { SetPayrollActiveDto } from './dto/set-payroll-active.dto';
 import { SetExpenseAllowanceDto } from './dto/set-expense-allowance.dto';
+import { SetCommissionDto } from './dto/set-commission.dto';
 import { CreateExternalEmployeeDto } from './dto/create-external-employee.dto';
 import { UpdateEmployeeProfileDto } from './dto/update-employee-profile.dto';
+import { SetEmploymentRoleDto } from '../employee-roles/dto/set-employment-role.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
+import type { ActorContext } from '../common/types/actor-context';
 import { User } from '../entities';
 
 @ApiTags('employments')
@@ -39,6 +44,7 @@ export class EmploymentsController {
   constructor(private readonly service: EmploymentsService) {}
 
   @Post()
+  @RequiresService('employees.manage')
   @ApiOperation({ summary: 'Send an employment request to an existing user' })
   @ApiResponse({ status: 201, description: 'Employment created in PENDING status' })
   create(@CurrentUser() user: User, @Body() dto: CreateEmploymentDto) {
@@ -46,6 +52,7 @@ export class EmploymentsController {
   }
 
   @Post('mini-employee')
+  @RequiresService('employees.manage')
   @ApiOperation({
     summary: 'Create a mini-employee account + PENDING employment',
     description:
@@ -57,6 +64,7 @@ export class EmploymentsController {
   }
 
   @Post('external-employee')
+  @RequiresService('employees.manage')
   @ApiOperation({
     summary: 'Create an external employee — payroll-only, no login',
     description:
@@ -69,14 +77,23 @@ export class EmploymentsController {
 
   @Get()
   @ApiOperation({ summary: 'List my employments (as employer or employee)' })
-  list(@CurrentUser() user: User, @Query() filter: EmploymentFilterDto) {
-    return this.service.list(user.id, filter);
+  list(
+    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
+    @Query() filter: EmploymentFilterDto,
+  ) {
+    // ctx lets a supervisor (handovers.approve) also see their employer's minis.
+    return this.service.list(user.id, filter, ctx);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get one employment' })
-  findOne(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOne(user.id, id);
+  findOne(
+    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.service.findOne(user.id, id, ctx);
   }
 
   @Patch(':id/accept')
@@ -116,6 +133,7 @@ export class EmploymentsController {
   }
 
   @Patch(':id/salary')
+  @RequiresService('employees.manage')
   @ApiOperation({ summary: 'Employer sets or clears the monthly pay target' })
   setSalary(
     @CurrentUser() user: User,
@@ -126,6 +144,7 @@ export class EmploymentsController {
   }
 
   @Patch(':id/payroll-active')
+  @RequiresService('employees.manage')
   @ApiOperation({ summary: 'Employer pauses or resumes payroll for this employee' })
   setPayrollActive(
     @CurrentUser() user: User,
@@ -136,6 +155,7 @@ export class EmploymentsController {
   }
 
   @Patch(':id/expense-allowance')
+  @RequiresService('employees.manage')
   @ApiOperation({
     summary: "Employer caps an employee's expenses at a share of what they sell",
     description:
@@ -151,7 +171,45 @@ export class EmploymentsController {
     return this.service.setExpenseAllowance(user.id, id, dto);
   }
 
+  @Patch(':id/role')
+  @AllowedFor('OWNER')
+  @RequiresService('employees.manage')
+  @ApiOperation({
+    summary: "Employer sets or clears the employee's role",
+    description:
+      "The role decides which services the employee can use, on the dashboard and on mobile. Pass roleId: null to clear it — note that clearing WIDENS access back to the tier's defaults rather than removing it. Takes effect on the employee's next request.",
+  })
+  @ApiResponse({ status: 200, description: 'Employment updated' })
+  @ApiResponse({ status: 400, description: 'Employment is closed' })
+  @ApiResponse({ status: 403, description: 'Only the employer can set a role' })
+  @ApiResponse({ status: 404, description: 'Employment or role not found' })
+  setRole(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetEmploymentRoleDto,
+  ) {
+    return this.service.setRole(user.id, id, dto.roleId ?? null);
+  }
+
+  @Patch(':id/commission')
+  @RequiresService('employees.manage')
+  @ApiOperation({
+    summary: "Employer sets a mini employee's commission on approved handovers",
+    description:
+      'The mini earns this percentage of the sold value of each handover approved from now on — the rate is ' +
+      'sealed onto each handover at approval, so setting or changing it never rewrites past handovers. ' +
+      'Send null to remove the commission. Can be combined with a monthly pay.',
+  })
+  setCommission(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetCommissionDto,
+  ) {
+    return this.service.setCommission(user.id, id, dto);
+  }
+
   @Delete(':id/external')
+  @RequiresService('employees.manage')
   @ApiOperation({
     summary: 'Employer removes an external employee (one-step termination)',
     description:
@@ -165,6 +223,7 @@ export class EmploymentsController {
   }
 
   @Patch(':id/profile')
+  @RequiresService('employees.manage')
   @ApiOperation({ summary: 'Employer edits the employee profile (name, date of birth, role)' })
   updateEmployeeProfile(
     @CurrentUser() user: User,

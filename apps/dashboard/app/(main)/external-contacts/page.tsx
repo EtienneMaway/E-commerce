@@ -7,6 +7,7 @@ import { externalContactsApi } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useT } from '../../../lib/i18n';
+import { usePermissions } from '../../../lib/permissions';
 
 type RoleFilter = 'ALL' | 'DEBTOR' | 'SUPPLIER';
 type Role = 'DEBTOR' | 'SUPPLIER' | 'BOTH';
@@ -30,6 +31,7 @@ interface CreateForm {
 
 export default function ExternalContactsPage() {
   const t = useT();
+  const { can } = usePermissions();
   const formatCurrency = useFormatCurrency();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<RoleFilter>('ALL');
@@ -88,13 +90,15 @@ export default function ExternalContactsPage() {
             {t.externalContacts.sub}
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-          style={{ background: 'var(--primary)' }}
-        >
-          {t.externalContacts.addContact}
-        </button>
+        {can('external_contacts.manage') && (
+          <button
+            onClick={() => setShowCreate(true)}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+            style={{ background: 'var(--primary)' }}
+          >
+            {t.externalContacts.addContact}
+          </button>
+        )}
       </div>
 
       {/* Filter tabs */}

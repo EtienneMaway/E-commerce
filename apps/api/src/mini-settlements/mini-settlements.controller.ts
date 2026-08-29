@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
+import { RequiresService } from '../common/decorators/requires-service.decorator';
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 import { MiniSettlementsService } from './mini-settlements.service';
@@ -40,6 +41,7 @@ export class MiniSettlementsController {
 
   @Post()
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('handovers.mini')
   @ApiOperation({
     summary: 'Hand over cash + unsold returns to the owner (mini employee action)',
     description:
@@ -56,6 +58,7 @@ export class MiniSettlementsController {
 
   @Get('outgoing')
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('handovers.mini')
   @ApiOperation({ summary: 'List my handovers (mini employee action)' })
   @ApiResponse({ status: 200, type: [MiniSettlement] })
   findOutgoing(@CurrentActorContext() ctx: ActorContext): Promise<MiniSettlement[]> {
@@ -64,6 +67,7 @@ export class MiniSettlementsController {
 
   @Get('my-balance')
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('handovers.mini')
   @ApiOperation({
     summary: 'How much the mini currently owes their employer (for the auto handover)',
   })
@@ -74,6 +78,7 @@ export class MiniSettlementsController {
 
   @Get('stats')
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('handovers.mini')
   @ApiOperation({
     summary:
       'Home statistics for a mini employee (I owe / cash to hand over / profit / expenses), windowed by ?period (default: since last handover)',
@@ -88,6 +93,7 @@ export class MiniSettlementsController {
 
   @Get('handover-preview')
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('handovers.mini')
   @ApiOperation({
     summary: 'Full handover breakdown for the mini: sold products (revenue/profit/owed), returns, cash to hand over',
   })
@@ -98,6 +104,7 @@ export class MiniSettlementsController {
 
   @Get('team')
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('handovers.mini')
   @ApiOperation({
     summary: 'Who is out with the goods I am holding (mini employee, read-only)',
     description:
@@ -112,6 +119,7 @@ export class MiniSettlementsController {
 
   @Post('expenses')
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('expenses.record')
   @ApiOperation({
     summary: 'Record an expense in FC while selling (mini employee) — pending until the next handover',
   })
@@ -126,6 +134,7 @@ export class MiniSettlementsController {
 
   @Get('expense-allowance')
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('expenses.record')
   @ApiOperation({
     summary: 'How much I may still spend on expenses this round (mini employee)',
     description:
@@ -138,6 +147,7 @@ export class MiniSettlementsController {
 
   @Get('expenses')
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('expenses.view')
   @ApiOperation({
     summary:
       'List my expenses (mini employee). Default: only pending (not-yet-handed-over). Pass ?scope=all for the full history.',
@@ -154,6 +164,7 @@ export class MiniSettlementsController {
 
   @Delete('expenses/:id')
   @AllowedFor('MINI_EMPLOYEE')
+  @RequiresService('expenses.view')
   @ApiOperation({ summary: 'Delete a pending expense (mini employee)' })
   @ApiResponse({ status: 200, description: 'Deleted' })
   @ApiResponse({ status: 400, description: 'Already part of a submitted handover' })
@@ -167,6 +178,7 @@ export class MiniSettlementsController {
   // ─── Owner / full employee actions ─────────────────────────────────────────
 
   @Get('incoming')
+  @RequiresService('handovers.approve')
   @ApiOperation({ summary: 'List handovers from my mini employees (owner/full employee)' })
   @ApiResponse({ status: 200, type: [MiniSettlement] })
   findIncoming(@CurrentActorContext() ctx: ActorContext): Promise<MiniSettlement[]> {
@@ -174,6 +186,7 @@ export class MiniSettlementsController {
   }
 
   @Get('mini/:miniUserId/activity')
+  @RequiresService('handovers.approve')
   @ApiOperation({
     summary: 'Real-time sales + given/sold/outstanding summary for one mini employee (owner/full employee)',
     description:
@@ -190,6 +203,7 @@ export class MiniSettlementsController {
   }
 
   @Get('mini/:miniUserId/team')
+  @RequiresService('handovers.approve')
   @ApiOperation({
     summary: 'The team on a mini\'s cycle in progress (owner/full employee)',
     description:
@@ -205,6 +219,7 @@ export class MiniSettlementsController {
   }
 
   @Get('mini/:miniUserId/unsold')
+  @RequiresService('handovers.approve')
   @ApiOperation({
     summary: "What a mini is still holding unsold (owner/full employee)",
     description:
@@ -220,6 +235,7 @@ export class MiniSettlementsController {
   }
 
   @Post('mini/:miniUserId/team')
+  @RequiresService('handovers.approve')
   @ApiOperation({
     summary: 'Add someone to a mini\'s cycle in progress (owner/full employee)',
     description:
@@ -236,6 +252,7 @@ export class MiniSettlementsController {
   }
 
   @Post(':id/team')
+  @RequiresService('handovers.approve')
   @ApiOperation({
     summary: 'Record someone who was out selling with the mini on this handover (owner/full employee)',
     description:
@@ -253,6 +270,7 @@ export class MiniSettlementsController {
   }
 
   @Delete('team/:memberId')
+  @RequiresService('handovers.approve')
   @ApiOperation({ summary: 'Remove someone from a handover\'s team record (owner/full employee)' })
   @ApiResponse({ status: 200, description: 'Removed' })
   @ApiResponse({ status: 403, description: 'Not on one of your handovers' })
@@ -264,6 +282,7 @@ export class MiniSettlementsController {
   }
 
   @Patch(':id/approve')
+  @RequiresService('handovers.approve')
   @ApiOperation({
     summary: 'Approve a handover — book the cash and re-stock returns (owner/full employee)',
     description:
@@ -280,6 +299,7 @@ export class MiniSettlementsController {
   }
 
   @Patch(':id/reject')
+  @RequiresService('handovers.approve')
   @ApiOperation({ summary: 'Reject a PENDING handover (owner/full employee)' })
   @ApiResponse({ status: 200, type: MiniSettlement, description: 'Status set to REJECTED' })
   @ApiResponse({ status: 403, description: 'Handover not addressed to you' })

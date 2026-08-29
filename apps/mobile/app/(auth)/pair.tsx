@@ -7,6 +7,7 @@ import { authApi } from '../../lib/api';
 import { useAuthStore } from '../../store/auth.store';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+import { KmbLogo } from '../../components/ui/KmbLogo';
 
 /**
  * Mini-employee pairing = their login. They authenticate with the username +
@@ -42,33 +43,36 @@ export default function PairScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-surface dark:bg-slate-900"
-      contentContainerClassName="flex-1 justify-center px-6 py-12"
+      className="flex-1 bg-background"
+      contentContainerClassName="flex-grow justify-center px-6 py-12"
       keyboardShouldPersistTaps="handled"
     >
-      <View className="mb-10">
-        <Text className="text-4xl font-bold text-text dark:text-slate-100">{t.miniEmployee.pairTitle}</Text>
-        <Text className="text-muted dark:text-slate-500 mt-2 text-base">{t.miniEmployee.pairSubtitle}</Text>
+      <View className="items-center mb-8">
+        <KmbLogo size={56} className="mb-4" />
+        <Text className="text-2xl font-bold text-text tracking-tight">{t.miniEmployee.pairTitle}</Text>
+        <Text className="text-muted mt-1 text-sm font-medium text-center">{t.miniEmployee.pairSubtitle}</Text>
       </View>
 
-      <Input
-        label={t.miniEmployee.pairUsername}
-        value={username}
-        onChangeText={setUsername}
-        placeholder={t.miniEmployee.pairUsernamePlaceholder}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-      <Input
-        label={t.miniEmployee.pairCode}
-        value={pairingCode}
-        onChangeText={(v) => setPairingCode(v.toUpperCase())}
-        placeholder={t.miniEmployee.pairCodePlaceholder}
-        autoCapitalize="characters"
-        autoCorrect={false}
-      />
+      <View className="bg-card border border-border rounded-2xl p-6">
+        <Input
+          label={t.miniEmployee.pairUsername}
+          value={username}
+          onChangeText={setUsername}
+          placeholder={t.miniEmployee.pairUsernamePlaceholder}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Input
+          label={t.miniEmployee.pairCode}
+          value={pairingCode}
+          onChangeText={(v) => setPairingCode(v.toUpperCase())}
+          placeholder={t.miniEmployee.pairCodePlaceholder}
+          autoCapitalize="characters"
+          autoCorrect={false}
+        />
 
-      <Button label={t.miniEmployee.pairBtn} onPress={handlePair} loading={loading} className="mt-2" />
+        <Button label={t.miniEmployee.pairBtn} onPress={handlePair} loading={loading} className="mt-2" />
+      </View>
 
       <View className="flex-row justify-center mt-6">
         <Link href="/(auth)/login">

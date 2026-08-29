@@ -102,6 +102,14 @@ export class MiniSettlement {
   @Column({ name: 'expense_allowance_pct', type: 'decimal', precision: 5, scale: 2, nullable: true })
   expenseAllowancePct: string | null;
 
+  @ApiPropertyOptional({
+    example: '10.00',
+    description:
+      "The employer's commission percentage in force when this handover was APPROVED, sealed so a later change to the employment never rewrites what this handover earns the mini. Null when no commission was set at approval time (the handover earns nothing).",
+  })
+  @Column({ name: 'commission_pct', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  commissionPct: string | null;
+
   @ApiPropertyOptional()
   @Column({ type: 'varchar', nullable: true })
   note: string | null;
