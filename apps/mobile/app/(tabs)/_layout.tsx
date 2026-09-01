@@ -6,7 +6,13 @@ import { usePermissions } from '../../lib/permissions';
 
 function TabIcon({ label, emoji, focused }: { label: string; emoji: string; focused: boolean }) {
   return (
-    <View className="items-center justify-center pt-1">
+    // `minWidth` is doing real work. React Navigation sizes the icon slot to the
+    // icon, so the label inherited a box far narrower than the tab itself and
+    // `numberOfLines={1}` resolved that by clipping — "Inventory" shipped as
+    // "Inve…" and "Network" as "Netw…" in the store screenshots. A tab is a
+    // quarter of the screen (~90dp on the narrowest phones we target), so 76 is
+    // comfortably inside it and gives the longest label room to render whole.
+    <View className="items-center justify-center pt-1" style={{ minWidth: 76 }}>
       <Text className="text-xl">{emoji}</Text>
       {/* One line always: at narrow tab widths "Inventory" was wrapping to
           "Invent / ory", which looked broken in screenshots and on small phones. */}
