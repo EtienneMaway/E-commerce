@@ -21,9 +21,19 @@ fi
 echo "token: ${TOK:0:24}..."
 A=(-H "Authorization: Bearer $TOK")
 
-echo "--- exchange rate"
-curl -s -X PUT "$API/currency/rate" "${H[@]}" "${A[@]}" \
-  -d '{"usdToFcRate":"2900.0000","sellingRate":"2950.0000"}' | head -c 200; echo
+# The exchange rate is GLOBAL, not per-user: `exchange_rates` holds a single row
+# and CurrencyService.setRate() overwrites it for every account on the system.
+# Writing it is therefore opt-in — on production it would move the rate under
+# every real merchant. Leave SET_RATE unset there and the demo account simply
+# uses the live rate, which is the honest thing for a reviewer to see anyway.
+if [ "${SET_RATE:-0}" = "1" ]; then
+  echo "--- exchange rate (GLOBAL — affects every account)"
+  curl -s -X PUT "$API/currency/rate" "${H[@]}" "${A[@]}" \
+    -d '{"usdToFcRate":"2900.0000","sellingRate":"2950.0000"}' | head -c 200; echo
+else
+  echo "--- exchange rate: left alone (set SET_RATE=1 to write it)"
+  curl -s "$API/currency/rate" "${H[@]}" "${A[@]}" | head -c 200; echo
+fi
 
 echo "--- inventory"
 curl -s -X POST "$API/inventory/personal/bulk" "${H[@]}" "${A[@]}" -d '{"items":[
