@@ -59,6 +59,19 @@ export const usersApi = {
     api.get('/users/search', { params: { q } }).then((r) => r.data),
 };
 
+// ─── Account ──────────────────────────────────────────────────────────────────
+
+export const accountApi = {
+  /**
+   * Close the signed-in account. The API soft-deletes immediately and starts a
+   * 7-day grace window, returning when it expires; after that the row is
+   * anonymised rather than dropped, so counterparties keep their own trading
+   * history. Same endpoint the mobile app calls.
+   */
+  deleteAccount: (body: { password: string }): Promise<{ deletedAt: string; expiresAt: string }> =>
+    api.delete('/users/me', { data: body }).then((r) => r.data),
+};
+
 // ─── Inventory ────────────────────────────────────────────────────────────────
 
 export const inventoryApi = {

@@ -687,6 +687,25 @@ const en = {
     qdError: 'Failed to save quantity discounts',
     qdInvalid: 'Percentages must be between 0 and 100',
     qdTierWarn: 'A larger tier has a smaller percentage than a smaller tier — buyers get less for buying more.',
+    // Account deletion. Mirrors the mobile flow in app/account/delete.tsx: the
+    // same DELETE /users/me, the same typed-token + password confirmation, and
+    // the same 7-day grace window the API applies.
+    dangerZone: 'Delete account',
+    dangerZoneSub: 'Permanently close this account and remove your personal details.',
+    deleteWarningTitle: 'This cannot be undone after 7 days',
+    deleteWarningBody:
+      'Your account is closed straight away and you are signed out. You have 7 days to change your mind — sign in again within that time and you will be offered the option to restore it. After 7 days your name, username, email, phone and date of birth are permanently erased.',
+    deleteKeepsTitle: 'What is kept',
+    deleteKeepsBody:
+      'Trading records that other people are part of — sales, debts, payments and consignments — stay on their books, with your name replaced by an anonymous marker. This is so a supplier or customer does not lose their own history of what you owed each other.',
+    deletePromptType: 'Type DELETE to confirm',
+    deletePromptToken: 'DELETE',
+    deletePasswordLabel: 'Your password',
+    deleteSubmit: 'Delete my account',
+    deleting: 'Deleting…',
+    deleteSuccess: (date: string) =>
+      `Account closed. You can restore it by signing in before ${date}.`,
+    deleteFailed: 'Could not delete the account',
   },
   print: {
     consignmentNote: 'Consignment Note',
@@ -2039,6 +2058,22 @@ const fr: Translations = {
     qdError: 'Échec de l\'enregistrement des remises',
     qdInvalid: 'Les pourcentages doivent être compris entre 0 et 100',
     qdTierWarn: 'Un palier plus grand a un pourcentage plus faible qu\'un palier plus petit — les acheteurs obtiennent moins en achetant plus.',
+    dangerZone: 'Supprimer le compte',
+    dangerZoneSub: 'Fermez définitivement ce compte et effacez vos données personnelles.',
+    deleteWarningTitle: 'Irréversible après 7 jours',
+    deleteWarningBody:
+      'Votre compte est fermé immédiatement et vous êtes déconnecté. Vous avez 7 jours pour changer d\'avis — reconnectez-vous durant ce délai et la restauration vous sera proposée. Passé 7 jours, votre nom, nom d\'utilisateur, e-mail, téléphone et date de naissance sont effacés définitivement.',
+    deleteKeepsTitle: 'Ce qui est conservé',
+    deleteKeepsBody:
+      'Les opérations qui concernent d\'autres personnes — ventes, dettes, paiements et consignations — restent dans leurs livres, votre nom étant remplacé par un marqueur anonyme. Ainsi un fournisseur ou un client ne perd pas son propre historique de ce que vous vous deviez.',
+    deletePromptType: 'Tapez DELETE pour confirmer',
+    deletePromptToken: 'DELETE',
+    deletePasswordLabel: 'Votre mot de passe',
+    deleteSubmit: 'Supprimer mon compte',
+    deleting: 'Suppression…',
+    deleteSuccess: (date: string) =>
+      `Compte fermé. Vous pouvez le restaurer en vous connectant avant le ${date}.`,
+    deleteFailed: 'Impossible de supprimer le compte',
   },
   print: {
     consignmentNote: 'Bon de consignation',

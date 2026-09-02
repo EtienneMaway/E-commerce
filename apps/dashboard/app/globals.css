@@ -518,6 +518,11 @@ body {
   font-size: 15px;
   line-height: 1.7;
 }
+/* Language switch at the top of the public documents (/privacy, /delete-account
+   and their /fr twins). Small and out of the way — it is a switch, not a heading. */
+.policy-lang { margin: 0 0 18px; font-size: 13px; }
+.policy-lang a { color: var(--primary); text-decoration: underline; }
+
 .policy-body h1 {
   font-size: 30px;
   font-weight: 700;
@@ -540,8 +545,15 @@ body {
 }
 .policy-body p { margin: 10px 0; }
 .policy-body ul { margin: 10px 0; padding-left: 20px; list-style: disc; }
+/* Tailwind's preflight strips list markers, so an <ol> would lose its numbers —
+   and /delete-account depends on numbered steps being legible as steps. */
+.policy-body ol { margin: 10px 0; padding-left: 22px; list-style: decimal; }
 .policy-body li { margin: 6px 0; }
 .policy-body strong { color: var(--foreground); font-weight: 600; }
+/* Nothing else styles anchors globally, and /delete-account has to make its
+   support-email and privacy links obviously clickable. */
+.policy-body a { color: var(--primary); text-decoration: underline; }
+.policy-body a:hover { color: var(--primary-dark); }
 .policy-body hr {
   border: 0;
   border-top: 1px solid var(--border);

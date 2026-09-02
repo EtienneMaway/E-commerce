@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { currencyApi, quantityDiscountsApi } from '../../../lib/api';
+import { currencyApi, quantityDiscountsApi, accountApi } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
 import { formatDate } from '../../../lib/utils';
 import { useT } from '../../../lib/i18n';
@@ -11,6 +11,9 @@ import { useCurrencyStore } from '../../../store/currency.store';
 import { formatMoney } from '../../../lib/currency';
 import { useOwnerOnlyPage } from '../../../hooks/use-owner-only';
 import { usePrinterStore } from '../../../store/printer.store';
+import { useAuthStore } from '../../../store/auth.store';
+import { useRouter } from 'next/navigation';
+import { getErrorMessage } from '../../../lib/utils';
 import {
   isWebBluetoothSupported,
   requestPrinter,
@@ -315,6 +318,10 @@ export default function SettingsPage() {
         {can('pricing.catalog') && <QuantityDiscountsCard />}
 
         <ThermalPrinterCard />
+
+        {/* Every signed-in user can close their own account — this is not an
+            owner privilege, and Google Play requires an in-app route to it. */}
+        <DeleteAccountCard />
       </div>
     </div>
   );
@@ -571,6 +578,150 @@ function ThermalPrinterCard() {
             </p>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Account deletion — the web half of the flow that already exists on mobile
+ * (`apps/mobile/app/account/delete.tsx`). Same endpoint, same typed-token plus
+ * password confirmation, same 7-day grace window enforced by the API.
+ *
+ * Deliberately outside the `can('currency.rates')` gate: closing your own
+ * account belongs to the always-on core, like changing your password or
+ * quitting a job. `useOwnerOnlyPage` already keeps the whole page away from
+ * Employer mode, so anyone who reaches this card is acting as themselves.
+ */
+function DeleteAccountCard() {
+  const t = useT();
+  const router = useRouter();
+  const logout = useAuthStore((s) => s.logout);
+
+  const [open, setOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const canSubmit =
+    confirmation.trim().toUpperCase() === t.settings.deletePromptToken &&
+    password.length > 0 &&
+    !submitting;
+
+  const handleDelete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const { expiresAt } = await accountApi.deleteAccount({ password });
+      // Tell them the restore deadline before the session goes away, since
+      // after logout there is no authenticated screen left to show it on.
+      window.alert(t.settings.deleteSuccess(formatDate(expiresAt)));
+      logout();
+      router.replace('/login');
+    } catch (err) {
+      setError(getErrorMessage(err) || t.settings.deleteFailed);
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="card"
+      style={{ padding: '24px', borderColor: 'rgba(var(--danger-rgb), 0.35)' }}
+    >
+      <h2 className="font-bold text-sm mb-1" style={{ color: 'var(--danger)' }}>
+        {t.settings.dangerZone}
+      </h2>
+      <p className="text-xs mb-4" style={{ color: 'var(--muted)' }}>
+        {t.settings.dangerZoneSub}
+      </p>
+
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="btn btn-danger">
+          {t.settings.deleteSubmit}
+        </button>
+      ) : (
+        <form onSubmit={handleDelete} className="space-y-4">
+          <div
+            className="rounded-xl px-4 py-3"
+            style={{
+              background: 'var(--danger-light)',
+              border: '1px solid rgba(var(--danger-rgb), 0.35)',
+            }}
+          >
+            <p className="font-semibold text-xs mb-1" style={{ color: 'var(--danger)' }}>
+              {t.settings.deleteWarningTitle}
+            </p>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--danger)', opacity: 0.85 }}>
+              {t.settings.deleteWarningBody}
+            </p>
+          </div>
+
+          <div
+            className="rounded-xl px-4 py-3"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          >
+            <p className="font-semibold text-xs mb-1" style={{ color: 'var(--foreground)' }}>
+              {t.settings.deleteKeepsTitle}
+            </p>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
+              {t.settings.deleteKeepsBody}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--foreground)' }}>
+              {t.settings.deletePromptType}
+            </label>
+            <input
+              value={confirmation}
+              onChange={(e) => setConfirmation(e.target.value)}
+              placeholder={t.settings.deletePromptToken}
+              autoComplete="off"
+              className="input"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--foreground)' }}>
+              {t.settings.deletePasswordLabel}
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              className="input"
+            />
+          </div>
+
+          {error && (
+            <p className="text-xs" style={{ color: 'var(--danger)' }}>
+              {error}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className="btn btn-danger"
+              style={{ opacity: canSubmit ? 1 : 0.5 }}
+            >
+              {submitting ? t.settings.deleting : t.settings.deleteSubmit}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setConfirmation(''); setPassword(''); setError(''); }}
+              className="btn btn-secondary"
+            >
+              {t.common.cancel}
+            </button>
+          </div>
+        </form>
       )}
     </div>
   );

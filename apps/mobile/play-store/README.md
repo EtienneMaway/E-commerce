@@ -1,7 +1,8 @@
 # Play Store listing assets
 
-Generated 27 August 2026. Sources for the icon set live in `../assets/src/*.svg` —
-edit the SVG and re-render rather than touching the PNGs by hand.
+Icons generated 27 August 2026; screenshots retaken **1 September 2026**. Sources
+for the icon set live in `../assets/src/*.svg` — edit the SVG and re-render rather
+than touching the PNGs by hand.
 
 | File | Use | Spec |
 |---|---|---|
@@ -14,9 +15,13 @@ edit the SVG and re-render rather than touching the PNGs by hand.
 ## Why the screenshots are 1200×2400, not 1080×2400
 
 The emulator captures at 1080×2400, which is 2.22:1 — over Play's **2:1 maximum**
-aspect ratio, and it gets rejected. Each capture is padded horizontally to
-1200×2400 with the app's own background (`#0F172A`), so the padding is invisible
-and no content is cropped.
+aspect ratio, and it gets rejected. `pad-screenshots.py` adds 60px to each side.
+
+It pads by **replicating the outermost pixel column**, not by filling with a flat
+background colour. The bottom tab bar is full-width and a shade lighter than the
+page, so a flat fill leaves it visibly stopping 60px short of each edge — which is
+what the earlier 24 May set did. Replication carries every full-width band out to
+the border and the seam disappears.
 
 ## Regenerating
 
@@ -35,12 +40,27 @@ rsvg-convert -w 1024 -h 500  src/feature-graphic.svg     -o ../play-store/featur
 # then flatten the two listing files to RGB — Play rejects alpha
 ```
 
-Screenshots: captured from the real app on an Android emulator
-(`Medium_Phone_API_36.1`) signed in as a demo account against a **local** API, so
-no demo data is created on production. Retake them after any UI change with
-`adb exec-out screencap -p`, then pad to 2:1 as above.
+Screenshots — captured from the real app on the `Medium_Phone_API_36.1` emulator,
+signed in as `@demo_kmb` against a **local** API, so no demo data reaches
+production:
 
-**These screenshots were taken from the APK built on 24 May 2026.** Two cosmetic
-issues visible in them are already fixed in source and will disappear on the next
-build — the bottom-tab labels wrapping ("Invent / ory") and doubled colons in the
-sales rows ("Qty:: 48"). Worth retaking the shots after the next release build.
+```bash
+pnpm dev:api                                   # local trading_app database
+DEMO_PASS='…' SET_RATE=1 apps/mobile/play-store/seed-demo.sh   # creates @demo_kmb + its data
+# install the current release APK, sign in as demo@kmb-talk.com, switch to dark theme
+adb exec-out screencap -p > 01-dashboard.png   # Home / Inventory / Sales tabs
+python3 pad-screenshots.py <capture-dir>       # -> screenshots/, 1200×2400
+```
+
+`seed-demo.sh` is idempotent only in the sense that it fails cleanly if `demo_kmb`
+already exists — drop the user first if you want to reseed from scratch.
+
+`SET_RATE=1` sets the exchange rate to 2900 FC/USD, which is what makes the FC
+figures in the shots look like real Goma prices. **Only pass it on a local
+database.** The rate is global — `exchange_rates` is a single row that
+`CurrencyService.setRate()` overwrites for every account — so on production it
+would move the rate under every real merchant. Without it the script leaves the
+rate untouched and just prints the live one.
+
+**Retake these after any UI change that shows on the Home, Inventory or Sales
+tab.** The set is only as current as the APK it came from.

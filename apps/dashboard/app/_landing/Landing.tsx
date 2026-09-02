@@ -248,7 +248,9 @@ export function Landing({ t }: { t: LandingContent }) {
             <p className={styles.footerTag}>{t.footer.tagline}</p>
           </div>
           <div className={styles.footerLinks}>
-            <Link href="/privacy">{t.footer.privacy}</Link>
+            {/* The policy now exists in both languages, so the French page must not
+                send its reader to the English one. */}
+            <Link href={t.htmlLang === 'fr' ? '/fr/privacy' : '/privacy'}>{t.footer.privacy}</Link>
             <a href="mailto:support@kmb-talk.com">{t.footer.contact}</a>
             <Link href={t.nav.otherLangHref} hrefLang={t.htmlLang === 'fr' ? 'en' : 'fr'}>
               {t.nav.otherLangLabel}

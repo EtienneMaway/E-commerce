@@ -27,3 +27,18 @@ export function alternates(path: '/' | '/fr'): Metadata['alternates'] {
     },
   };
 }
+
+/**
+ * Canonical + `hreflang` alternates for any page that exists in both languages.
+ *
+ * The landing routes use `alternates` above; this covers the public documents
+ * (`/privacy`, `/delete-account`) whose French twins live under `/fr/…`. Same
+ * rule for `x-default`: the English URL, since that is what a crawler should
+ * fall back to when it matches neither language.
+ */
+export function alternatesPair(en: string, fr: string, current: string): Metadata['alternates'] {
+  return {
+    canonical: current,
+    languages: { en, fr, 'x-default': en },
+  };
+}
