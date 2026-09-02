@@ -1,6 +1,6 @@
 # Privacy Policy for KMB-Talk
 
-**Last updated: 27 August 2026**
+**Last updated: 1 September 2026**
 
 This Privacy Policy explains how the KMB-Talk mobile application ("KMB-Talk", "the app", "we", "us", or "our") collects, uses, and protects your information. KMB-Talk is a business management tool that helps small traders and resellers manage inventory, sales, credit/debt, and financial reconciliation.
 
@@ -76,7 +76,14 @@ We do **not** sell your personal or business data. We share information only:
 
 ## 6. Data retention
 
-We retain your account and business data for as long as your account is active so the app remains useful to you. If you request account deletion, your personal data and associated business records are scheduled for deletion. You can request deletion at any time (see Section 8).
+We retain your account and business data for as long as your account is active so the app remains useful to you. You can request deletion at any time (see Section 8).
+
+When you delete your account, it is closed immediately and you are signed out. A **7-day grace period** follows, during which signing in again offers you the option to restore the account. After those 7 days:
+
+- **Permanently erased:** your name, username, email address, phone number, date of birth, and password. You can no longer sign in, and other users can no longer find you.
+- **Kept in anonymised form:** trading records that another user is also part of — sales, debts and credits, payments, stock movements, and consignments — remain on that other user's books with your identity replaced by an anonymous marker. These records are also the other trader's own accounts: a supplier's record of what they were owed cannot be erased without destroying their books. The retained entries carry no name, username, email address, phone number, or date of birth, and are kept for as long as the counterparty's account exists.
+
+Full instructions, including what to do if you cannot sign in, are at https://kmb-talk.com/delete-account
 
 ---
 
@@ -91,7 +98,7 @@ KMB-Talk is a business tool intended for adults (18+) and is **not directed at c
 Depending on your location, you may have the right to:
 - **Access** the personal data we hold about you.
 - **Correct** inaccurate data (most data is editable directly in the app).
-- **Delete** your account and associated data. The app provides an account-deletion option, and you can also request deletion by emailing us.
+- **Delete** your account and associated data. Both the mobile app (Home → profile icon → Account → Delete account) and the web dashboard (Settings → Delete account) provide a self-service deletion option; you can also request deletion by emailing us. See Section 6 for exactly what is erased and what is kept, and https://kmb-talk.com/delete-account for step-by-step instructions.
 - **Withdraw consent** for notifications by disabling them in your device or app settings.
 
 To exercise any of these rights, contact us at the email in Section 1. We will respond within a reasonable timeframe.
