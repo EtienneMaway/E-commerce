@@ -19,9 +19,11 @@ import { Badge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { ReprintReceiptModal } from '../../components/forms/ReprintReceiptModal';
+import { RejectSaleModal, type RejectTarget } from '../../components/forms/RejectSaleModal';
+import { useOfflineStore } from '../../store/offline.store';
 import { useT } from '@/lib/i18n';
 
-type View_ = 'history' | 'top';
+type View_ = 'history' | 'top' | 'rejected';
 type HistoryPeriod = '7d' | '30d' | '90d' | 'all';   // maps to SalesHistoryPeriod
 type TopPeriod = 'today' | 'week' | 'month';           // maps to SalesPeriod
 type RankBy = 'qty' | 'revenue' | 'profit';
@@ -29,6 +31,8 @@ type RankBy = 'qty' | 'revenue' | 'profit';
 interface SaleRow {
   id: string;
   productName: string;
+  /** Size sold, for a sized (carton-with-sizes) product. Null for simple ones. */
+  variantLabel?: string | null;
   source: string;
   qtySold: number;
   unitCost: string;
@@ -41,6 +45,10 @@ interface SaleRow {
   clientPhone?: string | null;
   receiptId?: string | null;
   actor?: { id: string; username: string } | null;
+  /** Set once the sale has been rejected as a mistake — it stays in history. */
+  rejectedAt?: string | null;
+  rejectionReason?: string | null;
+  rejectedBy?: { id: string; username: string } | null;
 }
 
 interface TopProductRow {
@@ -50,20 +58,32 @@ interface TopProductRow {
   totalProfit: string;
 }
 
-function SaleCard({ item, onReprint }: { item: SaleRow; onReprint: (row: SaleRow) => void }) {
+function SaleCard({
+  item,
+  onReprint,
+  onReject,
+}: {
+  item: SaleRow;
+  onReprint: (row: SaleRow) => void;
+  /** Omitted on the rejected list — a rejected sale cannot be rejected again. */
+  onReject?: (row: SaleRow) => void;
+}) {
   const t = useT();
   const formatCurrency = useFormatCurrency();
   const profitNum = parseFloat(item.profit);
+  const isRejected = !!item.rejectedAt;
   return (
     <Pressable
       onPress={() => onReprint(item)}
-      className="bg-card border border-border rounded-2xl p-4 mb-3"
+      onLongPress={onReject && !isRejected ? () => onReject(item) : undefined}
+      className={`bg-card border rounded-2xl p-4 mb-3 ${isRejected ? 'border-danger' : 'border-border'}`}
       style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
     >
       <View className="flex-row justify-between items-start mb-2">
         <View className="flex-1 mr-2">
           <Text className="text-text font-semibold text-base" numberOfLines={1}>
             {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
+            {item.variantLabel ? ` · ${item.variantLabel}` : ''}
           </Text>
           <Text className="text-muted text-sm">{formatDate(item.date)}</Text>
         </View>
@@ -91,7 +111,59 @@ function SaleCard({ item, onReprint }: { item: SaleRow; onReprint: (row: SaleRow
           )}
         </View>
       )}
-      <Text className="text-primary text-xs mt-2 italic">{t.sales.tapToReprint}</Text>
+      {isRejected ? (
+        <View className="mt-2 pt-2 border-t border-border">
+          <View className="flex-row items-center flex-wrap gap-x-2">
+            <Text className="text-danger text-[11px] font-bold">⛔ {t.sales.rejectedBadge}</Text>
+            <Text className="text-muted text-xs">
+              {t.sales.rejectedOn(formatDate(item.rejectedAt as string))}
+              {item.rejectedBy ? ` ${t.sales.rejectedBy(`@${item.rejectedBy.username}`)}` : ''}
+            </Text>
+          </View>
+          {item.rejectionReason ? (
+            <Text className="text-muted text-xs mt-0.5 italic">“{item.rejectionReason}”</Text>
+          ) : null}
+        </View>
+      ) : (
+        <Text className="text-primary text-xs mt-2 italic">
+          {onReject ? t.sales.tapToReprintHold : t.sales.tapToReprint}
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
+/**
+ * A sale still sitting in the offline queue. Shown at the top of the history so
+ * a mistake made offline can be corrected before it ever reaches the server —
+ * it is the only place these rows are visible one by one.
+ */
+function PendingSaleCard({
+  productName,
+  qtySold,
+  onReject,
+}: {
+  productName: string;
+  qtySold: number;
+  onReject: () => void;
+}) {
+  const t = useT();
+  return (
+    <Pressable
+      onLongPress={onReject}
+      className="bg-card border border-amber-300 dark:border-amber-800 rounded-2xl p-4 mb-3"
+      style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
+    >
+      <View className="flex-row justify-between items-start">
+        <Text className="text-text font-semibold text-base flex-1 mr-2" numberOfLines={1}>
+          {productName.charAt(0).toUpperCase() + productName.slice(1)}
+        </Text>
+        <Text className="text-amber-700 dark:text-amber-300 text-[11px] font-bold">
+          ⏳ {t.sales.pendingSyncBadge}
+        </Text>
+      </View>
+      <Text className="text-muted text-sm mt-1">{t.sales.qty} {qtySold}</Text>
+      <Text className="text-primary text-xs mt-2 italic">{t.sales.tapToReprintHold}</Text>
     </Pressable>
   );
 }
@@ -137,6 +209,22 @@ export default function SalesScreen() {
   const [rankBy, setRankBy] = useState<RankBy>('profit');
   const [clientQuery, setClientQuery] = useState('');
   const [reprintSource, setReprintSource] = useState<SaleRow | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<RejectTarget | null>(null);
+  // Sales made offline that have not synced yet — listed above the history so
+  // they can be corrected before they reach the server. Ones already rejected
+  // offline drop out of the list (they are on their way to the rejected list).
+  const pendingSales = useOfflineStore((st) => st.pendingSales).filter(
+    (p) => !p.rejectedOffline,
+  );
+
+  const rejectServerSale = (row: SaleRow): void =>
+    setRejectTarget({
+      kind: 'server',
+      id: row.id,
+      productName: row.productName,
+      variantLabel: row.variantLabel,
+      qtySold: row.qtySold,
+    });
 
   const historyPeriodOptions: { label: string; value: HistoryPeriod }[] = [
     { label: t.sales.period7d, value: '7d' },
@@ -177,6 +265,15 @@ export default function SalesScreen() {
     placeholderData: keepPreviousData,
   });
 
+  // Rejected sales — the same endpoint, asked for the other side of the line.
+  const { data: rejectedData, isFetching: rejectedLoading, refetch: refetchRejected } = useQuery({
+    queryKey: QK.salesHistory({ period: historyPeriod, status: 'rejected' }),
+    queryFn: () => salesApi.list({ period: historyPeriod, status: 'rejected' }),
+    staleTime: 30_000,
+    enabled: view === 'rejected',
+    placeholderData: keepPreviousData,
+  });
+
   const { data: topData, isFetching: topLoading, refetch: refetchTop } = useQuery({
     queryKey: QK.topProducts({ rankBy, period: topPeriod }),
     queryFn: () => salesApi.topProducts({ rankBy, period: topPeriod }),
@@ -186,10 +283,12 @@ export default function SalesScreen() {
   });
 
   const sales = (salesData as { data: SaleRow[]; total: number } | undefined)?.data ?? [];
+  const rejectedSales =
+    (rejectedData as { data: SaleRow[]; total: number } | undefined)?.data ?? [];
   const topProducts = (topData as TopProductRow[] | undefined) ?? [];
 
-  const isFetching = view === 'history' ? salesLoading : topLoading;
-  const refetch = view === 'history' ? refetchSales : refetchTop;
+  const refetch =
+    view === 'history' ? refetchSales : view === 'rejected' ? refetchRejected : refetchTop;
 
   const totalProfit = sales.reduce((s, x) => s + parseFloat(x.profit), 0);
   const totalRevenue = sales.reduce((s, x) => s + parseFloat(x.salePrice) * Number(x.qtySold), 0);
@@ -211,11 +310,17 @@ export default function SalesScreen() {
         >
           <Text className={`text-sm font-semibold ${view === 'top' ? 'text-text' : 'text-muted'}`}>{t.sales.topProducts}</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setView('rejected')}
+          className={`flex-1 py-2 rounded-lg items-center ${view === 'rejected' ? 'bg-card shadow-sm' : ''}`}
+        >
+          <Text className={`text-sm font-semibold ${view === 'rejected' ? 'text-text' : 'text-muted'}`}>{t.sales.rejectedTab}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Period filter — options differ by view */}
       <View className="flex-row px-4 mb-3 gap-2">
-        {view === 'history'
+        {view !== 'top'
           ? historyPeriodOptions.map((opt) => (
               <Pressable
                 key={opt.value}
@@ -286,13 +391,62 @@ export default function SalesScreen() {
         <FlatList
           data={sales}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <SaleCard item={item} onReprint={setReprintSource} />}
+          renderItem={({ item }) => (
+            <SaleCard item={item} onReprint={setReprintSource} onReject={rejectServerSale} />
+          )}
           contentContainerClassName="px-4 pb-8"
           refreshControl={<RefreshControl refreshing={salesLoading} onRefresh={refetch} tintColor={brand.primary} />}
-          ListHeaderComponent={salesLoading && sales.length === 0 ? <ActivityIndicator className="mt-12" color={brand.primary} /> : null}
+          ListHeaderComponent={
+            <>
+              {pendingSales.length > 0 && (
+                <View className="mb-1">
+                  <Text className="text-muted text-xs font-semibold mb-2 uppercase">
+                    {t.sales.pendingSection}
+                  </Text>
+                  {pendingSales.map((p) => (
+                    <PendingSaleCard
+                      key={p.id}
+                      productName={p.productName}
+                      qtySold={p.qtySold}
+                      onReject={() =>
+                        setRejectTarget({
+                          kind: 'pending',
+                          id: p.id,
+                          productName: p.productName,
+                          qtySold: p.qtySold,
+                        })
+                      }
+                    />
+                  ))}
+                </View>
+              )}
+              {salesLoading && sales.length === 0 ? (
+                <ActivityIndicator className="mt-12" color={brand.primary} />
+              ) : null}
+            </>
+          }
           ListEmptyComponent={
-            !salesLoading ? (
+            !salesLoading && pendingSales.length === 0 ? (
               <EmptyState emoji="💰" title={t.sales.noSales} subtitle={t.sales.noSalesSub} />
+            ) : null
+          }
+        />
+      ) : view === 'rejected' ? (
+        <FlatList
+          data={rejectedSales}
+          keyExtractor={(item) => item.id}
+          // No onReject: these are already rejected, and the stock is back.
+          renderItem={({ item }) => <SaleCard item={item} onReprint={setReprintSource} />}
+          contentContainerClassName="px-4 pb-8"
+          refreshControl={<RefreshControl refreshing={rejectedLoading} onRefresh={refetch} tintColor={brand.primary} />}
+          ListHeaderComponent={
+            rejectedLoading && rejectedSales.length === 0 ? (
+              <ActivityIndicator className="mt-12" color={brand.primary} />
+            ) : null
+          }
+          ListEmptyComponent={
+            !rejectedLoading ? (
+              <EmptyState emoji="⛔" title={t.sales.noRejected} subtitle={t.sales.noRejectedSub} />
             ) : null
           }
         />
@@ -313,6 +467,7 @@ export default function SalesScreen() {
       )}
 
       <ReprintReceiptModal source={reprintSource} onClose={() => setReprintSource(null)} />
+      <RejectSaleModal target={rejectTarget} onClose={() => setRejectTarget(null)} />
     </View>
   );
 }

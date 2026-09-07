@@ -220,6 +220,7 @@ export class WithdrawalsService {
         .createQueryBuilder('s')
         .select('COALESCE(SUM(CAST(s.salePrice AS DECIMAL) * s.qtySold), 0)', 'total')
         .where('s.ownerId = :ownerId', { ownerId })
+        .andWhere('s.rejected_at IS NULL')
         .andWhere('s.date > :since', { since })
         .getRawOne<{ total: string }>(),
       this.paymentRepo

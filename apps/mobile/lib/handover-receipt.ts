@@ -77,6 +77,15 @@ export interface HandoverExpenseSlipLine {
   readonly amountFc: number;
 }
 
+/** One sale voided during the cycle. Printed so the employer can see the
+ *  correction; it contributes nothing to the cash. */
+export interface HandoverRejectedSlipLine {
+  readonly productName: string;
+  readonly qtyLabel: string;
+  readonly amountFc: number;
+  readonly reason: string | null;
+}
+
 export interface ApprovedHandoverSlip {
   readonly to: SlipParty; // employer/owner receiving the handover
   readonly handedOverBy: SlipParty; // the mini
@@ -91,6 +100,9 @@ export interface ApprovedHandoverSlip {
   /** Expenses claimed on this handover — deducted from `cashHandedOverFc` to
    *  print the net cash actually handed over. Empty when none were claimed. */
   readonly expenses: HandoverExpenseSlipLine[];
+  /** Sales rejected as mistakes this cycle. Empty when there were none (and on
+   *  handovers predating the feature). */
+  readonly rejected: HandoverRejectedSlipLine[];
   readonly returns: HandoverReturnLine[];
 }
 
@@ -129,6 +141,12 @@ export function toApprovedHandoverSlip(
       category: e.category,
       description: e.description ?? null,
       amountFc: parseFloat(e.amount) || 0,
+    })),
+    rejected: (settlement.rejectedLines ?? []).map((l) => ({
+      productName: l.variantLabel ? `${l.productName} · ${l.variantLabel}` : l.productName,
+      qtyLabel: formatBreakdown(breakdownQuantity(l.qtySold, null)),
+      amountFc: parseFloat(l.agreedValueFc) || 0,
+      reason: l.reason,
     })),
     returns: settlement.items.map((it) => ({
       productName: it.variantLabel ? `${it.productName} · ${it.variantLabel}` : it.productName,
@@ -370,6 +388,26 @@ export function buildApprovedHandoverHtml(slip: ApprovedHandoverSlip): string {
   <div class="items">${expenseRows}</div>
   <hr class="divider" />`
     : '';
+  const rejectedRows = slip.rejected
+    .map(
+      (r) => `
+        <div class="row item">
+          <div class="line">
+            <span class="name">${escapeHtml(r.productName)}</span>
+            <span class="muted">${escapeHtml(r.qtyLabel)}</span>
+          </div>
+          ${r.reason ? `<div class="line sub"><span>&nbsp;&nbsp;${escapeHtml(r.reason)}</span></div>` : ''}
+        </div>`,
+    )
+    .join('');
+  // No amount column on purpose: a rejected sale owes nothing, and printing a
+  // figure beside it would read as money the mini still has to hand over.
+  const rejectedSection = slip.rejected.length
+    ? `
+  <div class="section">Sales rejected (mistakes)</div>
+  <div class="items">${rejectedRows}</div>
+  <hr class="divider" />`
+    : '';
   const netCashFc = slip.cashHandedOverFc - expensesTotalFc;
   const returnRows =
     slip.returns.length === 0
@@ -414,6 +452,7 @@ export function buildApprovedHandoverHtml(slip: ApprovedHandoverSlip): string {
 
   <div class="section">Items returned</div>
   <div class="items">${returnRows}</div>
+  ${rejectedSection ? `<hr class="divider" />${rejectedSection}` : ''}
   <hr class="divider-solid" />`;
 
   return wrapSlipHtml('handover receipt', body);

@@ -271,6 +271,8 @@ export class ExpensesService {
       .select('COALESCE(SUM(CAST(s.salePrice AS DECIMAL) * s.qtySold), 0)', 'revenue')
       .where('s.ownerId = :ownerId', { ownerId })
       .andWhere('s.actorId = :actorId', { actorId: ctx.actorId })
+      // A rejected sale never earned them allowance.
+      .andWhere('s.rejected_at IS NULL')
       .andWhere('s.date BETWEEN :from AND :to', { from, to })
       .getRawOne<{ revenue: string }>();
     const soldUsd = new Decimal(soldAgg?.revenue ?? 0);

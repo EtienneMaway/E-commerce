@@ -2,6 +2,7 @@ import type {
   AllowanceSnapshot,
   CachedProduct,
   PendingExpense,
+  PendingRejection,
   PendingSale,
 } from '../store/offline.store';
 import type { MiniExpenseAllowance } from './api';
@@ -27,11 +28,20 @@ export function computeOfflineAllowance(input: {
   snapshot: AllowanceSnapshot | null;
   cachedProducts: CachedProduct[];
   pendingSales: PendingSale[];
+  /** Rejections of already-synced sales, queued offline. */
+  pendingRejections?: PendingRejection[];
   pendingExpenses: PendingExpense[];
   /** Session rate frozen at go-offline; used when a product has no locked rate. */
   snapshotRate: string | null;
 }): MiniExpenseAllowance | null {
-  const { snapshot, cachedProducts, pendingSales, pendingExpenses, snapshotRate } = input;
+  const {
+    snapshot,
+    cachedProducts,
+    pendingSales,
+    pendingRejections = [],
+    pendingExpenses,
+    snapshotRate,
+  } = input;
   if (!snapshot) return null;
 
   const fallbackRate = parseFloat(snapshotRate ?? '') || 1;
@@ -39,19 +49,36 @@ export function computeOfflineAllowance(input: {
 
   // Agreed value of what sold offline. For a mini every cached product is
   // consigned-in stock, whose unitCost IS the price they owe their employer.
-  const offlineSoldFc = pendingSales.reduce((sum, sale) => {
-    const product = byName.get(sale.productName);
-    if (!product) return sum;
+  const agreedFcOf = (productName: string, qty: number): number => {
+    const product = byName.get(productName);
+    if (!product) return 0;
     const agreedUsd = parseFloat(product.unitCost) || 0;
     const rate = parseFloat(product.usdToFcRateSnapshot ?? '') || fallbackRate;
-    return sum + agreedUsd * sale.qtySold * rate;
-  }, 0);
+    return agreedUsd * qty * rate;
+  };
+
+  // A sale rejected before it ever synced never earned any budget, so it is
+  // simply not counted.
+  const offlineSoldFc = pendingSales
+    .filter((sale) => !sale.rejectedOffline)
+    .reduce((sum, sale) => sum + agreedFcOf(sale.productName, sale.qtySold), 0);
+
+  // Rejections of sales the server already knows about: their value is baked
+  // into the frozen `snapshot.soldFc`, so take it back out — otherwise the mini
+  // keeps spending room they voided.
+  const rejectedSoldFc = pendingRejections.reduce(
+    (sum, r) => sum + agreedFcOf(r.productName, r.qtySold),
+    0,
+  );
 
   const offlineSpentFc = pendingExpenses
     .filter((e) => e.kind === 'mini')
     .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
 
-  const soldFc = (parseFloat(snapshot.soldFc) || 0) + offlineSoldFc;
+  const soldFc = Math.max(
+    0,
+    (parseFloat(snapshot.soldFc) || 0) + offlineSoldFc - rejectedSoldFc,
+  );
   const spentFc = (parseFloat(snapshot.spentFc) || 0) + offlineSpentFc;
 
   // A snapshot persisted by an older build may carry no percentage; without one

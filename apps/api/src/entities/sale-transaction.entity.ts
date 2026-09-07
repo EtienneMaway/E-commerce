@@ -182,4 +182,32 @@ export class SaleTransaction {
   })
   @Column({ name: 'carton_sale_id', type: 'uuid', nullable: true })
   cartonSaleId: string | null;
+
+  // ─── Rejection (a sale recorded by mistake) ───────────────────────────────
+  // A rejected sale is never deleted: the row stays, its quantity goes back on
+  // the shelf, and every money/stock aggregation skips it (`rejected_at IS
+  // NULL`). Keeping it is the point — the merchant can show what was voided,
+  // when, by whom and why.
+
+  @ApiPropertyOptional({
+    description:
+      'When this sale was rejected (recorded by mistake). Null for a live sale — every revenue, profit, stock and handover figure filters on this being null.',
+  })
+  @Column({ name: 'rejected_at', type: 'timestamp', nullable: true })
+  rejectedAt: Date | null;
+
+  @ApiPropertyOptional({ description: 'User who rejected the sale' })
+  @Column({ name: 'rejected_by_id', type: 'uuid', nullable: true })
+  rejectedById: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'rejected_by_id' })
+  rejectedBy: User | null;
+
+  @ApiPropertyOptional({
+    example: 'Wrong product',
+    description: 'Optional note explaining why the sale was rejected',
+  })
+  @Column({ name: 'rejection_reason', type: 'varchar', nullable: true })
+  rejectionReason: string | null;
 }

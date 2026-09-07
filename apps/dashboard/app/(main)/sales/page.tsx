@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import Link from 'next/link';
 import { salesApi, inventoryApi } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
@@ -21,6 +21,7 @@ import { usePermissions } from '../../../lib/permissions';
 import { saleReceiptHtml } from '../../../lib/print-templates';
 import { PrintDialog } from '../../../components/ui/PrintDialog';
 import { generateReceiptId, type ReceiptData } from '../../../lib/thermal-receipt';
+import { getErrorMessage } from '../../../lib/utils';
 
 type Period = '7d' | '30d' | '90d' | 'all' | 'custom';
 
@@ -79,6 +80,8 @@ function listParams(period: Period, custom: CustomRange, actorId?: string): {
 interface Row {
   id: string;
   productName: string;
+  /** Size sold, for a sized (carton-with-sizes) product. Null for simple ones. */
+  variantLabel: string | null;
   source: string;
   qtySold: number;
   unitCost: string;
@@ -90,6 +93,10 @@ interface Row {
   actor: { id: string; username: string } | null;
   originalUnitPrice: string | null;
   discountReason: string | null;
+  /** Set once the sale was rejected as a mistake — the row is kept forever. */
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  rejectedBy: { id: string; username: string } | null;
 }
 
 export default function SalesPage() {
@@ -101,6 +108,29 @@ export default function SalesPage() {
   const [custom, setCustom] = useState<CustomRange>({ from: '', to: '' });
   const [actorFilter, setActorFilter] = useState<string>(ACTOR_FILTER_ALL);
   const [printRow, setPrintRow] = useState<Row | null>(null);
+  // Which side of the rejection line the table is showing. 'active' is the
+  // default so every existing view keeps its exact meaning.
+  const [status, setStatus] = useState<'active' | 'rejected'>('active');
+  const [rejectRow, setRejectRow] = useState<Row | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const qc = useQueryClient();
+
+  const rejectMutation = useMutation({
+    mutationFn: (vars: { id: string; reason?: string }) =>
+      salesApi.reject(vars.id, vars.reason ? { reason: vars.reason } : {}),
+    onSuccess: () => {
+      // Everything downstream of a sale moves: the list, stock, the cash
+      // position and the profit cards.
+      qc.invalidateQueries({ queryKey: ['sales'] });
+      qc.invalidateQueries({ queryKey: QK.inventoryProducts });
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['mini-settlements'] });
+      setRejectRow(null);
+      setRejectReason('');
+    },
+    onError: (err) => alert(getErrorMessage(err)),
+  });
 
   const { data: productsData } = useQuery<{ productName: string; piecesPerCarton: number | null }[]>({
     queryKey: QK.inventoryProducts,
@@ -109,6 +139,10 @@ export default function SalesPage() {
     staleTime: 60_000,
   });
   const ppcMap = new Map((productsData ?? []).map((p) => [p.productName, p.piecesPerCarton]));
+  /** Sized rows print as "product · size" — two sizes of one product would
+   *  otherwise reprint as two identical lines. */
+  const receiptName = (r: Row): string =>
+    r.variantLabel ? `${r.productName} · ${r.variantLabel}` : r.productName;
 
   const PERIODS: { label: string; value: Period }[] = [
     { label: t.sales.period7d, value: '7d' },
@@ -125,6 +159,7 @@ export default function SalesPage() {
         <div className="flex flex-col gap-0.5">
           <span className="font-medium" style={{ color: 'var(--foreground)' }}>
             {r.productName.charAt(0).toUpperCase() + r.productName.slice(1)}
+            {r.variantLabel ? ` · ${r.variantLabel}` : ''}
           </span>
           <ActorPill
             actor={r.actor}
@@ -171,18 +206,61 @@ export default function SalesPage() {
       ),
     },
     { key: 'date', header: t.sales.colDate, sortable: true, getValue: (r) => r.date, render: (r) => formatDate(r.date) },
+    // Only on the rejected view: when it happened, who did it and why.
+    ...(status === 'rejected'
+      ? [
+          {
+            key: 'rejectedAt',
+            header: t.sales.colRejected,
+            sortable: true,
+            getValue: (r: Row) => r.rejectedAt ?? '',
+            render: (r: Row) => (
+              <div className="flex flex-col gap-0.5">
+                <span>{r.rejectedAt ? formatDate(r.rejectedAt) : '—'}</span>
+                {r.rejectedBy && (
+                  <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                    {t.sales.rejectedBy(`@${r.rejectedBy.username}`)}
+                  </span>
+                )}
+                {r.rejectionReason && (
+                  <span className="text-xs italic" style={{ color: 'var(--muted)' }}>
+                    “{r.rejectionReason}”
+                  </span>
+                )}
+              </div>
+            ),
+          } as Column<Row>,
+        ]
+      : []),
     {
       key: 'print',
       header: '',
       render: (r) => (
-        <button
-          onClick={() => setPrintRow(r)}
-          className="btn btn-secondary"
-          style={{ fontSize: '12px', padding: '5px 12px' }}
-          title={t.print.printBtn}
-        >
-          🖨️
-        </button>
+        <div className="flex gap-1.5 justify-end">
+          <button
+            onClick={() => setPrintRow(r)}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', padding: '5px 12px' }}
+            title={t.print.printBtn}
+          >
+            🖨️
+          </button>
+          {/* Rejecting is the mirror of recording, so it rides on the same
+              permission — and a sale already rejected has no button at all. */}
+          {status === 'active' && can('sales.record') && (
+            <button
+              onClick={() => {
+                setRejectRow(r);
+                setRejectReason('');
+              }}
+              className="btn btn-danger"
+              style={{ fontSize: '12px', padding: '5px 12px' }}
+              title={t.sales.rejectBtn}
+            >
+              ⛔
+            </button>
+          )}
+        </div>
       ),
     },
   ];
@@ -192,7 +270,11 @@ export default function SalesPage() {
   // default 10 rows while reporting the true total, so widening a period could
   // never reveal more than 10 and there was no pager to reach the rest — the
   // filters looked broken. TABLE_PAGE_SIZE drives DataTable's own pager.
-  const queryParams = { ...listParams(period, custom, resolveActorFilter(actorFilter)), limit: MAX_LIST_ROWS };
+  const queryParams = {
+    ...listParams(period, custom, resolveActorFilter(actorFilter)),
+    limit: MAX_LIST_ROWS,
+    status,
+  };
   const { data, isLoading } = useQuery({
     queryKey: QK.salesHistory(queryParams),
     queryFn: () => salesApi.list(queryParams),
@@ -233,7 +315,7 @@ export default function SalesPage() {
         open={!!printRow}
         onClose={() => setPrintRow(null)}
         buildHtml={(fmt) => saleReceiptHtml({
-          items: printRow ? [{ productName: printRow.productName, qtySold: printRow.qtySold, salePrice: printRow.salePrice, piecesPerCarton: ppcMap.get(printRow.productName) ?? null }] : [],
+          items: printRow ? [{ productName: receiptName(printRow), qtySold: printRow.qtySold, salePrice: printRow.salePrice, piecesPerCarton: ppcMap.get(printRow.productName) ?? null }] : [],
           date: printRow?.date ?? '',
           formatCurrency: fmt,
           t: { title: t.print.saleReceipt, date: t.print.date, product: t.print.product, qty: t.print.qty, unitPrice: t.print.unitPrice, total: t.print.total, grandTotal: t.print.grandTotal, cartonPrice: t.print.cartonPrice, pcsPerCarton: t.print.pcsPerCarton },
@@ -253,7 +335,7 @@ export default function SalesPage() {
           const ppc = ppcMap.get(printRow.productName) ?? null;
           return {
             items: [{
-              productName: printRow.productName,
+              productName: receiptName(printRow),
               qty: printRow.qtySold,
               unitPriceFc: unitFc,
               totalFc: unitFc * printRow.qtySold,
@@ -270,6 +352,58 @@ export default function SalesPage() {
           };
         }}
       />
+      {rejectRow && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setRejectRow(null)}
+        >
+          <div
+            className="card w-full max-w-md p-5"
+            style={{ background: 'var(--card)', borderColor: 'rgba(127,127,127,0.2)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold mb-1" style={{ color: 'var(--foreground)' }}>
+              {t.sales.rejectTitle}
+            </h2>
+            <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>
+              {t.sales.rejectBody(
+                rejectRow.variantLabel
+                  ? `${rejectRow.productName} · ${rejectRow.variantLabel}`
+                  : rejectRow.productName,
+                rejectRow.qtySold,
+              )}
+            </p>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--foreground)' }}>
+              {t.sales.rejectReasonLabel}
+            </label>
+            <input
+              className="input w-full mb-4"
+              value={rejectReason}
+              maxLength={300}
+              placeholder={t.sales.rejectReasonPlaceholder}
+              onChange={(e) => setRejectReason(e.target.value)}
+            />
+            <div className="flex gap-2 justify-end">
+              <button className="btn btn-ghost" onClick={() => setRejectRow(null)}>
+                {t.sales.rejectCancel}
+              </button>
+              <button
+                className="btn btn-danger"
+                disabled={rejectMutation.isPending}
+                onClick={() =>
+                  rejectMutation.mutate({
+                    id: rejectRow.id,
+                    reason: rejectReason.trim() || undefined,
+                  })
+                }
+              >
+                {t.sales.rejectConfirm}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="page-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
         <div className="flex-1 min-w-0">
           <h1 className="page-title">{t.sales.title}</h1>
@@ -313,6 +447,22 @@ export default function SalesPage() {
               </div>
             )}
             <ActorFilter value={actorFilter} onChange={setActorFilter} />
+            {/* Live vs rejected. Rejected sales are kept for good; they are
+                simply excluded from every figure above. */}
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setStatus('active')}
+                className={`pill${status === 'active' ? ' active' : ''}`}
+              >
+                {t.sales.viewActive}
+              </button>
+              <button
+                onClick={() => setStatus('rejected')}
+                className={`pill${status === 'rejected' ? ' active' : ''}`}
+              >
+                {t.sales.viewRejected}
+              </button>
+            </div>
           </div>
         </div>
 {can('sales.analytics') && (
@@ -327,6 +477,11 @@ export default function SalesPage() {
           <div className="loading-state"><div className="spinner" /><span>{t.sales.loading}</span></div>
         ) : (
           <>
+            {status === 'rejected' && (
+              <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>
+                {rows.length === 0 ? t.sales.noRejected : t.sales.rejectedNote}
+              </p>
+            )}
             <DataTable
               columns={COLUMNS}
               data={rows}

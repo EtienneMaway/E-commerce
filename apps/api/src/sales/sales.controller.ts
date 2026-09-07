@@ -18,6 +18,7 @@ import {
 import { SalesService } from './sales.service';
 import { RecordSaleDto } from './dto/record-sale.dto';
 import { UpdateSaleClientDto } from './dto/update-sale-client.dto';
+import { RejectSaleDto } from './dto/reject-sale.dto';
 import {
   SalesFilterDto,
   SalesSummaryFilterDto,
@@ -127,5 +128,30 @@ export class SalesController {
     @Body() dto: UpdateSaleClientDto,
   ) {
     return this.salesService.updateClient(ctx, id, dto);
+  }
+
+  @Post(':id/reject')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @RequiresService('sales.record')
+  @ApiOperation({
+    summary: 'Reject a sale recorded by mistake',
+    description:
+      'Keeps the row (listed under GET /sales?status=rejected), restores its quantity to the lot it came off as a ' +
+      'SALE_REJECTED stock movement, and removes it from every revenue, profit, cash and handover figure. ' +
+      'Idempotent — rejecting an already-rejected sale returns it unchanged. A mini employee may only reject ' +
+      'within the cycle they have not handed over yet.',
+  })
+  @ApiResponse({ status: 201, description: 'Sale rejected and stock restored' })
+  @ApiResponse({ status: 404, description: 'Sale not found on these books' })
+  @ApiResponse({
+    status: 409,
+    description: 'Mini employee: handover pending, or the sale is already settled',
+  })
+  rejectSale(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RejectSaleDto,
+  ) {
+    return this.salesService.rejectSale(ctx, id, dto);
   }
 }

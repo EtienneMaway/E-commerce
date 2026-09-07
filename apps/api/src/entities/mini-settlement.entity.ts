@@ -32,6 +32,25 @@ export interface MiniSettlementSoldLine {
   profitFc: string;
 }
 
+/**
+ * One sale the mini rejected as a mistake during the cycle this handover
+ * settles — snapshotted at create time so the printed handover report shows
+ * what was voided, next to what was sold. The pieces went back on the shelf, so
+ * they are already counted in the returns; this section exists so the employer
+ * can see the correction happened rather than wondering why a receipt they were
+ * shown is missing from the sold list.
+ */
+export interface MiniSettlementRejectedLine {
+  productName: string;
+  variantLabel: string | null;
+  qtySold: number;
+  /** FC value the rejected sale would have owed the owner, at its locked rate. */
+  agreedValueFc: string;
+  /** ISO timestamp of the rejection. */
+  rejectedAt: string;
+  reason: string | null;
+}
+
 export enum MiniSettlementStatus {
   /** Mini employee handed over cash + returns on the app; awaiting owner approval. */
   PENDING = 'PENDING',
@@ -93,6 +112,13 @@ export class MiniSettlement {
   })
   @Column({ name: 'sold_lines', type: 'jsonb', nullable: true })
   soldLines: MiniSettlementSoldLine[] | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Snapshot of the sales rejected as mistakes during this handover cycle. Null when none were rejected (and on handovers predating the field).',
+  })
+  @Column({ name: 'rejected_lines', type: 'jsonb', nullable: true })
+  rejectedLines: MiniSettlementRejectedLine[] | null;
 
   @ApiPropertyOptional({
     example: '2.00',

@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, View, Text, Pressable, TextInput, TouchableOpacity, Alert } from 'react-native';
+import {
+  Modal,
+  ScrollView,
+  View,
+  Text,
+  Pressable,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+} from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ProductSummary, ProductVariantSummary } from '@trading-app/types';
 import { salesApi, quantityDiscountsApi } from '../../lib/api';
@@ -24,6 +35,13 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   group: ProductSummary | null;
+  /**
+   * Hand this product's sizes over to the multi-product cart
+   * (RecordSaleModal), which can hold sized and normal products at once and
+   * bills them onto ONE receipt. Provided by the screens that also mount that
+   * cart; the button stays hidden where it isn't.
+   */
+  onSellWithOthers?: () => void;
 }
 
 type Mode = 'carton' | 'size';
@@ -54,7 +72,7 @@ interface SizePriceGuardPending {
  * don't yet flow through the offline queue). Both modes end with the same
  * print/share/skip receipt prompt used by the regular sale flow.
  */
-export function SellSizedProductModal({ visible, onClose, group }: Props) {
+export function SellSizedProductModal({ visible, onClose, group, onSellWithOthers }: Props) {
   const brand = useBrand();
   const t = useT();
   const qc = useQueryClient();
@@ -85,6 +103,12 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
   const [lastReceiptId, setLastReceiptId] = useState<string | null>(null);
   const [receiptPrompt, setReceiptPrompt] = useState<ReceiptData | null>(null);
   const [printingReceipt, setPrintingReceipt] = useState(false);
+  // Optional buyer details typed at the prompt, plus the ids of the rows this
+  // sale just created — one PATCH against the first row propagates the buyer
+  // across the whole receipt server-side (see SalesService.updateClient).
+  const [receiptClientName, setReceiptClientName] = useState('');
+  const [receiptClientPhone, setReceiptClientPhone] = useState('');
+  const [lastSaleIds, setLastSaleIds] = useState<string[]>([]);
 
   const { data: qdConfig } = useQuery({
     queryKey: QK.quantityDiscounts,
@@ -102,6 +126,9 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
     setSizePriceGuardPending([]);
     setSizeRowsAlreadySold([]);
     setSubmitting(false);
+    setLastSaleIds([]);
+    setReceiptClientName('');
+    setReceiptClientPhone('');
     setApplyDiscount(false);
     setDiscountPctOverride('');
     // Default the carton price to the dashboard's carton selling price (or the
@@ -116,7 +143,135 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, group?.groupId]);
 
-  if (!group) return null;
+  // ── Receipt prompt: buyer details, then print / share / skip ──────────────
+  // Everything in this section is declared ABOVE the `!group` guard on purpose.
+  // The sell sheet closes the moment a sale lands (see the submit handlers),
+  // which makes the parent drop `group` — a prompt defined below the guard
+  // would be unmounted before the merchant could print. Same reason
+  // inventory.tsx keeps RecordSaleModal permanently mounted.
+
+  /**
+   * Attach the buyer to the sale server-side. One PATCH against the first row
+   * of the batch — the API fans it out to every sibling sharing the receiptId,
+   * so a later search by name or phone finds the whole transaction. Best
+   * effort: a failure here never blocks the print, the slip already carries
+   * the name. Sized sales are online-only, so there's no offline branch (the
+   * normal-sale prompt queues it; here the sale itself could not have happened).
+   */
+  const persistClient = (clientName: string, clientPhone: string): void => {
+    const name = clientName.trim();
+    const phone = clientPhone.trim();
+    if (!name && !phone) return;
+    const firstId = lastSaleIds[0];
+    if (!firstId) return;
+    void salesApi
+      .updateClient(firstId, {
+        clientName: name || undefined,
+        clientPhone: phone || undefined,
+      })
+      .catch(() => {
+        // best-effort — the print continues regardless
+      });
+  };
+
+  /** Merge the typed buyer details into the slip about to be printed/shared. */
+  const buildPromptReceipt = (base: ReceiptData): ReceiptData => ({
+    ...base,
+    clientName: receiptClientName.trim() || undefined,
+    clientPhone: receiptClientPhone.trim() || undefined,
+  });
+
+  const handlePrintReceipt = async (): Promise<void> => {
+    if (!receiptPrompt) return;
+    persistClient(receiptClientName, receiptClientPhone);
+    const data = buildPromptReceipt(receiptPrompt);
+    setReceiptPrompt(null);
+    setPrintingReceipt(true);
+    try {
+      await printReceipt(data);
+    } catch (err) {
+      if (usePrinterStore.getState().printer) {
+        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+      } else {
+        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
+      }
+    } finally {
+      setPrintingReceipt(false);
+    }
+  };
+
+  const handleShareReceipt = (): void => {
+    if (!receiptPrompt) return;
+    persistClient(receiptClientName, receiptClientPhone);
+    void shareReceiptAsPdf(buildPromptReceipt(receiptPrompt));
+    setReceiptPrompt(null);
+  };
+
+  const handleSkipReceipt = (): void => {
+    // Typed a buyer then chose Skip — they meant "don't print, but keep the
+    // name on the sale". Same reading as the normal-sale prompt.
+    persistClient(receiptClientName, receiptClientPhone);
+    setReceiptPrompt(null);
+  };
+
+  /** The prompt itself — the only modal on screen once the sheet has closed. */
+  const receiptPromptModal = (
+    <Modal
+      visible={receiptPrompt !== null}
+      transparent
+      animationType="fade"
+      onRequestClose={handleSkipReceipt}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        className="flex-1 justify-center bg-black/50 px-6"
+      >
+        <View className="bg-surface rounded-2xl p-5">
+          <Text className="text-text font-bold text-lg">
+            {t.recordSaleModal.receiptPromptTitle}
+          </Text>
+          <Text className="text-muted text-sm mt-1 mb-4">
+            {t.recordSaleModal.receiptPromptSubtitle}
+          </Text>
+
+          <Text className="text-text text-xs font-semibold mb-1">
+            {t.recordSaleModal.receiptClientNameLabel}
+          </Text>
+          <TextInput
+            value={receiptClientName}
+            onChangeText={setReceiptClientName}
+            placeholder=""
+            className="bg-card border border-border rounded-lg px-3 py-2.5 text-text mb-3"
+            autoCapitalize="words"
+          />
+
+          <Text className="text-text text-xs font-semibold mb-1">
+            {t.recordSaleModal.receiptClientPhoneLabel}
+          </Text>
+          <TextInput
+            value={receiptClientPhone}
+            onChangeText={setReceiptClientPhone}
+            placeholder="+243 …"
+            keyboardType="phone-pad"
+            className="bg-card border border-border rounded-lg px-3 py-2.5 text-text mb-4"
+          />
+
+          <View className="flex-row gap-2">
+            <Button label={t.recordSaleModal.receiptSkipBtn} variant="ghost" onPress={handleSkipReceipt} className="flex-1" />
+            <Button label={t.recordSaleModal.receiptShareBtn} variant="outline" onPress={handleShareReceipt} className="flex-1" />
+            <Button
+              label={t.recordSaleModal.receiptPrintBtn}
+              onPress={() => void handlePrintReceipt()}
+              loading={printingReceipt}
+              className="flex-1"
+            />
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+
+  if (!group) return receiptPromptModal;
 
   const groupRate = isMini && group.usdToFcRateSnapshot ? group.usdToFcRateSnapshot : exchangeRate;
   const rateFor = (v: ProductVariantSummary) =>
@@ -241,6 +396,8 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
         cartonPriceFc: discountedCartonFcNum,
       },
     ];
+    setReceiptClientName('');
+    setReceiptClientPhone('');
     setReceiptPrompt({ items, grandTotalFc: totalFc, ...baseReceiptFields(receiptId) });
   };
 
@@ -252,17 +409,30 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
       totalFc: r.unitPriceFc * r.qty,
     }));
     const grandTotalFc = rows.reduce((s, r) => s + r.unitPriceFc * r.qty, 0);
+    setReceiptClientName('');
+    setReceiptClientPhone('');
     setReceiptPrompt({ items, grandTotalFc, ...baseReceiptFields(receiptId) });
   };
 
-  const invalidate = async (): Promise<void> => {
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: QK.inventoryProducts }),
-      qc.invalidateQueries({ queryKey: QK.inventory() }),
-      qc.invalidateQueries({ queryKey: QK.salesHistory() }),
-      qc.invalidateQueries({ queryKey: QK.dashboardAll }),
-      qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] }),
-    ]);
+  /**
+   * Fire-and-forget, exactly like RecordSaleModal's. `invalidateQueries`
+   * resolves only once every refetch it triggers has come back, so awaiting it
+   * before offering the receipt put the print prompt behind five network round
+   * trips — on a weak connection the merchant saw the sale land and no way to
+   * print. The caches still refresh; the receipt just no longer waits on them.
+   */
+  /** `salesApi.record()` is loosely typed — narrow to the created row's id. */
+  const saleIdOf = (sale: unknown): string | null =>
+    sale && typeof sale === 'object' && 'id' in sale && typeof sale.id === 'string'
+      ? sale.id
+      : null;
+
+  const invalidate = (): void => {
+    void qc.invalidateQueries({ queryKey: QK.inventoryProducts });
+    void qc.invalidateQueries({ queryKey: QK.inventory() });
+    void qc.invalidateQueries({ queryKey: QK.salesHistory() });
+    void qc.invalidateQueries({ queryKey: QK.dashboardAll });
+    void qc.invalidateQueries({ queryKey: ['mini-settlements', 'stats'] });
   };
 
   // ── Carton-mode submit (unchanged behavior, now ends with the receipt prompt) ──
@@ -277,7 +447,7 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
             ? `${t.recordSaleModal.qdReasonPrefix}: ${tierName(cartonTier)} (${cartonDiscountPct}%)`
             : `${t.recordSaleModal.qdReasonPrefix} (${cartonDiscountPct}%)`
           : undefined;
-      await salesApi.record({
+      const sale = await salesApi.record({
         productName: group.productName,
         carton: true,
         groupId: group.groupId,
@@ -289,8 +459,13 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
         receiptId,
         ...(confirmedOverride ? { confirmedOverride: true } : {}),
       });
-      await invalidate();
+      setLastSaleIds(saleIdOf(sale) ? [saleIdOf(sale)!] : []);
+      // Prompt first, close the sheet, then refresh caches — the prompt is the
+      // only modal left on screen (stacking it over the open pageSheet is what
+      // the normal-sale flow avoids too).
       offerCartonReceipt(receiptId);
+      invalidate();
+      onClose();
     } catch (err) {
       if (isPriceGuardWarning(err)) {
         const w = getPriceGuardWarning(err);
@@ -315,13 +490,18 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
     rows: SizeCartRow[],
     receiptId: string,
     confirmedOverride = false,
-  ): Promise<{ succeeded: SizeCartRow[]; priceGuard: SizePriceGuardPending[] }> => {
+  ): Promise<{
+    succeeded: SizeCartRow[];
+    priceGuard: SizePriceGuardPending[];
+    saleIds: string[];
+  }> => {
     const succeeded: SizeCartRow[] = [];
     const priceGuard: SizePriceGuardPending[] = [];
+    const saleIds: string[] = [];
     for (const row of rows) {
       try {
         const salePriceUsd = (row.unitPriceFc / (parseFloat(row.rate) || 1)).toFixed(4);
-        await salesApi.record({
+        const sale = await salesApi.record({
           productName: group.productName,
           variantId: row.variantId,
           qtySold: row.qty,
@@ -330,6 +510,8 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
           receiptId,
           ...(confirmedOverride ? { confirmedOverride: true } : {}),
         });
+        const id = saleIdOf(sale);
+        if (id) saleIds.push(id);
         succeeded.push(row);
       } catch (err) {
         if (isPriceGuardWarning(err)) {
@@ -340,7 +522,7 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
         }
       }
     }
-    return { succeeded, priceGuard };
+    return { succeeded, priceGuard, saleIds };
   };
 
   async function handleSizeSubmit() {
@@ -348,8 +530,9 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
     const receiptId = generateReceiptId();
     setLastReceiptId(receiptId);
     setSubmitting(true);
-    const { succeeded, priceGuard } = await submitSizeRows(sizeCartArray, receiptId);
+    const { succeeded, priceGuard, saleIds } = await submitSizeRows(sizeCartArray, receiptId);
     setSubmitting(false);
+    setLastSaleIds(saleIds);
     if (priceGuard.length > 0) {
       // Rows that already recorded ride along so the eventual receipt (once
       // the pending ones are confirmed or abandoned) still includes them.
@@ -357,50 +540,37 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
       setSizePriceGuardPending(priceGuard);
       return;
     }
-    await invalidate();
+    // Every row failed for a non-price-guard reason (already alerted) — leave
+    // the sheet open on the merchant's selection rather than offering a
+    // receipt with nothing on it.
+    if (succeeded.length === 0) {
+      invalidate();
+      return;
+    }
     offerSizeReceipt(succeeded, receiptId);
     setSizeCart(new Map());
+    invalidate();
+    onClose();
   }
 
   async function handleSizeConfirmOverrides() {
     const rows = sizePriceGuardPending.map((p) => p.row);
     const receiptId = lastReceiptId ?? generateReceiptId();
     setSubmitting(true);
-    const { succeeded } = await submitSizeRows(rows, receiptId, true);
+    const { succeeded, saleIds } = await submitSizeRows(rows, receiptId, true);
     setSubmitting(false);
+    // Append: rows recorded on the first pass carry the same receiptId, and
+    // the client PATCH fans out from whichever row it lands on.
+    setLastSaleIds((prev) => [...prev, ...saleIds]);
     setSizePriceGuardPending([]);
-    await invalidate();
-    offerSizeReceipt([...sizeRowsAlreadySold, ...succeeded], receiptId);
+    const sold = [...sizeRowsAlreadySold, ...succeeded];
     setSizeRowsAlreadySold([]);
     setSizeCart(new Map());
+    invalidate();
+    if (sold.length === 0) return;
+    offerSizeReceipt(sold, receiptId);
+    onClose();
   }
-
-  // ── Receipt prompt actions ────────────────────────────────────────────────
-  const handlePrintReceipt = async (): Promise<void> => {
-    if (!receiptPrompt) return;
-    const data = receiptPrompt;
-    setReceiptPrompt(null);
-    setPrintingReceipt(true);
-    try {
-      await printReceipt(data);
-    } catch (err) {
-      if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err));
-      } else {
-        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
-      }
-    } finally {
-      setPrintingReceipt(false);
-    }
-  };
-
-  const handleShareReceipt = (): void => {
-    if (!receiptPrompt) return;
-    void shareReceiptAsPdf(receiptPrompt);
-    setReceiptPrompt(null);
-  };
-
-  const handleSkipReceipt = (): void => setReceiptPrompt(null);
 
   // The price-guard sub-screen below renders with a hardcoded `visible` (not
   // tied to the `visible` prop), same pattern as RecordSaleModal — so canceling
@@ -690,32 +860,27 @@ export function SellSizedProductModal({ visible, onClose, group }: Props) {
           loading={submitting}
           disabled={!canSubmit || submitting}
         />
+
+        {/* Escape hatch to the multi-product cart. Sizes only — the cart sells
+            sized products by the piece; a whole carton stays here. */}
+        {mode === 'size' && onSellWithOthers && (
+          <View className="mt-4">
+            <Button
+              label={t.sizedSale.sellWithOthers}
+              variant="ghost"
+              onPress={onSellWithOthers}
+              disabled={submitting}
+            />
+            <Text className="text-muted text-xs text-center mt-1">
+              {t.sizedSale.sellWithOthersHint}
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </Modal>
 
     {/* Post-sale: print/share/skip the receipt (covers whole-carton and by-size sales alike). */}
-    <Modal visible={receiptPrompt !== null} transparent animationType="fade" onRequestClose={handleSkipReceipt}>
-      <View className="flex-1 justify-center bg-black/50 px-6">
-        <View className="bg-surface rounded-2xl p-5">
-          <Text className="text-text font-bold text-lg">
-            {t.recordSaleModal.receiptPromptTitle}
-          </Text>
-          <Text className="text-muted text-sm mt-1 mb-4">
-            {t.sizedSale.receiptPromptSubtitle}
-          </Text>
-          <View className="flex-row gap-2">
-            <Button label={t.recordSaleModal.receiptSkipBtn} variant="ghost" onPress={handleSkipReceipt} className="flex-1" />
-            <Button label={t.recordSaleModal.receiptShareBtn} variant="outline" onPress={handleShareReceipt} className="flex-1" />
-            <Button
-              label={t.recordSaleModal.receiptPrintBtn}
-              onPress={() => void handlePrintReceipt()}
-              loading={printingReceipt}
-              className="flex-1"
-            />
-          </View>
-        </View>
-      </View>
-    </Modal>
+    {receiptPromptModal}
     </>
   );
 }

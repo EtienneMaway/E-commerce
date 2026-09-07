@@ -22,6 +22,7 @@ import {
   MiniSettlement,
   MiniSettlementItem,
   type MiniSettlementSoldLine,
+  type MiniSettlementRejectedLine,
   MiniSettlementStatus,
   MiniTeamMember,
   Payment,
@@ -69,6 +70,23 @@ export interface HandoverSoldLine {
   /** FC-native, converted at each sale's locked consignment rate. */
   agreedValueFc: string;
   profitFc: string;
+}
+
+/**
+ * One sale rejected as a mistake inside the cycle a handover settles. Money
+ * figures are informational only — a rejected sale owes nothing, its pieces are
+ * back on the shelf and already counted in the returns.
+ */
+export interface HandoverRejectedLine {
+  productName: string;
+  variantId: string | null;
+  variantLabel: string | null;
+  qtySold: number;
+  /** FC value this sale would have owed the owner, at its locked rate. */
+  agreedValueFc: string;
+  /** ISO timestamp of the rejection. */
+  rejectedAt: string;
+  reason: string | null;
 }
 
 export interface HandoverExpenseLine {
@@ -172,6 +190,12 @@ export interface HandoverPreview {
   expensesFc: string;
   /** Per-expense breakdown (FC) — the individual expenses this handover settles. */
   expenses: HandoverExpenseLine[];
+  /**
+   * Sales voided as mistakes during this cycle. They owe nothing (their pieces
+   * are back in `returns`); they are here so the handover report shows the
+   * correction rather than leaving an unexplained gap in the receipts.
+   */
+  rejected: HandoverRejectedLine[];
 }
 
 export interface MiniStats {
@@ -362,6 +386,21 @@ export class MiniSettlementsService {
       profitFc: l.profitFc,
     }));
 
+    // Same boundary, same immutability: what was voided during this cycle is
+    // frozen onto the handover so the report reprints identically.
+    const rejectedLines = await this.computeRejectedLines(
+      miniId,
+      lastApproved?.approvedAt ?? null,
+    );
+    const rejectedSnapshot: MiniSettlementRejectedLine[] = rejectedLines.map((l) => ({
+      productName: l.productName,
+      variantLabel: l.variantLabel,
+      qtySold: l.qtySold,
+      agreedValueFc: l.agreedValueFc,
+      rejectedAt: l.rejectedAt,
+      reason: l.reason,
+    }));
+
     const settlement = this.settlementRepo.create({
       ownerId,
       miniId,
@@ -369,6 +408,7 @@ export class MiniSettlementsService {
       cashAmount: cash.toFixed(4),
       cashAmountFc: dto.cashAmountFc ? new Decimal(dto.cashAmountFc).toFixed(4) : null,
       soldLines: soldSnapshot.length > 0 ? soldSnapshot : null,
+      rejectedLines: rejectedSnapshot.length > 0 ? rejectedSnapshot : null,
       // Seal the expense ceiling this cycle ran under. The employer may change
       // the employment's rate at any time; an already-submitted handover must
       // keep showing the rate it was actually governed by.
@@ -472,7 +512,10 @@ export class MiniSettlementsService {
     // sale's FC value converts at the lot's locked rate carried on the sale.
     const saleQb = this.saleRepo
       .createQueryBuilder('s')
-      .where('s.owner_id = :miniId', { miniId });
+      .where('s.owner_id = :miniId', { miniId })
+      // A sale the mini rejected as a mistake owes nothing and earned nothing:
+      // its pieces went back on their shelf, where "I owe" counts them again.
+      .andWhere('s.rejected_at IS NULL');
     if (windowStart) saleQb.andWhere('s.created_at >= :start', { start: windowStart });
     const sales = await saleQb.getMany();
     let cashForSold = new Decimal(0);
@@ -557,7 +600,8 @@ export class MiniSettlementsService {
   ): Promise<HandoverSoldLine[]> {
     const saleQb = this.saleRepo
       .createQueryBuilder('s')
-      .where('s.owner_id = :miniId', { miniId });
+      .where('s.owner_id = :miniId', { miniId })
+      .andWhere('s.rejected_at IS NULL');
     if (since) saleQb.andWhere('s.created_at > :since', { since });
     const sales = await saleQb.getMany();
 
@@ -629,6 +673,43 @@ export class MiniSettlementsService {
       profit: v.profit.toFixed(4),
       agreedValueFc: v.agreedValueFc.toFixed(4),
       profitFc: v.profitFc.toFixed(4),
+    }));
+  }
+
+  /**
+   * Sales the mini rejected as mistakes inside the cycle boundary — the window
+   * the handover settles. Keyed on `rejected_at`, not the sale date: what
+   * belongs on this report is the correction that happened during this cycle.
+   * (A mini can only reject inside their open cycle anyway — `SalesService`
+   * refuses once a handover is pending or the sale is already settled — so the
+   * two windows coincide; using the rejection instant is what makes that
+   * explicit.)
+   */
+  private async computeRejectedLines(
+    miniId: string,
+    since: Date | null,
+  ): Promise<HandoverRejectedLine[]> {
+    const qb = this.saleRepo
+      .createQueryBuilder('s')
+      .where('s.owner_id = :miniId', { miniId })
+      .andWhere('s.rejected_at IS NOT NULL')
+      .orderBy('s.rejected_at', 'DESC');
+    if (since) qb.andWhere('s.rejected_at > :since', { since });
+    const rows = await qb.getMany();
+    if (rows.length === 0) return [];
+
+    const liveRate = (await this.currencyService.getRate())?.usdToFcRate ?? '1';
+    return rows.map((s) => ({
+      productName: s.productName,
+      variantId: s.variantId ?? null,
+      variantLabel: s.variantLabel ?? null,
+      qtySold: s.qtySold,
+      agreedValueFc: new Decimal(s.unitCost)
+        .mul(s.qtySold)
+        .mul(new Decimal(s.usdToFcRateSnapshot ?? liveRate))
+        .toFixed(4),
+      rejectedAt: (s.rejectedAt as Date).toISOString(),
+      reason: s.rejectionReason,
     }));
   }
 
@@ -779,6 +860,7 @@ export class MiniSettlementsService {
     const since = last?.approvedAt ?? null;
 
     const sold = await this.computeSoldLines(miniId, since);
+    const rejected = await this.computeRejectedLines(miniId, since);
 
     // Unsold units still held — what the mini hands back. Same computation the
     // owner's "still with them" breakdown reads.
@@ -819,6 +901,7 @@ export class MiniSettlementsService {
       profitMadeFc,
       expensesFc,
       expenses,
+      rejected,
     };
   }
 
@@ -1437,6 +1520,7 @@ export class MiniSettlementsService {
     const saleQb = this.saleRepo
       .createQueryBuilder('s')
       .where('s.owner_id = :miniUserId', { miniUserId })
+      .andWhere('s.rejected_at IS NULL')
       .orderBy('s.created_at', 'DESC');
     if (from) saleQb.andWhere('s.created_at >= :from', { from });
     if (to) saleQb.andWhere('s.created_at <= :to', { to });

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, FindOptionsWhere, In, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
+import { Between, FindOptionsWhere, In, IsNull, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
 import {
   ConsignmentItem,
   Expense,
@@ -136,7 +136,14 @@ export class ActivityLogsService {
     range: { from: Date | null; to: Date | null },
   ): Promise<ActivityLogEntry[]> {
     const actorWhere = actorCondToWhereValue(actor);
-    const where = this.applyDate({ ownerId, ...(actorWhere !== undefined ? { actorId: actorWhere } : {}) }, 'date', range);
+    // Rejected sales drop out of the feed: the entry carries an amount, and a
+    // voided sale contributing to the activity total would contradict every
+    // other figure in the app.
+    const where = this.applyDate(
+      { ownerId, rejectedAt: IsNull(), ...(actorWhere !== undefined ? { actorId: actorWhere } : {}) },
+      'date',
+      range,
+    );
     const rows = await this.saleRepo.find({
       where: where as FindOptionsWhere<SaleTransaction>,
       relations: { actor: true },

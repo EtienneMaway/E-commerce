@@ -36,7 +36,12 @@ import type { ProductSummary } from '@trading-app/types';
 
 type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'recordSale' | 'editPrice' | 'sellSized';
 
-interface SaleTarget { productName: string; unitCost: string; }
+interface SaleTarget {
+  productName: string;
+  unitCost: string;
+  /** Sized product handed to the cart — opens with its size picker expanded. */
+  isGroup?: boolean;
+}
 
 function ProductCard({
   item,
@@ -445,6 +450,7 @@ export default function InventoryScreen() {
         }}
         prefilledProduct={saleTarget?.productName ?? ''}
         unitCost={saleTarget?.unitCost ?? ''}
+        prefilledGroup={saleTarget?.isGroup ? saleTarget.productName : undefined}
       />
       <EditMiniPriceModal
         visible={modal === 'editPrice'}
@@ -465,6 +471,19 @@ export default function InventoryScreen() {
           setSizedTarget(null);
         }}
         group={sizedTarget}
+        // Move this product's sizes into the multi-product cart, so they share
+        // one receipt with whatever else the customer is buying.
+        onSellWithOthers={() => {
+          const g = sizedTarget;
+          if (!g) return;
+          setSizedTarget(null);
+          setSaleTarget({
+            productName: g.productName,
+            unitCost: g.latestUnitCost,
+            isGroup: true,
+          });
+          setModal('recordSale');
+        }}
       />
     </View>
   );

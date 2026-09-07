@@ -71,6 +71,20 @@ export class SalesSummaryFilterDto {
   actorId?: string;
 }
 
+/**
+ * Which side of the rejection line to list. The default is deliberately
+ * `active`: every screen that existed before rejection kept its exact meaning
+ * without passing anything, and a voided sale never silently rejoins a total.
+ */
+export enum SalesStatusFilter {
+  /** Live sales only — the default everywhere. */
+  ACTIVE = 'active',
+  /** Only sales rejected as a mistake. */
+  REJECTED = 'rejected',
+  /** Both, for a full audit view. */
+  ALL = 'all',
+}
+
 export class SalesFilterDto {
   @ApiPropertyOptional({ example: 'Rice' })
   @IsString()
@@ -122,6 +136,16 @@ export class SalesFilterDto {
   @IsString()
   @IsOptional()
   clientQuery?: string;
+
+  @ApiPropertyOptional({
+    enum: SalesStatusFilter,
+    default: SalesStatusFilter.ACTIVE,
+    description:
+      'Live sales (default), rejected ones, or both. Rejected sales are kept forever; they are simply excluded from every figure.',
+  })
+  @IsEnum(SalesStatusFilter)
+  @IsOptional()
+  status?: SalesStatusFilter = SalesStatusFilter.ACTIVE;
 }
 
 export class TopProductsFilterDto {

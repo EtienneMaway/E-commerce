@@ -170,6 +170,15 @@ export interface SaleTransaction {
   date: string;
   ownerId: string;
   inventoryEntryId: string;
+  /** Size sold, for a sized (carton-with-sizes) product. */
+  variantLabel?: string | null;
+  /**
+   * Set when the sale was rejected as a mistake. The row is kept forever, its
+   * quantity went back on the shelf, and every money/stock figure skips it.
+   */
+  rejectedAt?: string | null;
+  rejectedById?: string | null;
+  rejectionReason?: string | null;
 }
 
 // ─── API Request DTOs ─────────────────────────────────────────────────────────

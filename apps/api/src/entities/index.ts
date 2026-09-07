@@ -27,6 +27,7 @@ export {
   MiniSettlement,
   MiniSettlementStatus,
   type MiniSettlementSoldLine,
+  type MiniSettlementRejectedLine,
 } from './mini-settlement.entity';
 export { MiniSettlementItem } from './mini-settlement-item.entity';
 export { MiniExpense } from './mini-expense.entity';

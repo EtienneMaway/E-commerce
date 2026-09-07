@@ -62,6 +62,7 @@ export default function DashboardScreen() {
   const {
     isOffline,
     pendingSales,
+    pendingRejections,
     pendingExpenses,
     syncStatus,
     syncProgress,
@@ -120,13 +121,21 @@ export default function DashboardScreen() {
   // Pending sales + expenses stats for sync banner
   const pendingCount = pendingSales.length;
   const pendingExpenseCount = pendingExpenses.length;
-  const pendingTotalFc = pendingSales.reduce((sum, s) => {
-    const rate = parseFloat(exchangeRate) || 1;
-    return sum + parseFloat(s.salePrice) * s.qtySold * rate;
-  }, 0);
+  const pendingRejectionCount = pendingRejections.length;
+  // A sale voided before it synced still has to reach the server (recorded,
+  // then rejected), so it stays in the count — but it is no longer money the
+  // merchant is holding, so it drops out of the total.
+  const pendingTotalFc = pendingSales
+    .filter((s) => !s.rejectedOffline)
+    .reduce((sum, s) => {
+      const rate = parseFloat(exchangeRate) || 1;
+      return sum + parseFloat(s.salePrice) * s.qtySold * rate;
+    }, 0);
   const isSyncing = syncStatus === 'syncing';
   const hasSyncErrors =
-    pendingSales.some((s) => s.syncError) || pendingExpenses.some((e) => e.syncError);
+    pendingSales.some((s) => s.syncError) ||
+    pendingRejections.some((r) => r.syncError) ||
+    pendingExpenses.some((e) => e.syncError);
   const syncPct =
     syncProgress && syncProgress.total > 0
       ? Math.min(100, Math.round((syncProgress.completed / syncProgress.total) * 100))
@@ -338,7 +347,7 @@ export default function DashboardScreen() {
       </TouchableOpacity>
 
       {/* Sync banner — shown whenever there are pending sales or expenses */}
-      {(pendingCount > 0 || pendingExpenseCount > 0) && (
+      {(pendingCount > 0 || pendingExpenseCount > 0 || pendingRejectionCount > 0) && (
         <View className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-2xl px-4 py-3 mb-4">
           <View className="flex-row items-center justify-between mb-2">
             <View className="flex-1 pr-2">
@@ -353,6 +362,11 @@ export default function DashboardScreen() {
               {pendingExpenseCount > 0 && (
                 <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5">
                   🧾 {t.home.pendingExpensesCount(pendingExpenseCount)}
+                </Text>
+              )}
+              {pendingRejectionCount > 0 && (
+                <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5">
+                  ⛔ {t.home.pendingRejectionsCount(pendingRejectionCount)}
                 </Text>
               )}
               {isSyncing && syncProgress ? (
@@ -420,6 +434,13 @@ export default function DashboardScreen() {
                 .map((s) => (
                   <Text key={s.id} className="text-danger text-xs">
                     ⚠ {s.productName} ×{s.qtySold} — {s.syncError}
+                  </Text>
+                ))}
+              {pendingRejections
+                .filter((r) => r.syncError)
+                .map((r) => (
+                  <Text key={r.id} className="text-danger text-xs">
+                    ⚠ ⛔ {r.productName} ×{r.qtySold} — {r.syncError}
                   </Text>
                 ))}
               {pendingExpenses

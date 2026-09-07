@@ -45,6 +45,12 @@ function ascii(s: string): number[] {
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '') // strip combining accents
     .replace(/[—–]/g, '-') // em/en dash → hyphen
+    .replace(/·/g, '-')    // middle dot (used for "product · size") → hyphen
+    .replace(/×/g, 'x')    // multiplication sign (packaging lines) → letter x
+    // fr-CD groups thousands with a narrow no-break space; dropping it glued
+    // digits together AND shifted every column (widths are measured before
+    // this pass), so map it to a plain space instead.
+    .replace(/[\u00a0\u2009\u202f]/g, ' ')
     .replace(/[‘’]/g, "'") // smart quotes
     .replace(/[“”]/g, '"')
     .replace(/[^\x20-\x7E]/g, '');   // drop anything still non-printable
@@ -461,6 +467,21 @@ export function encodeApprovedHandoverSlip(slip: ApprovedHandoverSlip): Uint8Arr
   } else {
     for (const r of slip.returns) {
       bytes.push(...nameAmountLine(r.productName, r.qtyLabel));
+    }
+  }
+
+  // Rejected sales close the slip: printed without an amount, because a voided
+  // sale owes nothing — a figure here would read as cash still to hand over.
+  if (slip.rejected.length > 0) {
+    bytes.push(...divider('-'));
+    bytes.push(...ascii('SALES REJECTED (MISTAKES)'));
+    bytes.push(...ENC.LF);
+    for (const r of slip.rejected) {
+      bytes.push(...nameAmountLine(r.productName, r.qtyLabel));
+      if (r.reason) {
+        bytes.push(...ascii(`  ${r.reason}`));
+        bytes.push(...ENC.LF);
+      }
     }
   }
 

@@ -44,6 +44,13 @@ interface Props {
   onClose: () => void;
   prefilledProduct?: string;
   unitCost?: string;
+  /**
+   * Name of a sized (carton-with-sizes) product to open already expanded on
+   * its size picker. Set when the merchant started the sale from a sized
+   * product in the inventory list and wants it in the same cart — and so the
+   * same receipt — as everything else they're selling.
+   */
+  prefilledGroup?: string;
 }
 
 /**
@@ -155,7 +162,7 @@ function deriveCartonPrice(unitPrice: string, ppc: number | null): string {
   return String(Math.round(up * ppc));
 }
 
-export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Props) {
+export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefilledGroup }: Props) {
   const brand = useBrand();
   const t = useT();
   const qc = useQueryClient();
@@ -210,11 +217,11 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '' }: Pro
       setPriceGuardPending([]);
       setDiscountPending([]);
       setSizedLines(new Map());
-      setExpandedGroup(null);
+      setExpandedGroup(prefilledGroup ?? null);
       setAlreadySoldSimple([]);
       setAlreadySoldSized([]);
     }
-  }, [visible, prefilledProduct]);
+  }, [visible, prefilledProduct, prefilledGroup]);
 
   const { data: productsData, isLoading: inventoryLoading } = useQuery({
     queryKey: QK.inventoryProducts,

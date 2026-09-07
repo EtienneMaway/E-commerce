@@ -1248,6 +1248,24 @@ function HandoverRow({ handover, onChange, liveRate, ppcMap }: { handover: MiniS
               </ul>
             </div>
           )}
+          {/* Sales voided during this cycle. No amount is shown: a rejected sale
+              owes nothing, and its goods are already counted in the returns
+              above — printing a figure here would read as cash still due. */}
+          {(handover.rejectedLines?.length ?? 0) > 0 && (
+            <div className="text-xs mt-1.5">
+              <span className="opacity-60">{t.employees.miniHoRejected}: </span>
+              <span className="opacity-60">{t.employees.miniHoRejectedHint}</span>
+              <ul className="mt-0.5 ml-1 space-y-0.5">
+                {(handover.rejectedLines ?? []).map((r, i) => (
+                  <li key={`${r.productName}-${i}`} className="opacity-70 capitalize">
+                    {r.productName}
+                    {r.variantLabel ? ` (${r.variantLabel})` : ''} — ×{r.qtySold}
+                    {r.reason ? <span className="italic"> · “{r.reason}”</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {/* The team is part of a settled cycle's record, so it only appears —
               and is only editable — once the handover has been approved. */}
           {handover.status === 'APPROVED' && (

@@ -243,7 +243,25 @@ export default function ProductDetailScreen() {
           ))}
         </ScrollView>
 
-        <SellSizedProductModal visible={sizedSellOpen} onClose={() => setSizedSellOpen(false)} group={group} />
+        <SellSizedProductModal
+          visible={sizedSellOpen}
+          onClose={() => setSizedSellOpen(false)}
+          group={group}
+          // Hand the sizes to the multi-product cart so they land on the same
+          // receipt as the customer's other items.
+          onSellWithOthers={() => {
+            setSizedSellOpen(false);
+            setSaleOpen(true);
+          }}
+        />
+        {/* The cart, opened from the sized sheet above — sized lines and normal
+            products in one submission, one receipt, one print. */}
+        <RecordSaleModal
+          visible={saleOpen}
+          onClose={() => setSaleOpen(false)}
+          prefilledProduct={productName}
+          prefilledGroup={productName}
+        />
         <EditMiniPriceModal
           visible={editPriceOpen}
           onClose={() => setEditPriceOpen(false)}

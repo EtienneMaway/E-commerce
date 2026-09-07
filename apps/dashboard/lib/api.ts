@@ -355,6 +355,17 @@ export interface MiniSettlement {
   /** Expense ceiling sealed when this handover was submitted — a later change to
    *  the employment never rewrites it. Null on handovers predating the field. */
   expenseAllowancePct?: string | null;
+  /** Sales the mini voided as mistakes during the cycle this handover settles.
+   *  They owe nothing (the goods are back in `items`); this is the record of
+   *  the correction. Null when none were rejected. */
+  rejectedLines?: {
+    productName: string;
+    variantLabel: string | null;
+    qtySold: number;
+    agreedValueFc: string;
+    rejectedAt: string;
+    reason: string | null;
+  }[] | null;
   mini?: EmploymentParty;
   owner?: EmploymentParty;
 }
@@ -499,8 +510,25 @@ export interface SalesProfitSummary {
 }
 
 export const salesApi = {
-  list: (params?: { productName?: string; period?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number; actorId?: string }) =>
-    api.get('/sales', { params }).then((r) => r.data),
+  list: (params?: {
+    productName?: string;
+    period?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+    actorId?: string;
+    /** Live sales (default), the ones rejected as mistakes, or both. */
+    status?: 'active' | 'rejected' | 'all';
+  }) => api.get('/sales', { params }).then((r) => r.data),
+
+  /**
+   * Reject a sale recorded by mistake: the row is kept and listed under
+   * `status: 'rejected'`, its quantity goes back onto the lot it came off, and
+   * it leaves every revenue/profit/cash figure. Idempotent server-side.
+   */
+  reject: (saleId: string, body?: { reason?: string }) =>
+    api.post(`/sales/${saleId}/reject`, body ?? {}).then((r) => r.data),
   topProducts: (params?: { rankBy?: 'qty' | 'revenue' | 'profit'; period?: string }) =>
     api.get('/sales/top-products', { params }).then((r) => r.data),
   // Aggregate direct-sales profit for a period (today/week/month/all) or a

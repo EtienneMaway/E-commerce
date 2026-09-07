@@ -42,6 +42,12 @@ function ascii(s: string): number[] {
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '') // strip combining accents
     .replace(/[—–]/g, '-') // em/en dash → hyphen
+    .replace(/·/g, '-')    // middle dot (used for "product · size") → hyphen
+    .replace(/×/g, 'x')    // multiplication sign (packaging lines) → letter x
+    // fr-CD groups thousands with a narrow no-break space; dropping it glued
+    // digits together AND shifted every column (widths are measured before
+    // this pass), so map it to a plain space instead.
+    .replace(/[\u00a0\u2009\u202f]/g, ' ')
     .replace(/[‘’]/g, "'") // smart quotes
     .replace(/[“”]/g, '"')
     .replace(/[^\x20-\x7E]/g, ''); // drop anything still non-printable

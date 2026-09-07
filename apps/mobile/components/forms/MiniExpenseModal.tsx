@@ -53,6 +53,7 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
         snapshot: offline.allowanceSnapshot,
         cachedProducts: offline.cachedProducts,
         pendingSales: offline.pendingSales,
+        pendingRejections: offline.pendingRejections,
         pendingExpenses: offline.pendingExpenses,
         snapshotRate: offline.snapshotRate,
       })

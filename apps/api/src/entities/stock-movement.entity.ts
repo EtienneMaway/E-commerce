@@ -21,6 +21,8 @@ export enum StockMovementReason {
   EXTERNAL_IN = 'EXTERNAL_IN',
   /** Owner receives unsold goods back from a mini-employee handover (re-stocked). */
   CONSIGN_RETURN_IN = 'CONSIGN_RETURN_IN',
+  /** A sale was rejected as a mistake — its quantity goes back on the shelf. */
+  SALE_REJECTED = 'SALE_REJECTED',
   // Negative (qty out)
   SALE = 'SALE',
   CONSIGN_OUT = 'CONSIGN_OUT',
@@ -64,6 +66,7 @@ export const POSITIVE_REASONS: ReadonlySet<StockMovementReason> = new Set([
   StockMovementReason.OTHER_IN,
   StockMovementReason.EXTERNAL_IN,
   StockMovementReason.CONSIGN_RETURN_IN,
+  StockMovementReason.SALE_REJECTED,
 ]);
 
 export const NOTES_REQUIRED_REASONS: ReadonlySet<StockMovementReason> = new Set([

@@ -60,6 +60,7 @@ export function MiniExpensesView() {
         snapshot: offlineState.allowanceSnapshot,
         cachedProducts: offlineState.cachedProducts,
         pendingSales: offlineState.pendingSales,
+        pendingRejections: offlineState.pendingRejections,
         pendingExpenses: offlineState.pendingExpenses,
         snapshotRate: offlineState.snapshotRate,
       }) ?? undefined

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { salesApi, miniSettlementsApi, expensesApi } from './api';
 import { useOfflineStore } from '../store/offline.store';
-import type { PendingSale, PendingExpense } from '../store/offline.store';
+import type { PendingSale, PendingExpense, PendingRejection } from '../store/offline.store';
 import { isPriceGuardWarning, getErrorMessage } from './utils';
 import type { ExpenseCategory, ExpenseCurrency } from './api';
 
@@ -40,6 +40,41 @@ function isRetryable(err: unknown): boolean {
   return true;
 }
 
+/**
+ * Replays an offline rejection against a sale that now exists server-side.
+ * `POST /sales/:id/reject` is idempotent, so a retry after a lost response is
+ * harmless — and a rejection that fails here is NOT retried forever: the sale
+ * itself is already recorded, so the queue surfaces the error instead of
+ * silently leaving a voided sale standing.
+ */
+async function rejectServerSale(
+  saleId: string,
+  reason: string | undefined,
+): Promise<{ ok: boolean; error: unknown }> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await salesApi.reject(saleId, reason ? { reason } : {}, {
+        timeout: SYNC_REQUEST_TIMEOUT,
+      });
+      return { ok: true, error: null };
+    } catch (err) {
+      if (!isRetryable(err) || attempt === MAX_ATTEMPTS) return { ok: false, error: err };
+      lastError = err;
+      const backoff = Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);
+      await delay(backoff + Math.floor(Math.random() * 300));
+    }
+  }
+  return { ok: false, error: lastError };
+}
+
+/** Replays a rejection of a sale the server already had before going offline. */
+async function syncOneRejection(
+  rejection: PendingRejection,
+): Promise<{ ok: boolean; error: unknown }> {
+  return rejectServerSale(rejection.saleId, rejection.reason);
+}
+
 /** Submits one sale, retrying transient failures and auto-confirming a price-guard 422. */
 async function syncOneSale(sale: PendingSale): Promise<{ ok: boolean; error: unknown }> {
   // Carry the buyer info and receipt grouping captured offline so the row
@@ -61,21 +96,40 @@ async function syncOneSale(sale: PendingSale): Promise<{ ok: boolean; error: unk
 
   let lastError: unknown = null;
 
+  /**
+   * A sale rejected while offline is still POSTed first, then rejected: the
+   * server keeps both facts, so the rejected-sales list and the handover report
+   * show the correction exactly as they would had it happened online. Dropping
+   * the row instead would erase a sale the customer may already hold a receipt
+   * for.
+   */
+  const finish = async (
+    created: unknown,
+  ): Promise<{ ok: boolean; error: unknown }> => {
+    if (!sale.rejectedOffline) return { ok: true, error: null };
+    const saleId =
+      created && typeof created === 'object' && 'id' in created && typeof created.id === 'string'
+        ? created.id
+        : null;
+    if (!saleId) return { ok: true, error: null }; // nothing to reject against
+    return rejectServerSale(saleId, sale.rejectedOffline.reason);
+  };
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      await salesApi.record(basePayload, { timeout: SYNC_REQUEST_TIMEOUT });
-      return { ok: true, error: null };
+      const created = await salesApi.record(basePayload, { timeout: SYNC_REQUEST_TIMEOUT });
+      return finish(created);
     } catch (err) {
       // Price guard: auto-confirm since the user already set the markup
       // offline. This is a deterministic 422, not a transient failure, so
       // resolve it in-place rather than counting it as a retry attempt.
       if (isPriceGuardWarning(err)) {
         try {
-          await salesApi.record(
+          const created = await salesApi.record(
             { ...basePayload, confirmedOverride: true },
             { timeout: SYNC_REQUEST_TIMEOUT },
           );
-          return { ok: true, error: null };
+          return finish(created);
         } catch (err2) {
           if (!isRetryable(err2) || attempt === MAX_ATTEMPTS) return { ok: false, error: err2 };
           lastError = err2;
@@ -133,6 +187,7 @@ async function syncOneExpense(exp: PendingExpense): Promise<{ ok: boolean; error
 
 type SyncTask =
   | { type: 'sale'; recordedAt: string; sale: PendingSale }
+  | { type: 'rejection'; recordedAt: string; rejection: PendingRejection }
   | { type: 'expense'; recordedAt: string; expense: PendingExpense };
 
 /**
@@ -161,17 +216,24 @@ type SyncTask =
 export async function syncPendingSales(): Promise<SyncResult> {
   const {
     pendingSales,
+    pendingRejections,
     pendingExpenses,
     setSyncStatus,
     setSyncProgress,
     removeSyncedSales,
     updateSaleError,
+    removeSyncedRejections,
+    updateRejectionError,
     removeSyncedExpenses,
     updateExpenseError,
     setLastSyncedAt,
   } = useOfflineStore.getState();
 
-  if (pendingSales.length === 0 && pendingExpenses.length === 0) {
+  if (
+    pendingSales.length === 0 &&
+    pendingRejections.length === 0 &&
+    pendingExpenses.length === 0
+  ) {
     setSyncProgress(null);
     return { synced: 0, failed: 0, errors: [] };
   }
@@ -180,6 +242,13 @@ export async function syncPendingSales(): Promise<SyncResult> {
 
   const tasks: SyncTask[] = [
     ...pendingSales.map((sale) => ({ type: 'sale' as const, recordedAt: sale.recordedAt, sale })),
+    // Ordered by when the REJECTION happened, so it replays after the sale it
+    // voids — which for an already-synced sale is always true anyway.
+    ...pendingRejections.map((rejection) => ({
+      type: 'rejection' as const,
+      recordedAt: rejection.recordedAt,
+      rejection,
+    })),
     ...pendingExpenses.map((expense) => ({ type: 'expense' as const, recordedAt: expense.recordedAt, expense })),
   ].sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
 
@@ -205,6 +274,19 @@ export async function syncPendingSales(): Promise<SyncResult> {
         const msg = `${sale.productName}: ${getErrorMessage(error)}`;
         errors.push(msg);
         updateSaleError(sale.id, msg);
+      }
+    } else if (task.type === 'rejection') {
+      const { rejection } = task;
+      const { ok, error } = await syncOneRejection(rejection);
+      if (ok) {
+        removeSyncedRejections([rejection.id]);
+        syncedCount += 1;
+        completed += 1;
+        setSyncProgress({ total, completed });
+      } else {
+        const msg = `${rejection.productName} (rejected): ${getErrorMessage(error)}`;
+        errors.push(msg);
+        updateRejectionError(rejection.id, msg);
       }
     } else {
       const { expense } = task;

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, LessThan, Repository } from 'typeorm';
+import { In, IsNull, LessThan, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import {
   ConsignmentRequest,
@@ -374,7 +374,9 @@ export class DashboardService {
     const [supplierDebts, debtorCredits, sales, { total: consignmentProfit }, externalContacts, inventoryEntries] = await Promise.all([
       this.supplierDebtRepo.find({ where: { ownerId } }),
       this.debtorCreditRepo.find({ where: { ownerId } }),
-      this.saleRepo.find({ where: { ownerId } }),
+      // Rejected sales are voided mistakes — they keep their row but leave
+      // every figure. Same rule in every aggregation below.
+      this.saleRepo.find({ where: { ownerId, rejectedAt: IsNull() } }),
       this.computeConsignmentProfits(ownerId),
       this.externalContactRepo.find({ where: { ownerId } }),
       this.entryRepo.find({ where: { ownerId } }),
@@ -456,6 +458,7 @@ export class DashboardService {
           .select('COALESCE(SUM(CAST(s.salePrice AS DECIMAL) * s.qtySold), 0)', 'revenue')
           .addSelect('COALESCE(SUM(CAST(s.unitCost AS DECIMAL) * s.qtySold), 0)', 'cogs')
           .where('s.ownerId = :ownerId', { ownerId })
+          .andWhere('s.rejected_at IS NULL')
           .getRawOne<{ revenue: string; cogs: string }>(),
         this.consignmentRequestRepo.find({
           where: { supplierId: ownerId, status: ConsignmentStatus.ACCEPTED },
@@ -629,7 +632,7 @@ export class DashboardService {
 
     // Total value sold from this supplier's products
     const supplierSales = await this.saleRepo.find({
-      where: { ownerId, supplierUserId },
+      where: { ownerId, supplierUserId, rejectedAt: IsNull() },
     });
     const totalValueSold = supplierSales
       .reduce(
@@ -718,6 +721,7 @@ export class DashboardService {
           .addSelect('SUM(CAST(sale.profit AS DECIMAL))', 'totalProfit')
           .addSelect('SUM(sale.qtySold)', 'totalQtySold')
           .where('sale.ownerId = :ownerId', { ownerId })
+          .andWhere('sale.rejected_at IS NULL')
           .groupBy('sale.productName')
           .getRawMany<{ productName: string; totalProfit: string; totalQtySold: string }>(),
         this.computeConsignmentProfits(ownerId),
@@ -810,6 +814,7 @@ export class DashboardService {
         .addSelect('u.username', 'supplierUsername')
         .addSelect('SUM(CAST(sale.profit AS DECIMAL))', 'totalProfit')
         .where('sale.ownerId = :ownerId', { ownerId })
+        .andWhere('sale.rejected_at IS NULL')
         .groupBy('sale.source')
         .addGroupBy('sale.supplierUserId')
         .addGroupBy('u.username')

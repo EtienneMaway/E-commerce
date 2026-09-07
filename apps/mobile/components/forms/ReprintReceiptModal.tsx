@@ -28,6 +28,8 @@ import { formatDate, getErrorMessage } from '../../lib/utils';
 interface SaleRow {
   id: string;
   productName: string;
+  /** Size sold, for a sized (carton-with-sizes) product. Null for simple ones. */
+  variantLabel?: string | null;
   qtySold: number;
   salePrice: string;
   date: string;
@@ -103,7 +105,9 @@ export function ReprintReceiptModal({ source, onClose }: Props) {
     const items: ReceiptItem[] = rows.map((r) => {
       const unitFc = parseFloat(r.salePrice) * rate;
       return {
-        productName: r.productName,
+        // Sized rows carry the size on the sale itself — print it, otherwise a
+        // reprint of "shoes · 42" and "shoes · 44" is two identical lines.
+        productName: r.variantLabel ? `${r.productName} · ${r.variantLabel}` : r.productName,
         qty: r.qtySold,
         unitPriceFc: unitFc,
         totalFc: unitFc * r.qtySold,

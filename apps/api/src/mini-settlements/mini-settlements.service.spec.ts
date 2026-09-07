@@ -410,6 +410,9 @@ describe('MiniSettlementsService.create — one open handover at a time', () => 
     const saleQb: Record<string, jest.Mock> = {
       where: jest.fn(() => saleQb),
       andWhere: jest.fn(() => saleQb),
+      // create() also snapshots rejected sales (computeRejectedLines), which
+      // orders by the rejection instant.
+      orderBy: jest.fn(() => saleQb),
       getMany: jest.fn(async () => []),
     };
     const saleRepo = { createQueryBuilder: jest.fn(() => saleQb) };

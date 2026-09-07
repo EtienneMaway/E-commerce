@@ -59,6 +59,29 @@ export interface PendingSale {
   // the pre-discount price + reason so the replayed sale records identically.
   originalUnitPrice?: string;
   discountReason?: string;
+  /**
+   * Set when the merchant rejected this sale before it ever reached the server.
+   * The row STAYS in the queue on purpose: sync records the sale and then
+   * rejects it, so the history the employer sees offline and online is the
+   * same — a sale that happened and was corrected, not a sale that vanished.
+   */
+  rejectedOffline?: { at: string; reason?: string };
+}
+
+/**
+ * A rejection of a sale that HAD already reached the server, made while
+ * offline. Replayed as `POST /sales/:id/reject` when the queue drains; the
+ * endpoint is idempotent, so a retry after a lost response is harmless.
+ */
+export interface PendingRejection {
+  id: string;
+  saleId: string;
+  /** For the local stock restore and for naming the row in the sync list. */
+  productName: string;
+  qtySold: number;
+  reason?: string;
+  recordedAt: string;
+  syncError: string | null;
 }
 
 export interface PendingExpense {
@@ -87,6 +110,7 @@ interface OfflineState {
   isOffline: boolean;
   cachedProducts: CachedProduct[];
   pendingSales: PendingSale[];
+  pendingRejections: PendingRejection[];
   pendingExpenses: PendingExpense[];
   syncStatus: 'idle' | 'syncing' | 'error';
   // Live progress of the current/last sync run. Drives the progress bar + %.
@@ -130,6 +154,18 @@ interface OfflineState {
   ) => void;
   /** Patch buyer info onto every pending sale that shares the given receiptId. */
   attachOfflineClient: (receiptId: string, clientName?: string, clientPhone?: string) => void;
+  /**
+   * Reject a sale that is still sitting in the queue. Kept (not dropped) so the
+   * server ends up with the same rejected-sale record an online rejection makes.
+   */
+  rejectPendingSale: (id: string, reason?: string) => void;
+  /** Queue the rejection of a sale the server already has. */
+  recordOfflineRejection: (
+    saleId: string,
+    productName: string,
+    qtySold: number,
+    reason?: string,
+  ) => void;
   /** Queue a mini-employee expense (FC) for sync — used online-fail or offline. */
   recordOfflineExpense: (amount: string, category: string, description?: string) => void;
   /** Queue an owner/full-employee expense for sync when offline. */
@@ -145,6 +181,8 @@ interface OfflineState {
   setLastSyncedAt: (at: string) => void;
   removeSyncedSales: (ids: string[]) => void;
   updateSaleError: (id: string, error: string) => void;
+  removeSyncedRejections: (ids: string[]) => void;
+  updateRejectionError: (id: string, error: string) => void;
   removeSyncedExpenses: (ids: string[]) => void;
   updateExpenseError: (id: string, error: string) => void;
   /** Wipe per-row error flags before a "Restart" run so they can be retried fresh. */
@@ -157,6 +195,7 @@ export const useOfflineStore = create<OfflineState>()(
       isOffline: false,
       cachedProducts: [],
       pendingSales: [],
+      pendingRejections: [],
       pendingExpenses: [],
       syncStatus: 'idle',
       syncProgress: null,
@@ -203,6 +242,50 @@ export const useOfflineStore = create<OfflineState>()(
         }));
       },
 
+      rejectPendingSale: (id, reason) =>
+        set((s) => {
+          const sale = s.pendingSales.find((p) => p.id === id);
+          if (!sale || sale.rejectedOffline) return {};
+          return {
+            pendingSales: s.pendingSales.map((p) =>
+              p.id === id
+                ? { ...p, rejectedOffline: { at: new Date().toISOString(), reason } }
+                : p,
+            ),
+            // Straight back onto the offline shelf, so the next sale sees it.
+            cachedProducts: s.cachedProducts.map((p) =>
+              p.productName === sale.productName
+                ? { ...p, availableQty: p.availableQty + sale.qtySold }
+                : p,
+            ),
+          };
+        }),
+
+      recordOfflineRejection: (saleId, productName, qtySold, reason) =>
+        set((s) => {
+          // One rejection per sale — tapping twice must not restore twice.
+          if (s.pendingRejections.some((r) => r.saleId === saleId)) return {};
+          return {
+            pendingRejections: [
+              ...s.pendingRejections,
+              {
+                id: `rej-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                saleId,
+                productName,
+                qtySold,
+                reason,
+                recordedAt: new Date().toISOString(),
+                syncError: null,
+              },
+            ],
+            cachedProducts: s.cachedProducts.map((p) =>
+              p.productName === productName
+                ? { ...p, availableQty: p.availableQty + qtySold }
+                : p,
+            ),
+          };
+        }),
+
       attachOfflineClient: (receiptId, clientName, clientPhone) =>
         set((s) => ({
           pendingSales: s.pendingSales.map((p) =>
@@ -241,6 +324,14 @@ export const useOfflineStore = create<OfflineState>()(
         set((s) => ({
           pendingSales: s.pendingSales.map((p) => (p.id === id ? { ...p, syncError: error } : p)),
         })),
+      removeSyncedRejections: (ids) =>
+        set((s) => ({ pendingRejections: s.pendingRejections.filter((r) => !ids.includes(r.id)) })),
+      updateRejectionError: (id, error) =>
+        set((s) => ({
+          pendingRejections: s.pendingRejections.map((r) =>
+            r.id === id ? { ...r, syncError: error } : r,
+          ),
+        })),
       removeSyncedExpenses: (ids) =>
         set((s) => ({ pendingExpenses: s.pendingExpenses.filter((p) => !ids.includes(p.id)) })),
       updateExpenseError: (id, error) =>
@@ -250,6 +341,7 @@ export const useOfflineStore = create<OfflineState>()(
       clearSyncErrors: () =>
         set((s) => ({
           pendingSales: s.pendingSales.map((p) => ({ ...p, syncError: null })),
+          pendingRejections: s.pendingRejections.map((r) => ({ ...r, syncError: null })),
           pendingExpenses: s.pendingExpenses.map((p) => ({ ...p, syncError: null })),
         })),
     }),

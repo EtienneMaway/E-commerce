@@ -7,7 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, ILike, Repository } from 'typeorm';
+import { DataSource, ILike, IsNull, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import Decimal from 'decimal.js';
 import {
@@ -24,10 +24,12 @@ import { StockMovementsService } from '../stock-movements/stock-movements.servic
 import { PricingService } from '../pricing/pricing.service';
 import { RecordSaleDto } from './dto/record-sale.dto';
 import { UpdateSaleClientDto } from './dto/update-sale-client.dto';
+import { RejectSaleDto } from './dto/reject-sale.dto';
 import {
   SalesFilterDto,
   SalesHistoryPeriod,
   SalesPeriod,
+  SalesStatusFilter,
   SalesSummaryFilterDto,
   SalesSummaryPeriod,
   TopProductsFilterDto,
@@ -545,10 +547,20 @@ export class SalesService {
     const qb = this.saleRepo
       .createQueryBuilder('sale')
       .leftJoinAndSelect('sale.actor', 'actor')
+      .leftJoinAndSelect('sale.rejectedBy', 'rejectedBy')
       .where('sale.ownerId = :ownerId', { ownerId })
       .orderBy('sale.date', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
+
+    // Rejected sales are kept, not deleted — they only ever appear when asked
+    // for. Anything that predates the `status` param keeps listing live sales.
+    const status = filter.status ?? SalesStatusFilter.ACTIVE;
+    if (status === SalesStatusFilter.ACTIVE) {
+      qb.andWhere('sale.rejected_at IS NULL');
+    } else if (status === SalesStatusFilter.REJECTED) {
+      qb.andWhere('sale.rejected_at IS NOT NULL');
+    }
 
     if (filter.productName) {
       qb.andWhere('sale.productName ILIKE :name', {
@@ -588,6 +600,106 @@ export class SalesService {
   }
 
   /**
+   * Reject a sale recorded by mistake.
+   *
+   * The row is **never deleted**: it is stamped with when/who/why and stays in
+   * the history, listed under rejected sales. Its quantity goes straight back
+   * onto the lot it came off, logged as a `SALE_REJECTED` stock movement, and
+   * every money/stock figure in the app skips it from then on (they all filter
+   * `rejected_at IS NULL`), so revenue, profit, cash position, the mini's
+   * "cash to hand over" and their expense allowance all fall back by exactly
+   * this sale.
+   *
+   * Scope is one sale ROW — the unit the merchant sees in the list. A sale that
+   * had to be split across two lots shows as two rows and is rejected as two.
+   *
+   * Idempotent: rejecting an already-rejected sale returns it untouched rather
+   * than restoring the stock a second time. That is what makes the offline
+   * queue safe to replay.
+   *
+   * A mini employee may only reject inside the cycle they have not handed over
+   * yet — once a handover is submitted (or approved) those sales are settled
+   * money between them and their employer, and unpicking them would rewrite a
+   * report both sides have already agreed on.
+   */
+  async rejectSale(
+    ctx: ActorContext,
+    saleId: string,
+    dto: RejectSaleDto,
+  ): Promise<SaleTransaction> {
+    const ownerId = ctx.effectiveOwnerId;
+    const sale = await this.saleRepo.findOne({ where: { id: saleId } });
+    if (!sale || sale.ownerId !== ownerId) {
+      throw new NotFoundException('Sale not found');
+    }
+
+    // Already rejected — return as-is. A retry from the offline queue lands
+    // here, and restoring the stock again would invent inventory.
+    if (sale.rejectedAt) return sale;
+
+    if (ctx.tier === 'MINI_EMPLOYEE') {
+      const pending = await this.settlementRepo.findOne({
+        where: { miniId: ownerId, status: MiniSettlementStatus.PENDING },
+      });
+      if (pending) {
+        throw new ConflictException(
+          'Your handover is waiting for approval — you cannot reject a sale until your employer approves or rejects it',
+        );
+      }
+      const lastApproved = await this.settlementRepo.findOne({
+        where: { miniId: ownerId, status: MiniSettlementStatus.APPROVED },
+        order: { approvedAt: 'DESC' },
+      });
+      if (lastApproved?.approvedAt && sale.date <= lastApproved.approvedAt) {
+        throw new ConflictException(
+          'This sale was already handed over — ask your employer to correct it',
+        );
+      }
+    }
+
+    const rejectedById = ctx.actorId;
+    const reason = dto.reason?.trim() || null;
+
+    return this.dataSource.transaction(async (manager) => {
+      // Re-read inside the transaction and re-check the flag: two devices
+      // syncing the same offline rejection must not both restore the stock.
+      const fresh = await manager.findOne(SaleTransaction, {
+        where: { id: sale.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!fresh) throw new NotFoundException('Sale not found');
+      if (fresh.rejectedAt) return fresh;
+
+      const entry = await manager.findOne(InventoryEntry, {
+        where: { id: fresh.inventoryEntryId },
+      });
+      // The lot is normally still there (entries are never deleted, only
+      // depleted). If it somehow is not, the sale is still voided — losing the
+      // record would be worse than not being able to put the pieces back.
+      if (entry) {
+        const qtyBefore = entry.quantityRemaining;
+        entry.quantityRemaining += fresh.qtySold;
+        await manager.save(InventoryEntry, entry);
+
+        await this.stockMovements.record(manager, {
+          ownerId,
+          entry,
+          reason: StockMovementReason.SALE_REJECTED,
+          qty: fresh.qtySold,
+          qtyBefore,
+          notes: reason,
+          saleTransactionId: fresh.id,
+        });
+      }
+
+      fresh.rejectedAt = new Date();
+      fresh.rejectedById = rejectedById;
+      fresh.rejectionReason = reason;
+      return manager.save(SaleTransaction, fresh);
+    });
+  }
+
+  /**
    * Attach (or update) the buyer's name + phone on a previously recorded
    * sale. Designed for the mobile post-sale receipt prompt: the sale is
    * created first, then if the merchant fills the optional client fields,
@@ -615,7 +727,7 @@ export class SalesService {
     // phone surfaces the whole transaction, not just one line.
     const targets = sale.receiptId
       ? await this.saleRepo.find({
-          where: { ownerId, receiptId: sale.receiptId },
+          where: { ownerId, receiptId: sale.receiptId, rejectedAt: IsNull() },
         })
       : [sale];
 
@@ -638,7 +750,9 @@ export class SalesService {
   ): Promise<SaleTransaction[]> {
     const ownerId = ctx.effectiveOwnerId;
     return this.saleRepo.find({
-      where: { ownerId, receiptId },
+      // A rejected line is off the receipt: reprinting it would hand the
+      // customer a slip for goods that went back on the shelf.
+      where: { ownerId, receiptId, rejectedAt: IsNull() },
       relations: { actor: true, inventoryEntry: true },
       order: { date: 'ASC' },
     });
@@ -661,6 +775,7 @@ export class SalesService {
       )
       .addSelect('SUM(CAST(sale.profit AS DECIMAL))', 'totalProfit')
       .where('sale.ownerId = :ownerId', { ownerId })
+      .andWhere('sale.rejected_at IS NULL')
       .groupBy('sale.productName');
 
     if (dateFrom) qb.andWhere('sale.date >= :from', { from: dateFrom });
@@ -724,7 +839,8 @@ export class SalesService {
         'COALESCE(SUM(CAST(sale.profit AS DECIMAL)), 0)',
         'totalProfit',
       )
-      .where('sale.ownerId = :ownerId', { ownerId });
+      .where('sale.ownerId = :ownerId', { ownerId })
+      .andWhere('sale.rejected_at IS NULL');
 
     if (filter.productName) {
       qb.andWhere('sale.productName ILIKE :name', {

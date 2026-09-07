@@ -311,6 +311,8 @@ export interface MiniSettlementSummary {
   /** Snapshot of products sold this cycle, for the printable receipt. Null on
    *  handovers created before this feature. */
   soldLines?: MiniSettlementSoldLine[] | null;
+  /** Snapshot of sales rejected during this cycle. Null when there were none. */
+  rejectedLines?: MiniSettlementRejectedLine[] | null;
   /** Expenses the mini claimed on this handover — deducted from the sold cash
    *  and booked on the owner's books when approved. */
   expenses?: { category: string; description: string | null; amount: string }[];
@@ -333,6 +335,16 @@ export interface MiniSettlementSoldLine {
   agreedValueFc: string;
   /** The mini's markup on these units, FC. */
   profitFc: string;
+}
+
+/** A sale voided during the cycle a handover settles, snapshotted on it. */
+export interface MiniSettlementRejectedLine {
+  productName: string;
+  variantLabel: string | null;
+  qtySold: number;
+  agreedValueFc: string;
+  rejectedAt: string;
+  reason: string | null;
 }
 
 export const miniSettlementsApi = {
@@ -458,6 +470,20 @@ export interface HandoverPreview {
   profitMadeFc: string; // FC
   expensesFc: string; // FC
   expenses: { category: string; description: string | null; amount: string }[]; // amount FC
+  /**
+   * Sales voided as mistakes during this cycle. They owe nothing — their pieces
+   * are back on the shelf and already counted in `returns` — but the employer
+   * sees the correction on the handover report instead of an unexplained gap.
+   */
+  rejected: {
+    productName: string;
+    variantId: string | null;
+    variantLabel: string | null;
+    qtySold: number;
+    agreedValueFc: string;
+    rejectedAt: string;
+    reason: string | null;
+  }[];
 }
 
 export const MINI_EXPENSE_CATEGORIES = [
@@ -508,6 +534,8 @@ export const salesApi = {
     page?: number;
     limit?: number;
     clientQuery?: string;
+    /** Live sales (default), the ones rejected as mistakes, or both. */
+    status?: 'active' | 'rejected' | 'all';
   }) => api.get('/sales', { params }).then((r) => r.data),
 
   topProducts: (params?: { rankBy?: 'qty' | 'revenue' | 'profit'; period?: string; dateFrom?: string; dateTo?: string }) =>
@@ -520,6 +548,18 @@ export const salesApi = {
   /** Attach (or update) buyer name + phone on a sale. Propagates across the whole receipt when receiptId is set. */
   updateClient: (saleId: string, body: { clientName?: string; clientPhone?: string }) =>
     api.patch(`/sales/${saleId}/client`, body).then((r) => r.data),
+
+  /**
+   * Reject a sale recorded by mistake. The row is kept (listed under
+   * `status: 'rejected'`), its quantity goes back on the shelf, and it leaves
+   * every money figure. Idempotent server-side, which is what lets the offline
+   * queue replay it safely.
+   */
+  reject: (
+    saleId: string,
+    body?: { reason?: string },
+    config?: { timeout?: number },
+  ) => api.post(`/sales/${saleId}/reject`, body ?? {}, config).then((r) => r.data),
 };
 
 // ─── Payments ──────────────────────────────────────────────────────────────

@@ -71,6 +71,9 @@ export function HandoverModal({ visible, onClose }: Props) {
   const sold = preview?.sold ?? [];
   const returns = preview?.returns ?? [];
   const expenses = preview?.expenses ?? [];
+  // Voided sales this cycle. No money attached — the pieces are already in the
+  // returns below; this is the record of the correction.
+  const rejected = preview?.rejected ?? [];
   // Everything the mini sees is FC-native at each consignment's locked rate
   // (server-computed) so a rate change never moves it. The USD `cashForSold` is
   // still what books on the owner's (USD) ledger at handover.
@@ -231,6 +234,35 @@ export function HandoverModal({ visible, onClose }: Props) {
                     <Text className="text-danger text-sm">− {formatFcValue(e.amount)}</Text>
                   </View>
                 ))}
+              </>
+            )}
+
+            {/* ── Sales rejected as mistakes (record only, no money attached) ── */}
+            {rejected.length > 0 && (
+              <>
+                <Text className="text-xs font-bold uppercase tracking-wider text-primary mt-6 mb-2">
+                  {t.miniEmployee.handoverRejectedSection}
+                </Text>
+                {rejected.map((r, i) => (
+                  <View
+                    key={`${r.variantId ?? r.productName}-${i}`}
+                    className="bg-card border border-border rounded-xl px-4 py-2.5 mb-2"
+                  >
+                    <View className="flex-row justify-between">
+                      <Text className="text-text text-sm capitalize">
+                        {r.productName}
+                        {r.variantLabel ? ` · ${r.variantLabel}` : ''}
+                      </Text>
+                      <Text className="text-muted text-sm">×{r.qtySold}</Text>
+                    </View>
+                    {r.reason ? (
+                      <Text className="text-muted text-xs mt-0.5 italic">“{r.reason}”</Text>
+                    ) : null}
+                  </View>
+                ))}
+                <Text className="text-muted text-xs mb-1">
+                  {t.miniEmployee.handoverRejectedHint}
+                </Text>
               </>
             )}
 
