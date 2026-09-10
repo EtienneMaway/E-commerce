@@ -47,7 +47,9 @@ describe('@RequiresService annotations', () => {
     // Identity, the employment lifecycle and sync must stay reachable no matter
     // what a role says. Anything else appearing here means a new controller
     // shipped without deciding which service it belongs to.
-    const ALWAYS_ON = ['app', 'auth', 'users', 'sync', 'employee-roles'];
+    // `app-version` is not merely always-on but unauthenticated: an install too
+    // old to log in still has to be told that it must update.
+    const ALWAYS_ON = ['app', 'app-version', 'auth', 'users', 'sync', 'employee-roles'];
     const ungated = FILES.filter((f) => !readFileSync(f, 'utf8').includes('@RequiresService')).map(
       (f) => f.split('/').pop()!.replace('.controller.ts', ''),
     );

@@ -2,6 +2,7 @@ import { ScrollView, View, Text, Pressable, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../store/auth.store';
 import { useT } from '../../lib/i18n';
+import { UpdateCheckRow } from '../../components/ui/UpdateNotice';
 
 interface MenuItemProps {
   title: string;
@@ -83,6 +84,8 @@ export default function AccountMenuScreen() {
         subtitle={t.account.logoutSubtitle}
         onPress={handleLogout}
       />
+      <UpdateCheckRow />
+
       <MenuItem
         title={t.account.deleteAccount}
         subtitle={t.account.deleteAccountSubtitle}

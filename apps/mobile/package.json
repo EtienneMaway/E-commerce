@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "prebuild": "expo prebuild --clean"
+    "prebuild": "expo prebuild --clean",
+    "version:bump": "node scripts/bump-version.mjs",
+    "version:show": "node -e \"console.log('version name:', require('./app.json').expo.version)\" && eas build:version:get --platform android"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

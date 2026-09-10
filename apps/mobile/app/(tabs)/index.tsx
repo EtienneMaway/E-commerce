@@ -14,6 +14,7 @@ import { StatCard } from '../../components/ui/StatCard';
 import { Card } from '../../components/ui/Card';
 import { PersonaSwitcher } from '../../components/ui/PersonaSwitcher';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
+import { UpdateBanner } from '../../components/ui/UpdateNotice';
 import { MiniEmployeeHome } from '../../components/MiniEmployeeHome';
 import { MiniHomeStats } from '../../components/MiniHomeStats';
 import { EmployeeActivityStats } from '../../components/EmployeeActivityStats';
@@ -311,6 +312,8 @@ export default function DashboardScreen() {
       </View>
 
       <PersonaBanner />
+
+      <UpdateBanner />
 
       {/* Offline mode toggle */}
       <TouchableOpacity

@@ -1,5 +1,7 @@
 export const QK = {
   me: ['auth', 'me'] as const,
+  appVersion: (version: string, build: number | null) =>
+    ['app-version', version, build] as const,
   inventoryProducts: ['inventory', 'products'] as const,
   inventory: (filters?: object) => ['inventory', filters] as const,
   salesHistory: (filters?: object) => ['sales', 'history', filters] as const,

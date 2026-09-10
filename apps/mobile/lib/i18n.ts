@@ -947,6 +947,31 @@ const en = {
     restoreFailed: 'Could not restore account',
     keepDeletedBtn: 'Keep it deleted',
   },
+  update: {
+    availableTitle: 'Update available',
+    availableBody: (version: string) => `Version ${version} is ready on the Play Store.`,
+    // Used when the new build carries the same version name — announcing
+    // "version 1.0.0 is available" to someone on 1.0.0 reads as a bug.
+    availableBodyGeneric: 'A newer build is ready on the Play Store.',
+    updateBtn: 'Update',
+    later: 'Later',
+    readyTitle: 'Update downloaded',
+    readyBody: 'Restart the app to start using it.',
+    restartBtn: 'Restart',
+    restarting: 'Restarting…',
+    requiredTitle: 'Update required',
+    requiredBody: (version: string) =>
+      `This version of KMB-Talk is too old to keep working. Install version ${version} from the Play Store to continue.`,
+    requiredBodyGeneric:
+      'This build of KMB-Talk is too old to keep working. Install the latest version from the Play Store to continue.',
+    whatsNew: "What's new",
+    installedVersion: (version: string) => `You have version ${version}`,
+    installedVersionBuild: (version: string, build: number) =>
+      `You have version ${version} (build ${build})`,
+    checkBtn: 'Check for updates',
+    checking: 'Checking…',
+    upToDate: 'You are on the latest version',
+  },
 };
 
 export type Translations = typeof en;
@@ -1890,6 +1915,29 @@ const fr: Translations = {
     restoring: 'Restauration…',
     restoreFailed: 'Impossible de restaurer le compte',
     keepDeletedBtn: 'Conserver la suppression',
+  },
+  update: {
+    availableTitle: 'Mise à jour disponible',
+    availableBody: (version: string) => `La version ${version} est disponible sur le Play Store.`,
+    availableBodyGeneric: 'Une version plus récente est disponible sur le Play Store.',
+    updateBtn: 'Mettre à jour',
+    later: 'Plus tard',
+    readyTitle: 'Mise à jour téléchargée',
+    readyBody: `Redémarrez l'application pour l'utiliser.`,
+    restartBtn: 'Redémarrer',
+    restarting: 'Redémarrage…',
+    requiredTitle: 'Mise à jour obligatoire',
+    requiredBody: (version: string) =>
+      `Cette version de KMB-Talk est trop ancienne pour continuer à fonctionner. Installez la version ${version} depuis le Play Store pour continuer.`,
+    requiredBodyGeneric:
+      'Cette version de KMB-Talk est trop ancienne pour continuer à fonctionner. Installez la dernière version depuis le Play Store pour continuer.',
+    whatsNew: 'Nouveautés',
+    installedVersion: (version: string) => `Vous avez la version ${version}`,
+    installedVersionBuild: (version: string, build: number) =>
+      `Vous avez la version ${version} (build ${build})`,
+    checkBtn: 'Vérifier les mises à jour',
+    checking: 'Vérification…',
+    upToDate: 'Vous avez la dernière version',
   },
 };
 

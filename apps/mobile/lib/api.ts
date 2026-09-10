@@ -750,3 +750,38 @@ export interface DashboardProfitSummary {
   externalProfit: string;
   totalProfit: string;
 }
+
+// ─── App version ───────────────────────────────────────────────────────────
+
+export interface AppVersionInfo {
+  platform: 'android' | 'ios';
+  latestVersion: string;
+  minSupportedVersion: string;
+  /** Newest versionCode on the store, when the server knows one. */
+  latestBuild: number | null;
+  storeUrl: string | null;
+  releaseNotes: { en: string; fr: string } | null;
+  updateAvailable: boolean;
+  updateRequired: boolean;
+}
+
+export const appVersionApi = {
+  /**
+   * Public endpoint — no token needed, which is the point: an install too old
+   * to sign in still has to learn that it must update. The server does the
+   * comparison so the rule can be changed without shipping a build.
+   */
+  check: (
+    platform: 'android' | 'ios',
+    version: string,
+    build: number | null,
+  ): Promise<AppVersionInfo> =>
+    api
+      .get('/app-version', {
+        // `build` is omitted rather than sent as null when unknown — the server
+        // then judges on the version name alone.
+        params: { platform, version, ...(build !== null ? { build } : {}) },
+        timeout: 15_000,
+      })
+      .then((r) => r.data),
+};

@@ -50,6 +50,7 @@ import { PricingModule } from './pricing/pricing.module';
 import { ActivityLogsModule } from './activity-logs/activity-logs.module';
 import { MiniSettlementsModule } from './mini-settlements/mini-settlements.module';
 import { SyncModule } from './sync/sync.module';
+import { AppVersionModule } from './app-version/app-version.module';
 import { ProductGroupsModule } from './product-groups/product-groups.module';
 import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts.module';
 
@@ -127,6 +128,7 @@ import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts
     ProductGroupsModule,
     QuantityDiscountsModule,
     SyncModule,
+    AppVersionModule,
   ],
   providers: [
     // Apply throttle guard globally

@@ -20,6 +20,7 @@ import { initConnectivity } from '../lib/connectivity';
 import { useInboxSignal } from '../hooks/use-inbox-signal';
 import { scheduleAlertNotifications } from '../lib/notifications';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
+import { UpdateRequiredGate } from '../components/ui/UpdateNotice';
 
 // Tuned for merchants on 2G/edge links in DRC. lib/sync.ts already established
 // that one attempt on a 10s budget is not enough on these networks; these
@@ -236,6 +237,10 @@ export default function RootLayout() {
             options={{ headerShown: true, title: t.miniEmployee.historyTitle, headerBackTitle: t.screens.back }}
           />
         </Stack>
+        {/* Sits above every screen: once the API says this build is below the
+            minimum supported version, nothing behind it can be trusted to
+            behave. Renders null in the normal case. */}
+        <UpdateRequiredGate />
       </PersistQueryClientProvider>
     </ErrorBoundary>
   );
