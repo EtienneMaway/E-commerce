@@ -6,6 +6,7 @@ import { QK } from '../../lib/query-keys';
 import { useExchangeRate, useFormatCurrency } from '../../lib/currency';
 import { breakdownQuantity, formatBreakdown, getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+import { personHandle } from '../../lib/person';
 import { useAuthStore } from '../../store/auth.store';
 import { usePrinterStore } from '../../store/printer.store';
 import {
@@ -168,7 +169,7 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
               className="bg-card border border-border rounded-2xl px-4 py-4 mb-3"
             >
               <Text className="text-text font-semibold">
-                {t.miniEmployee.receiveFrom} @{c.supplier?.username ?? '—'}
+                {t.miniEmployee.receiveFrom} {personHandle(c.supplier, t.common.closedAccount)}
               </Text>
               {c.note ? <Text className="text-muted text-xs mt-0.5 italic">{c.note}</Text> : null}
               <View className="mt-2 gap-2">

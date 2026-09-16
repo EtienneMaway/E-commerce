@@ -38,14 +38,14 @@ export class PricingController {
   @ApiOperation({ summary: 'List standard prices for the current owner' })
   @ApiResponse({ status: 200 })
   list(@CurrentActorContext() ctx: ActorContext) {
-    return this.service.list(ctx.effectiveOwnerId);
+    return this.service.list(ctx);
   }
 
   @Post()
   @ApiOperation({ summary: 'Set or update a product\'s standard unit price' })
   @ApiResponse({ status: 201 })
   upsert(@CurrentActorContext() ctx: ActorContext, @Body() dto: UpsertPricingDto) {
-    return this.service.upsert(ctx.effectiveOwnerId, dto.productName, dto.unitPrice);
+    return this.service.upsert(ctx, dto.productName, dto.unitPrice);
   }
 
   @Patch(':id')
@@ -55,13 +55,13 @@ export class PricingController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePricingDto,
   ) {
-    return this.service.update(ctx.effectiveOwnerId, id, dto.unitPrice);
+    return this.service.update(ctx, id, dto.unitPrice);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remove a standard price entry' })
   remove(@CurrentActorContext() ctx: ActorContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.remove(ctx.effectiveOwnerId, id);
+    return this.service.remove(ctx, id);
   }
 }

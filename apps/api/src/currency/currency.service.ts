@@ -13,45 +13,53 @@ export class CurrencyService {
   ) {}
 
   /**
-   * In-process cache of the single exchange-rate row.
+   * In-process cache of each business's exchange-rate row, keyed by `org_id`.
    *
-   * `exchange_rates` holds exactly one row that an admin changes at most a few
-   * times a day, yet getRate() sits on hot paths — dashboard.getAlerts,
-   * miniStats, handoverPreview — so every dashboard load paid a query for it.
+   * A business holds exactly one row that its owner changes at most a few times
+   * a day, yet getRate() sits on hot paths — dashboard.getAlerts, miniStats,
+   * handoverPreview — so every dashboard load would otherwise pay a query.
    *
    * Correctness note: this is safe to cache ONLY because setRate() below is the
-   * single writer and invalidates it. If a second writer ever appears, or the
-   * API is scaled to multiple processes, this must become a shared cache or the
-   * TTL must be the only guarantee — with multiple processes a stale rate could
-   * survive up to CACHE_TTL_MS after an admin change. The TTL is deliberately
-   * short so that worst case stays small.
+   * single writer and invalidates the entry it wrote. If a second writer ever
+   * appears, or the API is scaled to multiple processes, this must become a
+   * shared cache or the TTL must be the only guarantee — with multiple
+   * processes a stale rate could survive up to CACHE_TTL_MS after a change. The
+   * TTL is deliberately short so that worst case stays small.
+   *
+   * Keyed per business since migration 037: before it, one global row (and one
+   * cache slot) served every account in the database.
    */
-  private cached: { value: ExchangeRate | null; expiresAt: number } | null = null;
+  private readonly cached = new Map<string, { value: ExchangeRate | null; expiresAt: number }>();
   private static readonly CACHE_TTL_MS = 60_000;
 
-  async getRate(): Promise<ExchangeRate | null> {
+  /**
+   * The rate for one business. `orgId` comes from `ActorContext.orgId`, which
+   * the guard resolves per request — an employee therefore reads their
+   * employer's rate, which is what their FC figures must be converted at.
+   */
+  async getRate(orgId: string): Promise<ExchangeRate | null> {
     const now = Date.now();
-    if (this.cached && this.cached.expiresAt > now) {
-      return this.cached.value;
+    const hit = this.cached.get(orgId);
+    if (hit && hit.expiresAt > now) {
+      return hit.value;
     }
-    const [rate] = await this.rateRepo.find({ take: 1 });
-    const value = rate ?? null;
-    this.cached = { value, expiresAt: now + CurrencyService.CACHE_TTL_MS };
+    const value = (await this.rateRepo.findOne({ where: { orgId } })) ?? null;
+    this.cached.set(orgId, { value, expiresAt: now + CurrencyService.CACHE_TTL_MS });
     return value;
   }
 
-  /** Drop the cache so the next read reflects a just-written rate. */
-  private invalidate(): void {
-    this.cached = null;
+  /** Drop one business's cache so its next read reflects a just-written rate. */
+  private invalidate(orgId: string): void {
+    this.cached.delete(orgId);
   }
 
-  async setRate(dto: SetRateDto): Promise<ExchangeRate> {
+  async setRate(orgId: string, dto: SetRateDto): Promise<ExchangeRate> {
     const rate = new Decimal(dto.usdToFcRate);
     if (rate.lte(0)) {
       throw new BadRequestException('Exchange rate must be greater than zero');
     }
 
-    const [existing] = await this.rateRepo.find({ take: 1 });
+    const existing = await this.rateRepo.findOne({ where: { orgId } });
 
     if (dto.sellingRate !== undefined) {
       const selling = new Decimal(dto.sellingRate);
@@ -66,16 +74,17 @@ export class CurrencyService {
         existing.sellingRate = new Decimal(dto.sellingRate).toFixed(4);
       }
       const saved = await this.rateRepo.save(existing);
-      this.invalidate();
+      this.invalidate(orgId);
       return saved;
     }
 
     const record = this.rateRepo.create({
+      orgId,
       usdToFcRate: rate.toFixed(4),
       sellingRate: dto.sellingRate ? new Decimal(dto.sellingRate).toFixed(4) : null,
     });
     const saved = await this.rateRepo.save(record);
-    this.invalidate();
+    this.invalidate(orgId);
     return saved;
   }
 }

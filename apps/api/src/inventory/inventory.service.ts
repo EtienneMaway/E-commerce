@@ -25,6 +25,17 @@ import {
   User,
 } from '../entities';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
+import { ShopContextService } from '../shops/shop-context.service';
+import {
+  holderColumnsCond,
+  holderCond,
+  holderScope,
+  isOnMyBooks,
+  readScope,
+  requireShop,
+  writeScope,
+} from '../common/shop-scope';
+import type { ActorContext } from '../common/types/actor-context';
 
 interface SourceBreakdown {
   personal: number;
@@ -71,6 +82,17 @@ export interface ProductSummary {
   cartonsAvailable?: number;
   /** Sized products only — per-size breakdown. */
   variants?: VariantSummary[];
+  /**
+   * Under "All branches" only: sellable pieces per branch. A cross-branch row
+   * pools stock that cannot be sold across branches, so the split is what tells
+   * the owner where the goods actually are. Absent for a single-branch read.
+   */
+  shopBreakdown?: ShopStock[];
+}
+
+export interface ShopStock {
+  shopId: string;
+  available: number;
 }
 
 import { AddPersonalDto } from './dto/add-personal.dto';
@@ -109,10 +131,11 @@ export class InventoryService {
     private readonly variantRepo: Repository<ProductVariant>,
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
+    private readonly shopContext: ShopContextService,
   ) {}
 
   async findAll(
-    ownerId: string,
+    ctx: ActorContext,
     filter: InventoryFilterDto,
   ): Promise<{
     data: InventoryEntry[];
@@ -123,7 +146,7 @@ export class InventoryService {
       totalPages: number;
     };
   }> {
-    const where: Record<string, unknown> = { ownerId };
+    const where: Record<string, unknown> = { ...holderScope(ctx) };
     if (filter.source) where.source = filter.source;
     if (filter.supplierUserId) where.supplierUserId = filter.supplierUserId;
     if (filter.category) where.category = ILike(`%${filter.category}%`);
@@ -152,9 +175,11 @@ export class InventoryService {
     };
   }
 
-  async getProductList(ownerId: string): Promise<ProductSummary[]> {
+  async getProductList(ctx: ActorContext): Promise<ProductSummary[]> {
     const entries = await this.entryRepo.find({
-      where: { ownerId },
+      // Own lots only — see holderScope. A mini's consigned lot at this branch
+      // is on the mini's list, not the owner's.
+      where: holderScope(ctx),
       order: { createdAt: 'DESC' },
     });
 
@@ -203,7 +228,23 @@ export class InventoryService {
     }
 
     // ---- Sized products: one summary per group ----
-    summaries.push(...(await this.groupSummaries(ownerId, sizedEntries)));
+    summaries.push(...(await this.groupSummaries(ctx, sizedEntries)));
+
+    if (ctx.shopScope === 'all') {
+      const perShop = new Map<string, Map<string, number>>();
+      for (const e of this.sellableOf(entries)) {
+        const key = e.variantId != null ? `g:${e.groupId}` : `s:${e.productName}`;
+        const shops = perShop.get(key) ?? new Map<string, number>();
+        shops.set(e.shopId, (shops.get(e.shopId) ?? 0) + e.quantityRemaining);
+        perShop.set(key, shops);
+      }
+      for (const s of summaries) {
+        const key = s.kind === 'group' ? `g:${s.groupId}` : `s:${s.productName}`;
+        s.shopBreakdown = [...(perShop.get(key) ?? new Map<string, number>())]
+          .filter(([, available]) => available > 0)
+          .map(([shopId, available]) => ({ shopId, available }));
+      }
+    }
 
     return summaries;
   }
@@ -242,11 +283,11 @@ export class InventoryService {
    * rows live on the owner's books, not the mini's).
    */
   private async groupSummaries(
-    ownerId: string,
+    ctx: ActorContext,
     sizedEntries: InventoryEntry[],
   ): Promise<ProductSummary[]> {
     const ownGroups = await this.groupRepo.find({
-      where: { ownerId, archived: false },
+      where: { ...readScope(ctx), archived: false },
       relations: { variants: true },
       order: { createdAt: 'DESC' },
     });
@@ -353,22 +394,22 @@ export class InventoryService {
   }
 
   async addPersonal(
-    ownerId: string,
+    ctx: ActorContext,
     dto: AddPersonalDto,
   ): Promise<InventoryEntry> {
     return this.dataSource.transaction((manager) =>
-      this.addPersonalInTx(manager, ownerId, dto),
+      this.addPersonalInTx(manager, ctx, dto),
     );
   }
 
   async addPersonalBulk(
-    ownerId: string,
+    ctx: ActorContext,
     dto: AddPersonalBulkDto,
   ): Promise<InventoryEntry[]> {
     return this.dataSource.transaction(async (manager) => {
       const results: InventoryEntry[] = [];
       for (const item of dto.items) {
-        results.push(await this.addPersonalInTx(manager, ownerId, item));
+        results.push(await this.addPersonalInTx(manager, ctx, item));
       }
       return results;
     });
@@ -381,11 +422,11 @@ export class InventoryService {
    */
   private async assertNotSizedName(
     manager: EntityManager,
-    ownerId: string,
+    ctx: ActorContext,
     name: string,
   ): Promise<void> {
     const group = await manager.findOne(ProductGroup, {
-      where: { ownerId, name: ILike(name) },
+      where: { ...readScope(ctx), name: ILike(name) },
     });
     if (group) {
       throw new ConflictException(
@@ -396,15 +437,15 @@ export class InventoryService {
 
   private async addPersonalInTx(
     manager: EntityManager,
-    ownerId: string,
+    ctx: ActorContext,
     dto: AddPersonalDto,
   ): Promise<InventoryEntry> {
     const normalizedName = dto.productName.trim().toLowerCase();
-    await this.assertNotSizedName(manager, ownerId, normalizedName);
+    await this.assertNotSizedName(manager, ctx, normalizedName);
 
     const existing = await manager.findOne(InventoryEntry, {
       where: {
-        ownerId,
+        ...holderScope(ctx),
         source: InventorySource.PERSONAL,
         productName: ILike(normalizedName),
       },
@@ -426,7 +467,8 @@ export class InventoryService {
     } else {
       qtyBefore = 0;
       const entry = manager.create(InventoryEntry, {
-        ownerId,
+        ownerId: ctx.effectiveOwnerId,
+        ...writeScope(ctx),
         source: InventorySource.PERSONAL,
         productName: normalizedName,
         unitCost: dto.unitCost,
@@ -441,7 +483,7 @@ export class InventoryService {
     }
 
     await this.stockMovements.record(manager, {
-      ownerId,
+      ownerId: ctx.effectiveOwnerId,
       entry: saved,
       reason: StockMovementReason.PURCHASE,
       qty: dto.quantity,
@@ -452,25 +494,25 @@ export class InventoryService {
   }
 
   async receiveFromSupplier(
-    ownerId: string,
+    ctx: ActorContext,
     dto: ReceiveFromSupplierDto,
   ): Promise<InventoryEntry> {
     const supplier = await this.userRepo.findOne({
       where: { id: dto.supplierUserId },
     });
     if (!supplier) throw new NotFoundException('Supplier user not found');
-    if (supplier.id === ownerId) {
+    if (supplier.id === ctx.effectiveOwnerId) {
       throw new BadRequestException('You cannot be your own supplier');
     }
 
     return this.dataSource.transaction(async (manager) => {
       const normalizedName = dto.productName.trim().toLowerCase();
-      await this.assertNotSizedName(manager, ownerId, normalizedName);
+      await this.assertNotSizedName(manager, ctx, normalizedName);
 
       // Upsert: top up existing SUPPLIER entry for same product + supplier
       const existing = await manager.findOne(InventoryEntry, {
         where: {
-          ownerId,
+          ...holderScope(ctx),
           source: InventorySource.SUPPLIER,
           supplierUserId: dto.supplierUserId,
           productName: ILike(normalizedName),
@@ -495,7 +537,8 @@ export class InventoryService {
         qtyBefore = 0;
         // Create inventory entry
         const entry = manager.create(InventoryEntry, {
-          ownerId,
+          ownerId: ctx.effectiveOwnerId,
+          ...writeScope(ctx),
           source: InventorySource.SUPPLIER,
           productName: normalizedName,
           unitCost: dto.unitCost,
@@ -516,12 +559,18 @@ export class InventoryService {
         .toFixed(4);
 
       let debt = await manager.findOne(SupplierDebt, {
-        where: { ownerId, supplierUserId: dto.supplierUserId },
+        where: { ...holderScope(ctx), supplierUserId: dto.supplierUserId },
       });
 
       if (!debt) {
         debt = manager.create(SupplierDebt, {
-          ownerId,
+          ownerId: ctx.effectiveOwnerId,
+          ...writeScope(ctx),
+          // Which of the supplier's branches this balance is with. Receiving
+          // stock names the supplier as a person, not a branch, so their default
+          // is the honest answer — and the exact one for the single-branch
+          // suppliers that are nearly all of them (migration 033).
+          ...(await this.shopContext.defaultTenancyOf(dto.supplierUserId)),
           supplierUserId: dto.supplierUserId,
           totalCreditReceived: creditValue,
           totalPaid: '0.0000',
@@ -543,7 +592,7 @@ export class InventoryService {
       await manager.save(InventoryEntry, savedEntry);
 
       await this.stockMovements.record(manager, {
-        ownerId,
+        ownerId: ctx.effectiveOwnerId,
         entry: savedEntry,
         reason: StockMovementReason.RECEIVE_SUPPLIER,
         qty: dto.quantity,
@@ -556,14 +605,14 @@ export class InventoryService {
   }
 
   async consignToDebtor(
-    ownerId: string,
+    ctx: ActorContext,
     dto: ConsignToDebtorDto,
   ): Promise<InventoryEntry> {
     const debtor = await this.userRepo.findOne({
       where: { id: dto.debtorUserId },
     });
     if (!debtor) throw new NotFoundException('Debtor user not found');
-    if (debtor.id === ownerId) {
+    if (debtor.id === ctx.effectiveOwnerId) {
       throw new BadRequestException('You cannot consign to yourself');
     }
 
@@ -572,12 +621,12 @@ export class InventoryService {
       const availableEntries = await manager.find(InventoryEntry, {
         where: [
           {
-            ownerId,
+            ...holderScope(ctx),
             productName: ILike(dto.productName.trim().toLowerCase()),
             source: InventorySource.SUPPLIER,
           },
           {
-            ownerId,
+            ...holderScope(ctx),
             productName: ILike(dto.productName.trim().toLowerCase()),
             source: InventorySource.PERSONAL,
           },
@@ -616,7 +665,7 @@ export class InventoryService {
         await manager.save(InventoryEntry, entry);
 
         await this.stockMovements.record(manager, {
-          ownerId,
+          ownerId: ctx.effectiveOwnerId,
           entry,
           reason: StockMovementReason.CONSIGN_OUT,
           qty: deduct,
@@ -629,7 +678,8 @@ export class InventoryService {
 
       // Create consigned-out entry (inherit cartonPrice and piecesPerCarton from source stock)
       const consignedEntry = manager.create(InventoryEntry, {
-        ownerId,
+        ownerId: ctx.effectiveOwnerId,
+        ...writeScope(ctx),
         source: InventorySource.CONSIGNED_OUT,
         productName: dto.productName.trim().toLowerCase(),
         unitCost: sourceCost,
@@ -649,12 +699,13 @@ export class InventoryService {
         .toFixed(4);
 
       let credit = await manager.findOne(DebtorCredit, {
-        where: { ownerId, debtorUserId: dto.debtorUserId },
+        where: { ...holderScope(ctx), debtorUserId: dto.debtorUserId },
       });
 
       if (!credit) {
         credit = manager.create(DebtorCredit, {
-          ownerId,
+          ownerId: ctx.effectiveOwnerId,
+          ...writeScope(ctx),
           debtorUserId: dto.debtorUserId,
           totalCreditGiven: creditValue,
           totalReceived: '0.0000',
@@ -680,7 +731,7 @@ export class InventoryService {
   }
 
   async renameProduct(
-    ownerId: string,
+    ctx: ActorContext,
     currentName: string,
     dto: RenameProductDto,
   ): Promise<RenameProductResult> {
@@ -709,7 +760,7 @@ export class InventoryService {
       // owner-controlled lots forward.
       const activeConsigned = await manager
         .createQueryBuilder(InventoryEntry, 'e')
-        .where('e.owner_id = :ownerId', { ownerId })
+        .where(...holderCond('e', { ...ctx, shopId: requireShop(ctx) }))
         .andWhere('LOWER(e.product_name) = :name', { name: oldNorm })
         .andWhere('e.source IN (:...sources)', {
           sources: [
@@ -728,12 +779,12 @@ export class InventoryService {
       const ownedCount = await manager.count(InventoryEntry, {
         where: [
           {
-            ownerId,
+            ...holderScope(ctx),
             productName: ILike(oldNorm),
             source: InventorySource.PERSONAL,
           },
           {
-            ownerId,
+            ...holderScope(ctx),
             productName: ILike(oldNorm),
             source: InventorySource.SUPPLIER,
           },
@@ -746,7 +797,7 @@ export class InventoryService {
       }
 
       const conflict = await manager.count(InventoryEntry, {
-        where: { ownerId, productName: ILike(newNorm) },
+        where: { ...holderScope(ctx), productName: ILike(newNorm) },
       });
       if (conflict > 0) {
         throw new ConflictException(
@@ -758,7 +809,7 @@ export class InventoryService {
         .createQueryBuilder()
         .update(InventoryEntry)
         .set({ productName: newNorm })
-        .where('owner_id = :ownerId', { ownerId })
+        .where(...holderColumnsCond(ctx))
         .andWhere('LOWER(product_name) = :name', { name: oldNorm })
         .andWhere('source IN (:...sources)', {
           sources: [InventorySource.PERSONAL, InventorySource.SUPPLIER],
@@ -769,7 +820,8 @@ export class InventoryService {
         .createQueryBuilder()
         .update(SaleTransaction)
         .set({ productName: newNorm })
-        .where('owner_id = :ownerId', { ownerId })
+        // Own sales only — a mini's settled sales keep the name they sold under.
+        .where(...holderColumnsCond(ctx))
         .andWhere('LOWER(product_name) = :name', { name: oldNorm })
         .execute();
 
@@ -777,7 +829,8 @@ export class InventoryService {
         .createQueryBuilder()
         .update(ExternalTransaction)
         .set({ productName: newNorm })
-        .where('owner_id = :ownerId', { ownerId })
+        .where('org_id = :orgId', { orgId: ctx.orgId })
+        .andWhere('shop_id = :shopId', { shopId: requireShop(ctx) })
         .andWhere('LOWER(product_name) = :name', { name: oldNorm })
         .execute();
 
@@ -785,7 +838,8 @@ export class InventoryService {
         .createQueryBuilder()
         .update(ProductPrice)
         .set({ productName: newNorm })
-        .where('owner_id = :ownerId', { ownerId })
+        .where('org_id = :orgId', { orgId: ctx.orgId })
+        .andWhere('shop_id = :shopId', { shopId: requireShop(ctx) })
         .andWhere('LOWER(product_name) = :name', { name: oldNorm })
         .execute();
 
@@ -801,13 +855,13 @@ export class InventoryService {
   }
 
   async updateSellingPrice(
-    ownerId: string,
+    ctx: ActorContext,
     entryId: string,
     dto: UpdateSellingPriceDto,
   ): Promise<InventoryEntry> {
     const entry = await this.entryRepo.findOne({ where: { id: entryId } });
     if (!entry) throw new NotFoundException('Inventory entry not found');
-    if (entry.ownerId !== ownerId)
+    if (!isOnMyBooks(entry, ctx))
       throw new ForbiddenException('You do not own this inventory entry');
     if (entry.source === InventorySource.CONSIGNED_OUT) {
       throw new BadRequestException(
@@ -832,6 +886,11 @@ export class InventoryService {
   ): Promise<InventoryEntry> {
     const entry = await this.entryRepo.findOne({ where: { id: entryId } });
     if (!entry) throw new NotFoundException('Inventory entry not found');
+    // Deliberately still `ownerId`: a mini's CONSIGNED_IN lot sits on their own
+    // books (rule 7), so this is a *person* check, not a tenancy one. The lot's
+    // org_id is the employer's business — checking that here would be asking a
+    // different question. See MULTI_SHOP_PLAN.md §3.2 on tenancy keys vs person
+    // keys.
     if (entry.ownerId !== miniId)
       throw new ForbiddenException('You do not own this inventory entry');
     if (entry.source !== InventorySource.CONSIGNED_IN) {
@@ -868,6 +927,8 @@ export class InventoryService {
       .createQueryBuilder()
       .update(InventoryEntry)
       .set({ cartonPrice: price.toFixed(4) })
+      // tenancy-exempt: a mini's CONSIGNED_IN lots sit on their OWN books
+      // (business rule 7), so this asks \"whose stock\", not \"which branch\".
       .where('owner_id = :miniId', { miniId })
       .andWhere('group_id = :groupId', { groupId })
       .andWhere('source = :source', { source: InventorySource.CONSIGNED_IN })
@@ -879,7 +940,7 @@ export class InventoryService {
   }
 
   async adjustStock(
-    ownerId: string,
+    ctx: ActorContext,
     entryId: string,
     dto: AdjustStockDto,
   ): Promise<{ entry: InventoryEntry; movement: StockMovement }> {
@@ -888,7 +949,7 @@ export class InventoryService {
         where: { id: entryId },
       });
       if (!entry) throw new NotFoundException('Inventory entry not found');
-      if (entry.ownerId !== ownerId) {
+      if (!isOnMyBooks(entry, ctx)) {
         throw new ForbiddenException('You do not own this inventory entry');
       }
 
@@ -961,7 +1022,7 @@ export class InventoryService {
       const savedEntry = await manager.save(InventoryEntry, entry);
 
       const movement = await this.stockMovements.record(manager, {
-        ownerId,
+        ownerId: ctx.effectiveOwnerId,
         entry: savedEntry,
         reason,
         qty: dto.qty,
@@ -980,20 +1041,20 @@ export class InventoryService {
    * adjustment as a simple product.
    */
   async adjustVariantStock(
-    ownerId: string,
+    ctx: ActorContext,
     variantId: string,
     dto: AdjustStockDto,
   ): Promise<{ entry: InventoryEntry; movement: StockMovement }> {
     const entry = await this.entryRepo.findOne({
       where: [
-        { ownerId, variantId, source: InventorySource.PERSONAL },
-        { ownerId, variantId, source: InventorySource.SUPPLIER },
+        { ...holderScope(ctx), variantId, source: InventorySource.PERSONAL },
+        { ...holderScope(ctx), variantId, source: InventorySource.SUPPLIER },
       ],
       order: { createdAt: 'DESC' },
     });
     if (!entry) {
       throw new NotFoundException('No adjustable stock for this size');
     }
-    return this.adjustStock(ownerId, entry.id, dto);
+    return this.adjustStock(ctx, entry.id, dto);
   }
 }

@@ -29,7 +29,9 @@
   "exclude": [
     "node_modules",
     "android",
-    "ios"
+    "ios",
+    "__tests__",
+    "jest.offline.config.js"
   ],
   "extends": "expo/tsconfig.base"
 }

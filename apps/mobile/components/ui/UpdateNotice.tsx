@@ -76,7 +76,14 @@ export function UpdateRequiredGate() {
   if (!required) return null;
 
   return (
-    <Modal visible animationType="fade" statusBarTranslucent>
+    <Modal
+      visible
+      animationType="fade"
+      statusBarTranslucent
+      // Android requires this prop, and the hardware back button must not be a
+      // way around the wall — the whole point is that this build cannot be used.
+      onRequestClose={() => {}}
+    >
       <View className="flex-1 bg-background px-6 justify-center items-center">
         <KmbLogo size={72} />
         <Text className="text-text text-xl font-bold mt-6 text-center">

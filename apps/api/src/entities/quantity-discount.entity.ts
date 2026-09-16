@@ -25,13 +25,22 @@ export class QuantityDiscount {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index({ unique: true })
-  @Column({ name: 'owner_id', type: 'uuid' })
-  ownerId: string;
+  /**
+   * Tenancy: the business and the branch these books belong to
+   * (MULTI_SHOP_PLAN.md §3.2). NOT NULL since migration 034.
+   */
+  @Column({ name: 'org_id', type: 'uuid' })
+  orgId: string;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'owner_id' })
-  owner: User;
+  /**
+   * One config per BRANCH, not per business — the unique index moved here with
+   * the tenancy. It used to sit on `owner_id`; leaving it on `org_id` would let
+   * a merchant configure discounts once and never differently per branch.
+   */
+  @Index('UQ_quantity_discounts_shop', { unique: true })
+  @Column({ name: 'shop_id', type: 'uuid' })
+  shopId: string;
+
 
   @ApiProperty({
     example: false,

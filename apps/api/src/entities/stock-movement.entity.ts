@@ -97,6 +97,16 @@ export class StockMovement {
   @Column({ name: 'owner_id', type: 'uuid' })
   ownerId: string;
 
+  /**
+   * Tenancy: the business and the branch these books belong to
+   * (MULTI_SHOP_PLAN.md §3.2). NOT NULL since migration 034.
+   */
+  @Column({ name: 'org_id', type: 'uuid' })
+  orgId: string;
+
+  @Column({ name: 'shop_id', type: 'uuid' })
+  shopId: string;
+
   @ManyToOne(() => User)
   @JoinColumn({ name: 'owner_id' })
   owner: User;

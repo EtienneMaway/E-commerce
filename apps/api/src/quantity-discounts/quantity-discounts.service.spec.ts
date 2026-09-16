@@ -1,4 +1,5 @@
 import { QuantityDiscountsService } from './quantity-discounts.service';
+import { testCtx } from '../common/testing/actor-context.fixture';
 import { QuantityDiscount } from '../entities';
 
 /**
@@ -8,6 +9,7 @@ import { QuantityDiscount } from '../entities';
  */
 describe('QuantityDiscountsService', () => {
   const OWNER = 'owner-1';
+const CTX = testCtx({ effectiveOwnerId: OWNER });
 
   function makeService(row: QuantityDiscount | null) {
     const store = { current: row };
@@ -24,7 +26,7 @@ describe('QuantityDiscountsService', () => {
 
   it('returns a disabled default when the owner has no config', async () => {
     const { service } = makeService(null);
-    const cfg = await service.get(OWNER);
+    const cfg = await service.get(CTX);
     expect(cfg).toEqual({
       enabled: false,
       halfDozenPercent: '0.00',
@@ -37,7 +39,7 @@ describe('QuantityDiscountsService', () => {
   it('returns the stored config, percentages normalised to 2dp', async () => {
     const { service } = makeService({
       id: 'x',
-      ownerId: OWNER,
+      orgId: 'org-1',
       enabled: true,
       halfDozenPercent: '3',
       dozenPercent: '5.5',
@@ -45,7 +47,7 @@ describe('QuantityDiscountsService', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     } as QuantityDiscount);
-    const cfg = await service.get(OWNER);
+    const cfg = await service.get(CTX);
     expect(cfg.enabled).toBe(true);
     expect(cfg.halfDozenPercent).toBe('3.00');
     expect(cfg.dozenPercent).toBe('5.50');
@@ -54,13 +56,13 @@ describe('QuantityDiscountsService', () => {
 
   it('creates a new row on first upsert and normalises to 2dp', async () => {
     const { service, repo } = makeService(null);
-    const cfg = await service.upsert(OWNER, {
+    const cfg = await service.upsert(CTX, {
       enabled: true,
       halfDozenPercent: 3,
       dozenPercent: 5,
       cartonPercent: 8,
     });
-    expect(repo.create).toHaveBeenCalledWith({ ownerId: OWNER });
+    expect(repo.create).toHaveBeenCalledWith({ orgId: 'org-1', shopId: 'shop-1' });
     expect(cfg).toEqual({
       enabled: true,
       halfDozenPercent: '3.00',
@@ -73,7 +75,7 @@ describe('QuantityDiscountsService', () => {
   it('updates the existing row on a later upsert', async () => {
     const existing = {
       id: 'x',
-      ownerId: OWNER,
+      orgId: 'org-1',
       enabled: false,
       halfDozenPercent: '1.00',
       dozenPercent: '2.00',
@@ -82,7 +84,7 @@ describe('QuantityDiscountsService', () => {
       updatedAt: new Date(),
     } as QuantityDiscount;
     const { service, repo } = makeService(existing);
-    const cfg = await service.upsert(OWNER, {
+    const cfg = await service.upsert(CTX, {
       enabled: true,
       halfDozenPercent: 4,
       dozenPercent: 6,

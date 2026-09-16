@@ -25,8 +25,8 @@ import { useExchangeRate, formatMoney, formatFcValue } from '../../lib/currency'
 import { printReceipt, shareReceiptAsPdf, generateReceiptId, type ReceiptData, type ReceiptItem } from '../../lib/receipt';
 import { getErrorMessage, isPriceGuardWarning, getPriceGuardWarning } from '../../lib/utils';
 import { useAuthStore } from '../../store/auth.store';
-import { usePersonaStore } from '../../store/persona.store';
 import { usePrinterStore } from '../../store/printer.store';
+import { receiptIdentity } from '../../lib/receipt-identity';
 import { Button } from '../ui/Button';
 import { useT } from '../../lib/i18n';
 import { useBrand } from '../../lib/theme';
@@ -364,18 +364,12 @@ export function SellSizedProductModal({ visible, onClose, group, onSellWithOther
 
   // ── Receipt building ─────────────────────────────────────────────────────
   const baseReceiptFields = (receiptId: string) => {
-    // Same identity rules as the regular sale receipt: employer-mode sales are
-    // on the employer's books, self-mode sales are the user's own; the seller
-    // is always whoever pressed Sell.
-    const persona = usePersonaStore.getState().kind;
-    const isEmployerMode = persona === 'employer' && !!user?.activeEmployment;
-    const businessName = isEmployerMode ? undefined : user?.name ?? undefined;
-    const businessHandle = isEmployerMode ? user?.activeEmployment?.employer.username : user?.username;
+    // Same identity rules as the regular sale receipt (lib/receipt-identity);
+    // the seller is always whoever pressed Sell.
     return {
       markupPct: 0,
       date: new Date().toLocaleString('fr-CD'),
-      businessName,
-      businessHandle,
+      ...receiptIdentity(user),
       sellerName: user?.name ?? undefined,
       sellerUsername: user?.username,
       receiptId,

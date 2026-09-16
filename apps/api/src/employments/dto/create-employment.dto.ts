@@ -17,4 +17,12 @@ export class CreateEmploymentDto {
   @ApiProperty({ enum: EmploymentTier, example: EmploymentTier.FULL })
   @IsEnum(EmploymentTier)
   tier: EmploymentTier;
+
+  @ApiPropertyOptional({
+    description:
+      'Branch to hire into. Defaults to the branch making the request — which is the only branch a single-shop merchant has.',
+  })
+  @IsOptional()
+  @IsUUID()
+  readonly shopId?: string;
 }

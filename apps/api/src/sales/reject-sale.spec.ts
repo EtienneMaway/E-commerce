@@ -7,23 +7,24 @@ import {
   StockMovementReason,
 } from '../entities';
 import type { ActorContext } from '../common/types/actor-context';
+import { testCtx } from '../common/testing/actor-context.fixture';
 
 const OWNER = 'owner-1';
 const MINI = 'mini-3';
 
-const ownerCtx: ActorContext = {
+const ownerCtx: ActorContext = testCtx({
   actorId: OWNER,
   effectiveOwnerId: OWNER,
   tier: 'OWNER',
   employment: null,
-} as unknown as ActorContext;
+});
 
-const miniCtx: ActorContext = {
+const miniCtx: ActorContext = testCtx({
   actorId: MINI,
   effectiveOwnerId: MINI,
   tier: 'MINI_EMPLOYEE',
-  employment: { employerId: OWNER },
-} as unknown as ActorContext;
+  employment: { employerId: OWNER } as ActorContext['employment'],
+});
 
 interface Settlement {
   status: MiniSettlementStatus;
@@ -43,6 +44,10 @@ function build(opts: {
   const sale = {
     id: 'sale-1',
     ownerId: OWNER,
+    // Tenancy matches `testCtx`'s default branch; the "someone else's books"
+    // case below overrides it, which is now what makes that sale invisible.
+    orgId: 'org-1',
+    shopId: 'shop-1',
     productName: 'rice',
     qtySold: 4,
     unitCost: '2.0000',
@@ -151,7 +156,9 @@ describe('SalesService.rejectSale', () => {
   });
 
   it("refuses a sale on someone else's books", async () => {
-    const { service } = build({ sale: { ownerId: 'someone-else' } });
+    const { service } = build({
+      sale: { ownerId: 'someone-else', orgId: 'org-elsewhere', shopId: 'shop-elsewhere' },
+    });
     await expect(
       service.rejectSale(ownerCtx, 'sale-1', {}),
     ).rejects.toBeInstanceOf(NotFoundException);

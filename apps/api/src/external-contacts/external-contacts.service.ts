@@ -28,6 +28,7 @@ import { RecordProductInDto } from './dto/record-product-in.dto';
 import { RecordPaymentOutDto } from './dto/record-payment-out.dto';
 import { RecordProductOutBatchDto } from './dto/record-product-out-batch.dto';
 import { RecordProductInBatchDto } from './dto/record-product-in-batch.dto';
+import { holderScope, readScope, writeScope } from '../common/shop-scope';
 
 @Injectable()
 export class ExternalContactsService {
@@ -47,7 +48,7 @@ export class ExternalContactsService {
 
   async findAll(ctx: ActorContext): Promise<ExternalContact[]> {
     return this.contactRepo.find({
-      where: { ownerId: ctx.effectiveOwnerId },
+      where: readScope(ctx),
       order: { name: 'ASC' },
     });
   }
@@ -56,7 +57,7 @@ export class ExternalContactsService {
     // Transactions are paginated through listTransactions() to avoid loading
     // arbitrarily many rows in one request.
     const contact = await this.contactRepo.findOne({
-      where: { id, ownerId: ctx.effectiveOwnerId },
+      where: { id, ...readScope(ctx) },
     });
     if (!contact) throw new NotFoundException('External contact not found');
     return contact;
@@ -72,12 +73,12 @@ export class ExternalContactsService {
     pagination: { page: number; limit: number; total: number; totalPages: number };
   }> {
     const contact = await this.contactRepo.findOne({
-      where: { id, ownerId: ctx.effectiveOwnerId },
+      where: { id, ...readScope(ctx) },
     });
     if (!contact) throw new NotFoundException('External contact not found');
 
     const [data, total] = await this.txRepo.findAndCount({
-      where: { ownerId: ctx.effectiveOwnerId, contactId: id },
+      where: { ...readScope(ctx), contactId: id },
       relations: { actor: true },
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
@@ -97,7 +98,7 @@ export class ExternalContactsService {
 
   async create(ctx: ActorContext, dto: CreateExternalContactDto): Promise<ExternalContact> {
     const contact = this.contactRepo.create({
-      ownerId: ctx.effectiveOwnerId,
+      ...writeScope(ctx),
       name: dto.name.trim(),
       phone: dto.phone?.trim() ?? null,
       notes: dto.notes?.trim() ?? null,
@@ -109,7 +110,7 @@ export class ExternalContactsService {
   }
 
   async update(ctx: ActorContext, id: string, dto: UpdateExternalContactDto): Promise<ExternalContact> {
-    const contact = await this.contactRepo.findOne({ where: { id, ownerId: ctx.effectiveOwnerId } });
+    const contact = await this.contactRepo.findOne({ where: { id, ...readScope(ctx) } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (dto.name !== undefined) contact.name = dto.name.trim();
     if (dto.phone !== undefined) contact.phone = dto.phone.trim() || null;
@@ -119,7 +120,7 @@ export class ExternalContactsService {
   }
 
   async remove(ctx: ActorContext, id: string): Promise<void> {
-    const contact = await this.contactRepo.findOne({ where: { id, ownerId: ctx.effectiveOwnerId } });
+    const contact = await this.contactRepo.findOne({ where: { id, ...readScope(ctx) } });
     if (!contact) throw new NotFoundException('External contact not found');
     await this.contactRepo.remove(contact);
   }
@@ -134,7 +135,7 @@ export class ExternalContactsService {
     const ownerId = ctx.effectiveOwnerId;
     const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
 
-    const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
+    const contact = await this.contactRepo.findOne({ where: { id: contactId, ...readScope(ctx) } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (contact.role === ExternalContactRole.SUPPLIER) {
       throw new BadRequestException('This contact is a supplier, not a debtor');
@@ -152,8 +153,8 @@ export class ExternalContactsService {
       const productNameNorm = dto.productName.trim().toLowerCase();
       const entries = await manager.find(InventoryEntry, {
         where: [
-          { ownerId, productName: ILike(productNameNorm), source: InventorySource.SUPPLIER },
-          { ownerId, productName: ILike(productNameNorm), source: InventorySource.PERSONAL },
+          { ...holderScope(ctx), productName: ILike(productNameNorm), source: InventorySource.SUPPLIER },
+          { ...holderScope(ctx), productName: ILike(productNameNorm), source: InventorySource.PERSONAL },
         ],
         order: { createdAt: 'ASC' },
       });
@@ -184,7 +185,7 @@ export class ExternalContactsService {
         await manager.save(InventoryEntry, entry);
 
         await this.stockMovements.record(manager, {
-          ownerId,
+          ownerId: ctx.effectiveOwnerId,
           entry,
           reason: StockMovementReason.EXTERNAL_OUT,
           qty: deduct,
@@ -203,7 +204,7 @@ export class ExternalContactsService {
       await manager.save(ExternalContact, contact);
 
       const tx = manager.create(ExternalTransaction, {
-        ownerId,
+        ...writeScope(ctx),
         actorId,
         contactId,
         type: ExternalTransactionType.PRODUCT_OUT,
@@ -231,7 +232,7 @@ export class ExternalContactsService {
     const ownerId = ctx.effectiveOwnerId;
     const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
 
-    const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
+    const contact = await this.contactRepo.findOne({ where: { id: contactId, ...readScope(ctx) } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (contact.role === ExternalContactRole.SUPPLIER) {
       throw new BadRequestException('This contact is a supplier, not a debtor');
@@ -263,8 +264,8 @@ export class ExternalContactsService {
 
         const entries = await manager.find(InventoryEntry, {
           where: [
-            { ownerId, productName: ILike(productNameNorm), source: InventorySource.SUPPLIER },
-            { ownerId, productName: ILike(productNameNorm), source: InventorySource.PERSONAL },
+            { ...holderScope(ctx), productName: ILike(productNameNorm), source: InventorySource.SUPPLIER },
+            { ...holderScope(ctx), productName: ILike(productNameNorm), source: InventorySource.PERSONAL },
           ],
           order: { createdAt: 'ASC' },
         });
@@ -295,7 +296,7 @@ export class ExternalContactsService {
           await manager.save(InventoryEntry, entry);
 
           await this.stockMovements.record(manager, {
-            ownerId,
+            ownerId: ctx.effectiveOwnerId,
             entry,
             reason: StockMovementReason.EXTERNAL_OUT,
             qty: deduct,
@@ -312,7 +313,7 @@ export class ExternalContactsService {
         batchTotal = batchTotal.plus(amount);
 
         const tx = manager.create(ExternalTransaction, {
-          ownerId,
+          ...writeScope(ctx),
           actorId,
           contactId,
           type: ExternalTransactionType.PRODUCT_OUT,
@@ -347,7 +348,7 @@ export class ExternalContactsService {
     const ownerId = ctx.effectiveOwnerId;
     const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
 
-    const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
+    const contact = await this.contactRepo.findOne({ where: { id: contactId, ...readScope(ctx) } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (contact.role === ExternalContactRole.SUPPLIER) {
       throw new BadRequestException('This contact is a supplier, not a debtor');
@@ -362,7 +363,7 @@ export class ExternalContactsService {
 
       const productOuts = await manager.find(ExternalTransaction, {
         where: {
-          ownerId,
+          ...readScope(ctx),
           contactId,
           type: ExternalTransactionType.PRODUCT_OUT,
         },
@@ -387,7 +388,7 @@ export class ExternalContactsService {
       }
 
       const tx = manager.create(ExternalTransaction, {
-        ownerId,
+        ...writeScope(ctx),
         actorId,
         contactId,
         type: ExternalTransactionType.PAYMENT_IN,
@@ -412,7 +413,7 @@ export class ExternalContactsService {
     const ownerId = ctx.effectiveOwnerId;
     const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
 
-    const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
+    const contact = await this.contactRepo.findOne({ where: { id: contactId, ...readScope(ctx) } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (contact.role === ExternalContactRole.DEBTOR) {
       throw new BadRequestException('This contact is a debtor, not a supplier');
@@ -420,7 +421,7 @@ export class ExternalContactsService {
 
     return this.dataSource.transaction(async (manager) => {
       const entry = manager.create(InventoryEntry, {
-        ownerId,
+        ...writeScope(ctx),
         actorId,
         source: InventorySource.PERSONAL,
         productName: dto.productName.trim().toLowerCase(),
@@ -433,7 +434,7 @@ export class ExternalContactsService {
       await manager.save(InventoryEntry, entry);
 
       await this.stockMovements.record(manager, {
-        ownerId,
+        ownerId: ctx.effectiveOwnerId,
         entry,
         reason: StockMovementReason.EXTERNAL_IN,
         qty: dto.quantity,
@@ -447,7 +448,7 @@ export class ExternalContactsService {
       await manager.save(ExternalContact, contact);
 
       const tx = manager.create(ExternalTransaction, {
-        ownerId,
+        ...writeScope(ctx),
         actorId,
         contactId,
         type: ExternalTransactionType.PRODUCT_IN,
@@ -473,7 +474,7 @@ export class ExternalContactsService {
     const ownerId = ctx.effectiveOwnerId;
     const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
 
-    const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
+    const contact = await this.contactRepo.findOne({ where: { id: contactId, ...readScope(ctx) } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (contact.role === ExternalContactRole.DEBTOR) {
       throw new BadRequestException('This contact is a debtor, not a supplier');
@@ -488,7 +489,7 @@ export class ExternalContactsService {
       for (const item of dto.items) {
         const productNameNorm = item.productName.trim().toLowerCase();
         const entry = manager.create(InventoryEntry, {
-          ownerId,
+          ...writeScope(ctx),
           actorId,
           source: InventorySource.PERSONAL,
           productName: productNameNorm,
@@ -501,7 +502,7 @@ export class ExternalContactsService {
         await manager.save(InventoryEntry, entry);
 
         await this.stockMovements.record(manager, {
-          ownerId,
+          ownerId: ctx.effectiveOwnerId,
           entry,
           reason: StockMovementReason.EXTERNAL_IN,
           qty: item.quantity,
@@ -513,7 +514,7 @@ export class ExternalContactsService {
         batchTotal = batchTotal.plus(amount);
 
         const tx = manager.create(ExternalTransaction, {
-          ownerId,
+          ...writeScope(ctx),
           actorId,
           contactId,
           type: ExternalTransactionType.PRODUCT_IN,
@@ -546,7 +547,7 @@ export class ExternalContactsService {
     const ownerId = ctx.effectiveOwnerId;
     const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
 
-    const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
+    const contact = await this.contactRepo.findOne({ where: { id: contactId, ...readScope(ctx) } });
     if (!contact) throw new NotFoundException('External contact not found');
     if (contact.role === ExternalContactRole.DEBTOR) {
       throw new BadRequestException('This contact is a debtor, not a supplier');
@@ -560,7 +561,7 @@ export class ExternalContactsService {
       await manager.save(ExternalContact, contact);
 
       const tx = manager.create(ExternalTransaction, {
-        ownerId,
+        ...writeScope(ctx),
         actorId,
         contactId,
         type: ExternalTransactionType.PAYMENT_OUT,
@@ -579,13 +580,15 @@ export class ExternalContactsService {
 
   async deleteTransaction(ctx: ActorContext, contactId: string, txId: string): Promise<void> {
     const ownerId = ctx.effectiveOwnerId;
-    const contact = await this.contactRepo.findOne({ where: { id: contactId, ownerId } });
+    const contact = await this.contactRepo.findOne({ where: { id: contactId, ...readScope(ctx) } });
     if (!contact) throw new NotFoundException('External contact not found');
 
-    const tx = await this.txRepo.findOne({ where: { id: txId, contactId, ownerId } });
+    const tx = await this.txRepo.findOne({
+      where: { id: txId, contactId, ...readScope(ctx) },
+    });
     if (!tx) throw new NotFoundException('Transaction not found');
 
-    if (tx.ownerId !== ownerId) throw new ForbiddenException('Access denied');
+    // The tenancy filter on the lookup above already scopes this to our branch.
 
     return this.dataSource.transaction(async (manager) => {
       const amount = new Decimal(tx.amount);

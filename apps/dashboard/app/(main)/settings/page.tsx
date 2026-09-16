@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { currencyApi, quantityDiscountsApi, accountApi } from '../../../lib/api';
@@ -23,6 +25,7 @@ import {
 export default function SettingsPage() {
   const t = useT();
   const { can } = usePermissions();
+  const canManageShops = can('shops.manage');
   const qc = useQueryClient();
   const { displayCurrency, toggle } = useCurrencyStore();
   const isOwner = useOwnerOnlyPage();
@@ -138,6 +141,18 @@ export default function SettingsPage() {
               </p>
             </div>
           </div>
+        )}
+
+        {/* ── Business & branches ─────────────────────────────────────── */}
+        {canManageShops && (
+          <Link href="/settings/business" className="card block" style={{ padding: '24px' }}>
+            <h2 className="font-bold text-sm mb-1" style={{ color: 'var(--foreground)' }}>
+              {t.shops.manageTitle}
+            </h2>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              {t.shops.manageSubtitle}
+            </p>
+          </Link>
         )}
 
         {/* ── Currency display toggle ─────────────────────────────────── */}
@@ -583,6 +598,21 @@ function ThermalPrinterCard() {
   );
 }
 
+/** The refusals `DELETE /users/me` answers with a 409 and a `code` (users.service). */
+type DeletionBlocker = 'OWNS_BUSINESS' | 'ACTIVE_EMPLOYMENT' | 'UNRETURNED_STOCK' | 'PENDING_HANDOVER';
+
+const DELETION_BLOCKERS: readonly DeletionBlocker[] = [
+  'OWNS_BUSINESS',
+  'ACTIVE_EMPLOYMENT',
+  'UNRETURNED_STOCK',
+  'PENDING_HANDOVER',
+];
+
+function deletionBlockerOf(err: unknown): DeletionBlocker | null {
+  const code = (err as { response?: { data?: { code?: unknown } } })?.response?.data?.code;
+  return DELETION_BLOCKERS.find((c) => c === code) ?? null;
+}
+
 /**
  * Account deletion — the web half of the flow that already exists on mobile
  * (`apps/mobile/app/account/delete.tsx`). Same endpoint, same typed-token plus
@@ -603,6 +633,16 @@ function DeleteAccountCard() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // A refusal the user can act on (§3.13), shown as guidance instead of an
+  // error line: they did nothing wrong, they have one step left to take first.
+  const [blocker, setBlocker] = useState<DeletionBlocker | null>(null);
+
+  const blockerText: Record<DeletionBlocker, string> = {
+    OWNS_BUSINESS: t.shops.deleteBlockedOwnsBusiness,
+    ACTIVE_EMPLOYMENT: t.shops.deleteBlockedEmployment,
+    UNRETURNED_STOCK: t.shops.deleteBlockedStock,
+    PENDING_HANDOVER: t.shops.deleteBlockedHandover,
+  };
 
   const canSubmit =
     confirmation.trim().toUpperCase() === t.settings.deletePromptToken &&
@@ -614,6 +654,7 @@ function DeleteAccountCard() {
     if (!canSubmit) return;
     setSubmitting(true);
     setError('');
+    setBlocker(null);
     try {
       const { expiresAt } = await accountApi.deleteAccount({ password });
       // Tell them the restore deadline before the session goes away, since
@@ -622,7 +663,9 @@ function DeleteAccountCard() {
       logout();
       router.replace('/login');
     } catch (err) {
-      setError(getErrorMessage(err) || t.settings.deleteFailed);
+      const code = deletionBlockerOf(err);
+      if (code) setBlocker(code);
+      else setError(getErrorMessage(err) || t.settings.deleteFailed);
       setSubmitting(false);
     }
   };
@@ -702,6 +745,32 @@ function DeleteAccountCard() {
             <p className="text-xs" style={{ color: 'var(--danger)' }}>
               {error}
             </p>
+          )}
+
+          {blocker && (
+            <div
+              className="rounded-xl px-4 py-3"
+              style={{
+                background: 'var(--warning-light)',
+                border: '1px solid rgba(var(--warning-rgb), 0.35)',
+              }}
+            >
+              <p className="font-semibold text-xs mb-1" style={{ color: 'var(--warning)' }}>
+                {t.shops.deleteBlockedTitle}
+              </p>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--foreground)' }}>
+                {blockerText[blocker]}
+              </p>
+              {blocker === 'OWNS_BUSINESS' && (
+                <Link
+                  href="/settings/business"
+                  className="btn btn-secondary mt-3 inline-flex"
+                  style={{ fontSize: '12px', padding: '5px 12px' }}
+                >
+                  {t.shops.deleteBlockedGoTransfer} →
+                </Link>
+              )}
+            </div>
           )}
 
           <div className="flex gap-2">

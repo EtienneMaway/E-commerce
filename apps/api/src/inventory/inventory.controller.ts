@@ -36,7 +36,7 @@ export class InventoryController {
   @ApiOperation({ summary: 'Get aggregated product list — one entry per unique product name' })
   @ApiResponse({ status: 200, description: 'Array of ProductSummary objects' })
   getProducts(@CurrentActorContext() ctx: ActorContext) {
-    return this.inventoryService.getProductList(ctx.effectiveOwnerId);
+    return this.inventoryService.getProductList(ctx);
   }
 
   @Get()
@@ -45,7 +45,7 @@ export class InventoryController {
   @ApiOperation({ summary: 'List all inventory entries for the authenticated user' })
   @ApiResponse({ status: 200, description: 'Array of inventory entries' })
   findAll(@CurrentActorContext() ctx: ActorContext, @Query() filter: InventoryFilterDto) {
-    return this.inventoryService.findAll(ctx.effectiveOwnerId, filter);
+    return this.inventoryService.findAll(ctx, filter);
   }
 
   @Post('personal')
@@ -54,7 +54,7 @@ export class InventoryController {
   @ApiOperation({ summary: 'Add a product purchased with personal funds (owner, or an employee whose role grants it)' })
   @ApiResponse({ status: 201, description: 'Inventory entry created' })
   addPersonal(@CurrentActorContext() ctx: ActorContext, @Body() dto: AddPersonalDto) {
-    return this.inventoryService.addPersonal(ctx.effectiveOwnerId, dto);
+    return this.inventoryService.addPersonal(ctx, dto);
   }
 
   @Post('personal/bulk')
@@ -71,7 +71,7 @@ export class InventoryController {
     @CurrentActorContext() ctx: ActorContext,
     @Body() dto: AddPersonalBulkDto,
   ) {
-    return this.inventoryService.addPersonalBulk(ctx.effectiveOwnerId, dto);
+    return this.inventoryService.addPersonalBulk(ctx, dto);
   }
 
   @Post('receive')
@@ -88,7 +88,7 @@ export class InventoryController {
     @CurrentActorContext() ctx: ActorContext,
     @Body() dto: ReceiveFromSupplierDto,
   ) {
-    return this.inventoryService.receiveFromSupplier(ctx.effectiveOwnerId, dto);
+    return this.inventoryService.receiveFromSupplier(ctx, dto);
   }
 
   @Patch('products/:name/rename')
@@ -111,7 +111,7 @@ export class InventoryController {
     @Param('name') name: string,
     @Body() dto: RenameProductDto,
   ) {
-    return this.inventoryService.renameProduct(ctx.effectiveOwnerId, name, dto);
+    return this.inventoryService.renameProduct(ctx, name, dto);
   }
 
   @Patch(':id/selling-price')
@@ -133,7 +133,7 @@ export class InventoryController {
     @Param('id') id: string,
     @Body() dto: UpdateSellingPriceDto,
   ) {
-    return this.inventoryService.updateSellingPrice(ctx.effectiveOwnerId, id, dto);
+    return this.inventoryService.updateSellingPrice(ctx, id, dto);
   }
 
   @Patch(':id/mini-selling-price')
@@ -170,8 +170,7 @@ export class InventoryController {
     @CurrentActorContext() ctx: ActorContext,
     @Body() dto: UpdateMiniCartonPriceDto,
   ) {
-    return this.inventoryService.updateMiniCartonPrice(
-      ctx.effectiveOwnerId,
+    return this.inventoryService.updateMiniCartonPrice(ctx.effectiveOwnerId,
       dto.groupId,
       dto.cartonSellingPrice,
     );
@@ -196,7 +195,7 @@ export class InventoryController {
     @Param('entryId') entryId: string,
     @Body() dto: AdjustStockDto,
   ) {
-    return this.inventoryService.adjustStock(ctx.effectiveOwnerId, entryId, dto);
+    return this.inventoryService.adjustStock(ctx, entryId, dto);
   }
 
   @Post('variant/:variantId/adjust')
@@ -216,7 +215,7 @@ export class InventoryController {
     @Param('variantId') variantId: string,
     @Body() dto: AdjustStockDto,
   ) {
-    return this.inventoryService.adjustVariantStock(ctx.effectiveOwnerId, variantId, dto);
+    return this.inventoryService.adjustVariantStock(ctx, variantId, dto);
   }
 
   @Post('consign')
@@ -230,6 +229,6 @@ export class InventoryController {
   @ApiResponse({ status: 400, description: 'Insufficient stock' })
   @ApiResponse({ status: 404, description: 'Debtor user not found' })
   consignToDebtor(@CurrentActorContext() ctx: ActorContext, @Body() dto: ConsignToDebtorDto) {
-    return this.inventoryService.consignToDebtor(ctx.effectiveOwnerId, dto);
+    return this.inventoryService.consignToDebtor(ctx, dto);
   }
 }

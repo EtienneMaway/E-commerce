@@ -18,6 +18,8 @@ import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useCurrencyStore } from '../../../store/currency.store';
 import { useT } from '../../../lib/i18n';
+import { useShopScope } from '../../../hooks/use-shop-scope';
+import { personHandle } from '../../../lib/person';
 import { usePermissions } from '../../../lib/permissions';
 import { KpiCard } from '../../../components/ui/KpiCard';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -44,6 +46,7 @@ function todayISO(): string {
 
 export default function ExpensesPage() {
   const t = useT();
+  const { canWrite, isAllShops, shopName } = useShopScope();
   const { can } = usePermissions();
   const confirmDialog = useConfirm();
   const formatCurrency = useFormatCurrency();
@@ -374,7 +377,8 @@ export default function ExpensesPage() {
             <button
               type="submit"
               className="btn btn-primary w-full"
-              disabled={createMutation.isPending}
+              disabled={createMutation.isPending || !canWrite}
+              title={isAllShops ? t.shops.allShopsNotice : undefined}
             >
               {createMutation.isPending ? t.expenses.submitting : t.expenses.submit}
             </button>
@@ -498,6 +502,7 @@ export default function ExpensesPage() {
                   <tr className="data-table-head-row">
                     <th className="data-table-head-cell">{t.expenses.colDate}</th>
                     <th className="data-table-head-cell">{t.expenses.colCategory}</th>
+                    {isAllShops && <th className="data-table-head-cell">{t.shops.branch}</th>}
                     <th className="data-table-head-cell">{t.expenses.colAmount}</th>
                     <th className="data-table-head-cell">{t.expenses.colDescription}</th>
                     <th className="data-table-head-cell">By</th>
@@ -507,14 +512,14 @@ export default function ExpensesPage() {
                 <tbody>
                   {listLoading && (
                     <tr>
-                      <td colSpan={5} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
+                      <td colSpan={isAllShops ? 7 : 6} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
                         {t.common.loading}
                       </td>
                     </tr>
                   )}
                   {!listLoading && list.data.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
+                      <td colSpan={isAllShops ? 7 : 6} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
                         <div className="text-2xl mb-2">🧾</div>
                         {t.expenses.listEmpty}
                       </td>
@@ -532,6 +537,11 @@ export default function ExpensesPage() {
                       <td className="data-table-cell font-semibold">
                         {categoryLabel(row.category)}
                       </td>
+                      {isAllShops && (
+                        <td className="data-table-cell" style={{ color: 'var(--muted)' }}>
+                          {shopName(row.shopId) || '—'}
+                        </td>
+                      )}
                       <td className="data-table-cell">
                         <div className="font-semibold">{fmtExpenseUsdAtBuyingRate(row.amountUsd)}</div>
                         {row.currency === 'FC' && (
@@ -547,7 +557,9 @@ export default function ExpensesPage() {
                         {(() => {
                           const rowActor = (row as unknown as { actor: { id: string; username: string } | null }).actor;
                           const actorId = rowActor?.id ?? ownerId;
-                          const actorName = rowActor?.username ?? ownerUsername;
+                          const actorName = rowActor
+                            ? personHandle(rowActor, t.common.formerEmployee)
+                            : ownerUsername ? `@${ownerUsername}` : '';
                           const isViewer = actorId === user?.id;
                           return (
                             <span
@@ -558,7 +570,7 @@ export default function ExpensesPage() {
                                   : { background: 'rgba(var(--primary-rgb),0.15)', color: 'var(--primary-dark)' }
                               }
                             >
-                              @{actorName || '—'}
+                              {actorName || '—'}
                             </span>
                           );
                         })()}

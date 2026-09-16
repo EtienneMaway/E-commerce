@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { TOKEN_KEY } from '../lib/api';
 import { usePersonaStore } from './persona.store';
+import { useShopStore, type OrganizationSummary, type ShopSummary } from './shop.store';
 
 interface UserProfile {
   id: string;
@@ -26,6 +27,21 @@ interface UserProfile {
      */
     services?: string[];
   } | null;
+  /** The business these books belong to — the employer's for an employee. */
+  organization?: OrganizationSummary | null;
+  /** Branches this account can work in: every branch for an owner, one for an employee. */
+  shops?: ShopSummary[];
+  defaultShopId?: string | null;
+}
+
+/** Hand the branch context from `/auth/me` to the shop store. */
+function applyShopContext(user: UserProfile): Promise<void> {
+  return useShopStore.getState().setContext({
+    shops: user.shops ?? [],
+    organization: user.organization ?? null,
+    defaultShopId: user.defaultShopId ?? null,
+    employed: !!user.activeEmployment,
+  });
 }
 
 interface AuthState {
@@ -48,7 +64,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isLoading: true,
 
-  setUser: (user) => set({ user }),
+  setUser: (user) => {
+    set({ user });
+    // A refreshed profile can carry a new branch (a transfer accepted, a branch
+    // closed) — keep the header in step with it.
+    void applyShopContext(user);
+  },
 
   login: async (token, user) => {
     await SecureStore.setItemAsync(TOKEN_KEY, token);
@@ -58,6 +79,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     // first action (sale, expense, etc.) lands on the employer's books rather
     // than the employee's own (empty) account.
     await usePersonaStore.getState().applyDefaultForUser(user);
+    // Same reasoning for the branch: resolve it before the first query leaves.
+    await applyShopContext(user);
   },
 
   logout: async () => {
@@ -68,6 +91,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     // permanently skip the "default employees to employer" rule in
     // applyDefaultForUser from this point on. See resetForLogout's own comment.
     await usePersonaStore.getState().resetForLogout();
+    // A shared phone must not carry one merchant's branch into the next login.
+    await useShopStore.getState().resetForLogout();
     set({ token: null, user: null });
   },
 

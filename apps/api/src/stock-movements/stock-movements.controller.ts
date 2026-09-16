@@ -26,7 +26,7 @@ export class StockMovementsController {
   })
   @ApiResponse({ status: 200, description: '{ data, total }' })
   list(@CurrentActorContext() ctx: ActorContext, @Query() filter: StockMovementsFilterDto) {
-    return this.service.findAll(ctx.effectiveOwnerId, filter);
+    return this.service.findAll(ctx, filter);
   }
 
   @Get('entries/:entryId/movements')
@@ -36,6 +36,6 @@ export class StockMovementsController {
   })
   @ApiResponse({ status: 200, description: 'Array of stock movements' })
   byEntry(@CurrentActorContext() ctx: ActorContext, @Param('entryId') entryId: string) {
-    return this.service.findByEntry(ctx.effectiveOwnerId, entryId);
+    return this.service.findByEntry(ctx, entryId);
   }
 }

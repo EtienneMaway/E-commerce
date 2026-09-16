@@ -27,8 +27,16 @@ export class ExternalTransaction {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'owner_id' })
-  ownerId: string;
+
+  /**
+   * Tenancy: the business and the branch these books belong to
+   * (MULTI_SHOP_PLAN.md §3.2). NOT NULL since migration 034.
+   */
+  @Column({ name: 'org_id', type: 'uuid' })
+  orgId: string;
+
+  @Column({ name: 'shop_id', type: 'uuid' })
+  shopId: string;
 
   @Column({ name: 'contact_id' })
   contactId: string;

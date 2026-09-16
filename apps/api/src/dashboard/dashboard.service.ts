@@ -18,6 +18,7 @@ import {
   PaymentDirection,
   PaymentStatus,
   SaleTransaction,
+  Shop,
   SupplierDebt,
   User,
   Withdrawal,
@@ -29,6 +30,7 @@ import { SalesService } from '../sales/sales.service';
 import { SalaryPaymentsService } from '../salary-payments/salary-payments.service';
 import { SalesSummaryFilterDto } from '../sales/dto/sales-filter.dto';
 import type { ActorContext } from '../common/types/actor-context';
+import { holderCond, holderScope, readScope } from '../common/shop-scope';
 import { applyActorCondToQb, resolveActorFilter } from '../common/actor-filter';
 
 export interface DashboardSummary {
@@ -168,6 +170,21 @@ export interface DashboardProfitSummary {
   totalProfit: string; // salesProfit + externalProfit
 }
 
+/**
+ * One branch's headline figures, for the "All branches" rollup. Computed by
+ * running the single-branch queries once per shop, so each row is exactly what
+ * the owner would see after switching to that branch.
+ */
+export interface ShopBreakdownRow {
+  shopId: string;
+  shopName: string;
+  isArchived: boolean;
+  salesCount: number;
+  totalRevenue: string;
+  totalProfit: string;
+  availableBusinessCash: string;
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
@@ -213,10 +230,10 @@ export class DashboardService {
     const ownerId = ctx.effectiveOwnerId;
     const [summary, suppliers, alerts, cashPosition, pendingSalary] =
       await Promise.all([
-        this.getSummary(ownerId),
-        this.getSuppliers(ownerId),
-        this.getAlerts(ownerId),
-        this.getCashPosition(ownerId),
+        this.getSummary(ctx),
+        this.getSuppliers(ctx),
+        this.getAlerts(ctx),
+        this.getCashPosition(ctx),
         // Salary confirmations belong to the ACTOR, not the books being viewed:
         // an employee sees their own pending payslips regardless of persona.
         this.salaryPaymentsService.pendingForEmployee(ctx.actorId),
@@ -263,7 +280,8 @@ export class DashboardService {
       const extQb = this.externalTxRepo
         .createQueryBuilder('tx')
         .select('COALESCE(SUM(CAST(tx.profit AS DECIMAL)), 0)', 'total')
-        .where('tx.ownerId = :ownerId', { ownerId })
+        .where('tx.orgId = :orgId', { orgId: ctx.orgId })
+          .andWhere(ctx.shopId ? 'tx.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
         .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
         .andWhere('tx.profit IS NOT NULL');
       applyActorCondToQb(extQb, 'tx.actor_id', resolveActorFilter(filter.actorId, ctx));
@@ -302,18 +320,22 @@ export class DashboardService {
    *
    * Returns the total realized profit and a per-product breakdown.
    */
-  private async computeConsignmentProfits(ownerId: string): Promise<{
+  private async computeConsignmentProfits(ctx: ActorContext): Promise<{
     total: Decimal;
     byProduct: Map<string, Decimal>;
   }> {
-    const credits = await this.debtorCreditRepo.find({ where: { ownerId } });
+    const credits = await this.debtorCreditRepo.find({ where: holderScope(ctx) });
     if (credits.length === 0) {
       return { total: new Decimal(0), byProduct: new Map() };
     }
 
     // All ACCEPTED consignment requests sent by this owner as supplier
     const requests = await this.consignmentRequestRepo.find({
-      where: { supplierId: ownerId, status: ConsignmentStatus.ACCEPTED },
+      where: {
+            supplierOrgId: ctx.orgId,
+            ...(ctx.shopId ? { supplierShopId: ctx.shopId } : {}),
+            status: ConsignmentStatus.ACCEPTED,
+          },
       relations: { items: true },
     });
     if (requests.length === 0) {
@@ -370,16 +392,16 @@ export class DashboardService {
     return { total, byProduct };
   }
 
-  async getSummary(ownerId: string): Promise<DashboardSummary> {
+  async getSummary(ctx: ActorContext): Promise<DashboardSummary> {
     const [supplierDebts, debtorCredits, sales, { total: consignmentProfit }, externalContacts, inventoryEntries] = await Promise.all([
-      this.supplierDebtRepo.find({ where: { ownerId } }),
-      this.debtorCreditRepo.find({ where: { ownerId } }),
+      this.supplierDebtRepo.find({ where: holderScope(ctx) }),
+      this.debtorCreditRepo.find({ where: holderScope(ctx) }),
       // Rejected sales are voided mistakes — they keep their row but leave
       // every figure. Same rule in every aggregation below.
-      this.saleRepo.find({ where: { ownerId, rejectedAt: IsNull() } }),
-      this.computeConsignmentProfits(ownerId),
-      this.externalContactRepo.find({ where: { ownerId } }),
-      this.entryRepo.find({ where: { ownerId } }),
+      this.saleRepo.find({ where: { ...holderScope(ctx), rejectedAt: IsNull() } }),
+      this.computeConsignmentProfits(ctx),
+      this.externalContactRepo.find({ where: readScope(ctx) }),
+      this.entryRepo.find({ where: holderScope(ctx) }),
     ]);
 
     // App-user balances
@@ -403,7 +425,8 @@ export class DashboardService {
     const externalProfit = await this.externalTxRepo
       .createQueryBuilder('tx')
       .select('SUM(CAST(tx.profit AS DECIMAL))', 'total')
-      .where('tx.ownerId = :ownerId', { ownerId })
+      .where('tx.orgId = :orgId', { orgId: ctx.orgId })
+          .andWhere(ctx.shopId ? 'tx.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
       .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
       .andWhere('tx.profit IS NOT NULL')
       .getRawOne<{ total: string | null }>();
@@ -450,18 +473,24 @@ export class DashboardService {
    * Expenses: summed in USD using each entry's snapshot Current Market Rate.
    * Withdrawals: summed from persisted amountUsd (snapshotted at withdrawal time).
    */
-  async getCashPosition(ownerId: string): Promise<CashPosition> {
+  async getCashPosition(ctx: ActorContext): Promise<CashPosition> {
     const [salesAgg, acceptedRequests, extOutAgg, expenses, cashPayments, extPaymentIn, withdrawnAgg] =
       await Promise.all([
         this.saleRepo
           .createQueryBuilder('s')
           .select('COALESCE(SUM(CAST(s.salePrice AS DECIMAL) * s.qtySold), 0)', 'revenue')
           .addSelect('COALESCE(SUM(CAST(s.unitCost AS DECIMAL) * s.qtySold), 0)', 'cogs')
-          .where('s.ownerId = :ownerId', { ownerId })
+          // Own direct sales only: a mini's sales sit at this branch too, but
+          // their cash arrives through the handover payment, not the till.
+          .where(...holderCond('s', ctx))
           .andWhere('s.rejected_at IS NULL')
           .getRawOne<{ revenue: string; cogs: string }>(),
         this.consignmentRequestRepo.find({
-          where: { supplierId: ownerId, status: ConsignmentStatus.ACCEPTED },
+          where: {
+            supplierOrgId: ctx.orgId,
+            ...(ctx.shopId ? { supplierShopId: ctx.shopId } : {}),
+            status: ConsignmentStatus.ACCEPTED,
+          },
           relations: { items: true },
         }),
         this.externalTxRepo
@@ -471,27 +500,42 @@ export class DashboardService {
             'COALESCE(SUM(CAST(tx.unitCostUsed AS DECIMAL) * tx.quantity), 0)',
             'cogs',
           )
-          .where('tx.ownerId = :ownerId', { ownerId })
+          .where('tx.orgId = :orgId', { orgId: ctx.orgId })
+          .andWhere(ctx.shopId ? 'tx.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
           .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
           .getRawOne<{ revenue: string; cogs: string }>(),
-        this.expenseRepo.find({ where: { ownerId } }),
+        this.expenseRepo.find({ where: readScope(ctx) }),
         this.paymentRepo
           .createQueryBuilder('p')
           .select('COALESCE(SUM(CAST(p.amount AS DECIMAL)), 0)', 'total')
-          .where('p.paidToUserId = :ownerId', { ownerId })
+          // A payment row is shared by BOTH businesses — the debtor who sent the
+          // cash and the supplier who received it — so its own `shop_id` can
+          // only speak for one of them (it records the paying branch). The
+          // receiving branch is the one holding the DebtorCredit this payment
+          // settles, which is a row on *our* books, so join through it.
+          //
+          // Filtering on the payment's own shop_id here silently reported zero
+          // income to the branch that was actually paid.
+          .innerJoin('debtor_credits', 'dc', 'dc.id = p.debtor_credit_id')
+          .where('dc.org_id = :orgId', { orgId: ctx.orgId })
+          .andWhere(ctx.shopId ? 'dc.shop_id = :shopId' : '1=1', { shopId: ctx.shopId })
+          // tenancy-exempt: paidToUserId names the PERSON who received the cash.
+          .andWhere('p.paidToUserId = :payee', { payee: ctx.effectiveOwnerId })
           .andWhere('p.direction = :dir', { dir: PaymentDirection.DEBTOR_TO_OWNER })
           .andWhere('p.status = :status', { status: PaymentStatus.APPROVED })
           .getRawOne<{ total: string }>(),
         this.externalTxRepo
           .createQueryBuilder('tx')
           .select('COALESCE(SUM(CAST(tx.amount AS DECIMAL)), 0)', 'total')
-          .where('tx.ownerId = :ownerId', { ownerId })
+          .where('tx.orgId = :orgId', { orgId: ctx.orgId })
+          .andWhere(ctx.shopId ? 'tx.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
           .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
           .getRawOne<{ total: string }>(),
         this.withdrawalRepo
           .createQueryBuilder('w')
           .select('COALESCE(SUM(CAST(w.amountUsd AS DECIMAL)), 0)', 'total')
-          .where('w.ownerId = :ownerId', { ownerId })
+          .where('w.orgId = :orgId', { orgId: ctx.orgId })
+          .andWhere(ctx.shopId ? 'w.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
           .getRawOne<{ total: string }>(),
       ]);
 
@@ -523,7 +567,7 @@ export class DashboardService {
     //   - totalExpensesAtBuyingRate uses the Current Market Rate — display-
     //     only, mirroring the per-row USD shown on /expenses so the page's
     //     top KPI matches the table totals.
-    const currentRate = await this.currencyService.getRate();
+    const currentRate = await this.currencyService.getRate(ctx.orgId);
     const fallbackRate = currentRate?.usdToFcRate
       ? new Decimal(currentRate.usdToFcRate)
       : null;
@@ -592,9 +636,52 @@ export class DashboardService {
     };
   }
 
-  async getSuppliers(ownerId: string): Promise<SupplierListItem[]> {
+  /**
+   * Headline figures per branch. Each shop is read through the exact same
+   * single-branch queries (a context narrowed to that shop), rather than a
+   * second GROUP BY implementation of the cash position — two versions of that
+   * arithmetic would drift, and the rollup would stop matching what the owner
+   * sees after switching branch.
+   *
+   * Archived branches are included: their sales still count in the totals.
+   */
+  async getShopBreakdown(
+    ctx: ActorContext,
+    filter: SalesSummaryFilterDto,
+  ): Promise<ShopBreakdownRow[]> {
+    const shops = await this.saleRepo.manager.getRepository(Shop).find({
+      where: ctx.shopId ? { id: ctx.shopId, orgId: ctx.orgId } : { orgId: ctx.orgId },
+      order: { isDefault: 'DESC', createdAt: 'ASC' },
+    });
+
+    return Promise.all(
+      shops.map(async (shop): Promise<ShopBreakdownRow> => {
+        const scoped: ActorContext = {
+          ...ctx,
+          shopId: shop.id,
+          shopScope: 'one',
+          shopArchived: shop.archivedAt != null,
+        };
+        const [profit, cash] = await Promise.all([
+          this.getProfitSummary(scoped, { ...filter }),
+          this.getCashPosition(scoped),
+        ]);
+        return {
+          shopId: shop.id,
+          shopName: shop.name,
+          isArchived: shop.archivedAt != null,
+          salesCount: profit.salesCount,
+          totalRevenue: profit.totalRevenue,
+          totalProfit: profit.totalProfit,
+          availableBusinessCash: cash.availableBusinessCash,
+        };
+      }),
+    );
+  }
+
+  async getSuppliers(ctx: ActorContext): Promise<SupplierListItem[]> {
     const debts = await this.supplierDebtRepo.find({
-      where: { ownerId },
+      where: holderScope(ctx),
       relations: { supplierUser: true },
       order: { outstandingBalance: 'DESC' },
     });
@@ -610,11 +697,11 @@ export class DashboardService {
   }
 
   async getSupplierDetail(
-    ownerId: string,
+    ctx: ActorContext,
     supplierUserId: string,
   ): Promise<SupplierDetailView> {
     const debt = await this.supplierDebtRepo.findOne({
-      where: { ownerId, supplierUserId },
+      where: { ...holderScope(ctx), supplierUserId },
       relations: { supplierUser: true, payments: true },
       order: { payments: { date: 'ASC' } },
     });
@@ -625,14 +712,14 @@ export class DashboardService {
     // supplier_debt_id to be populated — not guaranteed on older records).
     const productsReceived = await this.entryRepo.find({
       where: [
-        { ownerId, supplierUserId, source: In([InventorySource.SUPPLIER, InventorySource.CONSIGNED_IN]) },
+        { ...holderScope(ctx), supplierUserId, source: In([InventorySource.SUPPLIER, InventorySource.CONSIGNED_IN]) },
       ],
       order: { createdAt: 'DESC' },
     });
 
     // Total value sold from this supplier's products
     const supplierSales = await this.saleRepo.find({
-      where: { ownerId, supplierUserId, rejectedAt: IsNull() },
+      where: { ...holderScope(ctx), supplierUserId, rejectedAt: IsNull() },
     });
     const totalValueSold = supplierSales
       .reduce(
@@ -653,9 +740,9 @@ export class DashboardService {
     };
   }
 
-  async getDebtors(ownerId: string): Promise<DebtorListItem[]> {
+  async getDebtors(ctx: ActorContext): Promise<DebtorListItem[]> {
     const credits = await this.debtorCreditRepo.find({
-      where: { ownerId },
+      where: holderScope(ctx),
       relations: { debtorUser: true },
       order: { outstandingBalance: 'DESC' },
     });
@@ -671,19 +758,30 @@ export class DashboardService {
   }
 
   async getDebtorDetail(
-    ownerId: string,
+    ctx: ActorContext,
     debtorUserId: string,
   ): Promise<DebtorDetailView> {
     const credit = await this.debtorCreditRepo.findOne({
-      where: { ownerId, debtorUserId },
+      where: { ...holderScope(ctx), debtorUserId },
       relations: { debtorUser: true, inventoryEntries: true },
     });
     if (!credit) throw new NotFoundException('No debtor relationship found');
 
     // Find the matching SupplierDebt on the debtor's side so we can fetch all payments
     // the debtor submitted via paySupplier (linked to supplierDebtId, incl. old records).
+    // The debtor's side of this balance. `counterparty_*` (migration 033) makes
+    // this exact once either business has several branches: without it a
+    // supplier with two branches trading with one debtor cannot tell which debt
+    // row is theirs.
     const supplierDebt = await this.supplierDebtRepo.findOne({
-      where: { ownerId: debtorUserId, supplierUserId: ownerId },
+      where: {
+        // tenancy-exempt: these name the two PEOPLE in the relationship; the
+        // branch pair is the counterparty filter below.
+        ownerId: debtorUserId,
+        supplierUserId: ctx.effectiveOwnerId,
+        counterpartyOrgId: ctx.orgId,
+        ...(ctx.shopId ? { counterpartyShopId: ctx.shopId } : {}),
+      },
     });
 
     // Unified payment history: payments via paySupplier (supplierDebtId) +
@@ -709,7 +807,7 @@ export class DashboardService {
     };
   }
 
-  async getProfitByProduct(ownerId: string): Promise<ProfitByProduct[]> {
+  async getProfitByProduct(ctx: ActorContext): Promise<ProfitByProduct[]> {
     // For external contacts we no longer store profit on PRODUCT_OUT. Instead,
     // aggregate per-product margin from PRODUCT_OUT rows, then scale by the
     // realization ratio (total PAYMENT_IN profit ÷ total PRODUCT_OUT margin).
@@ -720,11 +818,11 @@ export class DashboardService {
           .select('sale.productName', 'productName')
           .addSelect('SUM(CAST(sale.profit AS DECIMAL))', 'totalProfit')
           .addSelect('SUM(sale.qtySold)', 'totalQtySold')
-          .where('sale.ownerId = :ownerId', { ownerId })
+          .where(...holderCond('sale', ctx))
           .andWhere('sale.rejected_at IS NULL')
           .groupBy('sale.productName')
           .getRawMany<{ productName: string; totalProfit: string; totalQtySold: string }>(),
-        this.computeConsignmentProfits(ownerId),
+        this.computeConsignmentProfits(ctx),
         this.externalTxRepo
           .createQueryBuilder('tx')
           .select('tx.productName', 'productName')
@@ -733,7 +831,8 @@ export class DashboardService {
             'totalMargin',
           )
           .addSelect('SUM(tx.quantity)', 'totalQty')
-          .where('tx.ownerId = :ownerId', { ownerId })
+          .where('tx.orgId = :orgId', { orgId: ctx.orgId })
+          .andWhere(ctx.shopId ? 'tx.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
           .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
           .andWhere('tx.unitCostUsed IS NOT NULL')
           .groupBy('tx.productName')
@@ -741,7 +840,8 @@ export class DashboardService {
         this.externalTxRepo
           .createQueryBuilder('tx')
           .select('SUM(CAST(tx.profit AS DECIMAL))', 'total')
-          .where('tx.ownerId = :ownerId', { ownerId })
+          .where('tx.orgId = :orgId', { orgId: ctx.orgId })
+          .andWhere(ctx.shopId ? 'tx.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
           .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
           .andWhere('tx.profit IS NOT NULL')
           .getRawOne<{ total: string | null }>(),
@@ -804,7 +904,7 @@ export class DashboardService {
       .sort((a, b) => new Decimal(b.totalProfit).minus(a.totalProfit).toNumber());
   }
 
-  async getProfitBySource(ownerId: string): Promise<ProfitBySource[]> {
+  async getProfitBySource(ctx: ActorContext): Promise<ProfitBySource[]> {
     const [rows, { total: consignmentTotal }] = await Promise.all([
       this.saleRepo
         .createQueryBuilder('sale')
@@ -813,7 +913,7 @@ export class DashboardService {
         .addSelect('sale.supplierUserId', 'supplierUserId')
         .addSelect('u.username', 'supplierUsername')
         .addSelect('SUM(CAST(sale.profit AS DECIMAL))', 'totalProfit')
-        .where('sale.ownerId = :ownerId', { ownerId })
+        .where(...holderCond('sale', ctx))
         .andWhere('sale.rejected_at IS NULL')
         .groupBy('sale.source')
         .addGroupBy('sale.supplierUserId')
@@ -825,7 +925,7 @@ export class DashboardService {
           supplierUsername: string | null;
           totalProfit: string;
         }>(),
-      this.computeConsignmentProfits(ownerId),
+      this.computeConsignmentProfits(ctx),
     ]);
 
     const result: ProfitBySource[] = rows.map((r) => ({
@@ -849,7 +949,8 @@ export class DashboardService {
     const extProfitRow = await this.externalTxRepo
       .createQueryBuilder('tx')
       .select('SUM(CAST(tx.profit AS DECIMAL))', 'total')
-      .where('tx.ownerId = :ownerId', { ownerId })
+      .where('tx.orgId = :orgId', { orgId: ctx.orgId })
+          .andWhere(ctx.shopId ? 'tx.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
       .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
       .andWhere('tx.profit IS NOT NULL')
       .getRawOne<{ total: string | null }>();
@@ -867,7 +968,7 @@ export class DashboardService {
     return result;
   }
 
-  async getAlerts(ownerId: string): Promise<AlertItem[]> {
+  async getAlerts(ctx: ActorContext): Promise<AlertItem[]> {
     const alerts: AlertItem[] = [];
 
     // ── Overdue debtors ──────────────────────────────────────────────────────
@@ -878,7 +979,7 @@ export class DashboardService {
 
     const overdueCredits = await this.debtorCreditRepo.find({
       where: {
-        ownerId,
+        ...holderScope(ctx),
         updatedAt: LessThan(overdueThreshold),
       },
       relations: { debtorUser: true },
@@ -900,7 +1001,7 @@ export class DashboardService {
 
     // ── Low stock ────────────────────────────────────────────────────────────
     const lowStockEntries = await this.entryRepo.find({
-      where: { ownerId },
+      where: holderScope(ctx),
     });
 
     const lowStock = lowStockEntries.filter(
@@ -924,7 +1025,7 @@ export class DashboardService {
     }
 
     // ── Pending incoming consignments ────────────────────────────────────────
-    const pendingCount = await this.consignmentsService.countPendingIncoming(ownerId);
+    const pendingCount = await this.consignmentsService.countPendingIncoming(ctx.effectiveOwnerId);
     if (pendingCount > 0) {
       alerts.push({ type: 'pending_consignment', pendingCount });
     }
@@ -934,7 +1035,7 @@ export class DashboardService {
     // Rate (usdToFcRate). When it does, FC purchase costs are converted to USD
     // at a more favourable rate than FC income is valued at, inflating
     // FC-displayed profit and distorting cash position numbers.
-    const rate = await this.currencyService.getRate();
+    const rate = await this.currencyService.getRate(ctx.orgId);
     if (rate?.sellingRate && rate.usdToFcRate) {
       const sys = new Decimal(rate.usdToFcRate);
       const buy = new Decimal(rate.sellingRate);

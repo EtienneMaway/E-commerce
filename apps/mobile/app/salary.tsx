@@ -23,6 +23,7 @@ import { useLocaleStore } from '../store/locale.store';
 import { formatDate, getErrorMessage } from '../lib/utils';
 import { useFormatCurrency, formatFcValue } from '../lib/currency';
 import { useT } from '../lib/i18n';
+import { personHandle, personName } from '../lib/person';
 import { useBrand } from '../lib/theme';
 
 const STATUS_PILL: Record<SalaryPaymentStatus, string> = {
@@ -98,7 +99,7 @@ export default function SalaryScreen() {
       t.salary.confirmCash,
       t.salary.confirmCashMsg(
         formatCurrency(p.amount),
-        p.employer?.username ?? '—',
+        personName(p.employer, t.common.closedAccount),
         formatPeriodMonth(p.periodMonth),
       ),
       [
@@ -427,7 +428,7 @@ function PaymentCard({
             )}
           </View>
           <Text className="text-muted text-xs mt-0.5">
-            From @{p.employer?.username ?? '—'}
+            From {personHandle(p.employer, t.common.closedAccount)}
             {p.kind === 'COMMISSION' ? '' : ` · ${formatPeriodMonth(p.periodMonth)}`}
           </Text>
         </View>

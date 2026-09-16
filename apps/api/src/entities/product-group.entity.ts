@@ -23,19 +23,24 @@ import { ProductVariant } from './product-variant.entity';
  * `group_id`/`variant_id`; this table only holds the group-level definition.
  */
 @Entity('product_groups')
-@Unique('UQ_product_groups_owner_name', ['ownerId', 'name'])
+// Two branches must be able to stock the same product (§3.4).
+@Unique('UQ_product_groups_shop_name', ['shopId', 'name'])
 export class ProductGroup {
   @ApiProperty({ example: 'uuid-v4' })
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'owner_id', type: 'uuid' })
-  @Index()
-  ownerId: string;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'owner_id' })
-  owner: User;
+  /**
+   * Tenancy: the business and the branch these books belong to
+   * (MULTI_SHOP_PLAN.md §3.2). NOT NULL since migration 034.
+   */
+  @Column({ name: 'org_id', type: 'uuid' })
+  orgId: string;
+
+  @Column({ name: 'shop_id', type: 'uuid' })
+  shopId: string;
+
 
   @ApiProperty({
     example: 'casserole',

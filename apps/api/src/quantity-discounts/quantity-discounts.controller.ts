@@ -43,16 +43,11 @@ export class QuantityDiscountsController {
   })
   @ApiResponse({ status: 200, description: 'Quantity-discount config' })
   get(@CurrentActorContext() ctx: ActorContext) {
-    // Tiers are a shop-wide setting owned by the OWNER. A full employee's
-    // effectiveOwnerId is already the employer, but a mini's effectiveOwnerId is
-    // their OWN id (they sell consigned stock on their own books) — so resolve a
-    // mini to their employer explicitly, otherwise they'd read an always-empty
-    // config and never see the discount their shop configured.
-    const configOwnerId =
-      ctx.tier === 'MINI_EMPLOYEE' && ctx.employment
-        ? ctx.employment.employerId
-        : ctx.effectiveOwnerId;
-    return this.service.get(configOwnerId);
+    // Tiers are a branch-wide setting. The mini special case this used to carry
+    // is gone: `effectiveOwnerId` is still the mini themselves (the consigned
+    // stock is on their books), but `orgId` is already the employer's business,
+    // so the ordinary tenancy filter reads the right config for every tier.
+    return this.service.get(ctx);
   }
 
   @Put()
@@ -66,6 +61,6 @@ export class QuantityDiscountsController {
     @CurrentActorContext() ctx: ActorContext,
     @Body() dto: UpdateQuantityDiscountDto,
   ) {
-    return this.service.upsert(ctx.effectiveOwnerId, dto);
+    return this.service.upsert(ctx, dto);
   }
 }

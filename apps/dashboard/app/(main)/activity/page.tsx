@@ -13,6 +13,7 @@ import {
 import { QK } from '../../../lib/query-keys';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useT, type Translations } from '../../../lib/i18n';
+import { personHandle } from '../../../lib/person';
 import {
   ACTOR_FILTER_ALL,
   ActorFilter,
@@ -372,7 +373,9 @@ export default function ActivityPage() {
                       <td className="data-table-cell">
                         {(() => {
                           const actorId = row.actor?.id ?? ownerId;
-                          const actorName = row.actor?.username ?? ownerUsername;
+                          const actorName = row.actor
+                            ? personHandle(row.actor, t.common.formerEmployee)
+                            : ownerUsername ? `@${ownerUsername}` : '';
                           const isViewer = actorId === user?.id;
                           return (
                             <span
@@ -383,7 +386,7 @@ export default function ActivityPage() {
                                   : { background: 'rgba(99,102,241,0.15)', color: '#818CF8' }
                               }
                             >
-                              @{actorName || '—'}
+                              {actorName || '—'}
                             </span>
                           );
                         })()}

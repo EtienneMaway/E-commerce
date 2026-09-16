@@ -20,6 +20,8 @@ import { SetRateDto } from './dto/set-rate.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AllowedFor } from '../common/decorators/allowed-for.decorator';
 import { RequiresService } from '../common/decorators/requires-service.decorator';
+import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
+import type { ActorContext } from '../common/types/actor-context';
 
 @ApiTags('currency')
 @ApiBearerAuth('jwt')
@@ -34,11 +36,11 @@ export class CurrencyController {
   // this the mini's client falls back to a 1:1 rate and shows USD-magnitude
   // figures (e.g. "210 FC" instead of "210 000 FC").
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
-  @ApiOperation({ summary: 'Get the current system-wide USD → FC exchange rate' })
+  @ApiOperation({ summary: "Get this business's USD → FC exchange rate" })
   @ApiResponse({ status: 200, description: 'Current exchange rate' })
   @ApiResponse({ status: 404, description: 'No rate set yet' })
-  async getRate() {
-    const rate = await this.currencyService.getRate();
+  async getRate(@CurrentActorContext() ctx: ActorContext) {
+    const rate = await this.currencyService.getRate(ctx.orgId);
     if (!rate) throw new NotFoundException('Exchange rate has not been set');
     return {
       usdToFcRate: rate.usdToFcRate,
@@ -51,12 +53,14 @@ export class CurrencyController {
   @AllowedFor('OWNER')
   @RequiresService('currency.rates')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Set or update the system-wide USD → FC exchange rate' })
+  @ApiOperation({
+    summary: "Set or update this business's USD → FC exchange rate (all branches)",
+  })
   @ApiBody({ type: SetRateDto })
   @ApiResponse({ status: 200, description: 'Rate saved' })
   @ApiResponse({ status: 400, description: 'Rate must be greater than zero' })
-  async setRate(@Body() dto: SetRateDto) {
-    const rate = await this.currencyService.setRate(dto);
+  async setRate(@CurrentActorContext() ctx: ActorContext, @Body() dto: SetRateDto) {
+    const rate = await this.currencyService.setRate(ctx.orgId, dto);
     return {
       usdToFcRate: rate.usdToFcRate,
       sellingRate: rate.sellingRate,

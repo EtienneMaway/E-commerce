@@ -13,6 +13,7 @@ import * as bcrypt from 'bcryptjs';
 import { timingSafeEqual } from 'crypto';
 import { User } from '../entities';
 import { EmploymentsService } from '../employments/employments.service';
+import { ShopContextService } from '../shops/shop-context.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { PairMiniEmployeeDto } from './dto/pair-mini-employee.dto';
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly employmentsService: EmploymentsService,
     private readonly configService: ConfigService,
+    private readonly shopContext: ShopContextService,
   ) {}
 
   /**
@@ -82,13 +84,21 @@ export class AuthService {
     if (existingUsername) throw new ConflictException('Username already taken');
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
-    const user = this.userRepo.create({
-      username: normalizedUsername,
-      email: dto.email ?? null,
-      phone: dto.phone ?? null,
-      passwordHash,
+
+    // User + organization + default shop in ONE transaction. A partial failure
+    // here leaves an account that cannot write anything — every scoped query
+    // resolves through the organization — so this is not optional.
+    const user = await this.userRepo.manager.transaction(async (manager) => {
+      const created = manager.create(User, {
+        username: normalizedUsername,
+        email: dto.email ?? null,
+        phone: dto.phone ?? null,
+        passwordHash,
+      });
+      const saved = await manager.save(User, created);
+      await this.shopContext.ensureForUser(saved.id, saved.name ?? saved.username, undefined, manager);
+      return saved;
     });
-    await this.userRepo.save(user);
 
     return this.buildAuthResponse(user);
   }
@@ -212,6 +222,7 @@ export class AuthService {
 
   private async toPublic(user: User): Promise<UserPublicDto> {
     const employment = await this.employmentsService.findActiveAsEmployee(user.id);
+    const tenancy = await this.shopContext.summaryFor(user.id, employment);
     return {
       id: user.id,
       username: user.username,
@@ -224,6 +235,7 @@ export class AuthService {
       isExternalEmployee: user.isExternalEmployee,
       createdAt: user.createdAt,
       activeEmployment: toActiveEmploymentDto(employment),
+      ...tenancy,
     };
   }
 }

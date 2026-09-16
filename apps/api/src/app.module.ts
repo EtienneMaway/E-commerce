@@ -5,6 +5,9 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import {
   User,
+  Organization,
+  Shop,
+  OrganizationOwnershipHistory,
   InventoryEntry,
   SupplierDebt,
   DebtorCredit,
@@ -51,6 +54,7 @@ import { ActivityLogsModule } from './activity-logs/activity-logs.module';
 import { MiniSettlementsModule } from './mini-settlements/mini-settlements.module';
 import { SyncModule } from './sync/sync.module';
 import { AppVersionModule } from './app-version/app-version.module';
+import { ShopsModule } from './shops/shops.module';
 import { ProductGroupsModule } from './product-groups/product-groups.module';
 import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts.module';
 
@@ -67,6 +71,9 @@ import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts
         url: config.get<string>('DATABASE_URL'),
         entities: [
           User,
+          Organization,
+          Shop,
+          OrganizationOwnershipHistory,
           InventoryEntry,
           SupplierDebt,
           DebtorCredit,
@@ -129,6 +136,7 @@ import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts
     QuantityDiscountsModule,
     SyncModule,
     AppVersionModule,
+    ShopsModule,
   ],
   providers: [
     // Apply throttle guard globally

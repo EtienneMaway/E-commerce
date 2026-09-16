@@ -18,6 +18,7 @@ import {
 import { ActorContext } from '../common/types/actor-context';
 import { PaySupplierDto } from './dto/pay-supplier.dto';
 import { RecordDebtorPaymentDto } from './dto/record-debtor-payment.dto';
+import { holderScope, readScope, writeScope } from '../common/shop-scope';
 
 @Injectable()
 export class PaymentsService {
@@ -38,7 +39,7 @@ export class PaymentsService {
     const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
 
     const debt = await this.supplierDebtRepo.findOne({
-      where: { ownerId, supplierUserId: dto.supplierUserId },
+      where: { ...holderScope(ctx), supplierUserId: dto.supplierUserId },
     });
     if (!debt) {
       throw new NotFoundException(
@@ -61,6 +62,9 @@ export class PaymentsService {
     }
 
     const payment = this.paymentRepo.create({
+      // The payment belongs to the branch whose debt it settles, which is this
+      // request's branch — the same one that received the stock.
+      ...writeScope(ctx),
       amount: amount.toFixed(4),
       note: dto.note ?? null,
       direction: PaymentDirection.OWNER_TO_SUPPLIER,
@@ -120,8 +124,20 @@ export class PaymentsService {
       debt.outstandingBalance = new Decimal(debt.outstandingBalance).minus(amount).toFixed(4);
       await manager.save(SupplierDebt, debt);
 
+      // The credit row on MY books facing that debtor — and specifically the
+      // one for the branch this debt was raised against. `counterparty_*`
+      // (migration 033) is what makes this exact: paired on the user pair alone,
+      // a supplier with two branches trading with one debtor could settle the
+      // wrong branch's balance, and nothing would ever say so.
       const credit = await manager.findOne(DebtorCredit, {
-        where: { ownerId: supplierId, debtorUserId: debtorId },
+        where: {
+          // tenancy-exempt: these two name the PEOPLE either side of the balance.
+          ownerId: supplierId,
+          debtorUserId: debtorId,
+          ...(debt.counterpartyShopId
+            ? { orgId: debt.counterpartyOrgId!, shopId: debt.counterpartyShopId }
+            : {}),
+        },
       });
       if (credit) {
         credit.totalReceived = new Decimal(credit.totalReceived).plus(amount).toFixed(4);
@@ -165,7 +181,7 @@ export class PaymentsService {
     const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
 
     const credit = await this.debtorCreditRepo.findOne({
-      where: { ownerId, debtorUserId: dto.debtorUserId },
+      where: { ...holderScope(ctx), debtorUserId: dto.debtorUserId },
       relations: { debtorUser: true },
     });
     if (!credit) {
@@ -187,6 +203,8 @@ export class PaymentsService {
       await manager.save(DebtorCredit, credit);
 
       const payment = manager.create(Payment, {
+        // Cash banked at the branch that holds the credit being settled.
+        ...writeScope(ctx),
         amount: amount.toFixed(4),
         note: dto.note ?? null,
         direction: PaymentDirection.DEBTOR_TO_OWNER,

@@ -11,6 +11,114 @@ interface Translation {
 }
 
 export const FR_TRANSLATIONS: Translation[] = [
+  // ─── Shops / branches ────────────────────────────────────────────────────
+  {
+    pattern: /^A branch with this name already exists$/,
+    fr: () => 'Une boutique portant ce nom existe déjà',
+  },
+  {
+    pattern: /^Make another branch the default before closing this one$/,
+    fr: () => 'Définissez une autre boutique par défaut avant de fermer celle-ci',
+  },
+  {
+    pattern: /^Reopen this branch before making it the default$/,
+    fr: () => 'Rouvrez cette boutique avant de la définir par défaut',
+  },
+  {
+    pattern: /^Move or release the employees at this branch before closing it$/,
+    fr: () => 'Transférez ou libérez les employés de cette boutique avant de la fermer',
+  },
+  {
+    pattern: /^The default branch cannot be deleted$/,
+    fr: () => 'La boutique par défaut ne peut pas être supprimée',
+  },
+  {
+    pattern: /^This branch has records — close it instead of deleting it$/,
+    fr: () => 'Cette boutique a des enregistrements — fermez-la au lieu de la supprimer',
+  },
+  // ─── Business ownership ──────────────────────────────────────────────────
+  {
+    pattern: /^Only the owner can transfer this business$/,
+    fr: () => "Seul le propriétaire peut transférer cette entreprise",
+  },
+  {
+    pattern: /^Only the owner can cancel this transfer$/,
+    fr: () => 'Seul le propriétaire peut annuler ce transfert',
+  },
+  {
+    pattern: /^You already own this business$/,
+    fr: () => 'Vous possédez déjà cette entreprise',
+  },
+  {
+    pattern: /^No pending transfer for this business$/,
+    fr: () => 'Aucun transfert en attente pour cette entreprise',
+  },
+  {
+    pattern: /^That account does not exist$/,
+    fr: () => "Ce compte n'existe pas",
+  },
+  {
+    pattern: /^That account is closed$/,
+    fr: () => 'Ce compte est fermé',
+  },
+  {
+    pattern: /^An employee profile cannot own a business — they need their own account$/,
+    fr: () =>
+      "Un profil employé ne peut pas posséder une entreprise — il lui faut son propre compte",
+  },
+  // ─── Closing an account ──────────────────────────────────────────────────
+  {
+    pattern: /^Transfer your business to someone else before closing this account$/,
+    fr: () => 'Transférez votre entreprise à quelqu\'un avant de fermer ce compte',
+  },
+  {
+    pattern: /^Leave your job before closing this account$/,
+    fr: () => 'Quittez votre emploi avant de fermer ce compte',
+  },
+  {
+    pattern: /^Hand back the stock you are holding before closing this account$/,
+    fr: () => 'Restituez le stock que vous détenez avant de fermer ce compte',
+  },
+  {
+    pattern: /^Finish your pending handover before closing this account$/,
+    fr: () => 'Terminez votre remise en attente avant de fermer ce compte',
+  },
+  {
+    pattern: /^This employee is still holding stock — settle the handover first$/,
+    fr: () => "Cet employé détient encore du stock — réglez d'abord la remise",
+  },
+  {
+    pattern: /^This employee has a pending handover — approve or reject it first$/,
+    fr: () => "Cet employé a une remise en attente — approuvez-la ou rejetez-la d'abord",
+  },
+  {
+    pattern: /^Select a shop for this action$/,
+    fr: () => 'Sélectionnez une boutique pour cette action',
+  },
+  {
+    pattern: /^You are assigned to a different branch$/,
+    fr: () => 'Vous êtes affecté à une autre boutique',
+  },
+  {
+    pattern: /^Branch not found$/,
+    fr: () => 'Boutique introuvable',
+  },
+  {
+    pattern: /^This branch is closed — reopen it to make changes$/,
+    fr: () => 'Cette boutique est fermée — rouvrez-la pour la modifier',
+  },
+  {
+    pattern: /^No business found for this account$/,
+    fr: () => 'Aucune entreprise trouvée pour ce compte',
+  },
+  {
+    pattern: /^No business found for this employment$/,
+    fr: () => "Aucune entreprise trouvée pour cet emploi",
+  },
+  {
+    pattern: /^No branch found for this employment$/,
+    fr: () => 'Aucune boutique trouvée pour cet emploi',
+  },
   // ─── Auth ────────────────────────────────────────────────────────────────
   {
     pattern: /^Email already registered$/,

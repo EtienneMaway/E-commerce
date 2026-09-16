@@ -36,13 +36,16 @@ export class ProductVariant {
   @JoinColumn({ name: 'group_id' })
   group: ProductGroup;
 
-  @ApiProperty({
-    example: 'owner-uuid',
-    description: 'Denormalized from the group for scoped queries',
-  })
-  @Column({ name: 'owner_id', type: 'uuid' })
-  @Index()
-  ownerId: string;
+
+  /**
+   * Tenancy: the business and the branch these books belong to
+   * (MULTI_SHOP_PLAN.md §3.2). NOT NULL since migration 034.
+   */
+  @Column({ name: 'org_id', type: 'uuid' })
+  orgId: string;
+
+  @Column({ name: 'shop_id', type: 'uuid' })
+  shopId: string;
 
   @ApiProperty({
     example: 'large',

@@ -36,8 +36,8 @@ import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
 import { printReceipt, shareReceiptAsPdf, generateReceiptId, type ReceiptData } from '../../lib/receipt';
-import { usePersonaStore } from '../../store/persona.store';
 import { usePrinterStore } from '../../store/printer.store';
+import { receiptIdentity } from '../../lib/receipt-identity';
 
 interface Props {
   visible: boolean;
@@ -630,21 +630,10 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
     receiptId: string,
     soldSizedLines: SizedCartLine[] = [],
   ): void => {
-    // Resolve the "business" identity based on the current persona:
-    //   - Employer mode: the receipt is on the employer's books, so they
-    //     are the business.
-    //   - Self mode: the user themselves is the business.
+    // Business + branch come from the books the sale is on (lib/receipt-identity).
     // The "seller" is always the logged-in user — the person who pressed
     // Record Sale, regardless of persona.
-    const persona = usePersonaStore.getState().kind;
-    const isEmployerMode = persona === 'employer' && !!user?.activeEmployment;
-
-    const businessName = isEmployerMode
-      ? undefined // we don't have employer's display name on the client, so the @handle stands alone
-      : user?.name ?? undefined;
-    const businessHandle = isEmployerMode
-      ? user?.activeEmployment?.employer.username
-      : user?.username;
+    const identity = receiptIdentity(user);
 
     const receiptData: ReceiptData = {
       // Receipt is FC-native — pass per-row FC prices directly (typed by the
@@ -687,8 +676,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
       // this only for the footer; treat 0 as "n/a" and the printer skips it.
       markupPct: 0,
       date: new Date().toLocaleString('fr-CD'),
-      businessName,
-      businessHandle,
+      ...identity,
       sellerName: user?.name ?? undefined,
       sellerUsername: user?.username,
       receiptId,

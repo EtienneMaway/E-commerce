@@ -14,8 +14,8 @@ import { useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { useBrand } from '../../lib/theme';
 import { useAuthStore } from '../../store/auth.store';
-import { usePersonaStore } from '../../store/persona.store';
 import { usePrinterStore } from '../../store/printer.store';
+import { receiptIdentity } from '../../lib/receipt-identity';
 import { Button } from '../ui/Button';
 import {
   printReceipt,
@@ -116,12 +116,9 @@ export function ReprintReceiptModal({ source, onClose }: Props) {
     });
     const grandTotalFc = items.reduce((sum, it) => sum + it.totalFc, 0);
 
-    const persona = usePersonaStore.getState().kind;
-    const isEmployerMode = persona === 'employer' && !!user?.activeEmployment;
-    const businessName = isEmployerMode ? undefined : user?.name ?? undefined;
-    const businessHandle = isEmployerMode
-      ? user?.activeEmployment?.employer.username
-      : user?.username;
+    // The sales list is scoped to the selected branch, so the branch in use is
+    // the one this sale was made at.
+    const identity = receiptIdentity(user);
 
     // Seller = the actor who recorded the original sale (preserved on the row).
     const firstActor = rows.find((r) => r.actor)?.actor;
@@ -138,8 +135,7 @@ export function ReprintReceiptModal({ source, onClose }: Props) {
       grandTotalFc,
       markupPct: 0,
       date: new Date(rows[0].date).toLocaleString('fr-CD'),
-      businessName,
-      businessHandle,
+      ...identity,
       sellerName,
       sellerUsername,
       receiptId: receiptIdent,

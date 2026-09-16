@@ -49,12 +49,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
         return;
       }
 
-      // Single string message
+      // Single string message. A machine-readable `code` survives beside it, so
+      // a client can act on the refusal without parsing a translated sentence.
       if (typeof body['message'] === 'string') {
         response.status(status).json({
           statusCode: status,
           error: body['error'] ?? HttpStatus[status],
           message: translateMessage(body['message'], locale),
+          ...(typeof body['code'] === 'string' ? { code: body['code'] } : {}),
         });
         return;
       }

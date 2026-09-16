@@ -17,6 +17,7 @@ import {
 } from '../entities';
 import { ALL_ACTIVITY_LOG_TYPES, ActivityLogType, ListActivityLogsDto } from './dto/list-activity-logs.dto';
 import type { ActorContext } from '../common/types/actor-context';
+import { holderCond, holderScope, readScope } from '../common/shop-scope';
 import {
   actorCondToWhereValue,
   applyActorCondToQb,
@@ -88,13 +89,13 @@ export class ActivityLogsService {
     const range = this.dateRange(query);
 
     const fetchers: Promise<ActivityLogEntry[]>[] = [];
-    if (types.includes(ActivityLogType.SALE)) fetchers.push(this.loadSales(ownerId, actor, range));
-    if (types.includes(ActivityLogType.CONSIGNMENT)) fetchers.push(this.loadConsignmentItems(ownerId, actor, range));
+    if (types.includes(ActivityLogType.SALE)) fetchers.push(this.loadSales(ctx, actor, range));
+    if (types.includes(ActivityLogType.CONSIGNMENT)) fetchers.push(this.loadConsignmentItems(ctx, actor, range));
     if (types.includes(ActivityLogType.EXTERNAL_PRODUCT_OUT) ||
         types.includes(ActivityLogType.EXTERNAL_PAYMENT_IN) ||
         types.includes(ActivityLogType.EXTERNAL_PRODUCT_IN) ||
         types.includes(ActivityLogType.EXTERNAL_PAYMENT_OUT)) {
-      fetchers.push(this.loadExternalTransactions(ownerId, actor, range, types));
+      fetchers.push(this.loadExternalTransactions(ctx, actor, range, types));
     }
     // HANDOVER is served by loadPayments too — an approved handover IS a
     // DEBTOR_TO_OWNER payment — so filtering to handovers alone must still
@@ -102,12 +103,12 @@ export class ActivityLogsService {
     if (types.includes(ActivityLogType.PAYMENT_TO_SUPPLIER) ||
         types.includes(ActivityLogType.PAYMENT_FROM_DEBTOR) ||
         types.includes(ActivityLogType.HANDOVER)) {
-      fetchers.push(this.loadPayments(ownerId, actor, range, types));
+      fetchers.push(this.loadPayments(ctx, actor, range, types));
     }
-    if (types.includes(ActivityLogType.EXPENSE)) fetchers.push(this.loadExpenses(ownerId, actor, range));
+    if (types.includes(ActivityLogType.EXPENSE)) fetchers.push(this.loadExpenses(ctx, actor, range));
     if (types.includes(ActivityLogType.INVENTORY_PERSONAL_ADDED) ||
         types.includes(ActivityLogType.INVENTORY_RECEIVED_FROM_SUPPLIER)) {
-      fetchers.push(this.loadInventoryRegistrations(ownerId, actor, range, types));
+      fetchers.push(this.loadInventoryRegistrations(ctx, actor, range, types));
     }
 
     const buckets = await Promise.all(fetchers);
@@ -131,7 +132,7 @@ export class ActivityLogsService {
   // ─── Per-source loaders ───────────────────────────────────────────────────
 
   private async loadSales(
-    ownerId: string,
+    ctx: ActorContext,
     actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
   ): Promise<ActivityLogEntry[]> {
@@ -140,7 +141,7 @@ export class ActivityLogsService {
     // voided sale contributing to the activity total would contradict every
     // other figure in the app.
     const where = this.applyDate(
-      { ownerId, rejectedAt: IsNull(), ...(actorWhere !== undefined ? { actorId: actorWhere } : {}) },
+      { ...holderScope(ctx), rejectedAt: IsNull(), ...(actorWhere !== undefined ? { actorId: actorWhere } : {}) },
       'date',
       range,
     );
@@ -166,7 +167,7 @@ export class ActivityLogsService {
   }
 
   private async loadConsignmentItems(
-    ownerId: string,
+    ctx: ActorContext,
     actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
   ): Promise<ActivityLogEntry[]> {
@@ -176,7 +177,8 @@ export class ActivityLogsService {
       .leftJoinAndSelect('item.actor', 'actor')
       .leftJoinAndSelect('item.consignmentRequest', 'req')
       .leftJoinAndSelect('req.debtor', 'debtor')
-      .where('req.supplierId = :ownerId', { ownerId });
+      .where('req.supplierOrgId = :orgId', { orgId: ctx.orgId })
+      .andWhere(ctx.shopId ? 'req.supplierShopId = :shopId' : '1=1', { shopId: ctx.shopId });
     applyActorCondToQb(qb, 'item.actor_id', actor);
     if (range.from) qb.andWhere('req.createdAt >= :from', { from: range.from });
     if (range.to) qb.andWhere('req.createdAt <= :to', { to: range.to });
@@ -198,7 +200,7 @@ export class ActivityLogsService {
   }
 
   private async loadExternalTransactions(
-    ownerId: string,
+    ctx: ActorContext,
     actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
     types: ActivityLogType[],
@@ -214,7 +216,8 @@ export class ActivityLogsService {
       .createQueryBuilder('tx')
       .leftJoinAndSelect('tx.actor', 'actor')
       .leftJoinAndSelect('tx.contact', 'contact')
-      .where('tx.ownerId = :ownerId', { ownerId })
+      .where('tx.orgId = :orgId', { orgId: ctx.orgId })
+      .andWhere(ctx.shopId ? 'tx.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
       .andWhere('tx.type IN (:...txTypes)', { txTypes });
     applyActorCondToQb(qb, 'tx.actor_id', actor);
     if (range.from) qb.andWhere('tx.createdAt >= :from', { from: range.from });
@@ -255,7 +258,7 @@ export class ActivityLogsService {
   }
 
   private async loadPayments(
-    ownerId: string,
+    ctx: ActorContext,
     actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
     types: ActivityLogType[],
@@ -275,13 +278,29 @@ export class ActivityLogsService {
       .leftJoinAndSelect('p.paidByUser', 'paidByUser')
       .leftJoinAndSelect('p.paidToUser', 'paidToUser')
       .where('p.direction IN (:...directions)', { directions })
-      // Only payments that represent an action ON THIS owner's books.
+      // Only payments that represent an action ON THIS branch's books. The
+      // direction decides which side we are — a payment row is shared by both
+      // businesses — and the tenancy pair decides which branch of ours it was.
+      // A payment we SENT carries our own tenancy; one we RECEIVED carries the
+      // payer's, so that side matches through the credit it settled.
       .andWhere(
-        '((p.direction = :outDir AND p.paid_by_user_id = :ownerId) OR (p.direction = :inDir AND p.paid_to_user_id = :ownerId))',
+        `((p.direction = :outDir AND p.paid_by_user_id = :ownerId AND p.org_id = :orgId${
+          ctx.shopId ? ' AND p.shop_id = :shopId' : ''
+        })
+          OR (p.direction = :inDir AND p.paid_to_user_id = :ownerId
+              AND EXISTS (
+                SELECT 1 FROM debtor_credits dc
+                 WHERE dc.id = p.debtor_credit_id
+                   AND dc.org_id = :orgId${ctx.shopId ? ' AND dc.shop_id = :shopId' : ''}
+              )))`,
         {
           outDir: PaymentDirection.OWNER_TO_SUPPLIER,
           inDir: PaymentDirection.DEBTOR_TO_OWNER,
-          ownerId,
+          // tenancy-exempt: the person test is what distinguishes money we sent
+          // from money we received; the branch tests sit beside it.
+          ownerId: ctx.effectiveOwnerId,
+          orgId: ctx.orgId,
+          ...(ctx.shopId ? { shopId: ctx.shopId } : {}),
         },
       );
     applyActorCondToQb(qb, 'p.actor_id', actor);
@@ -345,11 +364,11 @@ export class ActivityLogsService {
   }
 
   private async loadExpenses(
-    ownerId: string,
+    ctx: ActorContext,
     actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
   ): Promise<ActivityLogEntry[]> {
-    const where: FindOptionsWhere<Expense> = { ownerId };
+    const where: FindOptionsWhere<Expense> = { ...readScope(ctx) };
     const actorWhere = actorCondToWhereValue(actor);
     if (actorWhere !== undefined) where.actorId = actorWhere;
     this.applyDate(where as Record<string, unknown>, 'date', range);
@@ -373,7 +392,7 @@ export class ActivityLogsService {
   }
 
   private async loadInventoryRegistrations(
-    ownerId: string,
+    ctx: ActorContext,
     actor: ActorCond | null,
     range: { from: Date | null; to: Date | null },
     types: ActivityLogType[],
@@ -387,7 +406,7 @@ export class ActivityLogsService {
       .createQueryBuilder('e')
       .leftJoinAndSelect('e.actor', 'actor')
       .leftJoinAndSelect('e.supplierUser', 'supplier')
-      .where('e.ownerId = :ownerId', { ownerId })
+      .where(...holderCond('e', ctx))
       .andWhere('e.source IN (:...sources)', { sources });
     applyActorCondToQb(qb, 'e.actor_id', actor);
     if (range.from) qb.andWhere('e.createdAt >= :from', { from: range.from });

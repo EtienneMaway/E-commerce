@@ -1,5 +1,8 @@
+import { useT } from '../../lib/i18n';
+import { isClosedAccount } from '../../lib/person';
+
 interface ActorPillProps {
-  actor: { id: string; username: string } | null | undefined;
+  actor: { id: string; username: string; anonymizedAt?: string | null } | null | undefined;
   viewerId?: string;
   /** When non-null, render a small inline discount note next to the actor. */
   discount?: { originalUnitPrice: string | null; discountReason: string | null; effectivePrice?: string };
@@ -10,8 +13,13 @@ interface ActorPillProps {
  * "By {username}" when an employee performed it on the owner's behalf.
  */
 export function ActorPill({ actor, viewerId, discount }: ActorPillProps) {
+  const t = useT();
   const isSelf = !actor || (viewerId && actor.id === viewerId);
-  const label = isSelf ? 'Self' : `By ${actor!.username}`;
+  // An employee who has since closed their account keeps the attribution, under
+  // their role rather than the meaningless `deleted_user_…` handle.
+  const label = isSelf
+    ? 'Self'
+    : isClosedAccount(actor) ? t.common.formerEmployee : `By ${actor!.username}`;
   const showDiscount = discount?.originalUnitPrice;
 
   return (

@@ -64,6 +64,25 @@ export class ConsignmentRequest {
   @Column({ name: 'debtor_id' })
   debtorId: string;
 
+  /**
+   * A consignment crosses the boundary between two businesses, so it names a
+   * full tenancy pair per side rather than replacing one `owner_id` (§3.3).
+   * The supplier pair is set at creation; the debtor pair only on confirm,
+   * because the receiving merchant is the only one who knows which of *their*
+   * branches the goods are arriving at (business rule 7).
+   */
+  @Column({ name: 'supplier_org_id', type: 'uuid' })
+  supplierOrgId: string;
+
+  @Column({ name: 'supplier_shop_id', type: 'uuid' })
+  supplierShopId: string;
+
+  @Column({ name: 'debtor_org_id', type: 'uuid', nullable: true })
+  debtorOrgId: string | null;
+
+  @Column({ name: 'debtor_shop_id', type: 'uuid', nullable: true })
+  debtorShopId: string | null;
+
   @ManyToOne(() => User, (user) => user.incomingConsignments)
   @JoinColumn({ name: 'debtor_id' })
   debtor: User;

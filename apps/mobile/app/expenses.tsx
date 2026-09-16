@@ -32,6 +32,7 @@ import { useOfflineStore } from '../store/offline.store';
 import { useAuthStore } from '../store/auth.store';
 import { usePersonaStore } from '../store/persona.store';
 import { useT } from '../lib/i18n';
+import { personHandle } from '../lib/person';
 import { useRequireService } from '../hooks/use-require-service';
 
 type FilterKey = 'all' | 'today' | 'week' | 'month' | 'lastN';
@@ -353,7 +354,7 @@ function OwnerExpensesScreen() {
                     ) : null}
                     <Text className="text-muted text-xs mt-1">
                       {formatDate(e.date)}
-                      {e.actor ? ` · @${e.actor.username}` : ''}
+                      {e.actor ? ` · ${personHandle(e.actor, t.common.formerEmployee)}` : ''}
                     </Text>
                   </View>
                   <View className="items-end">

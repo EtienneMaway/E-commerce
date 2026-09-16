@@ -17,6 +17,8 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserChangePasswordDto } from './dto/change-password.dto';
 import { UserPublicDto, toActiveEmploymentDto } from '../auth/dto/auth-response.dto';
 import { EmploymentsService } from '../employments/employments.service';
+import { ShopContextService } from '../shops/shop-context.service';
+import { OrganizationsService } from '../shops/organizations.service';
 import {
   ACCOUNT_DELETION_GRACE_MS,
   ACCOUNT_PURGE_SWEEP_INTERVAL_MS,
@@ -33,10 +35,13 @@ export class UsersService implements OnModuleInit {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly employmentsService: EmploymentsService,
+    private readonly shopContext: ShopContextService,
+    private readonly organizations: OrganizationsService,
   ) {}
 
   async toPublic(user: User): Promise<UserPublicDto> {
     const employment = await this.employmentsService.findActiveAsEmployee(user.id);
+    const tenancy = await this.shopContext.summaryFor(user.id, employment);
     return {
       id: user.id,
       username: user.username,
@@ -49,6 +54,7 @@ export class UsersService implements OnModuleInit {
       isExternalEmployee: user.isExternalEmployee,
       createdAt: user.createdAt,
       activeEmployment: toActiveEmploymentDto(employment),
+      ...tenancy,
     };
   }
 
@@ -175,8 +181,72 @@ export class UsersService implements OnModuleInit {
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Password is incorrect');
 
+    await this.assertNoResponsibilities(userId);
+
     user.deletedAt = new Date();
     return this.userRepo.save(user);
+  }
+
+  /**
+   * Nobody may delete an account while they still hold someone else's
+   * responsibility (MULTI_SHOP_PLAN.md §3.13.2). An owner hands the business
+   * over; an employee settles up and leaves the job.
+   *
+   * You cannot walk away from a business — you can only hand it on. But an
+   * organization that never traded is nobody's responsibility, so the gate is
+   * on the business *holding records*, not on it existing: otherwise every
+   * account would have to invent a recipient, since registration seeds one.
+   */
+  private async assertNoResponsibilities(userId: string): Promise<void> {
+    // Each refusal carries a `code` beside its message so clients can turn it
+    // into guidance ("transfer your business first", with a link to the transfer
+    // screen) instead of matching on a message that arrives translated.
+    if (await this.organizations.ownsOrganizationWithData(userId)) {
+      throw new ConflictException({
+        message: 'Transfer your business to someone else before closing this account',
+        code: 'OWNS_BUSINESS',
+      });
+    }
+
+    const employment = await this.employmentsService.findActiveAsEmployee(userId);
+    if (employment) {
+      throw new ConflictException({
+        message: 'Leave your job before closing this account',
+        code: 'ACTIVE_EMPLOYMENT',
+      });
+    }
+
+    // A mini holds the employer's goods on their own books. An abandoned
+    // account strands real inventory: the employer's CONSIGNED_OUT row says the
+    // goods are out there with nobody to return them.
+    const unsettled = await this.userRepo.manager.query<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM "inventory_entries"
+        WHERE "owner_id" = $1 AND "source" = 'CONSIGNED_IN' AND "quantity_remaining" > 0`,
+      [userId],
+    );
+    if (Number(unsettled[0]?.n ?? 0) > 0) {
+      throw new ConflictException({
+        message: 'Hand back the stock you are holding before closing this account',
+        code: 'UNRETURNED_STOCK',
+      });
+    }
+
+    const pendingHandover = await this.userRepo.manager.query<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM "mini_settlements"
+        WHERE "mini_id" = $1 AND "status" = 'PENDING'`,
+      [userId],
+    );
+    if (Number(pendingHandover[0]?.n ?? 0) > 0) {
+      throw new ConflictException({
+        message: 'Finish your pending handover before closing this account',
+        code: 'PENDING_HANDOVER',
+      });
+    }
+
+    // Deliberately NOT checked: unpaid salary. That is money the *employer*
+    // owes; blocking on it would punish the employee for the employer's
+    // inaction and hand a bad employer a way to hold an account hostage. The
+    // salary rows survive anonymisation, so the debt stays provable either way.
   }
 
   graceExpiresAt(deletedAt: Date): Date {

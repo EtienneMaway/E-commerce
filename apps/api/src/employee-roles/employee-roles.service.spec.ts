@@ -1,8 +1,10 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { testCtx } from '../common/testing/actor-context.fixture';
 import { Repository } from 'typeorm';
 import { EmployeeRole, Employment } from '../entities';
 import { EmployeeRolesService } from './employee-roles.service';
 
+const CTX = testCtx();
 const OWNER = 'owner-1';
 
 /** Raw rows the grouped assignment count returns. */
@@ -57,7 +59,7 @@ describe('EmployeeRolesService.getCatalog', () => {
 describe('EmployeeRolesService.create', () => {
   it('stores the expanded service list, sorted', async () => {
     const { service, roleRepo } = build();
-    await service.create(OWNER, { name: 'Cashier', services: ['sales.record'] });
+    await service.create(CTX, { name: 'Cashier', services: ['sales.record'] });
     const saved = (roleRepo.save as jest.Mock).mock.calls[0][0] as EmployeeRole;
     // `sales.record` implies `inventory.view` — the stored row says what it grants.
     expect(saved.services).toEqual(['inventory.view', 'sales.record']);
@@ -65,7 +67,7 @@ describe('EmployeeRolesService.create', () => {
 
   it('trims the name and empty descriptions to null', async () => {
     const { service, roleRepo } = build();
-    await service.create(OWNER, { name: '  Cashier  ', description: '   ', services: [] });
+    await service.create(CTX, { name: '  Cashier  ', description: '   ', services: [] });
     const saved = (roleRepo.save as jest.Mock).mock.calls[0][0] as EmployeeRole;
     expect(saved.name).toBe('Cashier');
     expect(saved.description).toBeNull();
@@ -73,7 +75,7 @@ describe('EmployeeRolesService.create', () => {
 
   it('accepts an empty service list', async () => {
     const { service, roleRepo } = build();
-    await service.create(OWNER, { name: 'Suspended', services: [] });
+    await service.create(CTX, { name: 'Suspended', services: [] });
     const saved = (roleRepo.save as jest.Mock).mock.calls[0][0] as EmployeeRole;
     expect(saved.services).toEqual([]);
   });
@@ -81,16 +83,16 @@ describe('EmployeeRolesService.create', () => {
   it('refuses a name the employer already uses, case-insensitively', async () => {
     const { service } = build({ nameClash: { id: 'other', name: 'Cashier' } });
     await expect(
-      service.create(OWNER, { name: 'cashier', services: [] }),
+      service.create(CTX, { name: 'cashier', services: [] }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 });
 
 describe('EmployeeRolesService.update', () => {
   it('leaves fields alone when they are omitted', async () => {
-    const existing = { id: 'role-1', ownerId: OWNER, name: 'Cashier', description: 'x', services: ['sales.record'] };
+    const existing = { id: 'role-1', orgId: 'org-1', name: 'Cashier', description: 'x', services: ['sales.record'] };
     const { service, roleRepo } = build({ roles: [existing as Partial<EmployeeRole>] });
-    await service.update(OWNER, 'role-1', {});
+    await service.update(CTX, 'role-1', {});
     const saved = (roleRepo.save as jest.Mock).mock.calls[0][0] as EmployeeRole;
     expect(saved.name).toBe('Cashier');
     expect(saved.description).toBe('x');
@@ -98,36 +100,36 @@ describe('EmployeeRolesService.update', () => {
   });
 
   it('replaces the service list wholesale and re-expands it', async () => {
-    const existing = { id: 'role-1', ownerId: OWNER, name: 'Cashier', description: null, services: ['sales.record'] };
+    const existing = { id: 'role-1', orgId: 'org-1', name: 'Cashier', description: null, services: ['sales.record'] };
     const { service, roleRepo } = build({ roles: [existing as Partial<EmployeeRole>] });
-    await service.update(OWNER, 'role-1', { services: ['suppliers.pay'] });
+    await service.update(CTX, 'role-1', { services: ['suppliers.pay'] });
     const saved = (roleRepo.save as jest.Mock).mock.calls[0][0] as EmployeeRole;
     expect(saved.services).toEqual(['suppliers.pay', 'suppliers.view']);
   });
 
   it('404s on another employer\'s role', async () => {
     const { service } = build({ roles: [] });
-    await expect(service.update(OWNER, 'role-9', {})).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.update(CTX, 'role-9', {})).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
 describe('EmployeeRolesService.remove', () => {
   it('refuses while the role is still assigned', async () => {
-    const existing = { id: 'role-1', ownerId: OWNER, name: 'Cashier', services: [] };
+    const existing = { id: 'role-1', orgId: 'org-1', name: 'Cashier', services: [] };
     const { service, roleRepo } = build({
       roles: [existing as Partial<EmployeeRole>],
       counts: [{ roleId: 'role-1', count: '2' }],
     });
     // Cascading to role_id = NULL would mean "tier defaults" — wider access as a
     // side effect of a delete. Must refuse instead.
-    await expect(service.remove(OWNER, 'role-1')).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.remove(CTX, 'role-1')).rejects.toBeInstanceOf(ConflictException);
     expect(roleRepo.remove).not.toHaveBeenCalled();
   });
 
   it('deletes when nobody holds it', async () => {
-    const existing = { id: 'role-1', ownerId: OWNER, name: 'Cashier', services: [] };
+    const existing = { id: 'role-1', orgId: 'org-1', name: 'Cashier', services: [] };
     const { service, roleRepo } = build({ roles: [existing as Partial<EmployeeRole>], counts: [] });
-    await service.remove(OWNER, 'role-1');
+    await service.remove(CTX, 'role-1');
     expect(roleRepo.remove).toHaveBeenCalled();
   });
 });
@@ -135,18 +137,18 @@ describe('EmployeeRolesService.remove', () => {
 describe('EmployeeRolesService.list', () => {
   it('attaches the assigned count to each role', async () => {
     const roles = [
-      { id: 'role-1', ownerId: OWNER, name: 'Cashier', services: [] },
-      { id: 'role-2', ownerId: OWNER, name: 'Stock', services: [] },
+      { id: 'role-1', orgId: 'org-1', name: 'Cashier', services: [] },
+      { id: 'role-2', orgId: 'org-1', name: 'Stock', services: [] },
     ] as Partial<EmployeeRole>[];
     const { service } = build({ roles, counts: [{ roleId: 'role-1', count: '3' }] });
-    const listed = await service.list(OWNER);
+    const listed = await service.list(CTX);
     expect(listed[0].assignedCount).toBe(3);
     expect(listed[1].assignedCount).toBe(0);
   });
 
   it('skips the count query entirely when there are no roles', async () => {
     const { service, employmentRepo } = build({ roles: [] });
-    await expect(service.list(OWNER)).resolves.toEqual([]);
+    await expect(service.list(CTX)).resolves.toEqual([]);
     expect(employmentRepo.createQueryBuilder).not.toHaveBeenCalled();
   });
 });

@@ -24,6 +24,7 @@ import { formatFcValue, useExchangeRate } from '../lib/currency';
 import { useAuthStore } from '../store/auth.store';
 import { usePrinterStore } from '../store/printer.store';
 import { useT } from '../lib/i18n';
+import { personHandle } from '../lib/person';
 import {
   printApprovedHandover,
   shareApprovedHandoverPdf,
@@ -291,7 +292,7 @@ function ReceivedCard({
       <View className="flex-row justify-between items-start">
         <View className="flex-1">
           <Text className="text-text font-semibold">
-            {t.miniEmployee.receiveFrom} @{c.supplier?.username ?? '—'}
+            {t.miniEmployee.receiveFrom} {personHandle(c.supplier, t.common.closedAccount)}
           </Text>
           <Text className="text-muted text-xs mt-0.5">{formatDate(c.createdAt)}</Text>
         </View>

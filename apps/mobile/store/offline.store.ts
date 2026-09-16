@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useShopStore } from './shop.store';
+
+/**
+ * The branch a row being queued right now belongs to. Captured at enqueue, not
+ * at replay: an owner who records a sale in branch A, switches to B and then
+ * reconnects must still see that sale land in A. Null for an employee — the API
+ * resolves their branch from the employment.
+ */
+const captureShop = (): string | null => useShopStore.getState().captureShopId();
 
 export interface CachedProduct {
   productName: string;
@@ -66,6 +75,11 @@ export interface PendingSale {
    * same — a sale that happened and was corrected, not a sale that vanished.
    */
   rejectedOffline?: { at: string; reason?: string };
+  /**
+   * Branch the sale was recorded at, replayed as `X-Shop-Id`. Null = send none
+   * (an employee). Absent on rows queued by a build that predates branches.
+   */
+  shopId?: string | null;
 }
 
 /**
@@ -82,6 +96,8 @@ export interface PendingRejection {
   reason?: string;
   recordedAt: string;
   syncError: string | null;
+  /** Branch the rejection was made in — see `PendingSale.shopId`. */
+  shopId?: string | null;
 }
 
 export interface PendingExpense {
@@ -97,6 +113,8 @@ export interface PendingExpense {
   date?: string;
   recordedAt: string;
   syncError: string | null;
+  /** Branch the expense was recorded at — see `PendingSale.shopId`. */
+  shopId?: string | null;
 }
 
 export interface SyncProgress {
@@ -232,6 +250,7 @@ export const useOfflineStore = create<OfflineState>()(
               clientPhone: extras?.clientPhone,
               originalUnitPrice: extras?.originalUnitPrice,
               discountReason: extras?.discountReason,
+              shopId: captureShop(),
             },
           ],
           cachedProducts: s.cachedProducts.map((p) =>
@@ -276,6 +295,7 @@ export const useOfflineStore = create<OfflineState>()(
                 reason,
                 recordedAt: new Date().toISOString(),
                 syncError: null,
+                shopId: captureShop(),
               },
             ],
             cachedProducts: s.cachedProducts.map((p) =>
@@ -300,7 +320,7 @@ export const useOfflineStore = create<OfflineState>()(
         set((s) => ({
           pendingExpenses: [
             ...s.pendingExpenses,
-            { id, kind: 'mini', amount, category, description, recordedAt: new Date().toISOString(), syncError: null },
+            { id, kind: 'mini', amount, category, description, recordedAt: new Date().toISOString(), syncError: null, shopId: captureShop() },
           ],
         }));
       },
@@ -310,7 +330,7 @@ export const useOfflineStore = create<OfflineState>()(
         set((s) => ({
           pendingExpenses: [
             ...s.pendingExpenses,
-            { id, kind: 'normal', amount, currency, category, description, date, recordedAt: new Date().toISOString(), syncError: null },
+            { id, kind: 'normal', amount, currency, category, description, date, recordedAt: new Date().toISOString(), syncError: null, shopId: captureShop() },
           ],
         }));
       },

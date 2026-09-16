@@ -16,6 +16,7 @@ import { EditProductSellingPriceDialog } from '../../../../components/forms/Edit
 import { RenameProductDialog } from '../../../../components/forms/RenameProductDialog';
 import { SalesProfitWidget } from '../../../../components/ui/SalesProfitWidget';
 import { useT } from '../../../../lib/i18n';
+import { personHandle } from '../../../../lib/person';
 import { usePermissions } from '../../../../lib/permissions';
 
 interface InventoryEntry {
@@ -133,8 +134,8 @@ export default function ProductDetailPage({
           <Badge label={sourceLabel(r.source)} variant={sourceBadgeVariant(r.source)} />
           {(r.supplierUser || r.debtorUser) && (
             <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
-              {t.inventory.counterparty} @
-              {r.supplierUser?.username ?? r.debtorUser?.username}
+              {t.inventory.counterparty}{' '}
+              {personHandle(r.supplierUser ?? r.debtorUser, t.common.closedAccount)}
             </div>
           )}
         </div>

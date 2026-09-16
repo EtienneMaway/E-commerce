@@ -90,7 +90,10 @@ describe('MiniSettlementsService.approve', () => {
 
     const settlement = {
       id: 'settle-1',
-      ownerId: OWNER,
+      // The handover belongs to the employer's branch; `miniId` is the person
+      // it settles with. `owner_id` is gone from this table (migration 034).
+      orgId: 'org-1',
+      shopId: 'shop-1',
       miniId: MINI,
       status: MiniSettlementStatus.PENDING,
       cashAmount: '480.0000',
@@ -155,6 +158,13 @@ describe('MiniSettlementsService.approve', () => {
     tier: 'OWNER',
     services: resolveGrantedServices(null, 'OWNER'),
     employment: null,
+    // Tenancy (MULTI_SHOP_PLAN.md §3.5). Phase 2 populates these on every
+    // request; no service reads them until Phase 4.
+    orgId: 'org-1',
+    shopId: 'shop-1',
+    visibleShopIds: ['shop-1'],
+    shopScope: 'one' as const,
+    shopArchived: false,
   };
 
   it('reverses returned-unit debt and books the cash, clearing the balance', async () => {
@@ -238,7 +248,7 @@ describe('MiniSettlementsService.approve', () => {
       }),
     };
     const settlement = {
-      id: 'settle-1', ownerId: OWNER, miniId: MINI, status: MiniSettlementStatus.PENDING,
+      id: 'settle-1', orgId: 'org-1', shopId: 'shop-1', miniId: MINI, status: MiniSettlementStatus.PENDING,
       cashAmount: '40.0000', note: null as string | null, paymentId: null as string | null,
       approvedAt: null as Date | null, actorId: null as string | null,
       // Single return line for 7 units, snapshot price = oldest lot (32) — the
@@ -330,8 +340,10 @@ describe('MiniSettlementsService.approve', () => {
       .filter((c) => c[0] === MiniTeamMember)
       .map((c) => c[1] as { name: string; phone: string | null; settlementId: string });
     expect(teamRows).toEqual([
-      { miniId: MINI, ownerId: OWNER, name: 'Jean', phone: '+243900000000', settlementId: 'settle-1' },
-      { miniId: MINI, ownerId: OWNER, name: 'Marie', phone: null, settlementId: 'settle-1' },
+      // orgId/shopId come from the approving context — the handover, and the
+      // team snapshotted onto it, belong to the branch that settles it.
+      { miniId: MINI, orgId: 'org-1', shopId: 'shop-1', name: 'Jean', phone: '+243900000000', settlementId: 'settle-1' },
+      { miniId: MINI, orgId: 'org-1', shopId: 'shop-1', name: 'Marie', phone: null, settlementId: 'settle-1' },
     ]);
   });
 
@@ -394,6 +406,13 @@ describe('MiniSettlementsService.create — one open handover at a time', () => 
     tier: 'MINI_EMPLOYEE',
     services: resolveGrantedServices(null, 'MINI_EMPLOYEE'),
     employment: { employerId: OWNER } as never,
+    // Tenancy (MULTI_SHOP_PLAN.md §3.5). Phase 2 populates these on every
+    // request; no service reads them until Phase 4.
+    orgId: 'org-1',
+    shopId: 'shop-1',
+    visibleShopIds: ['shop-1'],
+    shopScope: 'one' as const,
+    shopArchived: false,
   };
 
   function build(openHandover: unknown, consignments: unknown[] = []) {

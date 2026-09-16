@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
-import { dashboardApi, salesApi, type DashboardProfitSummary } from '../../../lib/api';
+import { dashboardApi, salesApi, type DashboardProfitSummary, type ShopBreakdownRow } from '../../../lib/api';
+import { useShopScope } from '../../../hooks/use-shop-scope';
 import { QK } from '../../../lib/query-keys';
 import { usePermissions } from '../../../lib/permissions';
 import { formatDate } from '../../../lib/utils';
@@ -49,7 +50,7 @@ interface CashPosition {
 }
 interface TopProduct { productName: string; totalProfit: string; totalRevenue: string; totalQtySold: string; }
 interface SourceRow { source: string; supplierUsername?: string; totalProfit: string; }
-interface SaleRow { id: string; productName: string; salePrice: string; qtySold: number; profit: string; isLoss: boolean; date: string; }
+interface SaleRow { id: string; productName: string; salePrice: string; qtySold: number; profit: string; isLoss: boolean; date: string; shopId: string; }
 interface SalesPage { data: SaleRow[]; total: number; }
 interface AlertItem {
   type: 'overdue_debtor' | 'low_stock' | 'inverted_exchange_rates' | 'pending_consignment';
@@ -78,6 +79,18 @@ export default function DashboardPage() {
   // This page is gated on cash.overview, but two of its widgets read from
   // other services — skip those queries rather than firing 403s.
   const { can } = usePermissions();
+  const { isAllShops, shopName } = useShopScope();
+
+  // Under "All branches" every figure below is a rollup; this splits the
+  // period figures and the cash by branch so the owner can see where they
+  // came from. Same period as the cards, so the rows add up to them.
+  const { data: byShop, isFetching: byShopFetching } = useQuery({
+    queryKey: QK.dashboardByShop(periodParams),
+    queryFn: () => dashboardApi.byShop(periodParams),
+    enabled: isAllShops && periodReady(sel),
+    staleTime: 30_000,
+  });
+  const shopRows = (byShop as ShopBreakdownRow[] | undefined) ?? [];
 
   const { data: profitSummary, isFetching: profitFetching } = useQuery({
     queryKey: QK.dashboardProfitSummary(periodParams),
@@ -260,6 +273,69 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* ── Per-branch split (All branches only) ──────────────────── */}
+        {isAllShops && (
+          <div className="card anim-fade-up" style={{ overflow: 'hidden', padding: 0 }}>
+            <div className="px-6 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 className="font-bold text-sm tracking-tight" style={{ color: 'var(--foreground)' }}>
+                {t.shops.byBranchTitle}
+              </h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                {t.shops.byBranchSub} · {periodLabel(sel.period)}
+              </p>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="w-full text-sm" style={{ minWidth: '520px' }}>
+                <thead>
+                  <tr className="data-table-head-row">
+                    {[t.shops.branch, t.shops.colSales, t.shops.colRevenue, t.shops.colProfit, t.shops.colCash].map((h) => (
+                      <th key={h} className="data-table-head-cell">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {byShopFetching && shopRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
+                        {t.common.loading}
+                      </td>
+                    </tr>
+                  ) : (
+                    shopRows.map((row, i) => {
+                      const profit = parseFloat(row.totalProfit);
+                      const cash = parseFloat(row.availableBusinessCash);
+                      return (
+                        <tr
+                          key={row.shopId}
+                          className="data-table-row"
+                          style={{ background: i % 2 === 0 ? 'var(--card)' : 'var(--surface)' }}
+                        >
+                          <td className="data-table-cell font-semibold">
+                            {row.shopName}
+                            {row.isArchived && (
+                              <span className="ml-2 text-xs font-normal" style={{ color: 'var(--muted)' }}>
+                                {t.shops.closed}
+                              </span>
+                            )}
+                          </td>
+                          <td className="data-table-cell" style={{ color: 'var(--muted)' }}>{row.salesCount}</td>
+                          <td className="data-table-cell">{formatCurrency(row.totalRevenue)}</td>
+                          <td className="data-table-cell" style={{ color: profit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                            {formatCurrency(row.totalProfit)}
+                          </td>
+                          <td className="data-table-cell" style={{ color: cash < 0 ? 'var(--danger)' : 'var(--foreground)' }}>
+                            {formatCurrency(row.availableBusinessCash)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* ── Balances (all-time) ───────────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <KpiCard label={t.dashboard.iOweSuppliers} value={formatCurrency(s?.totalIOwe ?? '0')} icon="🏭" color="danger" sub={t.dashboard.outstandingSupplierDebt} loading={summaryLoading} />
@@ -329,7 +405,14 @@ export default function DashboardPage() {
           <table className="w-full text-sm" style={{ minWidth: '480px' }}>
             <thead>
               <tr className="data-table-head-row">
-                {[t.dashboard.colProduct, t.dashboard.colQty, t.dashboard.colSalePrice, t.dashboard.colProfit, t.dashboard.colDate].map((h) => (
+                {[
+                  t.dashboard.colProduct,
+                  ...(isAllShops ? [t.shops.branch] : []),
+                  t.dashboard.colQty,
+                  t.dashboard.colSalePrice,
+                  t.dashboard.colProfit,
+                  t.dashboard.colDate,
+                ].map((h) => (
                   <th key={h} className="data-table-head-cell">{h}</th>
                 ))}
               </tr>
@@ -337,7 +420,7 @@ export default function DashboardPage() {
             <tbody>
               {((recentSales as SalesPage | undefined)?.data ?? []).length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-sm" style={{ color: 'var(--muted)' }}>
+                  <td colSpan={isAllShops ? 6 : 5} className="px-4 py-12 text-center text-sm" style={{ color: 'var(--muted)' }}>
                     <div className="text-2xl mb-2">📊</div>
                     {t.dashboard.noSalesYet}
                   </td>
@@ -352,6 +435,9 @@ export default function DashboardPage() {
                     <td className="data-table-cell font-semibold">
                       {row.productName.charAt(0).toUpperCase() + row.productName.slice(1)}
                     </td>
+                    {isAllShops && (
+                      <td className="data-table-cell" style={{ color: 'var(--muted)' }}>{shopName(row.shopId) || '—'}</td>
+                    )}
                     <td className="data-table-cell" style={{ color: 'var(--muted)' }}>{row.qtySold}</td>
                     <td className="data-table-cell">{formatCurrency(row.salePrice)}</td>
                     <td className="data-table-cell">

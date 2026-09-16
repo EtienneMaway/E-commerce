@@ -43,7 +43,7 @@ export class DashboardController {
   })
   @ApiResponse({ status: 200, description: 'Dashboard summary' })
   getSummary(@CurrentActorContext() ctx: ActorContext) {
-    return this.dashboardService.getSummary(ctx.effectiveOwnerId);
+    return this.dashboardService.getSummary(ctx);
   }
 
   @Get('cash-position')
@@ -57,7 +57,7 @@ export class DashboardController {
   })
   @ApiResponse({ status: 200, description: 'Cash position summary' })
   getCashPosition(@CurrentActorContext() ctx: ActorContext) {
-    return this.dashboardService.getCashPosition(ctx.effectiveOwnerId);
+    return this.dashboardService.getCashPosition(ctx);
   }
 
   @Get('profit-summary')
@@ -77,12 +77,29 @@ export class DashboardController {
     return this.dashboardService.getProfitSummary(ctx, filter);
   }
 
+  @Get('by-shop')
+  @RequiresService('cash.overview')
+  @ApiOperation({
+    summary: 'Headline figures per branch',
+    description:
+      'Period revenue, profit and sales count plus available business cash for each ' +
+      'branch in scope — every branch under X-Shop-Id: all, otherwise just the ' +
+      'selected one. Same figures as reading each branch on its own.',
+  })
+  @ApiResponse({ status: 200, description: 'One row per branch' })
+  getShopBreakdown(
+    @CurrentActorContext() ctx: ActorContext,
+    @Query() filter: SalesSummaryFilterDto,
+  ) {
+    return this.dashboardService.getShopBreakdown(ctx, filter);
+  }
+
   @Get('suppliers')
   @RequiresService('suppliers.view')
   @ApiOperation({ summary: 'List all suppliers with outstanding balances' })
   @ApiResponse({ status: 200, description: 'Supplier list sorted by balance desc' })
   getSuppliers(@CurrentActorContext() ctx: ActorContext) {
-    return this.dashboardService.getSuppliers(ctx.effectiveOwnerId);
+    return this.dashboardService.getSuppliers(ctx);
   }
 
   @Get('suppliers/:supplierUserId')
@@ -99,7 +116,7 @@ export class DashboardController {
     @CurrentActorContext() ctx: ActorContext,
     @Param('supplierUserId', ParseUUIDPipe) supplierUserId: string,
   ) {
-    return this.dashboardService.getSupplierDetail(ctx.effectiveOwnerId, supplierUserId);
+    return this.dashboardService.getSupplierDetail(ctx, supplierUserId);
   }
 
   @Get('debtors')
@@ -107,7 +124,7 @@ export class DashboardController {
   @ApiOperation({ summary: 'List all debtors with outstanding balances' })
   @ApiResponse({ status: 200, description: 'Debtor list sorted by balance desc' })
   getDebtors(@CurrentActorContext() ctx: ActorContext) {
-    return this.dashboardService.getDebtors(ctx.effectiveOwnerId);
+    return this.dashboardService.getDebtors(ctx);
   }
 
   @Get('debtors/:debtorUserId')
@@ -124,7 +141,7 @@ export class DashboardController {
     @CurrentActorContext() ctx: ActorContext,
     @Param('debtorUserId', ParseUUIDPipe) debtorUserId: string,
   ) {
-    return this.dashboardService.getDebtorDetail(ctx.effectiveOwnerId, debtorUserId);
+    return this.dashboardService.getDebtorDetail(ctx, debtorUserId);
   }
 
   @Get('profit-by-product')
@@ -132,7 +149,7 @@ export class DashboardController {
   @ApiOperation({ summary: 'Profit breakdown per product (all time)' })
   @ApiResponse({ status: 200, description: 'Products sorted by total profit desc' })
   getProfitByProduct(@CurrentActorContext() ctx: ActorContext) {
-    return this.dashboardService.getProfitByProduct(ctx.effectiveOwnerId);
+    return this.dashboardService.getProfitByProduct(ctx);
   }
 
   @Get('profit-by-source')
@@ -142,7 +159,7 @@ export class DashboardController {
   })
   @ApiResponse({ status: 200, description: 'Sources sorted by total profit desc' })
   getProfitBySource(@CurrentActorContext() ctx: ActorContext) {
-    return this.dashboardService.getProfitBySource(ctx.effectiveOwnerId);
+    return this.dashboardService.getProfitBySource(ctx);
   }
 
   @Get('alerts')
@@ -155,6 +172,6 @@ export class DashboardController {
   })
   @ApiResponse({ status: 200, description: 'Array of AlertItem objects' })
   getAlerts(@CurrentActorContext() ctx: ActorContext) {
-    return this.dashboardService.getAlerts(ctx.effectiveOwnerId);
+    return this.dashboardService.getAlerts(ctx);
   }
 }

@@ -16,6 +16,7 @@ import { useBrand } from '../../lib/theme';
 import { formatDate, breakdownQuantity, formatBreakdown } from '../../lib/utils';
 import { useFormatCurrency, useExchangeRate, formatMoney } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
+import { personHandle } from '../../lib/person';
 import { Badge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { RecordSaleModal } from '../../components/forms/RecordSaleModal';
@@ -44,12 +45,13 @@ function EntryCard({ entry }: { entry: InventoryEntry }) {
   const isLowStock = entry.quantityRemaining <= LOW_STOCK;
   const bd = breakdownQuantity(entry.quantityRemaining, entry.piecesPerCarton);
   const badge = sourceBadgeProps(entry.source, t);
-  const counterparty =
+  const counterpartyUser =
     entry.source === 'SUPPLIER'
-      ? entry.supplierUser?.username
+      ? entry.supplierUser
       : entry.source === 'CONSIGNED_OUT' || entry.source === 'CONSIGNED_IN'
-      ? entry.debtorUser?.username ?? entry.supplierUser?.username
+      ? entry.debtorUser ?? entry.supplierUser
       : null;
+  const counterparty = counterpartyUser ? personHandle(counterpartyUser, t.common.closedAccount) : null;
 
   return (
     <View className="bg-card border border-border rounded-2xl p-4 mb-3">
@@ -58,7 +60,7 @@ function EntryCard({ entry }: { entry: InventoryEntry }) {
           <Badge label={badge.label} variant={badge.variant} />
           {counterparty && (
             <Text className="text-muted text-xs">
-              {t.productDetail.counterparty} @{counterparty}
+              {t.productDetail.counterparty} {counterparty}
             </Text>
           )}
         </View>

@@ -21,6 +21,7 @@ import { CreateEmploymentDto } from './dto/create-employment.dto';
 import { CreateMiniEmployeeDto } from './dto/create-mini-employee.dto';
 import { EmploymentFilterDto } from './dto/employment-filter.dto';
 import { SetSalaryDto } from './dto/set-salary.dto';
+import { TransferEmploymentDto } from './dto/transfer-employment.dto';
 import { SetPayrollActiveDto } from './dto/set-payroll-active.dto';
 import { SetExpenseAllowanceDto } from './dto/set-expense-allowance.dto';
 import { SetCommissionDto } from './dto/set-commission.dto';
@@ -47,8 +48,8 @@ export class EmploymentsController {
   @RequiresService('employees.manage')
   @ApiOperation({ summary: 'Send an employment request to an existing user' })
   @ApiResponse({ status: 201, description: 'Employment created in PENDING status' })
-  create(@CurrentUser() user: User, @Body() dto: CreateEmploymentDto) {
-    return this.service.create(user.id, dto);
+  create(@CurrentActorContext() ctx: ActorContext, @Body() dto: CreateEmploymentDto) {
+    return this.service.create(ctx, dto);
   }
 
   @Post('mini-employee')
@@ -59,8 +60,9 @@ export class EmploymentsController {
       'Returns a one-time pairing code shown to the employer. The employee uses this code on the mobile app to obtain a JWT, then accepts the invite (PATCH /employments/:id/accept) to activate. The code is not stored in plaintext.',
   })
   @ApiResponse({ status: 201, description: 'Mini employee created; employment is PENDING until the employee accepts on the app' })
-  createMiniEmployee(@CurrentUser() user: User, @Body() dto: CreateMiniEmployeeDto) {
-    return this.service.createMiniEmployee(user.id, dto);
+  createMiniEmployee(
+    @CurrentActorContext() ctx: ActorContext, @Body() dto: CreateMiniEmployeeDto) {
+    return this.service.createMiniEmployee(ctx, dto);
   }
 
   @Post('external-employee')
@@ -71,8 +73,9 @@ export class EmploymentsController {
       'Creates a User row that cannot authenticate, plus an immediately ACTIVE employment. Used to track salary for people who do not use the system.',
   })
   @ApiResponse({ status: 201, description: 'External employee created and immediately ACTIVE' })
-  createExternalEmployee(@CurrentUser() user: User, @Body() dto: CreateExternalEmployeeDto) {
-    return this.service.createExternalEmployee(user.id, dto);
+  createExternalEmployee(
+    @CurrentActorContext() ctx: ActorContext, @Body() dto: CreateExternalEmployeeDto) {
+    return this.service.createExternalEmployee(ctx, dto);
   }
 
   @Get()
@@ -184,11 +187,11 @@ export class EmploymentsController {
   @ApiResponse({ status: 403, description: 'Only the employer can set a role' })
   @ApiResponse({ status: 404, description: 'Employment or role not found' })
   setRole(
-    @CurrentUser() user: User,
+    @CurrentActorContext() ctx: ActorContext,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetEmploymentRoleDto,
   ) {
-    return this.service.setRole(user.id, id, dto.roleId ?? null);
+    return this.service.setRole(ctx, id, dto.roleId ?? null);
   }
 
   @Patch(':id/commission')
@@ -220,6 +223,53 @@ export class EmploymentsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.service.removeExternalEmployee(user.id, id);
+  }
+
+  @Delete(':id/mini')
+  @RequiresService('employees.manage')
+  @ApiOperation({
+    summary: 'Employer removes a mini employee and anonymises their profile',
+    description:
+      "A mini cannot delete their own account — employee profiles belong to the employer — which previously left a real person's phone number in a row nobody could remove. Refused while they still hold consigned stock or have a pending handover. The employment and every sale they recorded survive, correctly attributed.",
+  })
+  @ApiResponse({ status: 409, description: 'Still holding stock, or a handover is pending' })
+  removeMiniEmployee(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.removeMiniEmployee(user.id, id);
+  }
+
+  @Patch(':id/transfer')
+  @RequiresService('employees.manage')
+  @ApiOperation({
+    summary: 'Propose moving an employee to another branch',
+    description:
+      'They keep working where they are until they accept. Refused while they still hold stock or have a handover waiting — stock and cash must not straddle two branches.',
+  })
+  @ApiResponse({ status: 409, description: 'Unsettled stock or a pending handover' })
+  proposeTransfer(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TransferEmploymentDto,
+  ) {
+    return this.service.proposeTransfer(ctx, id, dto.shopId);
+  }
+
+  /**
+   * The employee's side. No `@RequiresService`: answering a proposal about your
+   * own job is part of the employment relationship, not a feature an employer
+   * lends out.
+   */
+  @Patch(':id/transfer/accept')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @ApiOperation({ summary: 'Accept a move to another branch' })
+  acceptTransfer(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.respondToTransfer(user.id, id, true);
+  }
+
+  @Patch(':id/transfer/reject')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @ApiOperation({ summary: 'Decline a move to another branch' })
+  rejectTransfer(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.respondToTransfer(user.id, id, false);
   }
 
   @Patch(':id/profile')

@@ -13,6 +13,9 @@ import { useT } from '../../lib/i18n';
 import { KmbLogo } from '../../components/ui/KmbLogo';
 import { UserMenu } from '../../components/ui/UserMenu';
 import { PersonaSwitcher } from '../../components/ui/PersonaSwitcher';
+import { AllShopsBanner, ShopSwitcher } from '../../components/ui/ShopSwitcher';
+import { OrgBadge } from '../../components/ui/OrgBadge';
+import { useShopStore } from '../../store/shop.store';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { ConfirmProvider } from '../../components/ui/ConfirmDialog';
 import { ToastProvider } from '../../components/ui/Toast';
@@ -106,6 +109,11 @@ function MainShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { token, user, hydrate, logout, setUser } = useAuthStore();
+  // Select the actions, never the whole store: `useShopStore()` returns a new
+  // object on every `set()`, so an effect depending on it re-runs after its own
+  // `setContext` and loops ("Maximum update depth exceeded").
+  const hydrateShop = useShopStore((s) => s.hydrate);
+  const setShopContext = useShopStore((s) => s.setContext);
   const persona = usePersonaStore();
   const t = useT();
   const [hydrated, setHydrated] = useState(false);
@@ -186,6 +194,7 @@ function MainShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     hydrate();
     persona.hydrate();
+    hydrateShop();
     setHydrated(true);
     // hydrate refs are stable from zustand; safe to omit from deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -222,6 +231,19 @@ function MainShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (me) setUser(me);
   }, [me, setUser]);
+
+  // `/auth/me` carries the business and the branches this account can see, so
+  // the switcher paints on first load rather than after a second round trip.
+  // It also prunes a stored selection that no longer exists — a branch closed,
+  // or a business handed over — which would otherwise 404 every request.
+  useEffect(() => {
+    if (!me) return;
+    setShopContext({
+      shops: me.shops ?? [],
+      organizations: me.organizations ?? [],
+      organization: me.organization ?? null,
+    });
+  }, [me, setShopContext]);
 
   useEffect(() => {
     if (meError && isAuthError(meError)) {
@@ -269,7 +291,13 @@ function MainShell({ children }: { children: React.ReactNode }) {
             <span className="text-sm font-bold" style={{ color: 'var(--sidebar-fg)' }}>KMB</span>
           </div>
         )}
-        <div className="ml-auto flex items-center gap-3">
+        {/* The band's empty middle: whose books this is. `flex-1` centres it
+            between the logo and the controls at every width, and it collapses
+            to nothing (min-w-0 + truncate inside) rather than pushing them. */}
+        <div className="flex-1 flex justify-center min-w-0">
+          <OrgBadge />
+        </div>
+        <div className="flex items-center gap-3">
           <PersonaSwitcher />
           <UserMenu />
         </div>
@@ -318,6 +346,12 @@ function MainShell({ children }: { children: React.ReactNode }) {
 
         {/* Divider */}
         <div className="mx-5 mb-3" style={{ height: '1px', background: 'rgba(var(--sidebar-fg-rgb),0.06)' }} />
+
+        {/* Branch switcher — renders nothing at one branch, so a single-shop
+            merchant never sees it (§ Phase 5). */}
+        <div className="px-3 pb-3">
+          <ShopSwitcher />
+        </div>
 
         {/* Nav section label */}
         <div className="px-5 mb-2">
@@ -421,6 +455,12 @@ function MainShell({ children }: { children: React.ReactNode }) {
         <RouteGuard allowed={routeAllowed || !hydrated || !user} />
         <PersonaBanner />
         <div className={!isMobile && !sidebarOpen ? 'max-w-7xl mx-auto' : ''}>
+          {/* Renders nothing unless the view spans every branch, where the API
+              refuses writes — without it the disabled buttons look broken
+              rather than deliberate. */}
+          <div className="px-4 pt-4 sm:px-6">
+            <AllShopsBanner />
+          </div>
           {/* Suppress the page while the redirect above is in flight, so a
               forbidden page never flashes its (failing) queries. */}
           {routeAllowed || !hydrated || !user ? children : null}

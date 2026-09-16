@@ -59,6 +59,40 @@ export function toActiveEmploymentDto(
   };
 }
 
+export class OrganizationSummaryDto {
+  @ApiProperty({ example: 'uuid-v4' })
+  id: string;
+
+  @ApiProperty({ example: 'Amina Trading' })
+  name: string;
+
+  @ApiProperty({ nullable: true, example: 'A1234567B' })
+  taxId: string | null;
+
+  @ApiProperty({ nullable: true })
+  logoUrl: string | null;
+
+  @ApiProperty({ description: 'True when this account administers the business.' })
+  isOwner: boolean;
+}
+
+export class ShopSummaryDto {
+  @ApiProperty({ example: 'uuid-v4' })
+  id: string;
+
+  @ApiProperty({ example: 'Main Shop' })
+  name: string;
+
+  @ApiProperty({ nullable: true })
+  address: string | null;
+
+  @ApiProperty()
+  isDefault: boolean;
+
+  @ApiProperty({ description: 'Closed branch: readable forever, writable never.' })
+  isArchived: boolean;
+}
+
 export class UserPublicDto {
   @ApiProperty({ example: 'uuid-v4' })
   id: string;
@@ -96,6 +130,30 @@ export class UserPublicDto {
     description: 'Set when this user is currently an employee. The dashboard reads it to hide owner-only nav items and surface the "acting on behalf of" banner.',
   })
   activeEmployment: ActiveEmploymentDto | null;
+
+  @ApiProperty({
+    description:
+      'The business these books belong to — the employer\'s when acting for one. Labelled "Business" in both apps; the merchant never sees the word "organization".',
+    nullable: true,
+  })
+  organization: OrganizationSummaryDto | null;
+
+  @ApiProperty({
+    description:
+      'Every business this account administers. More than one only after accepting a transferred business — the dashboard shows a business switcher above the branch switcher when it has two.',
+    type: () => [OrganizationSummaryDto],
+  })
+  organizations: OrganizationSummaryDto[];
+
+  @ApiProperty({
+    description:
+      'Branches to offer in the switcher, and which one a request with no X-Shop-Id lands on. An employee gets exactly their own branch. Returned here so a client can paint the switcher on first load without a second round trip.',
+    type: () => [ShopSummaryDto],
+  })
+  shops: ShopSummaryDto[];
+
+  @ApiProperty({ nullable: true })
+  defaultShopId: string | null;
 }
 
 export class AuthResponseDto {

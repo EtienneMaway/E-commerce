@@ -14,6 +14,7 @@ import { ActorContext } from '../common/types/actor-context';
 import { actorCondToWhereValue, resolveActorFilter } from '../common/actor-filter';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ExpensePeriod, ListExpensesQueryDto } from './dto/list-expenses-query.dto';
+import { holderCond, readScope, writeScope } from '../common/shop-scope';
 
 export interface ExpenseListResult {
   data: Array<Expense & { amountUsd: string }>;
@@ -62,7 +63,7 @@ export class ExpensesService {
     // (response lost on a flaky link) is matched here rather than duplicated.
     if (dto.clientId) {
       const existing = await this.expenseRepo.findOne({
-        where: { ownerId, clientId: dto.clientId },
+        where: { ...readScope(ctx), clientId: dto.clientId },
       });
       if (existing) return existing;
     }
@@ -83,7 +84,7 @@ export class ExpensesService {
     // `amountOriginal × buyingRate`. We persist amountUsd as the System-Rate
     // value of that FC, so totalExpenses balances against totalCashReceived
     // (also booked at the System Rate).
-    const rateRow = await this.currencyService.getRate();
+    const rateRow = await this.currencyService.getRate(ctx.orgId);
     const systemRate = rateRow?.usdToFcRate
       ? new Decimal(rateRow.usdToFcRate)
       : null;
@@ -135,7 +136,10 @@ export class ExpensesService {
       }
     }
 
-    const position = await this.dashboardService.getCashPosition(ownerId);
+    // Per-branch cash position (§3.7). If this stayed owner-wide while stock and
+    // sales went per-branch, a merchant could spend branch B's takings against
+    // branch A's cap and the books would never say so.
+    const position = await this.dashboardService.getCashPosition(ctx);
     const availableProfit = new Decimal(position.availableProfitCash);
     const availableBusinessCash = new Decimal(position.availableBusinessCash);
 
@@ -151,7 +155,7 @@ export class ExpensesService {
     }
 
     const expense = this.expenseRepo.create({
-      ownerId,
+      ...writeScope(ctx),
       actorId,
       amount: amountOriginal.toFixed(4),
       currency: dto.currency,
@@ -166,7 +170,7 @@ export class ExpensesService {
 
   async list(ctx: ActorContext, query: ListExpensesQueryDto): Promise<ExpenseListResult> {
     const ownerId = ctx.effectiveOwnerId;
-    const where: FindOptionsWhere<Expense> = { ownerId };
+    const where: FindOptionsWhere<Expense> = { ...readScope(ctx) };
 
     const range = this.resolveDateRange(query);
     if (range.from && range.to) {
@@ -203,7 +207,7 @@ export class ExpensesService {
     // merchant would receive when exchanging that FC for USD — i.e. divided by
     // the Current Market Rate. USD-entered expenses simply display as the typed USD.
     // Falls back to the captured system rate when no Current Market Rate is configured.
-    const currentRate = await this.currencyService.getRate();
+    const currentRate = await this.currencyService.getRate(ctx.orgId);
     const buyingRate = currentRate?.sellingRate
       ? new Decimal(currentRate.sellingRate)
       : null;
@@ -269,7 +273,9 @@ export class ExpensesService {
     const soldAgg = await this.saleRepo
       .createQueryBuilder('s')
       .select('COALESCE(SUM(CAST(s.salePrice AS DECIMAL) * s.qtySold), 0)', 'revenue')
-      .where('s.ownerId = :ownerId', { ownerId })
+      // Sales on the employer's books (held by the employer) that this
+      // employee recorded.
+      .where(...holderCond('s', ctx))
       .andWhere('s.actorId = :actorId', { actorId: ctx.actorId })
       // A rejected sale never earned them allowance.
       .andWhere('s.rejected_at IS NULL')
@@ -277,11 +283,11 @@ export class ExpensesService {
       .getRawOne<{ revenue: string }>();
     const soldUsd = new Decimal(soldAgg?.revenue ?? 0);
 
-    const rateRow = await this.currencyService.getRate();
+    const rateRow = await this.currencyService.getRate(ctx.orgId);
     const fallbackRate = rateRow?.usdToFcRate ? new Decimal(rateRow.usdToFcRate) : null;
 
     const dayExpenses = await this.expenseRepo.find({
-      where: { ownerId, actorId: ctx.actorId, date: Between(from, to) },
+      where: { ...readScope(ctx), actorId: ctx.actorId, date: Between(from, to) },
     });
     let spentUsd = new Decimal(0);
     for (const e of dayExpenses) {
@@ -302,7 +308,7 @@ export class ExpensesService {
 
   async remove(ctx: ActorContext, id: string): Promise<void> {
     const ownerId = ctx.effectiveOwnerId;
-    const expense = await this.expenseRepo.findOne({ where: { id, ownerId } });
+    const expense = await this.expenseRepo.findOne({ where: { id, ...readScope(ctx) } });
     if (!expense) throw new NotFoundException('Expense not found');
     await this.expenseRepo.remove(expense);
   }

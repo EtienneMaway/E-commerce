@@ -26,6 +26,7 @@ import { StockMovementsService } from '../stock-movements/stock-movements.servic
 import { PricingService } from '../pricing/pricing.service';
 import { CurrencyService } from '../currency/currency.service';
 import { ActorContext } from '../common/types/actor-context';
+import { holderScope, readScope, requireShop } from '../common/shop-scope';
 
 @Injectable()
 export class ConsignmentsService {
@@ -58,15 +59,15 @@ export class ConsignmentsService {
    * sales.service.fetchSellableLots.
    */
   private stockWhere(
-    ownerId: string,
+    scope: { orgId: string; shopId?: string; ownerId?: string },
     key: { productName?: string; variantId?: string | null },
   ): Array<Record<string, unknown>> {
     const base = key.variantId
       ? { variantId: key.variantId }
       : { productName: ILike((key.productName ?? '').trim().toLowerCase()) };
     return [
-      { ownerId, ...base, source: InventorySource.SUPPLIER },
-      { ownerId, ...base, source: InventorySource.PERSONAL },
+      { ...scope, ...base, source: InventorySource.SUPPLIER },
+      { ...scope, ...base, source: InventorySource.PERSONAL },
     ];
   }
 
@@ -97,7 +98,7 @@ export class ConsignmentsService {
       const productName = (group?.name ?? dto_item.productName).trim().toLowerCase();
       const key = variant ? { variantId: variant.id } : { productName };
 
-      const available = await this.countAvailableStock(supplierId, key);
+      const available = await this.countAvailableStock(ctx, key);
       if (available < dto_item.quantity) {
         throw new BadRequestException(
           `Insufficient stock for "${productName}". Available: ${available}, requested: ${dto_item.quantity}`,
@@ -114,7 +115,7 @@ export class ConsignmentsService {
         standardPrice: variant ? variant.sellingPrice : undefined,
       });
 
-      const stockEntries = await this.getStockEntriesSorted(supplierId, key);
+      const stockEntries = await this.getStockEntriesSorted(ctx, key);
       const unitCost = stockEntries[0]?.unitCost ?? priceCheck.effectiveUnitPrice;
       const piecesPerCarton = variant
         ? variant.piecesPerCarton
@@ -139,7 +140,7 @@ export class ConsignmentsService {
     // Lock the FC/USD rate at give-time. Carried onto the recipient's
     // CONSIGNED_IN lot at confirm and every sale from it, so a mini employee's
     // agreement (what they owe) never shifts when the system rate later changes.
-    const rateRow = await this.currencyService.getRate();
+    const rateRow = await this.currencyService.getRate(ctx.orgId);
     const usdToFcRateSnapshot = rateRow?.usdToFcRate ?? null;
 
     // Optional team travelling with these goods. Pure record-keeping: names (and
@@ -152,6 +153,11 @@ export class ConsignmentsService {
 
     const request = this.requestRepo.create({
       supplierId,
+      // The giving branch. The receiving one stays null until the debtor
+      // confirms — they are the only ones who know which of their branches the
+      // goods are actually arriving at (§3.3, business rule 7).
+      supplierOrgId: ctx.orgId,
+      supplierShopId: requireShop(ctx),
       debtorId: dto.debtorUserId,
       status: ConsignmentStatus.PENDING,
       note: dto.note ?? null,
@@ -167,6 +173,9 @@ export class ConsignmentsService {
 
   async findIncoming(ctx: ActorContext): Promise<ConsignmentRequest[]> {
     const requests = await this.requestRepo.find({
+      // tenancy-exempt: an incoming consignment is addressed to a PERSON, and
+      // a PENDING one has no receiving branch yet — the debtor picks it when
+      // they confirm.
       where: { debtorId: ctx.effectiveOwnerId },
       relations: { supplier: true, items: { actor: true }, teamMembers: true },
       order: { createdAt: 'DESC' },
@@ -179,7 +188,10 @@ export class ConsignmentsService {
 
   async findOutgoing(ctx: ActorContext): Promise<ConsignmentRequest[]> {
     const requests = await this.requestRepo.find({
-      where: { supplierId: ctx.effectiveOwnerId },
+      where: {
+        supplierOrgId: ctx.orgId,
+        ...(ctx.shopId ? { supplierShopId: ctx.shopId } : {}),
+      },
       relations: { debtor: true, items: { actor: true }, teamMembers: true },
       order: { createdAt: 'DESC' },
     });
@@ -226,10 +238,19 @@ export class ConsignmentsService {
     return this.dataSource.transaction(async (manager) => {
       for (const item of request.items) {
         const stockEntries = await manager.find(InventoryEntry, {
-          where: this.stockWhere(request.supplierId, {
-            productName: item.productName,
-            variantId: item.variantId,
-          }),
+          where: this.stockWhere(
+            {
+              orgId: request.supplierOrgId!,
+              shopId: request.supplierShopId!,
+              // tenancy-exempt: supplierId names the PERSON whose shelf the
+              // goods leave — the confirming debtor is not that holder.
+              ownerId: request.supplierId,
+            },
+            {
+              productName: item.productName,
+              variantId: item.variantId,
+            },
+          ),
           order: { createdAt: 'ASC' },
         });
 
@@ -266,14 +287,32 @@ export class ConsignmentsService {
 
         const creditValue = new Decimal(item.agreedUnitPrice).mul(item.quantity).toFixed(4);
 
+        // Both halves of the balance now know each other's branch: the supplier
+        // pair came with the request, the debtor pair was just stamped on it.
+        const supplierSide = {
+          orgId: request.supplierOrgId!,
+          shopId: request.supplierShopId!,
+        };
+        const debtorSide = { orgId: ctx.orgId, shopId: requireShop(ctx) };
+
         let credit = await manager.findOne(DebtorCredit, {
-          where: { ownerId: request.supplierId, debtorUserId: request.debtorId },
+          where: {
+            // tenancy-exempt: the two PEOPLE either side of the balance.
+            ownerId: request.supplierId,
+            debtorUserId: request.debtorId,
+            ...supplierSide,
+            counterpartyOrgId: debtorSide.orgId,
+            counterpartyShopId: debtorSide.shopId,
+          },
         });
 
         if (!credit) {
           credit = manager.create(DebtorCredit, {
             ownerId: request.supplierId,
             debtorUserId: request.debtorId,
+            ...supplierSide,
+            counterpartyOrgId: debtorSide.orgId,
+            counterpartyShopId: debtorSide.shopId,
             totalCreditGiven: creditValue,
             totalReceived: '0.0000',
             outstandingBalance: creditValue,
@@ -285,12 +324,22 @@ export class ConsignmentsService {
         const savedCredit = await manager.save(DebtorCredit, credit);
 
         let debt = await manager.findOne(SupplierDebt, {
-          where: { ownerId: request.debtorId, supplierUserId: request.supplierId },
+          where: {
+            // tenancy-exempt: the two PEOPLE either side of the balance.
+            ownerId: request.debtorId,
+            supplierUserId: request.supplierId,
+            ...debtorSide,
+            counterpartyOrgId: supplierSide.orgId,
+            counterpartyShopId: supplierSide.shopId,
+          },
         });
         if (!debt) {
           debt = manager.create(SupplierDebt, {
             ownerId: request.debtorId,
             supplierUserId: request.supplierId,
+            ...debtorSide,
+            counterpartyOrgId: supplierSide.orgId,
+            counterpartyShopId: supplierSide.shopId,
             totalCreditReceived: creditValue,
             totalPaid: '0.0000',
             outstandingBalance: creditValue,
@@ -305,6 +354,7 @@ export class ConsignmentsService {
         // who triggered this on the supplier side via item.actorId.
         const supplierEntry = manager.create(InventoryEntry, {
           ownerId: request.supplierId,
+          ...supplierSide,
           source: InventorySource.CONSIGNED_OUT,
           productName: item.productName,
           groupId: item.groupId,
@@ -329,6 +379,7 @@ export class ConsignmentsService {
         // USD figures to FC at the give-time rate, not the live one.
         const debtorEntry = manager.create(InventoryEntry, {
           ownerId: request.debtorId,
+          ...debtorSide,
           source: InventorySource.CONSIGNED_IN,
           productName: item.productName,
           groupId: item.groupId,
@@ -388,19 +439,19 @@ export class ConsignmentsService {
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
   async countAvailableStock(
-    ownerId: string,
+    ctx: ActorContext,
     key: { productName?: string; variantId?: string | null },
   ): Promise<number> {
-    const entries = await this.entryRepo.find({ where: this.stockWhere(ownerId, key) });
+    const entries = await this.entryRepo.find({ where: this.stockWhere(holderScope(ctx), key) });
     return entries.reduce((sum, e) => sum + e.quantityRemaining, 0);
   }
 
   private async getStockEntriesSorted(
-    ownerId: string,
+    ctx: ActorContext,
     key: { productName?: string; variantId?: string | null },
   ): Promise<InventoryEntry[]> {
     const entries = await this.entryRepo.find({
-      where: this.stockWhere(ownerId, key),
+      where: this.stockWhere(holderScope(ctx), key),
       order: { createdAt: 'ASC' },
     });
     return [

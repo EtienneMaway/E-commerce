@@ -1,5 +1,9 @@
 export const QK = {
   me: ['auth', 'me'] as const,
+  shops: ['shops'] as const,
+  organization: ['organizations', 'me'] as const,
+  organizationOffers: ['organizations', 'offers'] as const,
+  ownershipHistory: ['organizations', 'me', 'history'] as const,
   exchangeRate: ['currency', 'rate'] as const,
   dashboard: ['dashboard', 'summary'] as const,
   cashPosition: ['dashboard', 'cash-position'] as const,
@@ -11,6 +15,7 @@ export const QK = {
   topProducts: (filters?: object) => ['sales', 'top-products', filters] as const,
   salesProfitSummary: (filters?: object) => ['sales', 'profit-summary', filters] as const,
   dashboardProfitSummary: (filters?: object) => ['dashboard', 'profit-summary', filters] as const,
+  dashboardByShop: (filters?: object) => ['dashboard', 'by-shop', filters] as const,
   suppliers: ['dashboard', 'suppliers'] as const,
   supplierDetail: (id: string) => ['dashboard', 'suppliers', id] as const,
   debtors: ['dashboard', 'debtors'] as const,

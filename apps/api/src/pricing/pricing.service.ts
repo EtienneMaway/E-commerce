@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import { ProductPrice } from '../entities';
 import { ActorContext } from '../common/types/actor-context';
+import { readScope, writeScope } from '../common/shop-scope';
 
 export interface PriceCheckResult {
   /** The price the action will actually be recorded at (after capping). */
@@ -30,12 +31,17 @@ export class PricingService {
 
   // ─── Standard-price lookup used by sales / consignments / external-give ───
 
+  /**
+   * The standard price at **this branch**. Prices are per-shop, so branch A can
+   * sell rice at one price and branch B at another — which is the whole reason
+   * `UQ_product_prices_owner_product` gains `shop_id` in migration 033.
+   */
   async getStandardPrice(
-    ownerId: string,
+    ctx: ActorContext,
     productName: string,
   ): Promise<string | null> {
     const row = await this.repo.findOne({
-      where: { ownerId, productName: productName.trim().toLowerCase() },
+      where: { ...readScope(ctx), productName: productName.trim().toLowerCase() },
     });
     return row ? row.unitPrice : null;
   }
@@ -67,10 +73,7 @@ export class PricingService {
     const standard =
       args.standardPrice !== undefined
         ? args.standardPrice
-        : await this.getStandardPrice(
-            args.ctx.effectiveOwnerId,
-            args.productName,
-          );
+        : await this.getStandardPrice(args.ctx, args.productName);
 
     // Owner action: no cap, no reason required.
     if (args.ctx.tier === 'OWNER') {
@@ -134,15 +137,15 @@ export class PricingService {
 
   // ─── CRUD (Phase 6) ──────────────────────────────────────────────────────
 
-  async list(ownerId: string): Promise<ProductPrice[]> {
+  async list(ctx: ActorContext): Promise<ProductPrice[]> {
     return this.repo.find({
-      where: { ownerId },
+      where: readScope(ctx),
       order: { productName: 'ASC' },
     });
   }
 
   async upsert(
-    ownerId: string,
+    ctx: ActorContext,
     productName: string,
     unitPrice: string,
   ): Promise<ProductPrice> {
@@ -151,14 +154,14 @@ export class PricingService {
       throw new ConflictException('Unit price must be greater than zero');
     }
     const existing = await this.repo.findOne({
-      where: { ownerId, productName: normalized },
+      where: { ...readScope(ctx), productName: normalized },
     });
     if (existing) {
       existing.unitPrice = new Decimal(unitPrice).toFixed(4);
       return this.repo.save(existing);
     }
     const created = this.repo.create({
-      ownerId,
+      ...writeScope(ctx),
       productName: normalized,
       unitPrice: new Decimal(unitPrice).toFixed(4),
     });
@@ -166,11 +169,11 @@ export class PricingService {
   }
 
   async update(
-    ownerId: string,
+    ctx: ActorContext,
     id: string,
     unitPrice: string,
   ): Promise<ProductPrice> {
-    const row = await this.repo.findOne({ where: { id, ownerId } });
+    const row = await this.repo.findOne({ where: { id, ...readScope(ctx) } });
     if (!row) throw new NotFoundException('Product price not found');
     if (new Decimal(unitPrice).lte(0)) {
       throw new ConflictException('Unit price must be greater than zero');
@@ -179,8 +182,8 @@ export class PricingService {
     return this.repo.save(row);
   }
 
-  async remove(ownerId: string, id: string): Promise<void> {
-    const row = await this.repo.findOne({ where: { id, ownerId } });
+  async remove(ctx: ActorContext, id: string): Promise<void> {
+    const row = await this.repo.findOne({ where: { id, ...readScope(ctx) } });
     if (!row) throw new NotFoundException('Product price not found');
     await this.repo.remove(row);
   }

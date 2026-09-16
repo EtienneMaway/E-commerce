@@ -13,6 +13,7 @@ import { NoAccessNotice } from '../../components/NoAccessNotice';
 import { StatCard } from '../../components/ui/StatCard';
 import { Card } from '../../components/ui/Card';
 import { PersonaSwitcher } from '../../components/ui/PersonaSwitcher';
+import { ShopSwitcher } from '../../components/ui/ShopSwitcher';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { UpdateBanner } from '../../components/ui/UpdateNotice';
 import { MiniEmployeeHome } from '../../components/MiniEmployeeHome';
@@ -282,6 +283,8 @@ export default function DashboardScreen() {
                 since PersonaBanner's "switch to self" link is a one-way door for
                 them otherwise: nothing else can flip them back to Employer mode. */}
             <PersonaSwitcher />
+            {/* Owners at a multi-branch business only — renders nothing otherwise. */}
+            <ShopSwitcher />
           </View>
         </View>
         <View className="flex-row items-center gap-3">

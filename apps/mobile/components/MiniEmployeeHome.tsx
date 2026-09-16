@@ -13,6 +13,7 @@ import { QK } from '../lib/query-keys';
 import { useAuthStore } from '../store/auth.store';
 import { getErrorMessage } from '../lib/utils';
 import { useT } from '../lib/i18n';
+import { personName } from '../lib/person';
 import { usePermissions } from '../lib/permissions';
 import { ReceiveConsignmentModal } from './forms/ReceiveConsignmentModal';
 import { HandoverModal } from './forms/HandoverModal';
@@ -101,7 +102,7 @@ export function MiniEmployeeHome() {
       <View className="bg-primary/10 border border-primary/30 rounded-2xl px-4 py-4 mb-4">
         <Text className="text-text font-bold text-base">{t.miniEmployee.inviteTitle}</Text>
         <Text className="text-muted text-sm mt-1">
-          {t.miniEmployee.inviteFrom(pendingInvite.employer?.username ?? '—')}
+          {t.miniEmployee.inviteFrom(personName(pendingInvite.employer, t.common.closedAccount))}
         </Text>
         <View className="flex-row gap-2 mt-3">
           <Pressable

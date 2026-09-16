@@ -7,8 +7,7 @@ import {
   IsString,
   MaxLength,
   Min,
-  MinLength,
-} from 'class-validator';
+  MinLength, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateExternalEmployeeDto {
@@ -36,4 +35,12 @@ export class CreateExternalEmployeeDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   monthlyPay?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Branch to hire into. Defaults to the branch making the request — which is the only branch a single-shop merchant has.',
+  })
+  @IsOptional()
+  @IsUUID()
+  readonly shopId?: string;
 }

@@ -47,6 +47,25 @@ export class Employment {
   @Column({ name: 'employee_id', type: 'uuid' })
   employeeId: string;
 
+  /**
+   * Tenancy: the business and the branch these books belong to
+   * (MULTI_SHOP_PLAN.md §3.2). Nullable until migration 033 at the end of
+   * Phase 4. `employer_id` stays beside it — that is a person, not a tenancy key.
+   */
+  @Column({ name: 'org_id', type: 'uuid' })
+  orgId: string;
+
+  @Column({ name: 'shop_id', type: 'uuid' })
+  shopId: string;
+
+  /**
+   * Branch the employer has proposed moving this employee to, until the
+   * employee accepts (§3.11.3). The employment stays ACTIVE at `shopId`
+   * meanwhile, so there is never a window where they can do nothing.
+   */
+  @Column({ name: 'pending_shop_id', type: 'uuid', nullable: true })
+  pendingShopId: string | null;
+
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'employee_id' })
   employee: User;

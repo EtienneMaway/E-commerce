@@ -17,6 +17,14 @@ import {
   StockMovementReason,
 } from '../entities';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
+import type { ActorContext } from '../common/types/actor-context';
+import {
+  holderColumnsCond,
+  holderScope,
+  readScope,
+  requireShop,
+  writeScope,
+} from '../common/shop-scope';
 import { CreateProductGroupDto } from './dto/create-product-group.dto';
 import { UpdateProductGroupDto } from './dto/update-product-group.dto';
 import { CreateVariantDto } from './dto/create-variant.dto';
@@ -109,7 +117,7 @@ export class ProductGroupsService {
   // --------------------------------------------------------------- create
 
   async createGroup(
-    ownerId: string,
+    ctx: ActorContext,
     dto: CreateProductGroupDto,
   ): Promise<ProductGroup> {
     const name = dto.name.trim().toLowerCase();
@@ -122,10 +130,10 @@ export class ProductGroupsService {
     this.assertCartonPricing(dto.cartonSellingPrice, dto.cartonBuyingPrice);
 
     return this.dataSource.transaction(async (manager) => {
-      await this.assertNameFree(manager, ownerId, name);
+      await this.assertNameFree(manager, ctx, name);
 
       const group = manager.create(ProductGroup, {
-        ownerId,
+        ...writeScope(ctx),
         name,
         category: dto.category ?? null,
         cartonSellingPrice: dto.cartonSellingPrice ?? null,
@@ -137,7 +145,7 @@ export class ProductGroupsService {
       const variants = dto.variants.map((v, i) =>
         manager.create(ProductVariant, {
           groupId: savedGroup.id,
-          ownerId,
+          ...writeScope(ctx),
           label: v.label.trim().toLowerCase(),
           // Cost is optional — normally derived from the carton buying price.
           unitCost: v.unitCost != null ? new Decimal(v.unitCost).toFixed(4) : null,
@@ -154,9 +162,9 @@ export class ProductGroupsService {
 
   // ----------------------------------------------------------------- read
 
-  async listGroups(ownerId: string): Promise<GroupWithAvailability[]> {
+  async listGroups(ctx: ActorContext): Promise<GroupWithAvailability[]> {
     const groups = await this.groupRepo.find({
-      where: { ownerId, archived: false },
+      where: { ...readScope(ctx), archived: false },
       relations: { variants: true },
       order: { createdAt: 'DESC' },
     });
@@ -165,31 +173,31 @@ export class ProductGroupsService {
     const variantIds = groups.flatMap((g) =>
       (g.variants ?? []).map((v) => v.id),
     );
-    const availability = await this.availabilityByVariant(ownerId, variantIds);
+    const availability = await this.availabilityByVariant(ctx, variantIds);
 
     return groups.map((g) => this.toSummary(g, availability));
   }
 
-  async getGroup(ownerId: string, id: string): Promise<GroupWithAvailability> {
+  async getGroup(ctx: ActorContext, id: string): Promise<GroupWithAvailability> {
     const group = await this.groupRepo.findOne({
-      where: { id, ownerId },
+      where: { id, ...readScope(ctx) },
       relations: { variants: true },
     });
     if (!group) throw new NotFoundException('Product group not found');
 
     const variantIds = (group.variants ?? []).map((v) => v.id);
-    const availability = await this.availabilityByVariant(ownerId, variantIds);
+    const availability = await this.availabilityByVariant(ctx, variantIds);
     return this.toSummary(group, availability);
   }
 
   // --------------------------------------------------------------- update
 
   async updateGroup(
-    ownerId: string,
+    ctx: ActorContext,
     id: string,
     dto: UpdateProductGroupDto,
   ): Promise<ProductGroup> {
-    const group = await this.groupRepo.findOne({ where: { id, ownerId } });
+    const group = await this.groupRepo.findOne({ where: { id, ...readScope(ctx) } });
     if (!group) throw new NotFoundException('Product group not found');
 
     if (dto.category !== undefined) group.category = dto.category;
@@ -212,8 +220,8 @@ export class ProductGroupsService {
    * Mirrors inventory.renameProduct: blocked while active consigned stock for the
    * group exists (names must stay in sync with the mini's records).
    */
-  async renameGroup(ownerId: string, id: string, newNameRaw: string): Promise<RenameGroupResult> {
-    const group = await this.groupRepo.findOne({ where: { id, ownerId }, relations: { variants: true } });
+  async renameGroup(ctx: ActorContext, id: string, newNameRaw: string): Promise<RenameGroupResult> {
+    const group = await this.groupRepo.findOne({ where: { id, ...readScope(ctx) }, relations: { variants: true } });
     if (!group) throw new NotFoundException('Product group not found');
 
     const newName = newNameRaw.trim().toLowerCase();
@@ -239,7 +247,7 @@ export class ProductGroupsService {
       }
 
       const groupClash = await manager.findOne(ProductGroup, {
-        where: { ownerId, name: ILike(newName) },
+        where: { ...readScope(ctx), name: ILike(newName) },
       });
       if (groupClash && groupClash.id !== id) {
         throw new ConflictException(
@@ -247,7 +255,7 @@ export class ProductGroupsService {
         );
       }
       const entryClash = await manager.findOne(InventoryEntry, {
-        where: { ownerId, productName: ILike(newName), variantId: IsNull() },
+        where: { ...holderScope(ctx), productName: ILike(newName), variantId: IsNull() },
       });
       if (entryClash) {
         throw new ConflictException(
@@ -262,7 +270,7 @@ export class ProductGroupsService {
         .createQueryBuilder()
         .update(InventoryEntry)
         .set({ productName: newName })
-        .where('owner_id = :ownerId', { ownerId })
+        .where(...holderColumnsCond(ctx))
         .andWhere('group_id = :id', { id })
         .andWhere('source IN (:...sources)', {
           sources: [InventorySource.PERSONAL, InventorySource.SUPPLIER],
@@ -276,7 +284,8 @@ export class ProductGroupsService {
           .createQueryBuilder()
           .update(SaleTransaction)
           .set({ productName: newName })
-          .where('owner_id = :ownerId', { ownerId })
+          // Own sales only — a mini's settled sales keep the name they sold under.
+          .where(...holderColumnsCond(ctx))
           .andWhere('variant_id IN (:...variantIds)', { variantIds })
           .execute();
         salesUpdated = salesResult.affected ?? 0;
@@ -294,12 +303,12 @@ export class ProductGroupsService {
   // -------------------------------------------------------------- variants
 
   async addVariant(
-    ownerId: string,
+    ctx: ActorContext,
     groupId: string,
     dto: CreateVariantDto,
   ): Promise<ProductVariant> {
     const group = await this.groupRepo.findOne({
-      where: { id: groupId, ownerId },
+      where: { id: groupId, ...readScope(ctx) },
     });
     if (!group) throw new NotFoundException('Product group not found');
 
@@ -314,7 +323,7 @@ export class ProductGroupsService {
 
     const variant = this.variantRepo.create({
       groupId,
-      ownerId,
+      ...writeScope(ctx),
       label,
       unitCost: dto.unitCost != null ? new Decimal(dto.unitCost).toFixed(4) : null,
       sellingPrice: new Decimal(dto.sellingPrice).toFixed(4),
@@ -326,13 +335,13 @@ export class ProductGroupsService {
   }
 
   async updateVariant(
-    ownerId: string,
+    ctx: ActorContext,
     groupId: string,
     variantId: string,
     dto: UpdateVariantDto,
   ): Promise<ProductVariant> {
     const variant = await this.variantRepo.findOne({
-      where: { id: variantId, groupId, ownerId },
+      where: { id: variantId, groupId, ...readScope(ctx) },
     });
     if (!variant) throw new NotFoundException('Size not found');
 
@@ -368,7 +377,7 @@ export class ProductGroupsService {
         .createQueryBuilder()
         .update(InventoryEntry)
         .set({ sellingPrice: new Decimal(dto.sellingPrice).toFixed(4) })
-        .where('owner_id = :ownerId', { ownerId })
+        .where(...holderColumnsCond(ctx))
         .andWhere('variant_id = :variantId', { variantId })
         .andWhere('source IN (:...sources)', {
           sources: [InventorySource.PERSONAL, InventorySource.SUPPLIER],
@@ -380,16 +389,16 @@ export class ProductGroupsService {
   }
 
   async archiveVariant(
-    ownerId: string,
+    ctx: ActorContext,
     groupId: string,
     variantId: string,
   ): Promise<ProductVariant> {
     const variant = await this.variantRepo.findOne({
-      where: { id: variantId, groupId, ownerId },
+      where: { id: variantId, groupId, ...readScope(ctx) },
     });
     if (!variant) throw new NotFoundException('Size not found');
 
-    const availability = await this.availabilityByVariant(ownerId, [variantId]);
+    const availability = await this.availabilityByVariant(ctx, [variantId]);
     const available = availability.get(variantId) ?? 0;
     if (available > 0) {
       throw new BadRequestException(
@@ -408,12 +417,12 @@ export class ProductGroupsService {
    * existing PERSONAL lot per (owner, variant), mirroring inventory.addPersonal.
    */
   async addStock(
-    ownerId: string,
+    ctx: ActorContext,
     groupId: string,
     dto: AddGroupStockDto,
   ): Promise<InventoryEntry[]> {
     const group = await this.groupRepo.findOne({
-      where: { id: groupId, ownerId },
+      where: { id: groupId, ...readScope(ctx) },
       relations: { variants: true },
     });
     if (!group) throw new NotFoundException('Product group not found');
@@ -443,7 +452,7 @@ export class ProductGroupsService {
 
         const existing = await manager.findOne(InventoryEntry, {
           where: {
-            ownerId,
+            ...holderScope(ctx),
             source: InventorySource.PERSONAL,
             variantId: variant.id,
           },
@@ -462,7 +471,7 @@ export class ProductGroupsService {
         } else {
           qtyBefore = 0;
           const entry = manager.create(InventoryEntry, {
-            ownerId,
+            ...writeScope(ctx),
             source: InventorySource.PERSONAL,
             productName: group.name,
             unitCost,
@@ -477,7 +486,7 @@ export class ProductGroupsService {
         }
 
         await this.stockMovements.record(manager, {
-          ownerId,
+          ownerId: ctx.effectiveOwnerId,
           entry: saved,
           reason: StockMovementReason.PURCHASE,
           qty: item.quantity,
@@ -494,7 +503,7 @@ export class ProductGroupsService {
 
   /** Sellable pieces (PERSONAL + SUPPLIER + CONSIGNED_IN) per variant id. */
   private async availabilityByVariant(
-    ownerId: string,
+    ctx: ActorContext,
     variantIds: string[],
   ): Promise<Map<string, number>> {
     const out = new Map<string, number>();
@@ -502,7 +511,7 @@ export class ProductGroupsService {
 
     const rows = await this.entryRepo.find({
       where: {
-        ownerId,
+        ...holderScope(ctx),
         variantId: In(variantIds),
         source: In([
           InventorySource.PERSONAL,
@@ -568,11 +577,11 @@ export class ProductGroupsService {
    */
   private async assertNameFree(
     manager: EntityManager,
-    ownerId: string,
+    ctx: ActorContext,
     name: string,
   ): Promise<void> {
     const groupClash = await manager.findOne(ProductGroup, {
-      where: { ownerId, name: ILike(name) },
+      where: { ...readScope(ctx), name: ILike(name) },
     });
     if (groupClash) {
       throw new ConflictException(
@@ -580,7 +589,7 @@ export class ProductGroupsService {
       );
     }
     const entryClash = await manager.findOne(InventoryEntry, {
-      where: { ownerId, productName: ILike(name), variantId: IsNull() },
+      where: { ...holderScope(ctx), productName: ILike(name), variantId: IsNull() },
     });
     if (entryClash) {
       throw new ConflictException(

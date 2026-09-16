@@ -1,4 +1,7 @@
 export { User } from './user.entity';
+export { Organization } from './organization.entity';
+export { Shop } from './shop.entity';
+export { OrganizationOwnershipHistory } from './organization-ownership-history.entity';
 export { InventoryEntry, InventorySource } from './inventory-entry.entity';
 export { SupplierDebt } from './supplier-debt.entity';
 export { DebtorCredit } from './debtor-credit.entity';

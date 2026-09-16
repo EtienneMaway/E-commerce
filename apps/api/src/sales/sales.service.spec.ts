@@ -3,15 +3,16 @@ import Decimal from 'decimal.js';
 import { SalesService, allocateCartonUnitPrices } from './sales.service';
 import { InventoryEntry, InventorySource, SaleTransaction } from '../entities';
 import type { ActorContext } from '../common/types/actor-context';
+import { testCtx } from '../common/testing/actor-context.fixture';
 
 const OWNER = 'owner-1';
 
-const ownerCtx: ActorContext = {
+const ownerCtx: ActorContext = testCtx({
   actorId: OWNER,
   effectiveOwnerId: OWNER,
   tier: 'OWNER',
   employment: null,
-} as unknown as ActorContext;
+});
 
 describe('allocateCartonUnitPrices', () => {
   it('splits pro-rata by standalone value and sums back to the carton price', () => {
@@ -40,12 +41,12 @@ describe('allocateCartonUnitPrices', () => {
 });
 
 describe('SalesService.recordSale — whole-carton sale', () => {
-  const miniCtx: ActorContext = {
+  const miniCtx: ActorContext = testCtx({
     actorId: 'mini-3',
     effectiveOwnerId: 'mini-3',
     tier: 'MINI_EMPLOYEE',
-    employment: { employerId: OWNER },
-  } as unknown as ActorContext;
+    employment: { employerId: OWNER } as ActorContext['employment'],
+  });
 
   interface Lot extends Partial<InventoryEntry> {
     id: string;
@@ -402,12 +403,12 @@ describe('SalesService.recordSale — quantity discount capture (single sale)', 
  */
 describe('SalesService.recordSale — price guard floor (mini vs owner)', () => {
   const MINI = 'mini-2';
-  const miniCtx: ActorContext = {
+  const miniCtx: ActorContext = testCtx({
     actorId: MINI,
     effectiveOwnerId: MINI,
     tier: 'MINI_EMPLOYEE',
-    employment: { employerId: 'owner-1' },
-  } as unknown as ActorContext;
+    employment: { employerId: 'owner-1' } as ActorContext['employment'],
+  });
 
   function build(
     lot: Partial<InventoryEntry> & { source: InventorySource },
@@ -572,12 +573,12 @@ describe('SalesService.recordSale — price guard floor (mini vs owner)', () => 
 describe('SalesService.recordSale — mini blocked while a handover is pending', () => {
   const MINI = 'mini-1';
 
-  const miniCtx: ActorContext = {
+  const miniCtx: ActorContext = testCtx({
     actorId: MINI,
     effectiveOwnerId: MINI,
     tier: 'MINI_EMPLOYEE',
-    employment: { employerId: 'owner-1' },
-  } as unknown as ActorContext;
+    employment: { employerId: 'owner-1' } as ActorContext['employment'],
+  });
 
   function build(openHandover: unknown) {
     const settlementRepo = { findOne: jest.fn(async () => openHandover) };

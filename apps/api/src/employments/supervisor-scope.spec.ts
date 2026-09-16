@@ -2,6 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { EmployeeRole, Employment, EmploymentStatus, EmploymentTier, User } from '../entities';
 import { EmploymentsService } from './employments.service';
+import { ShopContextService } from '../shops/shop-context.service';
 import { EmploymentFilterDto } from './dto/employment-filter.dto';
 import type { ActorContext } from '../common/types/actor-context';
 import { resolveGrantedServices } from '../common/services/service-catalog';
@@ -17,6 +18,13 @@ function ctxFor(services: string[], tier: ActorContext['tier'] = 'FULL_EMPLOYEE'
     tier,
     services: resolveGrantedServices(services, tier),
     employment: null,
+    // Tenancy (MULTI_SHOP_PLAN.md §3.5). Phase 2 populates these on every
+    // request; no service reads them until Phase 4.
+    orgId: 'org-1',
+    shopId: 'shop-1',
+    visibleShopIds: ['shop-1'],
+    shopScope: 'one' as const,
+    shopArchived: false,
   };
 }
 
@@ -50,6 +58,8 @@ function build(rows: Employment[], one?: Employment) {
     repo,
     {} as unknown as Repository<EmployeeRole>,
     {} as unknown as Repository<User>,
+    // Only used on the user-creation paths, which this suite does not exercise.
+    {} as unknown as ShopContextService,
   );
   return { service, qb };
 }

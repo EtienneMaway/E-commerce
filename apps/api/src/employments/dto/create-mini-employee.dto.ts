@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength, MinLength, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateMiniEmployeeDto {
@@ -13,4 +13,12 @@ export class CreateMiniEmployeeDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Branch to hire into. Defaults to the branch making the request — which is the only branch a single-shop merchant has.',
+  })
+  @IsOptional()
+  @IsUUID()
+  readonly shopId?: string;
 }

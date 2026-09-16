@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AppState } from 'react-native';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useUpdates } from 'expo-updates';
 import { appVersionApi, type AppVersionInfo } from '../lib/api';
 import { QK } from '../lib/query-keys';
 import { useLocaleStore } from '../store/locale.store';
+import { useOfflineStore } from '../store/offline.store';
 import {
   INSTALLED_BUILD,
   INSTALLED_VERSION,
@@ -68,6 +68,16 @@ export interface AppUpdate {
  */
 export function useAppUpdate(): AppUpdate {
   const locale = useLocaleStore((s) => s.locale);
+  // Restarting into a new bundle is safe for the queue itself — it is persisted
+  // to AsyncStorage and every sale carries a clientSaleId, so nothing is lost or
+  // double-written. It is still the wrong moment to ask: the merchant would be
+  // pulled out of the app mid-sync, watching a progress bar disappear. The
+  // prompt waits until the books are settled.
+  const pendingWork = useOfflineStore(
+    (s) =>
+      s.pendingSales.length + s.pendingExpenses.length + s.pendingRejections.length > 0 ||
+      s.syncStatus === 'syncing',
+  );
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [otaReady, setOtaReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -120,7 +130,7 @@ export function useAppUpdate(): AppUpdate {
   const latestVersion = data?.latestVersion ?? null;
   const required = data?.updateRequired ?? false;
   const storeAvailable = (data?.updateAvailable ?? false) && !required;
-  const otaPending = isUpdatePending || otaReady;
+  const otaPending = (isUpdatePending || otaReady) && !pendingWork;
 
   const kind: UpdateKind = required
     ? 'store'

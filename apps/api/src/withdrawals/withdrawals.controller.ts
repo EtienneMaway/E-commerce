@@ -42,7 +42,7 @@ export class WithdrawalsController {
   })
   @ApiResponse({ status: 200, description: 'AvailableWithdrawal snapshot' })
   getAvailable(@CurrentActorContext() ctx: ActorContext) {
-    return this.service.getAvailable(ctx.effectiveOwnerId);
+    return this.service.getAvailable(ctx);
   }
 
   @Get()
@@ -50,7 +50,7 @@ export class WithdrawalsController {
   @ApiOperation({ summary: 'List withdrawal history (most recent first, paginated)' })
   @ApiResponse({ status: 200, description: '{ data, pagination }' })
   list(@CurrentActorContext() ctx: ActorContext, @Query() query: ListWithdrawalsQueryDto) {
-    return this.service.list(ctx.effectiveOwnerId, query.page, query.limit);
+    return this.service.list(ctx, query.page, query.limit);
   }
 
   @Post()
@@ -64,7 +64,7 @@ export class WithdrawalsController {
   @ApiResponse({ status: 201, description: 'Withdrawal recorded' })
   @ApiResponse({ status: 400, description: 'Amount exceeds available cash' })
   create(@CurrentActorContext() ctx: ActorContext, @Body() dto: CreateWithdrawalDto) {
-    return this.service.create(ctx.effectiveOwnerId, dto);
+    return this.service.create(ctx, dto);
   }
 
   @Delete(':id')
@@ -79,6 +79,6 @@ export class WithdrawalsController {
   @ApiResponse({ status: 204, description: 'Withdrawal deleted' })
   @ApiResponse({ status: 403, description: 'Not the most recent withdrawal' })
   remove(@CurrentActorContext() ctx: ActorContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.remove(ctx.effectiveOwnerId, id);
+    return this.service.remove(ctx, id);
   }
 }

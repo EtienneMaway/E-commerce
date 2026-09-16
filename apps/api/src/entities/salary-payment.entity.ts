@@ -42,6 +42,17 @@ export class SalaryPayment {
   @Column({ name: 'employment_id', type: 'uuid' })
   employmentId: string;
 
+  /**
+   * Tenancy: the business and the branch these books belong to
+   * (MULTI_SHOP_PLAN.md §3.2). Nullable until migration 033 at the end of
+   * Phase 4. `employer_id` stays beside it — that is a person, not a tenancy key.
+   */
+  @Column({ name: 'org_id', type: 'uuid' })
+  orgId: string;
+
+  @Column({ name: 'shop_id', type: 'uuid' })
+  shopId: string;
+
   @ManyToOne(() => Employment, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'employment_id' })
   employment: Employment;

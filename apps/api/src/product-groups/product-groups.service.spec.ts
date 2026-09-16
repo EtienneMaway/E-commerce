@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { testCtx } from '../common/testing/actor-context.fixture';
 import { ProductGroupsService } from './product-groups.service';
 import { InventoryEntry, InventorySource, ProductGroup, SaleTransaction } from '../entities';
 
@@ -9,6 +10,7 @@ import { InventoryEntry, InventorySource, ProductGroup, SaleTransaction } from '
  */
 describe('ProductGroupsService', () => {
   const OWNER = 'owner-1';
+  const CTX = testCtx({ effectiveOwnerId: OWNER });
 
   function makeService(overrides?: {
     groupRepo?: Record<string, unknown>;
@@ -43,7 +45,7 @@ describe('ProductGroupsService', () => {
     it('computes cartonsAvailable as the min complete-set count across sizes', async () => {
       const group = {
         id: 'g1',
-        ownerId: OWNER,
+      orgId: 'org-1',
         name: 'casserole',
         category: 'kitchen',
         cartonSellingPrice: '220.0000',
@@ -101,7 +103,7 @@ describe('ProductGroupsService', () => {
       const groupRepo = { findOne: jest.fn(async () => group) };
       const { service } = makeService({ groupRepo, entryRepo });
 
-      const result = await service.getGroup(OWNER, 'g1');
+      const result = await service.getGroup(CTX, 'g1');
 
       expect(result.cartonsAvailable).toBe(2);
       expect(result.totalPieces).toBe(145);
@@ -111,7 +113,7 @@ describe('ProductGroupsService', () => {
     it('reports 0 cartons when any gating size is fully depleted', async () => {
       const group = {
         id: 'g1',
-        ownerId: OWNER,
+      orgId: 'org-1',
         name: 'casserole',
         category: null,
         cartonSellingPrice: '220.0000',
@@ -150,7 +152,7 @@ describe('ProductGroupsService', () => {
       const groupRepo = { findOne: jest.fn(async () => group) };
       const { service } = makeService({ groupRepo, entryRepo });
 
-      const result = await service.getGroup(OWNER, 'g1');
+      const result = await service.getGroup(CTX, 'g1');
       expect(result.cartonsAvailable).toBe(0);
     });
   });
@@ -194,7 +196,7 @@ describe('ProductGroupsService', () => {
         ],
       };
       await expect(
-        service.createGroup(OWNER, dto as never),
+        service.createGroup(CTX, dto as never),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -208,7 +210,7 @@ describe('ProductGroupsService', () => {
       };
       const { service } = makeService({ manager });
       await expect(
-        service.createGroup(OWNER, baseDto as never),
+        service.createGroup(CTX, baseDto as never),
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
@@ -222,7 +224,7 @@ describe('ProductGroupsService', () => {
       };
       const { service } = makeService({ manager });
       await expect(
-        service.createGroup(OWNER, baseDto as never),
+        service.createGroup(CTX, baseDto as never),
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
@@ -242,11 +244,12 @@ describe('ProductGroupsService', () => {
         }),
       };
       const { service } = makeService({ manager });
-      const group = await service.createGroup(OWNER, baseDto as never);
+      const group = await service.createGroup(CTX, baseDto as never);
 
       expect(group.name).toBe('casserole');
       expect(group.variants.map((v) => v.label)).toEqual(['small', 'large']);
-      expect(group.variants.every((v) => v.ownerId === OWNER)).toBe(true);
+      // Variants inherit the branch from the context that created the group.
+      expect(group.variants.every((v) => v.shopId === 'shop-1')).toBe(true);
     });
   });
 
@@ -285,7 +288,7 @@ describe('ProductGroupsService', () => {
     // would leak "cocotte" into later tests and trip the no-op early return.
     const makeGroup = () => ({
       id: 'g1',
-      ownerId: OWNER,
+      orgId: 'org-1',
       name: 'casserole',
       variants: [{ id: 'v-s' }, { id: 'v-l' }],
     });
@@ -295,7 +298,7 @@ describe('ProductGroupsService', () => {
       const groupRepo = { findOne: jest.fn(async () => makeGroup()) };
       const { service } = makeService({ groupRepo, manager });
 
-      const result = await service.renameGroup(OWNER, 'g1', 'Cocotte');
+      const result = await service.renameGroup(CTX, 'g1', 'Cocotte');
       expect(result).toEqual({ oldName: 'casserole', newName: 'cocotte', entriesUpdated: 2, salesUpdated: 7 });
     });
 
@@ -303,14 +306,14 @@ describe('ProductGroupsService', () => {
       const manager = renameManager({ count: 3 });
       const groupRepo = { findOne: jest.fn(async () => makeGroup()) };
       const { service } = makeService({ groupRepo, manager });
-      await expect(service.renameGroup(OWNER, 'g1', 'cocotte')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.renameGroup(CTX, 'g1', 'cocotte')).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('rejects a name already used by another product', async () => {
       const manager = renameManager({ count: 0, groupClash: { id: 'other' } });
       const groupRepo = { findOne: jest.fn(async () => makeGroup()) };
       const { service } = makeService({ groupRepo, manager });
-      await expect(service.renameGroup(OWNER, 'g1', 'cocotte')).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.renameGroup(CTX, 'g1', 'cocotte')).rejects.toBeInstanceOf(ConflictException);
     });
   });
 
@@ -318,7 +321,7 @@ describe('ProductGroupsService', () => {
     it('rejects when the carton selling price is not above the buying price', async () => {
       const { service } = makeService();
       await expect(
-        service.createGroup(OWNER, {
+        service.createGroup(CTX, {
           name: 'casserole',
           cartonSellingPrice: '8.0000',
           cartonBuyingPrice: '9.0000',
@@ -330,7 +333,7 @@ describe('ProductGroupsService', () => {
     it('derives each size cost from the carton buying price when size cost is null', async () => {
       const group = {
         id: 'g1',
-        ownerId: OWNER,
+      orgId: 'org-1',
         name: 'casserole',
         category: null,
         cartonBuyingPrice: '4.5000',
@@ -352,7 +355,7 @@ describe('ProductGroupsService', () => {
       const stockMovements = { record: jest.fn(async () => ({})) };
       const { service } = makeService({ groupRepo, manager, stockMovements });
 
-      await service.addStock(OWNER, 'g1', {
+      await service.addStock(CTX, 'g1', {
         items: [
           { variantId: 'v-s', quantity: 5 },
           { variantId: 'v-l', quantity: 5 },
@@ -369,7 +372,7 @@ describe('ProductGroupsService', () => {
     it('tops up an existing PERSONAL lot and tags new lots with group/variant', async () => {
       const group = {
         id: 'g1',
-        ownerId: OWNER,
+      orgId: 'org-1',
         name: 'casserole',
         category: 'kitchen',
         variants: [
@@ -391,7 +394,7 @@ describe('ProductGroupsService', () => {
       };
       const existingSmall = {
         id: 'e-s',
-        ownerId: OWNER,
+      orgId: 'org-1',
         source: InventorySource.PERSONAL,
         variantId: 'v-s',
         quantityOriginal: 10,
@@ -426,7 +429,7 @@ describe('ProductGroupsService', () => {
           },
         ],
       };
-      await service.addStock(OWNER, 'g1', dto as never);
+      await service.addStock(CTX, 'g1', dto as never);
 
       // small topped up 10 → 15
       expect(existingSmall.quantityRemaining).toBe(15);
@@ -447,7 +450,7 @@ describe('ProductGroupsService', () => {
     it('rejects an item whose variant is not in the group', async () => {
       const group = {
         id: 'g1',
-        ownerId: OWNER,
+      orgId: 'org-1',
         name: 'casserole',
         category: null,
         variants: [{ id: 'v-s' }],
@@ -455,7 +458,7 @@ describe('ProductGroupsService', () => {
       const groupRepo = { findOne: jest.fn(async () => group) };
       const { service } = makeService({ groupRepo });
       await expect(
-        service.addStock(OWNER, 'g1', {
+        service.addStock(CTX, 'g1', {
           items: [{ variantId: 'nope', quantity: 5 }],
         } as never),
       ).rejects.toBeInstanceOf(BadRequestException);

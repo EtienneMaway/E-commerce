@@ -23,26 +23,40 @@ export interface InboxSignal {
 
 /**
  * Per-channel source: the tables whose `updated_at` constitutes an event for
- * that channel, and the columns naming the users who care about it.
+ * that channel, and one condition per party who cares about it. Each condition
+ * binds the user id as `$1`.
  *
  * Both sides of each pair are listed deliberately. For handovers the mini needs
  * to know their submission was approved/rejected and the owner needs to know one
- * arrived; keying on only one column would leave the other party stale.
+ * arrived; keying on only one side would leave the other party stale.
+ *
+ * The handovers owner side goes through the organization: migration 034 dropped
+ * `mini_settlements.owner_id`, and the business that receives a handover is its
+ * `org_id`, whoever owns that business today (an ownership transfer moves the
+ * inbox with it).
  */
 const CHANNELS = {
-  handovers: [{ table: 'mini_settlements', columns: ['mini_id', 'owner_id'] }],
+  handovers: [
+    {
+      table: 'mini_settlements',
+      where: [
+        '"mini_id" = $1',
+        '"org_id" IN (SELECT "id" FROM "organizations" WHERE "owner_user_id" = $1)',
+      ],
+    },
+  ],
   employment: [
-    { table: 'employments', columns: ['employee_id', 'employer_id'] },
+    { table: 'employments', where: ['"employee_id" = $1', '"employer_id" = $1'] },
   ],
   consignments: [
-    { table: 'consignment_requests', columns: ['debtor_id', 'supplier_id'] },
+    { table: 'consignment_requests', where: ['"debtor_id" = $1', '"supplier_id" = $1'] },
   ],
   salary: [
-    { table: 'salary_payments', columns: ['employee_id', 'employer_id'] },
+    { table: 'salary_payments', where: ['"employee_id" = $1', '"employer_id" = $1'] },
   ],
 } as const satisfies Record<
   string,
-  ReadonlyArray<{ table: string; columns: readonly string[] }>
+  ReadonlyArray<{ table: string; where: readonly string[] }>
 >;
 
 type ChannelName = keyof typeof CHANNELS;
@@ -72,9 +86,8 @@ export class SyncService {
     // only the single bound $1 parameter.
     const selects = names.map((name) => {
       const subqueries = CHANNELS[name].flatMap((src) =>
-        src.columns.map(
-          (col) =>
-            `(SELECT MAX("updated_at") FROM "${src.table}" WHERE "${col}" = $1)`,
+        src.where.map(
+          (cond) => `(SELECT MAX("updated_at") FROM "${src.table}" WHERE ${cond})`,
         ),
       );
       // COALESCE to epoch so a user with no rows yet reads 0 rather than null.

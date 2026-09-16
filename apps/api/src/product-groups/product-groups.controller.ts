@@ -44,7 +44,7 @@ export class ProductGroupsController {
   })
   @ApiResponse({ status: 200, description: 'Array of GroupWithAvailability' })
   list(@CurrentActorContext() ctx: ActorContext) {
-    return this.service.listGroups(ctx.effectiveOwnerId);
+    return this.service.listGroups(ctx);
   }
 
   @Get(':id')
@@ -56,7 +56,7 @@ export class ProductGroupsController {
   @ApiResponse({ status: 200, description: 'GroupWithAvailability' })
   @ApiResponse({ status: 404, description: 'Group not found' })
   get(@CurrentActorContext() ctx: ActorContext, @Param('id') id: string) {
-    return this.service.getGroup(ctx.effectiveOwnerId, id);
+    return this.service.getGroup(ctx, id);
   }
 
   @Post()
@@ -74,7 +74,7 @@ export class ProductGroupsController {
     @CurrentActorContext() ctx: ActorContext,
     @Body() dto: CreateProductGroupDto,
   ) {
-    return this.service.createGroup(ctx.effectiveOwnerId, dto);
+    return this.service.createGroup(ctx, dto);
   }
 
   @Patch(':id')
@@ -91,7 +91,7 @@ export class ProductGroupsController {
     @Param('id') id: string,
     @Body() dto: UpdateProductGroupDto,
   ) {
-    return this.service.updateGroup(ctx.effectiveOwnerId, id, dto);
+    return this.service.updateGroup(ctx, id, dto);
   }
 
   @Patch(':id/rename')
@@ -112,7 +112,7 @@ export class ProductGroupsController {
     @Param('id') id: string,
     @Body() dto: RenameGroupDto,
   ) {
-    return this.service.renameGroup(ctx.effectiveOwnerId, id, dto.newName);
+    return this.service.renameGroup(ctx, id, dto.newName);
   }
 
   @Post(':id/variants')
@@ -129,7 +129,7 @@ export class ProductGroupsController {
     @Param('id') id: string,
     @Body() dto: CreateVariantDto,
   ) {
-    return this.service.addVariant(ctx.effectiveOwnerId, id, dto);
+    return this.service.addVariant(ctx, id, dto);
   }
 
   @Patch(':id/variants/:variantId')
@@ -146,7 +146,7 @@ export class ProductGroupsController {
     @Param('variantId') variantId: string,
     @Body() dto: UpdateVariantDto,
   ) {
-    return this.service.updateVariant(ctx.effectiveOwnerId, id, variantId, dto);
+    return this.service.updateVariant(ctx, id, variantId, dto);
   }
 
   @Delete(':id/variants/:variantId')
@@ -163,7 +163,7 @@ export class ProductGroupsController {
     @Param('id') id: string,
     @Param('variantId') variantId: string,
   ) {
-    return this.service.archiveVariant(ctx.effectiveOwnerId, id, variantId);
+    return this.service.archiveVariant(ctx, id, variantId);
   }
 
   @Post(':id/stock')
@@ -186,6 +186,6 @@ export class ProductGroupsController {
     @Param('id') id: string,
     @Body() dto: AddGroupStockDto,
   ) {
-    return this.service.addStock(ctx.effectiveOwnerId, id, dto);
+    return this.service.addStock(ctx, id, dto);
   }
 }

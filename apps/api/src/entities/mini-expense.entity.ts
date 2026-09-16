@@ -29,9 +29,16 @@ export class MiniExpense {
   @JoinColumn({ name: 'mini_id' })
   mini: User;
 
-  /** Employer whose books the expense books against on approval. */
-  @Column({ name: 'owner_id', type: 'uuid' })
-  ownerId: string;
+
+  /**
+   * Tenancy: the business and the branch these books belong to
+   * (MULTI_SHOP_PLAN.md §3.2). NOT NULL since migration 034.
+   */
+  @Column({ name: 'org_id', type: 'uuid' })
+  orgId: string;
+
+  @Column({ name: 'shop_id', type: 'uuid' })
+  shopId: string;
 
   @ApiProperty({ example: '15000.0000', description: 'Amount in FC (what the mini spent)' })
   @Column({ type: 'decimal', precision: 14, scale: 4 })

@@ -3,6 +3,9 @@ import { DataSource } from 'typeorm';
 import * as dotenv from 'dotenv';
 import {
   User,
+  Organization,
+  Shop,
+  OrganizationOwnershipHistory,
   InventoryEntry,
   SupplierDebt,
   DebtorCredit,
@@ -37,6 +40,9 @@ export const AppDataSource = new DataSource({
   url: process.env.DATABASE_URL,
   entities: [
     User,
+    Organization,
+    Shop,
+    OrganizationOwnershipHistory,
     InventoryEntry,
     SupplierDebt,
     DebtorCredit,

@@ -22,6 +22,7 @@ import { ReprintReceiptModal } from '../../components/forms/ReprintReceiptModal'
 import { RejectSaleModal, type RejectTarget } from '../../components/forms/RejectSaleModal';
 import { useOfflineStore } from '../../store/offline.store';
 import { useT } from '@/lib/i18n';
+import { personHandle } from '@/lib/person';
 
 type View_ = 'history' | 'top' | 'rejected';
 type HistoryPeriod = '7d' | '30d' | '90d' | 'all';   // maps to SalesHistoryPeriod
@@ -117,7 +118,7 @@ function SaleCard({
             <Text className="text-danger text-[11px] font-bold">⛔ {t.sales.rejectedBadge}</Text>
             <Text className="text-muted text-xs">
               {t.sales.rejectedOn(formatDate(item.rejectedAt as string))}
-              {item.rejectedBy ? ` ${t.sales.rejectedBy(`@${item.rejectedBy.username}`)}` : ''}
+              {item.rejectedBy ? ` ${t.sales.rejectedBy(personHandle(item.rejectedBy, t.common.formerEmployee))}` : ''}
             </Text>
           </View>
           {item.rejectionReason ? (

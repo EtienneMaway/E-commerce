@@ -30,6 +30,9 @@ export const NAV_SERVICE: Record<string, string | string[] | null> = {
   '/employees/roles': 'employees.manage',
   '/pricing': 'pricing.catalog',
   '/my-salary': null,
+  // Longest-prefix wins, so the business page is gated while /settings itself
+  // stays open — it carries the account's own language, theme and password.
+  '/settings/business': 'shops.manage',
   '/settings': null,
   // Where a role-less employee lands; must never be gated or it would loop.
   '/no-access': null,

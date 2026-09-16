@@ -12,6 +12,7 @@ import { useAuthStore } from '../../../store/auth.store';
 import { useLocaleStore } from '../../../store/locale.store';
 import { useT, type Translations } from '../../../lib/i18n';
 import { formatCurrency, formatDate, getErrorMessage } from '../../../lib/utils';
+import { personHandle } from '../../../lib/person';
 
 function statusLabel(t: Translations, s: SalaryPaymentStatus): string {
   switch (s) {
@@ -101,6 +102,12 @@ export default function MySalaryPage() {
 
   const list = tab === 'pending' ? pending ?? [] : history ?? [];
   const loading = tab === 'pending' ? loadingPending : loadingHistory;
+
+  // Label each payment with its branch only once the history actually spans
+  // more than one — after a transfer. Someone who has only ever worked at one
+  // shop gains nothing from its name repeated on every row.
+  const multiBranch =
+    new Set([...(pending ?? []), ...(history ?? [])].map((p) => p.shopId)).size > 1;
 
   // Group history by period for a quick monthly summary at the top.
   const periodSummary = useMemo(() => {
@@ -240,7 +247,7 @@ export default function MySalaryPage() {
       ) : (
         <div className="space-y-2">
           {list.map((p) => (
-            <EmployeePaymentRow key={p.id} payment={p} onChange={invalidate} />
+            <EmployeePaymentRow key={p.id} payment={p} showBranch={multiBranch} onChange={invalidate} />
           ))}
         </div>
       )}
@@ -250,9 +257,12 @@ export default function MySalaryPage() {
 
 function EmployeePaymentRow({
   payment,
+  showBranch,
   onChange,
 }: {
   payment: SalaryPayment;
+  /** True when the employee's pay history spans more than one branch. */
+  showBranch: boolean;
   onChange: () => void;
 }) {
   const t = useT();
@@ -284,7 +294,9 @@ function EmployeePaymentRow({
             </span>
           </div>
           <div className="text-xs opacity-60 mt-1">
-            {t.salary.from} <strong>@{payment.employer?.username ?? '—'}</strong> · {t.salary.recorded}{' '}
+            {t.salary.from} <strong>{personHandle(payment.employer, t.common.closedAccount)}</strong>
+            {showBranch && payment.shopName && <> {t.shops.earnedAt(payment.shopName)}</>}
+            {' '}· {t.salary.recorded}{' '}
             {formatDate(payment.paidAt)}
             {payment.confirmedAt && ` · ${t.salary.confirmedOn} ${formatDate(payment.confirmedAt)}`}
             {payment.rejectedAt && ` · ${t.salary.rejectedOn} ${formatDate(payment.rejectedAt)}`}

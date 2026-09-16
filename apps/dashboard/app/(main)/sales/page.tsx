@@ -22,6 +22,8 @@ import { saleReceiptHtml } from '../../../lib/print-templates';
 import { PrintDialog } from '../../../components/ui/PrintDialog';
 import { generateReceiptId, type ReceiptData } from '../../../lib/thermal-receipt';
 import { getErrorMessage } from '../../../lib/utils';
+import { useShopScope } from '../../../hooks/use-shop-scope';
+import { personHandle } from '../../../lib/person';
 
 type Period = '7d' | '30d' | '90d' | 'all' | 'custom';
 
@@ -97,11 +99,14 @@ interface Row {
   rejectedAt: string | null;
   rejectionReason: string | null;
   rejectedBy: { id: string; username: string } | null;
+  /** Branch that made the sale — shown as a column under "All branches". */
+  shopId: string;
 }
 
 export default function SalesPage() {
   const t = useT();
   const { can } = usePermissions();
+  const { isAllShops, shopName } = useShopScope();
   const formatCurrency = useFormatCurrency();
   const { user } = useAuthStore();
   const [period, setPeriod] = useState<Period>('30d');
@@ -172,6 +177,21 @@ export default function SalesPage() {
         </div>
       ),
     },
+    // Only when the list spans branches — at one branch the column would say
+    // the same name on every row.
+    ...(isAllShops
+      ? [
+          {
+            key: 'shopId',
+            header: t.shops.branch,
+            sortable: true,
+            getValue: (r: Row) => shopName(r.shopId),
+            render: (r: Row) => (
+              <span style={{ color: 'var(--muted)' }}>{shopName(r.shopId) || '—'}</span>
+            ),
+          } as Column<Row>,
+        ]
+      : []),
     {
       key: 'source', header: t.sales.colSource,
       render: (r) => <Badge label={r.source === 'PERSONAL' ? t.sales.sourcePersonal : t.sales.sourceSupplier} variant={r.source === 'PERSONAL' ? 'personal' : 'supplier'} />,
@@ -219,7 +239,7 @@ export default function SalesPage() {
                 <span>{r.rejectedAt ? formatDate(r.rejectedAt) : '—'}</span>
                 {r.rejectedBy && (
                   <span className="text-xs" style={{ color: 'var(--muted)' }}>
-                    {t.sales.rejectedBy(`@${r.rejectedBy.username}`)}
+                    {t.sales.rejectedBy(personHandle(r.rejectedBy, t.common.formerEmployee))}
                   </span>
                 )}
                 {r.rejectionReason && (

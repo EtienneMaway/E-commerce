@@ -78,6 +78,17 @@ export class Payment {
   @Column({ name: 'debtor_credit_id', nullable: true, type: 'varchar' })
   debtorCreditId: string | null;
 
+  /**
+   * Tenancy: the business and the branch these books belong to
+   * (MULTI_SHOP_PLAN.md §3.2). Nullable until migration 033 at the end of
+   * Phase 4. `paid_by_user_id / paid_to_user_id` stays beside it — that is a person, not a tenancy key.
+   */
+  @Column({ name: 'org_id', type: 'uuid' })
+  orgId: string;
+
+  @Column({ name: 'shop_id', type: 'uuid' })
+  shopId: string;
+
   @ManyToOne(() => DebtorCredit, (credit) => credit.payments, { nullable: true })
   @JoinColumn({ name: 'debtor_credit_id' })
   debtorCredit: DebtorCredit | null;

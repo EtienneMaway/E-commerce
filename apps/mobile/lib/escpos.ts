@@ -146,6 +146,15 @@ export function encodeReceipt(data: ReceiptData): Uint8Array {
     bytes.push(...ascii(`@${data.businessHandle}`));
     bytes.push(...ENC.LF);
   }
+  // The branch that made the sale — the printer wraps a long address itself.
+  if (data.branchName) {
+    bytes.push(...ascii(data.branchName));
+    bytes.push(...ENC.LF);
+  }
+  if (data.branchAddress) {
+    bytes.push(...ascii(data.branchAddress));
+    bytes.push(...ENC.LF);
+  }
 
   bytes.push(...ENC.LF);
 

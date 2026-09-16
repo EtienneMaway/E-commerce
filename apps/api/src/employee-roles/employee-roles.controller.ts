@@ -50,7 +50,7 @@ export class EmployeeRolesController {
   @ApiOperation({ summary: "List the employer's roles, each with how many employees hold it" })
   @ApiResponse({ status: 200 })
   list(@CurrentActorContext() ctx: ActorContext) {
-    return this.service.list(ctx.effectiveOwnerId);
+    return this.service.list(ctx);
   }
 
   @Get(':id')
@@ -58,7 +58,7 @@ export class EmployeeRolesController {
   @ApiOperation({ summary: 'Get one role' })
   @ApiResponse({ status: 404, description: 'Role not found' })
   findOne(@CurrentActorContext() ctx: ActorContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOne(ctx.effectiveOwnerId, id);
+    return this.service.findOne(ctx, id);
   }
 
   @Post()
@@ -71,7 +71,7 @@ export class EmployeeRolesController {
   @ApiResponse({ status: 201, description: 'Role created' })
   @ApiResponse({ status: 409, description: 'You already have a role with that name' })
   create(@CurrentActorContext() ctx: ActorContext, @Body() dto: CreateEmployeeRoleDto) {
-    return this.service.create(ctx.effectiveOwnerId, dto);
+    return this.service.create(ctx, dto);
   }
 
   @Patch(':id')
@@ -88,7 +88,7 @@ export class EmployeeRolesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateEmployeeRoleDto,
   ) {
-    return this.service.update(ctx.effectiveOwnerId, id, dto);
+    return this.service.update(ctx, id, dto);
   }
 
   @Delete(':id')
@@ -103,6 +103,6 @@ export class EmployeeRolesController {
   @ApiResponse({ status: 404, description: 'Role not found' })
   @ApiResponse({ status: 409, description: 'Role is still assigned to one or more employees' })
   remove(@CurrentActorContext() ctx: ActorContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.remove(ctx.effectiveOwnerId, id);
+    return this.service.remove(ctx, id);
   }
 }

@@ -7,6 +7,10 @@ const en = {
     loading: 'Loading...',
     cancel: 'Cancel',
     change: 'Change',
+    /** Shown in place of an anonymised account that worked for the business. */
+    formerEmployee: 'Former employee',
+    /** Shown in place of an anonymised trading counterparty. */
+    closedAccount: 'Closed account',
     error: 'Error',
     back: '← Back',
     invalidAmount: 'Invalid amount',
@@ -752,6 +756,14 @@ const en = {
     remaining: 'Remaining',
     original: 'Original',
   },
+  shops: {
+    branch: 'Branch',
+    defaultBranch: 'default',
+    switchTitle: 'Working in branch',
+    offlineLockedTitle: 'Go back online to switch branch',
+    offlineLockedBody:
+      'Offline mode is using the stock snapshot of this branch. Sales you record here belong to it — switch branch once you are back online.',
+  },
   persona: {
     viewAs: 'Viewing as',
     self: 'Self',
@@ -983,6 +995,8 @@ const fr: Translations = {
     loading: 'Chargement...',
     cancel: 'Annuler',
     change: 'Changer',
+    formerEmployee: 'Ancien employé',
+    closedAccount: 'Compte fermé',
     error: 'Erreur',
     back: '← Retour',
     invalidAmount: 'Montant invalide',
@@ -1720,6 +1734,14 @@ const fr: Translations = {
     counterparty: 'via',
     remaining: 'Restant',
     original: 'Original',
+  },
+  shops: {
+    branch: 'Boutique',
+    defaultBranch: 'par défaut',
+    switchTitle: 'Boutique de travail',
+    offlineLockedTitle: 'Revenez en ligne pour changer de boutique',
+    offlineLockedBody:
+      'Le mode hors ligne utilise le stock de cette boutique. Les ventes enregistrées ici lui appartiennent — changez de boutique une fois de retour en ligne.',
   },
   persona: {
     viewAs: 'Vue',

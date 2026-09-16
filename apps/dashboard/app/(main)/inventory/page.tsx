@@ -24,6 +24,7 @@ import {
   type GroupAdjustTarget,
 } from '../../../components/forms/AdjustGroupStockDialog';
 import { useT } from '../../../lib/i18n';
+import { useShopScope } from '../../../hooks/use-shop-scope';
 import { usePermissions } from '../../../lib/permissions';
 import { Fragment, useEffect, useState } from 'react';
 
@@ -57,10 +58,36 @@ interface Row {
   cartonBuyingPrice?: string | null;
   cartonsAvailable?: number;
   variants?: RowVariant[];
+  /** Sellable pieces per branch — only sent under "All branches". */
+  shopBreakdown?: { shopId: string; available: number }[];
+}
+
+/**
+ * Where a pooled cross-branch figure actually sits. Stock cannot be sold across
+ * branches, so "40 pcs" under All branches means nothing until it says 30 of
+ * them are in one shop and 10 in another.
+ */
+function BranchStock({ rows }: { rows: Row['shopBreakdown'] }) {
+  const { shopName } = useShopScope();
+  if (!rows || rows.length === 0) return null;
+  return (
+    <div className="flex gap-1 flex-wrap mt-1">
+      {rows.map((b) => (
+        <span
+          key={b.shopId}
+          className="text-xs rounded px-1.5 py-0.5"
+          style={{ background: 'rgba(var(--primary-rgb), 0.10)', color: 'var(--foreground)' }}
+        >
+          {shopName(b.shopId) || '—'}: {b.available}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export default function InventoryPage() {
   const t = useT();
+  const { canWrite, isAllShops } = useShopScope();
   const { can } = usePermissions();
   const formatCurrency = useFormatCurrency();
   const [addOpen, setAddOpen] = useState(false);
@@ -116,6 +143,7 @@ export default function InventoryPage() {
               {r.totalAvailable} pcs
               {r.piecesPerCarton ? ` · 1 ctn = ${r.piecesPerCarton} pcs` : ''}
             </div>
+            {isAllShops && <BranchStock rows={r.shopBreakdown} />}
           </div>
         );
       },
@@ -230,17 +258,23 @@ export default function InventoryPage() {
         </div>
         <div className="flex gap-2 flex-shrink-0 flex-wrap">
           {can('inventory.add_personal') && (
-            <button onClick={() => setAddOpen(true)} className="btn btn-primary">
+            <button onClick={() => setAddOpen(true)} className="btn btn-primary"
+              disabled={!canWrite}
+              title={isAllShops ? t.shops.allShopsNotice : undefined}>
               {t.inventory.addProduct}
             </button>
           )}
           {can('inventory.receive') && (
-            <button onClick={() => setReceiveOpen(true)} className="btn btn-secondary">
+            <button onClick={() => setReceiveOpen(true)} className="btn btn-secondary"
+              disabled={!canWrite}
+              title={isAllShops ? t.shops.allShopsNotice : undefined}>
               {t.inventory.receiveFromSupplier}
             </button>
           )}
           {can('products.manage') && (
-            <button onClick={() => setSizedOpen(true)} className="btn btn-secondary">
+            <button onClick={() => setSizedOpen(true)} className="btn btn-secondary"
+              disabled={!canWrite}
+              title={isAllShops ? t.shops.allShopsNotice : undefined}>
               {t.sizedProducts.createBtn}
             </button>
           )}
@@ -385,6 +419,7 @@ function SizedProductsSection({
                       <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
                         {g.totalAvailable} pcs
                       </div>
+                      <BranchStock rows={g.shopBreakdown} />
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums">
                       {cartonCost != null ? (

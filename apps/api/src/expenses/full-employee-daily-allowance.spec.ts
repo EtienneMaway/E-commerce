@@ -18,6 +18,13 @@ describe('ExpensesService.dailyAllowance (full employee)', () => {
     tier: 'FULL_EMPLOYEE',
     services: resolveGrantedServices(null, 'FULL_EMPLOYEE'),
     employment: { employerId: OWNER, expenseAllowancePct: pct } as never,
+    // Tenancy (MULTI_SHOP_PLAN.md §3.5). Phase 2 populates these on every
+    // request; no service reads them until Phase 4.
+    orgId: 'org-1',
+    shopId: 'shop-1',
+    visibleShopIds: ['shop-1'],
+    shopScope: 'one' as const,
+    shopArchived: false,
   });
 
   const ownerCtx: ActorContext = {
@@ -26,6 +33,13 @@ describe('ExpensesService.dailyAllowance (full employee)', () => {
     tier: 'OWNER',
     services: resolveGrantedServices(null, 'OWNER'),
     employment: null,
+    // Tenancy (MULTI_SHOP_PLAN.md §3.5). Phase 2 populates these on every
+    // request; no service reads them until Phase 4.
+    orgId: 'org-1',
+    shopId: 'shop-1',
+    visibleShopIds: ['shop-1'],
+    shopScope: 'one' as const,
+    shopArchived: false,
   };
 
   /**

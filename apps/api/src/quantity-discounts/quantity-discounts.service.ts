@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import { QuantityDiscount } from '../entities';
+import type { ActorContext } from '../common/types/actor-context';
+import { readScope, writeScope } from '../common/shop-scope';
 import { UpdateQuantityDiscountDto } from './dto/update-quantity-discount.dto';
 
 /** Shape returned to clients — the config with money as fixed-2dp strings. */
@@ -26,8 +28,8 @@ export class QuantityDiscountsService {
    * owner has never configured one. Never returns null so clients always have
    * tiers to compute against.
    */
-  async get(ownerId: string): Promise<QuantityDiscountConfig> {
-    const row = await this.repo.findOne({ where: { ownerId } });
+  async get(ctx: ActorContext): Promise<QuantityDiscountConfig> {
+    const row = await this.repo.findOne({ where: readScope(ctx) });
     if (!row) {
       return {
         enabled: false,
@@ -42,11 +44,13 @@ export class QuantityDiscountsService {
 
   /** Create or update the owner's single config row. */
   async upsert(
-    ownerId: string,
+    ctx: ActorContext,
     dto: UpdateQuantityDiscountDto,
   ): Promise<QuantityDiscountConfig> {
-    const existing = await this.repo.findOne({ where: { ownerId } });
-    const record = existing ?? this.repo.create({ ownerId });
+    const existing = await this.repo.findOne({ where: readScope(ctx) });
+    const record =
+      existing ??
+      this.repo.create(writeScope(ctx));
 
     record.enabled = dto.enabled;
     record.halfDozenPercent = new Decimal(dto.halfDozenPercent).toFixed(2);

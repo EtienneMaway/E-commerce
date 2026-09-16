@@ -23,19 +23,21 @@ import { User } from './user.entity';
  * working and restricting someone is an explicit act.
  */
 @Entity('employee_roles')
-@Index('idx_employee_roles_owner', ['ownerId'])
+@Index('idx_employee_roles_org', ['orgId'])
 export class EmployeeRole {
   @ApiProperty({ example: 'uuid-v4' })
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /** The employer who owns this role. Roles are never shared between employers. */
-  @Column({ name: 'owner_id', type: 'uuid' })
-  ownerId: string;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'owner_id' })
-  owner: User;
+  /**
+   * A role is a permission template belonging to the business and reusable at
+   * every branch, so it takes `org_id` and no `shop_id` (§3.2). Nullable until
+   * migration 033.
+   */
+  @Column({ name: 'org_id', type: 'uuid' })
+  orgId: string;
+
 
   @ApiProperty({ example: 'Cashier' })
   @Column({ type: 'varchar', length: 80 })

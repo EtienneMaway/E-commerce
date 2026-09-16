@@ -1,6 +1,7 @@
 import axios from 'axios';
-import { salesApi, miniSettlementsApi, expensesApi } from './api';
+import { salesApi, miniSettlementsApi, expensesApi, type RequestOverrides } from './api';
 import { useOfflineStore } from '../store/offline.store';
+import { useShopStore } from '../store/shop.store';
 import type { PendingSale, PendingExpense, PendingRejection } from '../store/offline.store';
 import { isPriceGuardWarning, getErrorMessage } from './utils';
 import type { ExpenseCategory, ExpenseCurrency } from './api';
@@ -22,6 +23,33 @@ const BASE_BACKOFF_MS = 800;
 const MAX_BACKOFF_MS = 8_000;
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Request config for replaying one queued row: the slow-link timeout, plus the
+ * branch the row was recorded at as `X-Shop-Id`. An explicit header beats the
+ * interceptor's current selection (lib/api.ts), which is the whole point — an
+ * owner who sold in branch A offline and reconnects while viewing B must see
+ * that sale land in A.
+ *
+ * - `null` → send none: an employee, whose branch the API takes from the
+ *   employment.
+ * - `undefined` → a row queued by a build that predates branches. Everything
+ *   then was recorded at the business's default branch, so pin that, rather
+ *   than letting it drift into whichever branch is selected today.
+ */
+export function replayConfig(shopId: string | null | undefined): RequestOverrides {
+  const pinned =
+    shopId === undefined
+      ? (() => {
+          const { employed, defaultShopId } = useShopStore.getState();
+          return employed ? null : defaultShopId;
+        })()
+      : shopId;
+  return {
+    timeout: SYNC_REQUEST_TIMEOUT,
+    ...(pinned ? { headers: { 'X-Shop-Id': pinned } } : {}),
+  };
+}
 
 /**
  * Whether an error is worth retrying. Network failures and timeouts (no
@@ -50,13 +78,12 @@ function isRetryable(err: unknown): boolean {
 async function rejectServerSale(
   saleId: string,
   reason: string | undefined,
+  shopId: string | null | undefined,
 ): Promise<{ ok: boolean; error: unknown }> {
   let lastError: unknown = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      await salesApi.reject(saleId, reason ? { reason } : {}, {
-        timeout: SYNC_REQUEST_TIMEOUT,
-      });
+      await salesApi.reject(saleId, reason ? { reason } : {}, replayConfig(shopId));
       return { ok: true, error: null };
     } catch (err) {
       if (!isRetryable(err) || attempt === MAX_ATTEMPTS) return { ok: false, error: err };
@@ -72,7 +99,7 @@ async function rejectServerSale(
 async function syncOneRejection(
   rejection: PendingRejection,
 ): Promise<{ ok: boolean; error: unknown }> {
-  return rejectServerSale(rejection.saleId, rejection.reason);
+  return rejectServerSale(rejection.saleId, rejection.reason, rejection.shopId);
 }
 
 /** Submits one sale, retrying transient failures and auto-confirming a price-guard 422. */
@@ -112,12 +139,12 @@ async function syncOneSale(sale: PendingSale): Promise<{ ok: boolean; error: unk
         ? created.id
         : null;
     if (!saleId) return { ok: true, error: null }; // nothing to reject against
-    return rejectServerSale(saleId, sale.rejectedOffline.reason);
+    return rejectServerSale(saleId, sale.rejectedOffline.reason, sale.shopId);
   };
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const created = await salesApi.record(basePayload, { timeout: SYNC_REQUEST_TIMEOUT });
+      const created = await salesApi.record(basePayload, replayConfig(sale.shopId));
       return finish(created);
     } catch (err) {
       // Price guard: auto-confirm since the user already set the markup
@@ -127,7 +154,7 @@ async function syncOneSale(sale: PendingSale): Promise<{ ok: boolean; error: unk
         try {
           const created = await salesApi.record(
             { ...basePayload, confirmedOverride: true },
-            { timeout: SYNC_REQUEST_TIMEOUT },
+            replayConfig(sale.shopId),
           );
           return finish(created);
         } catch (err2) {
@@ -161,7 +188,7 @@ async function syncOneExpense(exp: PendingExpense): Promise<{ ok: boolean; error
             date: exp.date,
             clientId: exp.id,
           },
-          { timeout: SYNC_REQUEST_TIMEOUT },
+          replayConfig(exp.shopId),
         );
       } else {
         await miniSettlementsApi.createExpense(
@@ -171,7 +198,7 @@ async function syncOneExpense(exp: PendingExpense): Promise<{ ok: boolean; error
             description: exp.description,
             clientId: exp.id,
           },
-          { timeout: SYNC_REQUEST_TIMEOUT },
+          replayConfig(exp.shopId),
         );
       }
       return { ok: true, error: null };

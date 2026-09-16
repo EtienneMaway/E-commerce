@@ -41,6 +41,7 @@ import { CreateMiniExpenseDto } from './dto/create-mini-expense.dto';
 import { CreateMiniTeamMemberDto } from './dto/create-mini-team-member.dto';
 import { MiniActivityQueryDto } from './dto/mini-activity-query.dto';
 import { MiniStatsPeriod } from './dto/mini-stats-query.dto';
+import { holderCond, holderScope, readScope, writeScope } from '../common/shop-scope';
 
 export interface MiniActivitySale {
   id: string;
@@ -343,8 +344,21 @@ export class MiniSettlementsService {
       const productName = r.productName.trim().toLowerCase();
       // Sized products match the unsold lots by size; simple products by name.
       const where = r.variantId
-        ? { ownerId: miniId, variantId: r.variantId, source: InventorySource.CONSIGNED_IN }
-        : { ownerId: miniId, productName: ILike(productName), source: InventorySource.CONSIGNED_IN };
+        ? {
+            ...readScope(ctx),
+            // tenancy-exempt: miniId names the PERSON whose consigned books
+            // these are; the branch is the readScope filter above.
+            ownerId: miniId,
+            variantId: r.variantId,
+            source: InventorySource.CONSIGNED_IN,
+          }
+        : {
+            ...readScope(ctx),
+            // tenancy-exempt: as above.
+            ownerId: miniId,
+            productName: ILike(productName),
+            source: InventorySource.CONSIGNED_IN,
+          };
       const entries = await this.entryRepo.find({ where, order: { createdAt: 'ASC' } });
       const available = entries
         .filter((e) => e.quantityRemaining > 0)
@@ -376,7 +390,7 @@ export class MiniSettlementsService {
       where: { miniId, status: MiniSettlementStatus.APPROVED },
       order: { approvedAt: 'DESC' },
     });
-    const soldLines = await this.computeSoldLines(miniId, lastApproved?.approvedAt ?? null);
+    const soldLines = await this.computeSoldLines(ctx, miniId, lastApproved?.approvedAt ?? null);
     const soldSnapshot: MiniSettlementSoldLine[] = soldLines.map((l) => ({
       productName: l.productName,
       variantLabel: l.variantLabel,
@@ -388,8 +402,7 @@ export class MiniSettlementsService {
 
     // Same boundary, same immutability: what was voided during this cycle is
     // frozen onto the handover so the report reprints identically.
-    const rejectedLines = await this.computeRejectedLines(
-      miniId,
+    const rejectedLines = await this.computeRejectedLines(ctx, miniId,
       lastApproved?.approvedAt ?? null,
     );
     const rejectedSnapshot: MiniSettlementRejectedLine[] = rejectedLines.map((l) => ({
@@ -402,7 +415,8 @@ export class MiniSettlementsService {
     }));
 
     const settlement = this.settlementRepo.create({
-      ownerId,
+      // The handover belongs to the branch the mini works out of.
+      ...writeScope(ctx),
       miniId,
       status: MiniSettlementStatus.PENDING,
       cashAmount: cash.toFixed(4),
@@ -431,7 +445,7 @@ export class MiniSettlementsService {
   async findOutgoing(ctx: ActorContext): Promise<MiniSettlement[]> {
     return this.settlementRepo.find({
       where: { miniId: ctx.effectiveOwnerId },
-      relations: { owner: true, items: true, payment: true, expenses: true },
+      relations: { items: true, payment: true, expenses: true },
       order: { createdAt: 'DESC' },
     });
   }
@@ -445,7 +459,12 @@ export class MiniSettlementsService {
     }
     const employerId = ctx.employment.employerId;
     const debt = await this.supplierDebtRepo.findOne({
-      where: { ownerId: miniId, supplierUserId: employerId },
+      where: {
+        // tenancy-exempt: the two PEOPLE either side of the balance.
+        ownerId: miniId,
+        supplierUserId: employerId,
+        ...readScope(ctx),
+      },
     });
     return { outstanding: debt ? new Decimal(debt.outstandingBalance).toFixed(4) : '0.0000' };
   }
@@ -503,7 +522,7 @@ export class MiniSettlementsService {
 
     // Live rate — fallback for any pre-snapshot rows (post-migration there
     // should be none for consigned stock/sales).
-    const liveRate = (await this.currencyService.getRate())?.usdToFcRate ?? '1';
+    const liveRate = (await this.currencyService.getRate(ctx.orgId))?.usdToFcRate ?? '1';
     const fcOf = (usd: Decimal, snapshot: string | null): Decimal =>
       usd.mul(new Decimal(snapshot ?? liveRate));
 
@@ -512,7 +531,10 @@ export class MiniSettlementsService {
     // sale's FC value converts at the lot's locked rate carried on the sale.
     const saleQb = this.saleRepo
       .createQueryBuilder('s')
-      .where('s.owner_id = :miniId', { miniId })
+      .where('s.org_id = :orgId', { orgId: ctx.orgId })
+      .andWhere(ctx.shopId ? 's.shop_id = :shopId' : '1=1', { shopId: ctx.shopId })
+      // tenancy-exempt: miniId names the PERSON whose books these are.
+      .andWhere('s.owner_id = :miniId', { miniId })
       // A sale the mini rejected as a mistake owes nothing and earned nothing:
       // its pieces went back on their shelf, where "I owe" counts them again.
       .andWhere('s.rejected_at IS NULL');
@@ -542,7 +564,10 @@ export class MiniSettlementsService {
     // its own locked rate.
     const inQb = this.entryRepo
       .createQueryBuilder('e')
-      .where('e.owner_id = :miniId', { miniId })
+      .where('e.org_id = :orgId', { orgId: ctx.orgId })
+      .andWhere(ctx.shopId ? 'e.shop_id = :shopId' : '1=1', { shopId: ctx.shopId })
+      // tenancy-exempt: miniId names the PERSON whose books these are.
+      .andWhere('e.owner_id = :miniId', { miniId })
       .andWhere('e.source = :src', { src: InventorySource.CONSIGNED_IN });
     if (windowStart) inQb.andWhere('e.created_at >= :start', { start: windowStart });
     const inEntries = await inQb.getMany();
@@ -595,18 +620,27 @@ export class MiniSettlementsService {
    * ever differs).
    */
   private async computeSoldLines(
+    ctx: ActorContext,
     miniId: string,
     since: Date | null,
   ): Promise<HandoverSoldLine[]> {
     const saleQb = this.saleRepo
       .createQueryBuilder('s')
-      .where('s.owner_id = :miniId', { miniId })
+      .where('s.org_id = :orgId', { orgId: ctx.orgId })
+      .andWhere(ctx.shopId ? 's.shop_id = :shopId' : '1=1', { shopId: ctx.shopId })
+      // tenancy-exempt: miniId names the PERSON whose books these are.
+      .andWhere('s.owner_id = :miniId', { miniId })
       .andWhere('s.rejected_at IS NULL');
     if (since) saleQb.andWhere('s.created_at > :since', { since });
     const sales = await saleQb.getMany();
 
     const inEntries = await this.entryRepo.find({
-      where: { ownerId: miniId, source: InventorySource.CONSIGNED_IN },
+      where: {
+        ...readScope(ctx),
+        // tenancy-exempt: miniId names the PERSON holding the stock.
+        ownerId: miniId,
+        source: InventorySource.CONSIGNED_IN,
+      },
     });
     const keyOf = (variantId: string | null | undefined, productName: string) =>
       variantId ?? productName;
@@ -619,7 +653,7 @@ export class MiniSettlementsService {
     // Live rate — fallback for any pre-snapshot sale rows. Each sale's FC value
     // converts at the lot's locked rate carried on the sale, so what the mini
     // owes and their markup stay fixed against later rate changes.
-    const liveRate = (await this.currencyService.getRate())?.usdToFcRate ?? '1';
+    const liveRate = (await this.currencyService.getRate(ctx.orgId))?.usdToFcRate ?? '1';
     const fcOf = (usd: Decimal, snapshot: string | null): Decimal =>
       usd.mul(new Decimal(snapshot ?? liveRate));
 
@@ -686,19 +720,23 @@ export class MiniSettlementsService {
    * explicit.)
    */
   private async computeRejectedLines(
+    ctx: ActorContext,
     miniId: string,
     since: Date | null,
   ): Promise<HandoverRejectedLine[]> {
     const qb = this.saleRepo
       .createQueryBuilder('s')
-      .where('s.owner_id = :miniId', { miniId })
+      .where('s.org_id = :orgId', { orgId: ctx.orgId })
+      .andWhere(ctx.shopId ? 's.shop_id = :shopId' : '1=1', { shopId: ctx.shopId })
+      // tenancy-exempt: miniId names the PERSON whose books these are.
+      .andWhere('s.owner_id = :miniId', { miniId })
       .andWhere('s.rejected_at IS NOT NULL')
       .orderBy('s.rejected_at', 'DESC');
     if (since) qb.andWhere('s.rejected_at > :since', { since });
     const rows = await qb.getMany();
     if (rows.length === 0) return [];
 
-    const liveRate = (await this.currencyService.getRate())?.usdToFcRate ?? '1';
+    const liveRate = (await this.currencyService.getRate(ctx.orgId))?.usdToFcRate ?? '1';
     return rows.map((s) => ({
       productName: s.productName,
       variantId: s.variantId ?? null,
@@ -726,14 +764,15 @@ export class MiniSettlementsService {
    * were never accepted.
    */
   private async computeTeamMembers(
-    ownerId: string,
+    ctx: ActorContext,
     miniId: string,
     since: Date | null,
   ): Promise<{ id: string; name: string; phone: string | null }[]> {
     const qb = this.consignmentRepo
       .createQueryBuilder('c')
       .innerJoinAndSelect('c.teamMembers', 'tm')
-      .where('c.supplier_id = :ownerId', { ownerId })
+      .where('c.supplier_org_id = :orgId', { orgId: ctx.orgId })
+      .andWhere(ctx.shopId ? 'c.supplier_shop_id = :shopId' : '1=1', { shopId: ctx.shopId })
       .andWhere('c.debtor_id = :miniId', { miniId })
       .andWhere('c.status = :status', { status: ConsignmentStatus.ACCEPTED })
       .orderBy('c.created_at', 'ASC');
@@ -760,9 +799,14 @@ export class MiniSettlementsService {
    * fully-sold product's carton size, matching `inventory.listProducts` (first
    * NON-NULL piecesPerCarton across the product's lots).
    */
-  private async unsoldStock(miniId: string): Promise<MiniUnsoldLine[]> {
+  private async unsoldStock(ctx: ActorContext, miniId: string): Promise<MiniUnsoldLine[]> {
     const inEntries = await this.entryRepo.find({
-      where: { ownerId: miniId, source: InventorySource.CONSIGNED_IN },
+      where: {
+        ...readScope(ctx),
+        // tenancy-exempt: miniId names the PERSON holding the stock.
+        ownerId: miniId,
+        source: InventorySource.CONSIGNED_IN,
+      },
     });
     // Identity key: sized products key by size (variantId); simple by name — so
     // different sizes of one group don't collapse into a single row.
@@ -776,7 +820,7 @@ export class MiniSettlementsService {
       if (e.piecesPerCarton != null && !ppcByKey.has(k)) ppcByKey.set(k, e.piecesPerCarton);
     }
 
-    const liveRate = (await this.currencyService.getRate())?.usdToFcRate ?? '1';
+    const liveRate = (await this.currencyService.getRate(ctx.orgId))?.usdToFcRate ?? '1';
 
     // Size count per group, so the client can tell whether what is left even
     // adds up to a whole carton.
@@ -843,7 +887,7 @@ export class MiniSettlementsService {
   /** Owner/full employee: what one of their minis is still holding unsold. */
   async miniUnsoldStock(ctx: ActorContext, miniUserId: string): Promise<MiniUnsoldLine[]> {
     await this.requireEmployment(ctx.effectiveOwnerId, miniUserId);
-    return this.unsoldStock(miniUserId);
+    return this.unsoldStock(ctx, miniUserId);
   }
 
   async handoverPreview(ctx: ActorContext): Promise<HandoverPreview> {
@@ -859,12 +903,12 @@ export class MiniSettlementsService {
     });
     const since = last?.approvedAt ?? null;
 
-    const sold = await this.computeSoldLines(miniId, since);
-    const rejected = await this.computeRejectedLines(miniId, since);
+    const sold = await this.computeSoldLines(ctx, miniId, since);
+    const rejected = await this.computeRejectedLines(ctx, miniId, since);
 
     // Unsold units still held — what the mini hands back. Same computation the
     // owner's "still with them" breakdown reads.
-    const returns = await this.unsoldStock(miniId);
+    const returns = await this.unsoldStock(ctx, miniId);
 
     const cashForSold = sold
       .reduce((sum, x) => sum.plus(new Decimal(x.agreedValue)), new Decimal(0))
@@ -911,6 +955,7 @@ export class MiniSettlementsService {
    */
   private async requireEmployment(ownerId: string, miniUserId: string): Promise<Employment> {
     const employment = await this.employmentRepo.findOne({
+      // tenancy-exempt: an employment is a relationship between two PEOPLE.
       where: { employerId: ownerId, employeeId: miniUserId },
       relations: { employee: true },
     });
@@ -932,16 +977,19 @@ export class MiniSettlementsService {
    * approved handover), so this list is exactly what approval will freeze onto
    * the settlement.
    */
-  private async activeTeam(ownerId: string, miniId: string): Promise<ActiveTeamMember[]> {
+  private async activeTeam(ctx: ActorContext, miniId: string): Promise<ActiveTeamMember[]> {
     const last = await this.settlementRepo.findOne({
       where: { miniId, status: MiniSettlementStatus.APPROVED },
       order: { approvedAt: 'DESC' },
     });
-    const given = await this.computeTeamMembers(ownerId, miniId, last?.approvedAt ?? null);
+    const given = await this.computeTeamMembers(ctx, miniId, last?.approvedAt ?? null);
 
     // The mini heads their own team, so they lead the list. Synthesised, never a
     // row: they are an actual user, and the goods are already on their books.
-    const employment = await this.requireEmployment(ownerId, miniId);
+    // The employer is the person side of the employment; the branch came in
+    // with the context.
+    const employerId = ctx.employment?.employerId ?? ctx.effectiveOwnerId;
+    const employment = await this.requireEmployment(employerId, miniId);
     const self = employment.employee;
     const team: ActiveTeamMember[] = self
       ? [
@@ -958,7 +1006,8 @@ export class MiniSettlementsService {
       team.map((m) => `${m.name.trim().toLowerCase()}|${(m.phone ?? '').trim()}`),
     );
     const manual = await this.miniTeamRepo.find({
-      where: { miniId, ownerId, settlementId: IsNull() },
+      // tenancy-exempt: miniId names the PERSON the team belongs to.
+      where: { miniId, ...readScope(ctx), settlementId: IsNull() },
       order: { createdAt: 'ASC' },
     });
     for (const m of manual) {
@@ -975,12 +1024,12 @@ export class MiniSettlementsService {
     if (!ctx.employment) {
       throw new ForbiddenException('Only a mini employee has a team');
     }
-    return this.activeTeam(ctx.employment.employerId, ctx.effectiveOwnerId);
+    return this.activeTeam(ctx, ctx.effectiveOwnerId);
   }
 
   /** Owner/full employee: the same list for one of their minis. */
   async miniActiveTeam(ctx: ActorContext, miniUserId: string): Promise<ActiveTeamMember[]> {
-    return this.activeTeam(ctx.effectiveOwnerId, miniUserId);
+    return this.activeTeam(ctx, miniUserId);
   }
 
   /**
@@ -1002,14 +1051,14 @@ export class MiniSettlementsService {
 
     // The same person twice on one cycle is a mis-tap, not a second teammate.
     const existing = await this.miniTeamRepo.findOne({
-      where: { miniId: miniUserId, ownerId, settlementId: IsNull(), name: ILike(name) },
+      // tenancy-exempt: miniId names the PERSON the team belongs to.
+      where: { miniId: miniUserId, ...readScope(ctx), settlementId: IsNull(), name: ILike(name) },
     });
     if (existing) return existing;
 
     return this.miniTeamRepo.save(
       this.miniTeamRepo.create({
         miniId: miniUserId,
-        ownerId,
         name,
         phone,
         settlementId: null,
@@ -1026,7 +1075,7 @@ export class MiniSettlementsService {
   ): Promise<MiniSettlement> {
     const settlement = await this.settlementRepo.findOne({ where: { id: settlementId } });
     if (!settlement) throw new NotFoundException('Handover not found');
-    if (settlement.ownerId !== ctx.effectiveOwnerId) {
+    if (settlement.orgId !== ctx.orgId || (ctx.shopId && settlement.shopId !== ctx.shopId)) {
       throw new ForbiddenException('This handover is not yours');
     }
     // The team is part of a settled cycle's record — there is nothing to attach
@@ -1062,7 +1111,6 @@ export class MiniSettlementsService {
     return this.miniTeamRepo.save(
       this.miniTeamRepo.create({
         miniId: settlement.miniId,
-        ownerId: settlement.ownerId,
         name,
         phone,
         settlementId: settlement.id,
@@ -1073,7 +1121,7 @@ export class MiniSettlementsService {
   async removeTeamMember(ctx: ActorContext, id: string): Promise<void> {
     const member = await this.miniTeamRepo.findOne({ where: { id } });
     if (!member) throw new NotFoundException('Team member not found');
-    if (member.ownerId !== ctx.effectiveOwnerId) {
+    if (member.orgId !== ctx.orgId || (ctx.shopId && member.shopId !== ctx.shopId)) {
       throw new ForbiddenException('This team member is not on one of your handovers');
     }
     await this.miniTeamRepo.remove(member);
@@ -1098,7 +1146,7 @@ export class MiniSettlementsService {
       where: { miniId, status: MiniSettlementStatus.APPROVED },
       order: { approvedAt: 'DESC' },
     });
-    const sold = await this.computeSoldLines(miniId, last?.approvedAt ?? null);
+    const sold = await this.computeSoldLines(ctx, miniId, last?.approvedAt ?? null);
     const soldFc = sold.reduce(
       (sum, l) => sum.plus(new Decimal(l.agreedValueFc)),
       new Decimal(0),
@@ -1141,7 +1189,12 @@ export class MiniSettlementsService {
     // Gate: only while the mini currently holds goods from the employer
     // (they owe an outstanding balance for this cycle).
     const debt = await this.supplierDebtRepo.findOne({
-      where: { ownerId: miniId, supplierUserId: ownerId },
+      where: {
+        // tenancy-exempt: the two PEOPLE either side of the balance.
+        ownerId: miniId,
+        supplierUserId: ownerId,
+        ...readScope(ctx),
+      },
     });
     const outstanding = debt ? new Decimal(debt.outstandingBalance) : new Decimal(0);
     if (outstanding.lte(0)) {
@@ -1173,7 +1226,7 @@ export class MiniSettlementsService {
 
     const expense = this.miniExpenseRepo.create({
       miniId,
-      ownerId,
+      ...writeScope(ctx),
       amount: amount.toFixed(4),
       category: dto.category,
       description: dto.description ?? null,
@@ -1215,7 +1268,7 @@ export class MiniSettlementsService {
 
   async findIncoming(ctx: ActorContext): Promise<MiniSettlement[]> {
     return this.settlementRepo.find({
-      where: { ownerId: ctx.effectiveOwnerId },
+      where: readScope(ctx),
       relations: { mini: true, items: true, payment: true, expenses: true, team: true },
       order: { createdAt: 'DESC' },
     });
@@ -1232,21 +1285,27 @@ export class MiniSettlementsService {
       relations: { items: true },
     });
     if (!settlement) throw new NotFoundException('Pending handover not found');
-    if (settlement.ownerId !== ownerId) {
+    if (settlement.orgId !== ctx.orgId || (ctx.shopId && settlement.shopId !== ctx.shopId)) {
       throw new ForbiddenException('This handover is not addressed to you');
     }
     const miniId = settlement.miniId;
 
     return this.dataSource.transaction(async (manager) => {
       const credit = await manager.findOne(DebtorCredit, {
-        where: { ownerId, debtorUserId: miniId },
+        // The owner's credit for this mini — held by the owner approving.
+        where: { ...holderScope(ctx), debtorUserId: miniId },
       });
       if (!credit) {
         throw new BadRequestException('No credit record found for this mini employee');
       }
       // Mirror debt on the mini's books (created alongside the CONSIGNED_IN entry).
       const debt = await manager.findOne(SupplierDebt, {
-        where: { ownerId: miniId, supplierUserId: ownerId },
+        where: {
+        // tenancy-exempt: the two PEOPLE either side of the balance.
+        ownerId: miniId,
+        supplierUserId: ownerId,
+        ...readScope(ctx),
+      },
       });
 
       // ── Returns: unsold goods flow back to the owner's sellable stock ──
@@ -1343,7 +1402,7 @@ export class MiniSettlementsService {
           restockLot = await manager.save(
             InventoryEntry,
             manager.create(InventoryEntry, {
-              ownerId,
+              ...writeScope(ctx),
               source: InventorySource.PERSONAL,
               productName: item.productName,
               groupId: item.variantId ? ownerOut[0]?.groupId ?? null : null,
@@ -1359,7 +1418,7 @@ export class MiniSettlementsService {
           );
         }
         await this.stockMovements.record(manager, {
-          ownerId,
+          ownerId: ctx.effectiveOwnerId,
           entry: restockLot,
           reason: StockMovementReason.CONSIGN_RETURN_IN,
           qty,
@@ -1400,6 +1459,7 @@ export class MiniSettlementsService {
 
       if (cash.gt(0)) {
         const payment = manager.create(Payment, {
+          ...writeScope(ctx),
           amount: cash.toFixed(4),
           note: settlement.note ?? 'Mini-employee handover',
           direction: PaymentDirection.DEBTOR_TO_OWNER,
@@ -1418,14 +1478,16 @@ export class MiniSettlementsService {
       // business expenses (attributed to the mini). The cash payment above is
       // the full sold value; these expenses net it down to what the mini
       // physically hands over. ──
-      const rateRow = await this.currencyService.getRate();
+      const rateRow = await this.currencyService.getRate(ctx.orgId);
       const systemRate = rateRow?.usdToFcRate ?? null;
       const claimedExpenses = await manager.find(MiniExpense, {
         where: { settlementId: settlement.id },
       });
       for (const me of claimedExpenses) {
         const booked = manager.create(Expense, {
-          ownerId,
+          // The mini's spending books against the branch approving the
+          // handover — the same branch whose cash it came out of.
+          ...writeScope(ctx),
           actorId: me.miniId,
           amount: new Decimal(me.amount).toFixed(4),
           currency: ExpenseCurrency.FC,
@@ -1447,16 +1509,15 @@ export class MiniSettlementsService {
         where: { miniId, status: MiniSettlementStatus.APPROVED },
         order: { approvedAt: 'DESC' },
       });
-      const cycleTeam = await this.computeTeamMembers(
-        ownerId,
-        miniId,
+      const cycleTeam = await this.computeTeamMembers(ctx, miniId,
         previous?.approvedAt ?? null,
       );
       // Anyone added straight onto the open cycle from the dashboard is already
       // a row — claim those rather than re-creating them, and skip any give-time
       // teammate they duplicate, or the settlement lists that person twice.
       const pendingTeam = await manager.find(MiniTeamMember, {
-        where: { miniId, ownerId, settlementId: IsNull() },
+        // tenancy-exempt: miniId names the PERSON the team belongs to.
+      where: { miniId, ...readScope(ctx), settlementId: IsNull() },
       });
       const alreadyOnTeam = new Set(
         pendingTeam.map((m) => `${m.name.trim().toLowerCase()}|${(m.phone ?? '').trim()}`),
@@ -1469,7 +1530,7 @@ export class MiniSettlementsService {
           MiniTeamMember,
           manager.create(MiniTeamMember, {
             miniId,
-            ownerId,
+            ...writeScope(ctx),
             name: member.name,
             phone: member.phone,
             settlementId: settlement.id,
@@ -1486,6 +1547,7 @@ export class MiniSettlementsService {
       // set" = every handover approved after that). A later rate change never
       // rewrites what this handover pays the mini. Null when no commission. ──
       const employment = await manager.findOne(Employment, {
+        // tenancy-exempt: an employment is a relationship between two PEOPLE.
         where: { employerId: ownerId, employeeId: miniId },
       });
       settlement.commissionPct = employment?.commissionPct ?? null;
@@ -1519,7 +1581,10 @@ export class MiniSettlementsService {
     // Sales the mini recorded on their own books within the window.
     const saleQb = this.saleRepo
       .createQueryBuilder('s')
-      .where('s.owner_id = :miniUserId', { miniUserId })
+      .where('s.org_id = :orgId', { orgId: ctx.orgId })
+      .andWhere(ctx.shopId ? 's.shop_id = :shopId' : '1=1', { shopId: ctx.shopId })
+      // tenancy-exempt: miniUserId names the PERSON whose books these are.
+      .andWhere('s.owner_id = :miniUserId', { miniUserId })
       .andWhere('s.rejected_at IS NULL')
       .orderBy('s.created_at', 'DESC');
     if (from) saleQb.andWhere('s.created_at >= :from', { from });
@@ -1528,7 +1593,7 @@ export class MiniSettlementsService {
 
     // Live rate — fallback for any pre-snapshot rows. Each row's FC value uses
     // its own batch's locked rate so multi-batch totals are exact per batch.
-    const liveRate = (await this.currencyService.getRate())?.usdToFcRate ?? '1';
+    const liveRate = (await this.currencyService.getRate(ctx.orgId))?.usdToFcRate ?? '1';
     const fcOf = (usd: Decimal, snapshot: string | null): Decimal =>
       usd.mul(new Decimal(snapshot ?? liveRate));
 
@@ -1566,7 +1631,8 @@ export class MiniSettlementsService {
     // Value given to the mini within the window (owner-side CONSIGNED_OUT).
     const givenQb = this.entryRepo
       .createQueryBuilder('e')
-      .where('e.owner_id = :ownerId', { ownerId })
+      // Owner-side CONSIGNED_OUT lots, held by the owner viewing.
+      .where(...holderCond('e', ctx))
       .andWhere('e.source = :src', { src: InventorySource.CONSIGNED_OUT })
       .andWhere('e.debtor_user_id = :miniUserId', { miniUserId });
     // "What you gave" shares the selected window with the sales feed — the
@@ -1595,10 +1661,15 @@ export class MiniSettlementsService {
 
     // Current (point-in-time) debt + unsold stock still with the mini.
     const credit = await this.debtorCreditRepo.findOne({
-      where: { ownerId, debtorUserId: miniUserId },
+      where: { ...holderScope(ctx), debtorUserId: miniUserId },
     });
     const inEntries = await this.entryRepo.find({
-      where: { ownerId: miniUserId, source: InventorySource.CONSIGNED_IN },
+      where: {
+        ...readScope(ctx),
+        // tenancy-exempt: miniUserId names the PERSON holding the stock.
+        ownerId: miniUserId,
+        source: InventorySource.CONSIGNED_IN,
+      },
     });
     const stillOutUnits = inEntries.reduce((sum, e) => sum + e.quantityRemaining, 0);
 
@@ -1636,7 +1707,7 @@ export class MiniSettlementsService {
       where: { id, status: MiniSettlementStatus.PENDING },
     });
     if (!settlement) throw new NotFoundException('Pending handover not found');
-    if (settlement.ownerId !== ownerId) {
+    if (settlement.orgId !== ctx.orgId || (ctx.shopId && settlement.shopId !== ctx.shopId)) {
       throw new ForbiddenException('This handover is not addressed to you');
     }
     // Release the claimed expenses back to pending so the mini can re-submit.

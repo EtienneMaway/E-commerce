@@ -1,14 +1,15 @@
 import { ConsignmentsService } from './consignments.service';
+import { testCtx } from '../common/testing/actor-context.fixture';
 import { InventorySource } from '../entities';
 import type { ActorContext } from '../common/types/actor-context';
 
 const OWNER = 'owner-1';
-const ownerCtx: ActorContext = {
+const ownerCtx: ActorContext = testCtx({
   actorId: OWNER,
   effectiveOwnerId: OWNER,
   tier: 'OWNER',
   employment: null,
-} as unknown as ActorContext;
+});
 
 /**
  * A sized consignment: the owner consigns 40 pieces of the "large" size of the

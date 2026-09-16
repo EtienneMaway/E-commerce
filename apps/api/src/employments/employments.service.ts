@@ -16,7 +16,9 @@ import {
   EmploymentTier,
   User,
 } from '../entities';
-import { BCRYPT_SALT_ROUNDS } from '../common/constants';
+import { BCRYPT_SALT_ROUNDS, TOMBSTONE_NAME } from '../common/constants';
+import { ShopContextService } from '../shops/shop-context.service';
+import { requireShop } from '../common/shop-scope';
 import type { ActorContext } from '../common/types/actor-context';
 import { CreateEmploymentDto } from './dto/create-employment.dto';
 import { CreateMiniEmployeeDto } from './dto/create-mini-employee.dto';
@@ -54,11 +56,34 @@ export class EmploymentsService {
     private readonly employeeRoleRepo: Repository<EmployeeRole>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly shopContext: ShopContextService,
   ) {}
+
+  /**
+   * Which branch a new employment belongs to.
+   *
+   * An explicit `shopId` is validated against the caller's own organization —
+   * hiring into another business's branch would be a tenancy leak, and a
+   * mismatch is a 404 rather than a 403 so the id is never confirmed.
+   */
+  private async hireScope(
+    ctx: ActorContext,
+    shopId?: string | null,
+  ): Promise<{ orgId: string; shopId: string }> {
+    if (!shopId) return { orgId: ctx.orgId, shopId: requireShop(ctx) };
+
+    const shop = await this.shopContext.findInOrg(shopId, ctx.orgId);
+    if (!shop) throw new NotFoundException('Branch not found');
+    if (shop.archivedAt) {
+      throw new ConflictException('This branch is closed — reopen it to hire into it');
+    }
+    return { orgId: ctx.orgId, shopId: shop.id };
+  }
 
   // ─── Employer: create a hire request for an existing user ────────────────
 
-  async create(employerId: string, dto: CreateEmploymentDto): Promise<Employment> {
+  async create(ctx: ActorContext, dto: CreateEmploymentDto): Promise<Employment> {
+    const employerId = ctx.effectiveOwnerId;
     const employee = await this.resolveEmployee(dto);
 
     if (employee.id === employerId) {
@@ -72,6 +97,10 @@ export class EmploymentsService {
 
     const employment = this.employmentRepo.create({
       employerId,
+      // An employee is hired into a branch, and `JwtAuthGuard` binds them to it
+      // on every request (§3.11.1). Defaults to the branch doing the hiring;
+      // `dto.shopId` lets an owner hire straight into another one.
+      ...(await this.hireScope(ctx, dto.shopId)),
       employeeId: employee.id,
       tier: dto.tier,
       status: EmploymentStatus.PENDING,
@@ -82,7 +111,7 @@ export class EmploymentsService {
   // ─── Employer: create a mini employee + active employment in one step ────
 
   async createMiniEmployee(
-    employerId: string,
+    ctx: ActorContext,
     dto: CreateMiniEmployeeDto,
   ): Promise<CreateMiniEmployeeResult> {
     if (dto.phone) {
@@ -90,6 +119,7 @@ export class EmploymentsService {
       if (phoneTaken) throw new ConflictException('Phone already registered');
     }
 
+    const employerId = ctx.effectiveOwnerId;
     const username = await this.generateUniqueUsername(dto.name);
     const pairingCode = generatePairingCode();
     const passwordHash = await bcrypt.hash(pairingCode, BCRYPT_SALT_ROUNDS);
@@ -103,12 +133,21 @@ export class EmploymentsService {
       isMiniEmployee: true,
     });
     const savedUser = await this.userRepo.save(user);
+    // Every user gets an organization, including one they will never trade in:
+    // if this employment is later terminated they become an OWNER with no
+    // employment, and an account with no organization cannot even read its own
+    // salary or resign. See ShopContextService.ensureForUser.
+    await this.shopContext.ensureForUser(savedUser.id, savedUser.name ?? savedUser.username);
 
     // Created PENDING: the mini pairs on the mobile app with the code below, then
     // accepts the invite there (→ ACTIVE). Only then do they operate on their own
     // books. Mirrors the full-employee handshake, but stays mobile-only.
     const employment = this.employmentRepo.create({
       employerId,
+      // An employee is hired into a branch, and `JwtAuthGuard` binds them to it
+      // on every request (§3.11.1). Defaults to the branch doing the hiring;
+      // `dto.shopId` lets an owner hire straight into another one.
+      ...(await this.hireScope(ctx, dto.shopId)),
       employeeId: savedUser.id,
       tier: EmploymentTier.SALES_ONLY,
       status: EmploymentStatus.PENDING,
@@ -125,9 +164,10 @@ export class EmploymentsService {
   // ─── Employer: create an external employee (payroll-only, no login) ──────
 
   async createExternalEmployee(
-    employerId: string,
+    ctx: ActorContext,
     dto: CreateExternalEmployeeDto,
   ): Promise<CreateExternalEmployeeResult> {
+    const employerId = ctx.effectiveOwnerId;
     const username = await this.generateUniqueUsername(dto.name);
 
     // External employees can't log in. We still need a password_hash for the
@@ -146,9 +186,15 @@ export class EmploymentsService {
       isExternalEmployee: true,
     });
     const savedUser = await this.userRepo.save(user);
+    // Same totality rule as the mini path above.
+    await this.shopContext.ensureForUser(savedUser.id, savedUser.name ?? savedUser.username);
 
     const employment = this.employmentRepo.create({
       employerId,
+      // An employee is hired into a branch, and `JwtAuthGuard` binds them to it
+      // on every request (§3.11.1). Defaults to the branch doing the hiring;
+      // `dto.shopId` lets an owner hire straight into another one.
+      ...(await this.hireScope(ctx, dto.shopId)),
       employeeId: savedUser.id,
       tier: EmploymentTier.SALES_ONLY,
       status: EmploymentStatus.ACTIVE,
@@ -185,6 +231,187 @@ export class EmploymentsService {
     employment.terminatedAt = new Date();
     employment.payrollActive = false;
     return this.employmentRepo.save(employment);
+  }
+
+  /**
+   * Remove a mini-employee profile and anonymise the person behind it
+   * (MULTI_SHOP_PLAN.md §3.13.6).
+   *
+   * A mini cannot delete their own account — `requestDeletion` refuses employee
+   * profiles, because the employer owns the relationship. That left a real
+   * person's phone number sitting in a row nobody could remove. This is the
+   * employer-side equivalent of the external-employee path, with the same
+   * settlement preconditions an employee would face: stock first, then exit.
+   *
+   * The user row survives, anonymised. Every sale they recorded keeps its
+   * `actor_id`, every handover keeps its lines — attribution is permanent,
+   * access is current.
+   */
+  async removeMiniEmployee(employerId: string, employmentId: string): Promise<Employment> {
+    const employment = await this.employmentRepo.findOne({
+      where: { id: employmentId },
+      relations: { employee: true },
+    });
+    if (!employment) throw new NotFoundException('Employment not found');
+    if (employment.employerId !== employerId) {
+      throw new ForbiddenException('Only the employer can remove this employee');
+    }
+    if (!employment.employee?.isMiniEmployee) {
+      throw new BadRequestException(
+        'This endpoint is for mini employees only — use the termination flow for internal employees',
+      );
+    }
+
+    const miniId = employment.employeeId;
+
+    const holding = await this.employmentRepo.manager.query<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM "inventory_entries"
+        WHERE "owner_id" = $1 AND "source" = 'CONSIGNED_IN' AND "quantity_remaining" > 0`,
+      [miniId],
+    );
+    if (Number(holding[0]?.n ?? 0) > 0) {
+      throw new ConflictException(
+        'This employee is still holding stock — settle the handover first',
+      );
+    }
+
+    const pending = await this.employmentRepo.manager.query<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM "mini_settlements"
+        WHERE "mini_id" = $1 AND "status" = 'PENDING'`,
+      [miniId],
+    );
+    if (Number(pending[0]?.n ?? 0) > 0) {
+      throw new ConflictException(
+        'This employee has a pending handover — approve or reject it first',
+      );
+    }
+
+    return this.employmentRepo.manager.transaction(async (manager) => {
+      if (employment.status !== EmploymentStatus.TERMINATED) {
+        employment.status = EmploymentStatus.TERMINATED;
+        employment.terminatedAt = new Date();
+        employment.payrollActive = false;
+        await manager.save(Employment, employment);
+      }
+
+      // Same anonymisation the account-purge sweep performs: keep the row so
+      // transactional history stays intact for everyone else, drop the person.
+      const shortId = miniId.slice(0, 8);
+      await manager.update(User, { id: miniId }, {
+        username: `deleted_user_${shortId}`,
+        name: TOMBSTONE_NAME,
+        email: null,
+        phone: null,
+        dateOfBirth: null,
+        role: null,
+        passwordHash: await bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_SALT_ROUNDS),
+        anonymizedAt: new Date(),
+      });
+
+      return employment;
+    });
+  }
+
+  /**
+   * Move an employee to another branch (MULTI_SHOP_PLAN.md §3.11.3).
+   *
+   * A transfer, not a re-hire. Terminating and re-hiring would throw away
+   * tenure, pay, commission, allowance, the assigned role and the payroll
+   * history — and would lock them out in between — for what the merchant
+   * experiences as "Amina moved to the new branch on Monday".
+   *
+   * Proposed by the employer, accepted by the employee. They keep working at
+   * their current branch until they accept, so there is never a window where
+   * they can do nothing.
+   */
+  async proposeTransfer(
+    ctx: ActorContext,
+    employmentId: string,
+    shopId: string,
+  ): Promise<Employment> {
+    const employment = await this.employmentRepo.findOne({
+      where: { id: employmentId },
+      relations: { employee: true },
+    });
+    if (!employment) throw new NotFoundException('Employment not found');
+    if (employment.employerId !== ctx.effectiveOwnerId) {
+      throw new ForbiddenException('Only the employer can transfer this employee');
+    }
+    if (
+      employment.status === EmploymentStatus.TERMINATED ||
+      employment.status === EmploymentStatus.REJECTED
+    ) {
+      throw new BadRequestException('Cannot transfer a closed employment');
+    }
+    if (employment.shopId === shopId) {
+      throw new BadRequestException('This employee already works at that branch');
+    }
+
+    const shop = await this.shopContext.findInOrg(shopId, ctx.orgId);
+    if (!shop) throw new NotFoundException('Branch not found');
+    if (shop.archivedAt) {
+      throw new ConflictException('This branch is closed — reopen it to move anyone there');
+    }
+
+    await this.assertSettledForTransfer(employment.employeeId);
+
+    employment.pendingShopId = shopId;
+    return this.employmentRepo.save(employment);
+  }
+
+  /** The employee decides. Accepting is what actually moves them. */
+  async respondToTransfer(
+    employeeId: string,
+    employmentId: string,
+    accept: boolean,
+  ): Promise<Employment> {
+    const employment = await this.employmentRepo.findOne({ where: { id: employmentId } });
+    if (!employment) throw new NotFoundException('Employment not found');
+    if (employment.employeeId !== employeeId) {
+      throw new ForbiddenException('This transfer is not yours to answer');
+    }
+    if (!employment.pendingShopId) {
+      throw new BadRequestException('No transfer is pending');
+    }
+
+    if (accept) {
+      // Re-checked here, not only at propose: days pass in between, and a
+      // handover opened since would leave stock straddling two branches.
+      await this.assertSettledForTransfer(employment.employeeId);
+      employment.shopId = employment.pendingShopId;
+    }
+    employment.pendingShopId = null;
+    return this.employmentRepo.save(employment);
+  }
+
+  /**
+   * Refuse a move while the employee still has business open at their current
+   * branch — otherwise stock and cash straddle two branches and neither
+   * reconciles. Same instinct as a mini only being able to reject a sale inside
+   * their open cycle: settle first, then move.
+   */
+  private async assertSettledForTransfer(employeeId: string): Promise<void> {
+    const holding = await this.employmentRepo.manager.query<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM "inventory_entries"
+        WHERE "owner_id" = $1 AND "source" = 'CONSIGNED_IN' AND "quantity_remaining" > 0`,
+      [employeeId],
+    );
+    if (Number(holding[0]?.n ?? 0) > 0) {
+      throw new ConflictException(
+        'This employee is still holding stock — settle the handover before moving them',
+      );
+    }
+
+    const pending = await this.employmentRepo.manager.query<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM "mini_settlements"
+        WHERE "mini_id" = $1 AND "status" = 'PENDING'`,
+      [employeeId],
+    );
+    if (Number(pending[0]?.n ?? 0) > 0) {
+      throw new ConflictException(
+        'This employee has a handover waiting for approval — finish it before moving them',
+      );
+    }
   }
 
   // ─── Employer: edit the employee's profile (name, dob, role) ─────────────
@@ -478,8 +705,13 @@ export class EmploymentsService {
    * default access, which is broader than most roles. The dashboard should word
    * it as "remove all restrictions", never as "remove access".
    */
-  async setRole(userId: string, id: string, roleId: string | null): Promise<Employment> {
-    const employment = await this.findOne(userId, id);
+  async setRole(
+    ctx: ActorContext,
+    id: string,
+    roleId: string | null,
+  ): Promise<Employment> {
+    const userId = ctx.effectiveOwnerId;
+    const employment = await this.findOne(userId, id, ctx);
     if (employment.employerId !== userId) {
       throw new ForbiddenException('Only the employer can set an employee\'s role');
     }
@@ -493,7 +725,7 @@ export class EmploymentsService {
       // Scoped to this employer: one employer must never be able to attach
       // another's role, which would leak the role's name and service list.
       const role = await this.employeeRoleRepo.findOne({
-        where: { id: roleId, ownerId: userId },
+        where: { id: roleId, orgId: ctx.orgId },
       });
       if (!role) throw new NotFoundException('Role not found');
     }

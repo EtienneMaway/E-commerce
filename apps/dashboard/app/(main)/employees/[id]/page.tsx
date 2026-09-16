@@ -27,6 +27,7 @@ import { usePermissions } from '../../../../lib/permissions';
 import { useConfirm } from '../../../../components/ui/ConfirmDialog';
 import { SendConsignmentDialog } from '../../../../components/forms/SendConsignmentDialog';
 import { useT, type Translations } from '../../../../lib/i18n';
+import { isClosedAccount } from '../../../../lib/person';
 import { useLocaleStore } from '../../../../store/locale.store';
 import { useCurrencyStore } from '../../../../store/currency.store';
 import { useFormatCurrency } from '../../../../lib/currency';
@@ -139,7 +140,9 @@ export default function EmployeePayrollPage() {
     employment.status === 'TERMINATED' || employment.status === 'REJECTED';
   const isExternal = !!employee?.isExternalEmployee;
   const isMini = employment.tier === 'SALES_ONLY' && !isExternal && !!employee?.id;
-  const displayName = employee?.name?.trim() || employee?.username || t.employees.title.slice(0, -1);
+  const displayName = isClosedAccount(employee)
+    ? t.common.formerEmployee
+    : employee?.name?.trim() || employee?.username || t.employees.title.slice(0, -1);
   // A supervisor (handovers.approve, no employees.manage) only has Activities,
   // so fall back to it rather than to a Profile tab they cannot see.
   const fallbackTab = canManage ? 'profile' : 'activities';

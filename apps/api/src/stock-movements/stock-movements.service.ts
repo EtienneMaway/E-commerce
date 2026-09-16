@@ -8,6 +8,8 @@ import {
   StockMovementReason,
 } from '../entities';
 import { StockMovementsFilterDto } from './dto/stock-movements-filter.dto';
+import type { ActorContext } from '../common/types/actor-context';
+import { holderCond, holderScope } from '../common/shop-scope';
 
 export interface RecordMovementInput {
   ownerId: string;
@@ -47,6 +49,13 @@ export class StockMovementsService {
 
     const movement = manager.create(StockMovement, {
       ownerId: input.ownerId,
+      // Tenancy is DERIVED from the lot, never passed in: a movement belongs to
+      // the branch its stock sits at, and a caller that could pass something
+      // else is a caller that could get it wrong. Null until the module that
+      // creates the lot is converted, which is exactly right — the movement then
+      // matches its entry either way.
+      orgId: input.entry.orgId,
+      shopId: input.entry.shopId,
       inventoryEntryId: input.entry.id,
       reason: input.reason,
       qtyDelta,
@@ -62,7 +71,7 @@ export class StockMovementsService {
   }
 
   async findAll(
-    ownerId: string,
+    ctx: ActorContext,
     filter: StockMovementsFilterDto,
   ): Promise<{
     data: StockMovement[];
@@ -82,7 +91,8 @@ export class StockMovementsService {
     const applyFilters = (
       qb: ReturnType<typeof this.repo.createQueryBuilder>,
     ) => {
-      qb.where('m.ownerId = :ownerId', { ownerId });
+      // A movement belongs to whoever holds the lot it moved — see holderScope.
+      qb.where(...holderCond('m', ctx));
 
       if (filter.entryId) {
         qb.andWhere('m.inventoryEntryId = :entryId', {
@@ -181,11 +191,11 @@ export class StockMovementsService {
   }
 
   async findByEntry(
-    ownerId: string,
+    ctx: ActorContext,
     entryId: string,
   ): Promise<StockMovement[]> {
     return this.repo.find({
-      where: { ownerId, inventoryEntryId: entryId },
+      where: { ...holderScope(ctx), inventoryEntryId: entryId },
       order: { createdAt: 'DESC' },
     });
   }

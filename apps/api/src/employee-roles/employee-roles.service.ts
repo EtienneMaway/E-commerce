@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmployeeRole, Employment, EmploymentStatus } from '../entities';
+import type { ActorContext } from '../common/types/actor-context';
 import {
   ROLE_PRESETS,
   RolePreset,
@@ -51,9 +52,9 @@ export class EmployeeRolesService {
     };
   }
 
-  async list(ownerId: string): Promise<EmployeeRoleWithUsage[]> {
+  async list(ctx: ActorContext): Promise<EmployeeRoleWithUsage[]> {
     const roles = await this.roleRepo.find({
-      where: { ownerId },
+      where: { orgId: ctx.orgId },
       order: { name: 'ASC' },
     });
     if (roles.length === 0) return [];
@@ -66,17 +67,17 @@ export class EmployeeRolesService {
     }));
   }
 
-  async findOne(ownerId: string, id: string): Promise<EmployeeRole> {
-    const role = await this.roleRepo.findOne({ where: { id, ownerId } });
+  async findOne(ctx: ActorContext, id: string): Promise<EmployeeRole> {
+    const role = await this.roleRepo.findOne({ where: { id, orgId: ctx.orgId } });
     if (!role) throw new NotFoundException('Role not found');
     return role;
   }
 
-  async create(ownerId: string, dto: CreateEmployeeRoleDto): Promise<EmployeeRole> {
+  async create(ctx: ActorContext, dto: CreateEmployeeRoleDto): Promise<EmployeeRole> {
     const name = dto.name.trim();
-    await this.assertNameFree(ownerId, name, null);
+    await this.assertNameFree(ctx, name, null);
     const role = this.roleRepo.create({
-      ownerId,
+      orgId: ctx.orgId,
       name,
       description: dto.description?.trim() || null,
       services: this.normalizeServices(dto.services),
@@ -85,14 +86,14 @@ export class EmployeeRolesService {
   }
 
   async update(
-    ownerId: string,
+    ctx: ActorContext,
     id: string,
     dto: UpdateEmployeeRoleDto,
   ): Promise<EmployeeRole> {
-    const role = await this.findOne(ownerId, id);
+    const role = await this.findOne(ctx, id);
     if (dto.name !== undefined) {
       const name = dto.name.trim();
-      await this.assertNameFree(ownerId, name, id);
+      await this.assertNameFree(ctx, name, id);
       role.name = name;
     }
     if (dto.description !== undefined) {
@@ -112,8 +113,8 @@ export class EmployeeRolesService {
    * access" — wider than any role. A cascade would quietly *grant* access as a
    * side effect of tidying up. The employer reassigns first.
    */
-  async remove(ownerId: string, id: string): Promise<void> {
-    const role = await this.findOne(ownerId, id);
+  async remove(ctx: ActorContext, id: string): Promise<void> {
+    const role = await this.findOne(ctx, id);
     const assigned = (await this.countAssignments([id])).get(id) ?? 0;
     if (assigned > 0) {
       throw new ConflictException(
@@ -139,7 +140,7 @@ export class EmployeeRolesService {
   }
 
   private async assertNameFree(
-    ownerId: string,
+    ctx: ActorContext,
     name: string,
     exceptId: string | null,
   ): Promise<void> {
@@ -147,7 +148,7 @@ export class EmployeeRolesService {
     // gets a readable 409 rather than a driver-level constraint error.
     const clash = await this.roleRepo
       .createQueryBuilder('r')
-      .where('r.owner_id = :ownerId', { ownerId })
+      .where('r.org_id = :orgId', { orgId: ctx.orgId })
       .andWhere('LOWER(r.name) = LOWER(:name)', { name })
       .andWhere(exceptId ? 'r.id != :exceptId' : '1=1', { exceptId })
       .getOne();

@@ -22,6 +22,8 @@ import {
 import { CurrencyService } from '../currency/currency.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { CreateWithdrawalDto } from './dto/create-withdrawal.dto';
+import { holderCond, readScope, writeScope } from '../common/shop-scope';
+import type { ActorContext } from '../common/types/actor-context';
 
 export interface IncomeBreakdown {
   directSales: string;
@@ -56,14 +58,14 @@ export class WithdrawalsService {
     private readonly dashboardService: DashboardService,
   ) {}
 
-  async getAvailable(ownerId: string): Promise<AvailableWithdrawal> {
-    const last = await this.getLastWithdrawal(ownerId);
+  async getAvailable(ctx: ActorContext): Promise<AvailableWithdrawal> {
+    const last = await this.getLastWithdrawal(ctx);
     const periodStartAt = last ? last.withdrawnAt : new Date(0);
     const leftoverCarried = last ? new Decimal(last.leftoverOut) : new Decimal(0);
 
     const [income, expenses] = await Promise.all([
-      this.sumPeriodIncome(ownerId, periodStartAt),
-      this.sumPeriodExpensesUsd(ownerId, periodStartAt),
+      this.sumPeriodIncome(ctx, periodStartAt),
+      this.sumPeriodExpensesUsd(ctx, periodStartAt),
     ]);
 
     const totalIncome = new Decimal(income.directSales)
@@ -86,7 +88,7 @@ export class WithdrawalsService {
     };
   }
 
-  async create(ownerId: string, dto: CreateWithdrawalDto): Promise<Withdrawal> {
+  async create(ctx: ActorContext, dto: CreateWithdrawalDto): Promise<Withdrawal> {
     const amountOriginal = new Decimal(dto.amount);
     if (amountOriginal.lte(0)) {
       throw new BadRequestException('Amount must be greater than zero');
@@ -99,7 +101,7 @@ export class WithdrawalsService {
     // `amountUsd × buyingRate`. We persist amountUsd at the System Rate
     // value of FC drained — that keeps totalWithdrawn balanced against
     // totalCashReceived (also booked at the System Rate).
-    const rateRow = await this.currencyService.getRate();
+    const rateRow = await this.currencyService.getRate(ctx.orgId);
     const systemRate = rateRow?.usdToFcRate
       ? new Decimal(rateRow.usdToFcRate)
       : null;
@@ -134,8 +136,8 @@ export class WithdrawalsService {
     }
 
     const [snapshot, position] = await Promise.all([
-      this.getAvailable(ownerId),
-      this.dashboardService.getCashPosition(ownerId),
+      this.getAvailable(ctx),
+      this.dashboardService.getCashPosition(ctx),
     ]);
     const available = new Decimal(snapshot.available);
     const availableBusinessCash = new Decimal(position.availableBusinessCash);
@@ -149,7 +151,7 @@ export class WithdrawalsService {
     const leftoverOut = Decimal.max(available.minus(amountUsd), new Decimal(0));
 
     const withdrawal = this.withdrawalRepo.create({
-      ownerId,
+      ...writeScope(ctx),
       amount: amountOriginal.toFixed(4),
       currency: dto.currency,
       usdToFcRateSnapshot: rateSnapshot,
@@ -165,7 +167,7 @@ export class WithdrawalsService {
   }
 
   async list(
-    ownerId: string,
+    ctx: ActorContext,
     page = 1,
     limit = 10,
   ): Promise<{
@@ -173,7 +175,7 @@ export class WithdrawalsService {
     pagination: { page: number; limit: number; total: number; totalPages: number };
   }> {
     const [data, total] = await this.withdrawalRepo.findAndCount({
-      where: { ownerId },
+      where: readScope(ctx),
       order: { withdrawnAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -189,11 +191,11 @@ export class WithdrawalsService {
     };
   }
 
-  async remove(ownerId: string, id: string): Promise<void> {
-    const withdrawal = await this.withdrawalRepo.findOne({ where: { id, ownerId } });
+  async remove(ctx: ActorContext, id: string): Promise<void> {
+    const withdrawal = await this.withdrawalRepo.findOne({ where: { id, ...readScope(ctx) } });
     if (!withdrawal) throw new NotFoundException('Withdrawal not found');
 
-    const latest = await this.getLastWithdrawal(ownerId);
+    const latest = await this.getLastWithdrawal(ctx);
     if (!latest || latest.id !== withdrawal.id) {
       throw new ForbiddenException(
         'Only the most recent withdrawal can be deleted (to preserve leftover carryover chain)',
@@ -202,9 +204,9 @@ export class WithdrawalsService {
     await this.withdrawalRepo.remove(withdrawal);
   }
 
-  private async getLastWithdrawal(ownerId: string): Promise<Withdrawal | null> {
+  private async getLastWithdrawal(ctx: ActorContext): Promise<Withdrawal | null> {
     const [last] = await this.withdrawalRepo.find({
-      where: { ownerId },
+      where: readScope(ctx),
       order: { withdrawnAt: 'DESC' },
       take: 1,
     });
@@ -212,21 +214,28 @@ export class WithdrawalsService {
   }
 
   private async sumPeriodIncome(
-    ownerId: string,
+    ctx: ActorContext,
     since: Date,
   ): Promise<{ directSales: Decimal; debtorPayments: Decimal; externalPaymentIn: Decimal }> {
     const [salesAgg, paymentsAgg, externalAgg] = await Promise.all([
       this.saleRepo
         .createQueryBuilder('s')
         .select('COALESCE(SUM(CAST(s.salePrice AS DECIMAL) * s.qtySold), 0)', 'total')
-        .where('s.ownerId = :ownerId', { ownerId })
+        .where(...holderCond('s', ctx))
         .andWhere('s.rejected_at IS NULL')
         .andWhere('s.date > :since', { since })
         .getRawOne<{ total: string }>(),
       this.paymentRepo
         .createQueryBuilder('p')
         .select('COALESCE(SUM(CAST(p.amount AS DECIMAL)), 0)', 'total')
-        .where('p.paidToUserId = :ownerId', { ownerId })
+        // Same reason as dashboard.getCashPosition: a payment belongs to two
+        // businesses, and the receiving branch is the one holding the credit it
+        // settles — not the payment's own shop_id, which records the payer.
+        .innerJoin('debtor_credits', 'dc', 'dc.id = p.debtor_credit_id')
+        .where('dc.org_id = :orgId', { orgId: ctx.orgId })
+        .andWhere(ctx.shopId ? 'dc.shop_id = :shopId' : '1=1', { shopId: ctx.shopId })
+        // tenancy-exempt: paidToUserId names the PERSON who received the cash.
+        .andWhere('p.paidToUserId = :payee', { payee: ctx.effectiveOwnerId })
         .andWhere('p.direction = :dir', { dir: PaymentDirection.DEBTOR_TO_OWNER })
         .andWhere('p.status = :status', { status: PaymentStatus.APPROVED })
         .andWhere('p.date > :since', { since })
@@ -234,7 +243,8 @@ export class WithdrawalsService {
       this.externalTxRepo
         .createQueryBuilder('tx')
         .select('COALESCE(SUM(CAST(tx.amount AS DECIMAL)), 0)', 'total')
-        .where('tx.ownerId = :ownerId', { ownerId })
+        .where('tx.orgId = :orgId', { orgId: ctx.orgId })
+        .andWhere(ctx.shopId ? 'tx.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
         .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
         .andWhere('tx.createdAt > :since', { since })
         .getRawOne<{ total: string }>(),
@@ -247,13 +257,13 @@ export class WithdrawalsService {
     };
   }
 
-  private async sumPeriodExpensesUsd(ownerId: string, since: Date): Promise<Decimal> {
+  private async sumPeriodExpensesUsd(ctx: ActorContext, since: Date): Promise<Decimal> {
     const expenses = await this.expenseRepo.find({
-      where: { ownerId, date: MoreThan(since) },
+      where: { ...readScope(ctx), date: MoreThan(since) },
     });
     if (expenses.length === 0) return new Decimal(0);
 
-    const currentRate = await this.currencyService.getRate();
+    const currentRate = await this.currencyService.getRate(ctx.orgId);
     const fallbackRate = currentRate?.usdToFcRate
       ? new Decimal(currentRate.usdToFcRate)
       : null;

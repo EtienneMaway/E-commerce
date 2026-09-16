@@ -64,6 +64,7 @@ export type ServiceKey =
   | 'currency.rates'
   // PEOPLE
   | 'employees.manage'
+  | 'shops.manage'
   | 'payroll.pay'
   | 'handovers.mini'
   | 'handovers.approve'
@@ -160,6 +161,11 @@ const DEFINITIONS: Record<ServiceKey, ServiceSpec> = {
 
   // --------------------------------------------------------------- PEOPLE
   'employees.manage': { group: 'PEOPLE', tiers: OWNER_ONLY, implies: [] },
+  // Creating, renaming and closing a branch — and editing the business itself —
+  // is ownership, not delegation. Same argument that keeps `withdrawals` and
+  // `currency.rates` owner-only: it decides the shape of the business rather
+  // than operating it.
+  'shops.manage': { group: 'PEOPLE', tiers: OWNER_ONLY, implies: [] },
   'payroll.pay': { group: 'PEOPLE', tiers: OWNER_ONLY, implies: [] },
   'handovers.mini': {
     group: 'PEOPLE',

@@ -6,7 +6,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import {
   Employment,
@@ -16,7 +16,16 @@ import {
   SalaryPayment,
   SalaryPaymentKind,
   SalaryPaymentStatus,
+  Shop,
 } from '../entities';
+
+/**
+ * A payment as listed, with the name of the branch it was earned at. A branch
+ * transfer keeps the employment row, so one employee's history can span two
+ * branches — and the employee may no longer be able to see the old one's name
+ * any other way.
+ */
+export type SalaryPaymentView = SalaryPayment & { shopName: string | null };
 import { CreateSalaryPaymentDto } from './dto/create-salary-payment.dto';
 import { ListSalaryPaymentsDto, SalaryRoleFilter } from './dto/list-salary-payments.dto';
 import { RejectSalaryPaymentDto } from './dto/reject-salary-payment.dto';
@@ -129,6 +138,10 @@ export class SalaryPaymentsService {
 
     const now = new Date();
     const payment = this.paymentRepo.create({
+      // Payroll is paid out of the branch the employee works at, which is the
+      // branch their employment names.
+      orgId: employment.orgId,
+      shopId: employment.shopId,
       employmentId: employment.id,
       employerId: employment.employerId,
       employeeId: employment.employeeId,
@@ -146,7 +159,7 @@ export class SalaryPaymentsService {
 
   // ─── List (employer or employee perspective) ─────────────────────────────
 
-  async list(actorId: string, filter: ListSalaryPaymentsDto): Promise<SalaryPayment[]> {
+  async list(actorId: string, filter: ListSalaryPaymentsDto): Promise<SalaryPaymentView[]> {
     const role = filter.role ?? SalaryRoleFilter.EMPLOYER;
     const qb = this.paymentRepo
       .createQueryBuilder('sp')
@@ -171,16 +184,34 @@ export class SalaryPaymentsService {
       qb.andWhere('sp.periodMonth = :periodMonth', { periodMonth: filter.periodMonth });
     }
 
-    return qb.getMany();
+    return this.withShopNames(await qb.getMany());
   }
 
   /** Pending confirmations from the employee's perspective. */
-  async pendingForEmployee(actorId: string): Promise<SalaryPayment[]> {
-    return this.paymentRepo.find({
+  async pendingForEmployee(actorId: string): Promise<SalaryPaymentView[]> {
+    const rows = await this.paymentRepo.find({
       where: { employeeId: actorId, status: SalaryPaymentStatus.PENDING_CONFIRMATION },
       relations: { employer: true, employment: true },
       order: { paidAt: 'DESC' },
     });
+    return this.withShopNames(rows);
+  }
+
+  /**
+   * Attach each payment's branch name. Looked up by id rather than through the
+   * caller's shop scope: an employee transferred A→B can no longer see branch A,
+   * but the pay they earned there is still theirs and still needs its label.
+   */
+  private async withShopNames(rows: SalaryPayment[]): Promise<SalaryPaymentView[]> {
+    const ids = [...new Set(rows.map((r) => r.shopId))];
+    const shops = ids.length
+      ? await this.paymentRepo.manager.getRepository(Shop).find({
+          where: { id: In(ids) },
+          select: { id: true, name: true },
+        })
+      : [];
+    const names = new Map(shops.map((s) => [s.id, s.name]));
+    return rows.map((r) => Object.assign(r, { shopName: names.get(r.shopId) ?? null }));
   }
 
   // ─── Summary for one employment + period ─────────────────────────────────
@@ -295,7 +326,10 @@ export class SalaryPaymentsService {
   ): Promise<{ earned: Decimal; confirmed: Decimal; pending: Decimal; count: number }> {
     const settlements = await this.settlementRepo.find({
       where: {
-        ownerId: employment.employerId,
+        // The handover belongs to the employer's business; `miniId` names the
+        // person it settles with. `owner_id` is gone from this table — "whose
+        // books" is the branch now (migration 034).
+        orgId: employment.orgId ?? undefined,
         miniId: employment.employeeId,
         status: MiniSettlementStatus.APPROVED,
       },

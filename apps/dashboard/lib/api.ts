@@ -12,6 +12,10 @@ export const api = axios.create({
 // Avoids any circular imports or SSR/localStorage timing issues.
 let _token: string | null = null;
 let _actingAs: 'self' | 'employer' = 'self';
+/** Selected branch, or 'all' for a cross-branch read. Null = the default shop. */
+let _shopId: string | null = null;
+/** Selected business, for the rare owner who runs more than one. */
+let _orgId: string | null = null;
 
 export function setAuthToken(token: string | null) {
   _token = token;
@@ -19,6 +23,14 @@ export function setAuthToken(token: string | null) {
 
 export function setActingAs(kind: 'self' | 'employer') {
   _actingAs = kind;
+}
+
+export function setShopId(shopId: string | null) {
+  _shopId = shopId;
+}
+
+export function setOrgId(orgId: string | null) {
+  _orgId = orgId;
 }
 
 api.interceptors.request.use((config) => {
@@ -37,6 +49,20 @@ api.interceptors.request.use((config) => {
     if (stored === 'employer' || stored === 'self') persona = stored;
   }
   config.headers.set('X-Acting-As', persona);
+
+  // Branch selection, read from localStorage on every request for the same
+  // reason the persona is: a switch in one tab must be honoured in another.
+  // Absent, the API resolves the organization's default shop — which is what
+  // keeps every screen that has not been touched yet working unchanged.
+  let shopId = _shopId;
+  let orgId = _orgId;
+  if (typeof window !== 'undefined') {
+    shopId = localStorage.getItem('ta_shop');
+    orgId = localStorage.getItem('ta_org');
+  }
+  if (shopId) config.headers.set('X-Shop-Id', shopId);
+  if (orgId) config.headers.set('X-Org-Id', orgId);
+
   return config;
 });
 
@@ -626,6 +652,8 @@ export interface Expense {
   createdAt: string;
   updatedAt: string;
   amountUsd: string;
+  /** Branch the expense was recorded at — labelled under "All branches". */
+  shopId: string;
 }
 
 export interface PaginationMeta {
@@ -744,6 +772,9 @@ export interface EmploymentParty {
 }
 
 export interface Employment {
+  /** Branch this employment is at, and a proposed move awaiting the employee. */
+  shopId: string | null;
+  pendingShopId: string | null;
   id: string;
   employerId: string;
   employer?: EmploymentParty;
@@ -794,6 +825,9 @@ export interface SalaryPayment {
   cancelledAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Branch the pay was earned at. A transfer keeps the employment, so one history can span two. */
+  shopId: string;
+  shopName: string | null;
 }
 
 export interface CommissionSummary {
@@ -828,8 +862,25 @@ export const employmentsApi = {
     api.get('/employments', { params }).then((r) => r.data),
   get: (id: string): Promise<Employment> =>
     api.get(`/employments/${id}`).then((r) => r.data),
-  create: (body: { employeeUserId?: string; emailOrPhone?: string; tier: EmploymentTier }): Promise<Employment> =>
-    api.post('/employments', body).then((r) => r.data),
+  create: (body: {
+    employeeUserId?: string;
+    emailOrPhone?: string;
+    tier: EmploymentTier;
+    /** Branch to hire into; defaults to the branch making the request. */
+    shopId?: string;
+  }): Promise<Employment> => api.post('/employments', body).then((r) => r.data),
+
+  /**
+   * Move an employee to another branch (§3.11.3). A transfer, not a re-hire:
+   * they keep tenure, pay, role and payroll history, and keep working where
+   * they are until they accept.
+   */
+  proposeTransfer: (id: string, shopId: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/transfer`, { shopId }).then((r) => r.data),
+  acceptTransfer: (id: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/transfer/accept`).then((r) => r.data),
+  rejectTransfer: (id: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/transfer/reject`).then((r) => r.data),
   createMiniEmployee: (body: { name: string; phone?: string }): Promise<CreateMiniEmployeeResult> =>
     api.post('/employments/mini-employee', body).then((r) => r.data),
   accept: (id: string): Promise<Employment> =>
@@ -1091,6 +1142,16 @@ export interface DashboardProfitSummary {
   totalProfit: string; // salesProfit + externalProfit
 }
 
+export interface ShopBreakdownRow {
+  shopId: string;
+  shopName: string;
+  isArchived: boolean;
+  salesCount: number;
+  totalRevenue: string;
+  totalProfit: string;
+  availableBusinessCash: string;
+}
+
 export const dashboardApi = {
   summary: () => api.get('/dashboard').then((r) => r.data),
   // Combined period profit (direct sales + external-contact payments) for the
@@ -1102,6 +1163,13 @@ export const dashboardApi = {
   }): Promise<DashboardProfitSummary> =>
     api.get('/dashboard/profit-summary', { params }).then((r) => r.data),
   cashPosition: () => api.get('/dashboard/cash-position').then((r) => r.data),
+  /** Headline figures per branch — every branch under "All branches". */
+  byShop: (params?: {
+    period?: 'today' | 'week' | 'month' | 'all' | 'custom';
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<ShopBreakdownRow[]> =>
+    api.get('/dashboard/by-shop', { params }).then((r) => r.data),
   suppliers: () => api.get('/dashboard/suppliers').then((r) => r.data),
   supplierDetail: (id: string) => api.get(`/dashboard/suppliers/${id}`).then((r) => r.data),
   debtors: () => api.get('/dashboard/debtors').then((r) => r.data),
@@ -1124,4 +1192,72 @@ export interface InboxSignal {
 
 export const syncApi = {
   signal: (): Promise<InboxSignal> => api.get('/sync/signal').then((r) => r.data),
+};
+
+// ─── Shops & the business ────────────────────────────────────────────────────
+
+export interface Shop {
+  id: string;
+  orgId: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  city: string | null;
+  note: string | null;
+  receiptHeader: string | null;
+  receiptFooter: string | null;
+  isDefault: boolean;
+  archivedAt: string | null;
+}
+
+export interface Organization {
+  id: string;
+  ownerUserId: string;
+  pendingOwnerUserId: string | null;
+  name: string;
+  taxId: string | null;
+  logoUrl: string | null;
+}
+
+export interface OwnershipHistoryEntry {
+  id: string;
+  fromUserId: string | null;
+  toUserId: string;
+  transferredAt: string;
+  note: string | null;
+}
+
+export const shopsApi = {
+  list: (): Promise<Shop[]> => api.get('/shops').then((r) => r.data),
+  create: (body: Partial<Shop> & { name: string }): Promise<Shop> =>
+    api.post('/shops', body).then((r) => r.data),
+  update: (id: string, body: Partial<Shop>): Promise<Shop> =>
+    api.patch(`/shops/${id}`, body).then((r) => r.data),
+  setDefault: (id: string): Promise<Shop> =>
+    api.patch(`/shops/${id}/default`).then((r) => r.data),
+  archive: (id: string): Promise<Shop> =>
+    api.patch(`/shops/${id}/archive`).then((r) => r.data),
+  unarchive: (id: string): Promise<Shop> =>
+    api.patch(`/shops/${id}/unarchive`).then((r) => r.data),
+  remove: (id: string): Promise<void> => api.delete(`/shops/${id}`).then(() => undefined),
+};
+
+export const organizationsApi = {
+  mine: (): Promise<Organization> => api.get('/organizations/me').then((r) => r.data),
+  update: (body: Partial<Organization>): Promise<Organization> =>
+    api.patch('/organizations/me', body).then((r) => r.data),
+  history: (): Promise<OwnershipHistoryEntry[]> =>
+    api.get('/organizations/me/ownership-history').then((r) => r.data),
+
+  proposeTransfer: (body: { newOwnerUserId: string; note?: string }): Promise<Organization> =>
+    api.post('/organizations/me/transfer', body).then((r) => r.data),
+  cancelTransfer: (): Promise<Organization> =>
+    api.delete('/organizations/me/transfer').then((r) => r.data),
+
+  /** Businesses someone has offered to me. */
+  offers: (): Promise<Organization[]> => api.get('/organizations/offers').then((r) => r.data),
+  acceptOffer: (orgId: string): Promise<Organization> =>
+    api.patch(`/organizations/offers/${orgId}/accept`).then((r) => r.data),
+  rejectOffer: (orgId: string): Promise<void> =>
+    api.patch(`/organizations/offers/${orgId}/reject`).then(() => undefined),
 };

@@ -10,6 +10,7 @@ import { Badge } from '../../../components/ui/Badge';
 import { ActorPill } from '../../../components/ui/ActorPill';
 import { SendConsignmentDialog } from '../../../components/forms/SendConsignmentDialog';
 import { useT } from '@/lib/i18n';
+import { personHandle } from '@/lib/person';
 import { usePermissions } from '@/lib/permissions';
 import { consignmentHtml } from '../../../lib/print-templates';
 import { PrintDialog } from '../../../components/ui/PrintDialog';
@@ -166,7 +167,7 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
                 style={{ background: i % 2 === 0 ? 'var(--card)' : '#FAFAFA', borderBottom: '1px solid var(--border)' }}
               >
                 <td className="px-4 py-3" style={{ color: 'var(--foreground)' }}>
-                  @{row.debtor?.username ?? row.debtorId}
+                  {row.debtor ? personHandle(row.debtor, t.common.closedAccount) : `@${row.debtorId}`}
                 </td>
                 <td className="px-4 py-3" style={{ color: 'var(--foreground)' }}>
                   <button
@@ -295,7 +296,7 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
                 style={{ background: i % 2 === 0 ? 'var(--card)' : '#FAFAFA', borderBottom: '1px solid var(--border)' }}
               >
                 <td className="px-4 py-3" style={{ color: 'var(--foreground)' }}>
-                  @{row.supplier?.username ?? row.supplierId}
+                  {row.supplier ? personHandle(row.supplier, t.common.closedAccount) : `@${row.supplierId}`}
                 </td>
                 <td className="px-4 py-3">
                   <button

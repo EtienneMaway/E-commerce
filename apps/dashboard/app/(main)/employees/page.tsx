@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -10,13 +10,16 @@ import {
   employmentsApi,
 } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
+import { ALL_SHOPS, useShopStore } from '../../../store/shop.store';
 import { useAuthStore } from '../../../store/auth.store';
 import { formatCurrency, formatDate, getErrorMessage } from '../../../lib/utils';
 import { usePageAccess } from '../../../hooks/use-page-access';
 import { usePermissions } from '../../../lib/permissions';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { useToast } from '../../../components/ui/Toast';
 import { UserSearchInput } from '../../../components/ui/UserSearchInput';
 import { useT, type Translations } from '../../../lib/i18n';
+import { isClosedAccount } from '../../../lib/person';
 
 type TabKey = 'active' | 'sent' | 'received' | 'archive';
 
@@ -60,6 +63,38 @@ function roleColor(role: string): { bg: string; fg: string } {
   return ROLE_PALETTE[Math.abs(hash) % ROLE_PALETTE.length];
 }
 
+/** Two letters to anchor each card, from the name or the username. */
+function personInitials(name?: string, username?: string): string {
+  const source = (name ?? username ?? '?').trim();
+  const words = source.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return source.slice(0, 2).toUpperCase();
+}
+
+function BranchPill({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`branch-pill${active ? ' is-active' : ''}`}
+      aria-pressed={active}
+    >
+      <span>{label}</span>
+      <span className="branch-count">{count}</span>
+    </button>
+  );
+}
+
 function tabLabel(t: Translations, k: TabKey): string {
   switch (k) {
     case 'active': return t.employees.tabActive;
@@ -92,8 +127,20 @@ export default function EmployeesPage() {
   const all = (data as Employment[] | undefined) ?? [];
   const myId = user?.id;
 
+  // Branch scope for the whole page. `/employments` is keyed on employer and
+  // employee, not on the branch, so the list already spans the business and the
+  // filter belongs here — which is also what lets one choice govern all four
+  // tabs at once.
+  const [branch, setBranch] = useState<string>(ALL_SHOPS);
+  const activeShops = useShopStore((st) => st.shops).filter((sh) => !sh.isArchived);
+
+  const branchScoped = useMemo(
+    () => (branch === ALL_SHOPS ? all : all.filter((e) => e.shopId === branch)),
+    [all, branch],
+  );
+
   const filtered = useMemo(() => {
-    return all.filter((e) => {
+    return branchScoped.filter((e) => {
       if (tab === 'active') {
         return e.status === 'ACTIVE' || e.status === 'TERMINATION_REQUESTED';
       }
@@ -105,7 +152,7 @@ export default function EmployeesPage() {
       }
       return e.status === 'REJECTED' || e.status === 'TERMINATED';
     });
-  }, [all, tab, myId]);
+  }, [branchScoped, tab, myId]);
 
   if (!isOwner) return null;
 
@@ -140,6 +187,33 @@ export default function EmployeesPage() {
         )}
       </div>
 
+      {/* Branch scope. One choice, applied to every tab below — active, both
+          pending lists and the archive. Hidden at a single branch, like every
+          other branch control in the app. Counts are of the whole list, not the
+          open tab, so they do not jump about as tabs change. */}
+      {activeShops.length > 1 && (
+        <div className="flex gap-2 flex-wrap mb-4 items-center">
+          <span className="text-xs font-semibold uppercase tracking-wider mr-1" style={{ color: 'var(--muted)' }}>
+            {t.shops.branch}
+          </span>
+          <BranchPill
+            label={t.shops.allShops}
+            count={all.length}
+            active={branch === ALL_SHOPS}
+            onClick={() => setBranch(ALL_SHOPS)}
+          />
+          {activeShops.map((sh) => (
+            <BranchPill
+              key={sh.id}
+              label={sh.name}
+              count={all.filter((e) => e.shopId === sh.id).length}
+              active={branch === sh.id}
+              onClick={() => setBranch(sh.id)}
+            />
+          ))}
+        </div>
+      )}
+
       <div className="flex gap-1 mb-4 border-b" style={{ borderColor: 'rgba(127,127,127,0.15)' }}>
         {(['active', 'sent', 'received', 'archive'] as TabKey[]).map((k) => (
           <button
@@ -161,7 +235,7 @@ export default function EmployeesPage() {
       ) : filtered.length === 0 ? (
         <div className="text-sm opacity-60 p-8 text-center">{t.employees.empty}</div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {filtered.map((e) => (
             <EmploymentRow key={e.id} employment={e} myId={myId} qc={qc} />
           ))}
@@ -190,12 +264,16 @@ function EmploymentRow({
   // employee, and offer none of the relationship actions.
   const isParty = e.employerId === myId || e.employeeId === myId;
   const counterparty = isParty ? (isEmployer ? e.employee : e.employer) : e.employee;
-  const counterpartyName = counterparty?.name?.trim();
+  const confirm = useConfirm();
+  const t = useT();
+  // A closed account keeps its employment history, named by role: the person
+  // this row is about is an employee unless the viewer is that employee.
+  const counterpartyName = isClosedAccount(counterparty)
+    ? isEmployer || !isParty ? t.common.formerEmployee : t.common.closedAccount
+    : counterparty?.name?.trim();
   const counterpartyUsername = counterparty?.username ?? (isEmployer ? 'employee' : 'employer');
   const isExternal = !!counterparty?.isExternalEmployee;
   const statusColor = STATUS_COLORS[e.status];
-  const confirm = useConfirm();
-  const t = useT();
 
   const onSuccess = () => qc.invalidateQueries({ queryKey: QK.employments() });
   const acceptM = useMutation({ mutationFn: () => employmentsApi.accept(e.id), onSuccess });
@@ -227,11 +305,17 @@ function EmploymentRow({
   };
 
   return (
-    <div
-      className="p-4 rounded-xl border"
-      style={{ borderColor: 'rgba(127,127,127,0.15)', background: 'var(--card)' }}
-    >
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+    <div className="emp-card" style={{ '--emp-accent': statusColor.fg } as CSSProperties}>
+      <div className="p-4 pl-5 flex items-start gap-3">
+        {/* The avatar anchors the row: scanning a list, the eye lands on a
+            person rather than on the first badge that happens to be widest. */}
+        <span
+          className="emp-avatar"
+          style={{ background: statusColor.bg, color: statusColor.fg }}
+          aria-hidden
+        >
+          {personInitials(counterpartyName, counterpartyUsername)}
+        </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             {counterpartyName ? (
@@ -282,6 +366,8 @@ function EmploymentRow({
             {e.acceptedAt && ` · ${t.employees.acceptedLabel} ${formatDate(e.acceptedAt)}`}
             {e.terminatedAt && ` · ${t.employees.terminatedLabel} ${formatDate(e.terminatedAt)}`}
           </div>
+          <BranchLine employment={e} isEmployer={isEmployer} isParty={isParty} qc={qc} />
+
           {e.status === 'TERMINATION_REQUESTED' && (
             <div className="text-xs mt-2 opacity-80">
               {e.terminationRequestedBy === myId
@@ -307,7 +393,12 @@ function EmploymentRow({
             </div>
           )}
         </div>
-        <div className="flex gap-2 flex-wrap">
+      </div>
+
+      {/* Footer: every action for this person, fenced off by a rule and a shaded
+          band so the card visibly ends here rather than running into the next
+          one. Collapses to nothing when a row offers no actions. */}
+      <div className="emp-footer px-4 pl-5 py-2.5 flex gap-2 flex-wrap items-center">
           {/* Supervised row: the only thing on offer is the oversight view. Every
               relationship action below belongs to the two parties. */}
           {!isParty && (e.status === 'ACTIVE' || e.status === 'TERMINATION_REQUESTED') && (
@@ -349,10 +440,9 @@ function EmploymentRow({
               <ActionBtn label={t.employees.refuse} onClick={() => rejectTerm.mutate()} disabled={inFlight} />
             </>
           )}
-        </div>
       </div>
       {!!error && (
-        <div className="text-xs mt-3" style={{ color: '#EF4444' }}>
+        <div className="text-xs px-4 pl-5 pb-3" style={{ color: '#EF4444' }}>
           {getErrorMessage(error)}
         </div>
       )}
@@ -379,9 +469,21 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
   const t = useT();
   const [selected, setSelected] = useState<{ id: string; username: string } | null>(null);
   const [tier, setTier] = useState<EmploymentTier>('FULL');
+  // An employee is hired INTO a branch. Defaults to the one being viewed, and
+  // the picker is hidden entirely at a single branch.
+  const shops = useShopStore((st) => st.shops).filter((sh) => !sh.isArchived);
+  const currentShop = useShopStore((st) => st.shopId);
+  const [shopId, setShopId] = useState<string>(
+    (currentShop && currentShop !== 'all' ? currentShop : shops.find((sh) => sh.isDefault)?.id) ?? '',
+  );
 
   const create = useMutation({
-    mutationFn: () => employmentsApi.create({ employeeUserId: selected!.id, tier }),
+    mutationFn: () =>
+      employmentsApi.create({
+        employeeUserId: selected!.id,
+        tier,
+        ...(shops.length > 1 && shopId ? { shopId } : {}),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.employments() });
       onClose();
@@ -397,6 +499,22 @@ function HireModal({ onClose, qc }: { onClose: () => void; qc: ReturnType<typeof
           onChange={setSelected}
           placeholder={t.employees.searchUserPlaceholder}
         />
+        {shops.length > 1 && (
+          <Field label={t.shops.branch}>
+            <select
+              className="input w-full"
+              value={shopId}
+              onChange={(e) => setShopId(e.target.value)}
+            >
+              {shops.map((sh) => (
+                <option key={sh.id} value={sh.id}>
+                  {sh.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+
         <Field label={t.employees.fieldTier}>
           <select
             value={tier}
@@ -560,6 +678,129 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
     <div className="flex items-center justify-between py-1">
       <span className="text-xs opacity-70">{label}</span>
       <span className={mono ? 'text-sm font-mono select-all' : 'text-sm'}>{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Which branch this employment is at, and the move in progress if there is one.
+ *
+ * Silent at a single branch: a merchant with one shop should never see the word.
+ * A transfer keeps the employment row — tenure, pay, role and payroll history
+ * all survive — and the employee keeps working where they are until they accept
+ * (§3.11.3).
+ */
+function BranchLine({
+  employment,
+  isEmployer,
+  isParty,
+  qc,
+}: {
+  employment: Employment;
+  isEmployer: boolean;
+  isParty: boolean;
+  qc: ReturnType<typeof useQueryClient>;
+}) {
+  const t = useT();
+  const toast = useToast();
+  const shops = useShopStore((st) => st.shops);
+  const active = shops.filter((sh) => !sh.isArchived);
+  const [moving, setMoving] = useState(false);
+  const [target, setTarget] = useState('');
+
+  const refresh = (): void => {
+    void qc.invalidateQueries({ queryKey: QK.employments() });
+  };
+  const fail = (e: unknown): void => toast({ title: getErrorMessage(e), variant: 'error' });
+
+  const propose = useMutation({
+    mutationFn: () => employmentsApi.proposeTransfer(employment.id, target),
+    onSuccess: () => {
+      setMoving(false);
+      refresh();
+    },
+    onError: fail,
+  });
+  const respond = useMutation({
+    mutationFn: (accept: boolean) =>
+      accept
+        ? employmentsApi.acceptTransfer(employment.id)
+        : employmentsApi.rejectTransfer(employment.id),
+    onSuccess: refresh,
+    onError: fail,
+  });
+
+  if (active.length <= 1) return null;
+
+  const here = shops.find((sh) => sh.id === employment.shopId)?.name;
+  const pending = shops.find((sh) => sh.id === employment.pendingShopId)?.name;
+  const open = employment.status === 'ACTIVE' || employment.status === 'PENDING';
+
+  return (
+    <div className="text-xs mt-2 flex items-center gap-2 flex-wrap">
+      {here && (
+        <span className="opacity-70">
+          {t.shops.branch}: <strong>{here}</strong>
+        </span>
+      )}
+
+      {employment.pendingShopId && pending && (
+        <>
+          <span style={{ color: 'var(--warning)' }}>{t.employees.transferPending(pending)}</span>
+          {/* Only the employee may answer — that is the consent the flow is for. */}
+          {isParty && !isEmployer && (
+            <>
+              <button className="btn btn-primary" style={{ padding: '2px 10px' }}
+                onClick={() => respond.mutate(true)}>
+                {t.employees.transferAccept}
+              </button>
+              <button className="btn btn-secondary" style={{ padding: '2px 10px' }}
+                onClick={() => respond.mutate(false)}>
+                {t.employees.transferReject}
+              </button>
+            </>
+          )}
+        </>
+      )}
+
+      {isEmployer && open && !employment.pendingShopId && (
+        moving ? (
+          <>
+            <select
+              className="input"
+              style={{ padding: '2px 6px', fontSize: '12px' }}
+              value={target}
+              onChange={(ev) => setTarget(ev.target.value)}
+            >
+              <option value="">…</option>
+              {active
+                .filter((sh) => sh.id !== employment.shopId)
+                .map((sh) => (
+                  <option key={sh.id} value={sh.id}>
+                    {sh.name}
+                  </option>
+                ))}
+            </select>
+            <button
+              className="btn btn-primary"
+              style={{ padding: '2px 10px' }}
+              disabled={!target || propose.isPending}
+              onClick={() => propose.mutate()}
+            >
+              {t.employees.transferSend}
+            </button>
+            <button className="btn btn-secondary" style={{ padding: '2px 10px' }}
+              onClick={() => setMoving(false)}>
+              {t.common.cancel}
+            </button>
+          </>
+        ) : (
+          <button className="btn btn-secondary" style={{ padding: '2px 10px' }}
+            onClick={() => setMoving(true)}>
+            {t.employees.transferBtn}
+          </button>
+        )
+      )}
     </div>
   );
 }

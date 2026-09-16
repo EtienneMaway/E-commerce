@@ -41,6 +41,9 @@ export interface ReceiptData {
   readonly businessName?: string;
   /** @handle of the business — useful when the merchant doesn't have a brand. */
   readonly businessHandle?: string;
+  /** The branch that made the sale — printed under the business, when set. */
+  readonly branchName?: string;
+  readonly branchAddress?: string;
 
   /** Display name of the person who recorded the sale. */
   readonly sellerName?: string;
@@ -284,6 +287,8 @@ export function buildHtml(data: ReceiptData): string {
 
   ${businessLine ? `<div class="business">${businessLine}</div>` : ''}
   ${businessHandleLine ? `<div class="business-handle">${businessHandleLine}</div>` : ''}
+  ${data.branchName ? `<div class="business-handle">${escapeHtml(data.branchName)}</div>` : ''}
+  ${data.branchAddress ? `<div class="business-handle">${escapeHtml(data.branchAddress)}</div>` : ''}
 
   <div class="meta">
     ${data.receiptId ? `<div class="meta-row"><span class="label">Receipt #</span><span>${escapeHtml(data.receiptId)}</span></div>` : ''}

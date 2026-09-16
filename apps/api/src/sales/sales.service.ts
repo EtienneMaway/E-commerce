@@ -21,6 +21,7 @@ import {
   StockMovementReason,
 } from '../entities';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
+import { holderCond, holderScope, isOnMyBooks, readScope, writeScope } from '../common/shop-scope';
 import { PricingService } from '../pricing/pricing.service';
 import { RecordSaleDto } from './dto/record-sale.dto';
 import { UpdateSaleClientDto } from './dto/update-sale-client.dto';
@@ -115,7 +116,7 @@ export class SalesService {
     const clientSaleId = dto.clientSaleId?.trim() || null;
     if (clientSaleId) {
       const existing = await this.saleRepo.findOne({
-        where: { ownerId, clientSaleId },
+        where: { ...holderScope(ctx), clientSaleId },
         order: { date: 'ASC' },
       });
       if (existing) return existing;
@@ -129,6 +130,8 @@ export class SalesService {
     // accounts for it.
     if (ctx.tier === 'MINI_EMPLOYEE') {
       const openHandover = await this.settlementRepo.findOne({
+        // tenancy-exempt: miniId names the PERSON handing over, not a set of
+        // books. Their handover is theirs at whichever branch they work.
         where: { miniId: ownerId, status: MiniSettlementStatus.PENDING },
       });
       if (openHandover) {
@@ -138,7 +141,9 @@ export class SalesService {
       }
     }
 
-    const base = { ownerId, actorId, clientSaleId };
+    // `ownerId` is still written until migration 034 drops the column, which is
+    // what keeps each module of Phase 4 independently shippable.
+    const base = { ownerId, actorId, clientSaleId, ...writeScope(ctx) };
     return dto.carton
       ? this.recordCartonSale(ctx, dto, base)
       : this.recordSingleSale(ctx, dto, base);
@@ -167,8 +172,12 @@ export class SalesService {
   }
 
   /** Ordered sellable lots (SUPPLIER → CONSIGNED_IN → PERSONAL, FIFO within each). */
+  /**
+   * Business rule 2 (SUPPLIER first) still holds — now *within a branch*. Two
+   * branches stocking the same product never draw on each other's shelves.
+   */
   private async fetchSellableLots(
-    ownerId: string,
+    ctx: ActorContext,
     key: { productName?: string; variantId?: string },
   ): Promise<InventoryEntry[]> {
     const match = key.variantId
@@ -177,7 +186,9 @@ export class SalesService {
 
     const bySource = (source: InventorySource) =>
       this.entryRepo.find({
-        where: { ownerId, ...match, source },
+        // The seller's own lots only: a mini's consigned lot sits at the same
+        // branch but is theirs to sell, and the owner's shelf is not the mini's.
+        where: { ...holderScope(ctx), ...match, source },
         order: { createdAt: 'ASC' },
       });
 
@@ -203,9 +214,11 @@ export class SalesService {
       ownerId: string;
       actorId: string | null;
       clientSaleId: string | null;
+      orgId: string;
+      shopId: string;
     },
   ): Promise<SaleTransaction> {
-    const { ownerId, actorId, clientSaleId } = base;
+    const { ownerId, actorId, clientSaleId, orgId, shopId } = base;
 
     const qtySold = dto.qtySold;
     if (!qtySold || qtySold <= 0) {
@@ -223,7 +236,7 @@ export class SalesService {
     }
 
     const allEntries = await this.fetchSellableLots(
-      ownerId,
+      ctx,
       dto.variantId
         ? { variantId: dto.variantId }
         : { productName: dto.productName },
@@ -326,6 +339,8 @@ export class SalesService {
 
         const sale = manager.create(SaleTransaction, {
           ownerId,
+          orgId,
+          shopId,
           actorId,
           productName: entry.productName,
           source: entry.source,
@@ -379,9 +394,11 @@ export class SalesService {
       ownerId: string;
       actorId: string | null;
       clientSaleId: string | null;
+      orgId: string;
+      shopId: string;
     },
   ): Promise<SaleTransaction> {
-    const { ownerId, actorId, clientSaleId } = base;
+    const { ownerId, actorId, clientSaleId, orgId, shopId } = base;
 
     if (!dto.groupId) {
       throw new BadRequestException('groupId is required for a carton sale');
@@ -438,7 +455,7 @@ export class SalesService {
     for (let i = 0; i < gating.length; i++) {
       const variant = gating[i];
       const need = variant.piecesPerCarton * cartonQty;
-      const lots = await this.fetchSellableLots(ownerId, {
+      const lots = await this.fetchSellableLots(ctx, {
         variantId: variant.id,
       });
       const available = lots.reduce((s, e) => s + e.quantityRemaining, 0);
@@ -498,6 +515,8 @@ export class SalesService {
 
         const sale = manager.create(SaleTransaction, {
           ownerId,
+          orgId,
+          shopId,
           actorId,
           productName: p.entry.productName,
           source: p.entry.source,
@@ -548,7 +567,7 @@ export class SalesService {
       .createQueryBuilder('sale')
       .leftJoinAndSelect('sale.actor', 'actor')
       .leftJoinAndSelect('sale.rejectedBy', 'rejectedBy')
-      .where('sale.ownerId = :ownerId', { ownerId })
+      .where(...holderCond('sale', ctx))
       .orderBy('sale.date', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
@@ -629,7 +648,9 @@ export class SalesService {
   ): Promise<SaleTransaction> {
     const ownerId = ctx.effectiveOwnerId;
     const sale = await this.saleRepo.findOne({ where: { id: saleId } });
-    if (!sale || sale.ownerId !== ownerId) {
+    // Holder included: an owner must not void a mini's sale (it would put stock
+    // back onto the mini's lot and rewrite the mini's handover).
+    if (!sale || !isOnMyBooks(sale, ctx)) {
       throw new NotFoundException('Sale not found');
     }
 
@@ -639,6 +660,8 @@ export class SalesService {
 
     if (ctx.tier === 'MINI_EMPLOYEE') {
       const pending = await this.settlementRepo.findOne({
+        // tenancy-exempt: miniId names the PERSON handing over, not a set of
+        // books. Their handover is theirs at whichever branch they work.
         where: { miniId: ownerId, status: MiniSettlementStatus.PENDING },
       });
       if (pending) {
@@ -647,6 +670,7 @@ export class SalesService {
         );
       }
       const lastApproved = await this.settlementRepo.findOne({
+        // tenancy-exempt: miniId is a person key (see above).
         where: { miniId: ownerId, status: MiniSettlementStatus.APPROVED },
         order: { approvedAt: 'DESC' },
       });
@@ -715,7 +739,7 @@ export class SalesService {
     const ownerId = ctx.effectiveOwnerId;
     const sale = await this.saleRepo.findOne({ where: { id: saleId } });
     if (!sale) throw new NotFoundException('Sale not found');
-    if (sale.ownerId !== ownerId) {
+    if (!isOnMyBooks(sale, ctx)) {
       throw new ForbiddenException('You cannot edit this sale');
     }
 
@@ -727,7 +751,7 @@ export class SalesService {
     // phone surfaces the whole transaction, not just one line.
     const targets = sale.receiptId
       ? await this.saleRepo.find({
-          where: { ownerId, receiptId: sale.receiptId, rejectedAt: IsNull() },
+          where: { ...holderScope(ctx), receiptId: sale.receiptId, rejectedAt: IsNull() },
         })
       : [sale];
 
@@ -752,7 +776,7 @@ export class SalesService {
     return this.saleRepo.find({
       // A rejected line is off the receipt: reprinting it would hand the
       // customer a slip for goods that went back on the shelf.
-      where: { ownerId, receiptId, rejectedAt: IsNull() },
+      where: { ...holderScope(ctx), receiptId, rejectedAt: IsNull() },
       relations: { actor: true, inventoryEntry: true },
       order: { date: 'ASC' },
     });
@@ -774,7 +798,7 @@ export class SalesService {
         'totalRevenue',
       )
       .addSelect('SUM(CAST(sale.profit AS DECIMAL))', 'totalProfit')
-      .where('sale.ownerId = :ownerId', { ownerId })
+      .where(...holderCond('sale', ctx))
       .andWhere('sale.rejected_at IS NULL')
       .groupBy('sale.productName');
 
@@ -839,7 +863,7 @@ export class SalesService {
         'COALESCE(SUM(CAST(sale.profit AS DECIMAL)), 0)',
         'totalProfit',
       )
-      .where('sale.ownerId = :ownerId', { ownerId })
+      .where(...holderCond('sale', ctx))
       .andWhere('sale.rejected_at IS NULL');
 
     if (filter.productName) {

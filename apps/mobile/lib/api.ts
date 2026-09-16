@@ -13,6 +13,21 @@ export function setActingAs(kind: ActingAs): void {
   _actingAs = kind;
 }
 
+// Module-level mirror of store/shop.store.ts, for the same reason. Null means
+// "send no X-Shop-Id": the API then resolves the business's default branch for
+// an owner, or the employment's branch for an employee.
+let _shopId: string | null = null;
+export function setShopId(shopId: string | null): void {
+  _shopId = shopId;
+}
+
+/** Per-call overrides. The offline replay pins both: a slow-link timeout, and
+ *  the branch each queued row was recorded at (`X-Shop-Id`). */
+export interface RequestOverrides {
+  timeout?: number;
+  headers?: Record<string, string>;
+}
+
 export const api = axios.create({
   baseURL: process.env.EXPO_PUBLIC_API_URL ?? 'http://10.0.2.2:3001/api',
   // 10s was too tight for the 2G/edge links this app runs on — lib/sync.ts had
@@ -34,6 +49,12 @@ api.interceptors.request.use(async (config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
   config.headers['X-Acting-As'] = _actingAs;
+  // A request that already names its branch keeps it — the offline replay
+  // must land each row where it was recorded, not in whichever branch is
+  // selected when the connection comes back.
+  if (_shopId && !config.headers['X-Shop-Id']) {
+    config.headers['X-Shop-Id'] = _shopId;
+  }
   return config;
 });
 
@@ -155,7 +176,7 @@ export const expensesApi = {
     clientId?: string;
   },
   // Per-call overrides (offline sync uses a longer timeout for slow links).
-  config?: { timeout?: number },
+  config?: RequestOverrides,
   ): Promise<Expense> => api.post('/expenses', body, config).then((r) => r.data),
 
   delete: (id: string): Promise<void> => api.delete(`/expenses/${id}`).then(() => undefined),
@@ -370,7 +391,7 @@ export const miniSettlementsApi = {
       clientId?: string;
     },
     // Per-call overrides (offline sync uses a longer timeout for slow links).
-    config?: { timeout?: number },
+    config?: RequestOverrides,
   ): Promise<MiniExpenseSummary> =>
     api.post('/mini-settlements/expenses', body, config).then((r) => r.data),
   listExpenses: (): Promise<MiniExpenseSummary[]> =>
@@ -523,7 +544,7 @@ export const salesApi = {
       clientSaleId?: string;
     },
     // Per-call overrides (offline sync uses a longer timeout for slow links).
-    config?: { timeout?: number },
+    config?: RequestOverrides,
   ) => api.post('/sales', body, config).then((r) => r.data),
 
   list: (params?: {
@@ -558,7 +579,7 @@ export const salesApi = {
   reject: (
     saleId: string,
     body?: { reason?: string },
-    config?: { timeout?: number },
+    config?: RequestOverrides,
   ) => api.post(`/sales/${saleId}/reject`, body ?? {}, config).then((r) => r.data),
 };
 
