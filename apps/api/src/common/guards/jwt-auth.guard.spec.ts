@@ -418,6 +418,17 @@ describe('JwtAuthGuard — writes need a single, open shop (§3.6, §3.1)', () =
     }
   });
 
+  it('carries SHOP_REQUIRED, so the client can ask instead of just reporting', async () => {
+    // The dashboard answers this refusal rather than surfacing it: it opens a
+    // branch picker and replays the request (`lib/api.ts` → BranchRequiredDialog).
+    // The message beside the code arrives translated, so dropping the code turns
+    // the picker into a dead error toast for every French user, silently.
+    const { result } = run({ employment: null, shopHeader: 'all', method: 'POST' });
+    await expect(result).rejects.toMatchObject({
+      response: { message: 'Select a shop for this action', code: 'SHOP_REQUIRED' },
+    });
+  });
+
   it('still allows reads under `all`', async () => {
     const { result } = run({ employment: null, shopHeader: 'all', method: 'GET' });
     await expect(result).resolves.toBe(true);

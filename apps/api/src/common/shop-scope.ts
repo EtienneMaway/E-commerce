@@ -30,6 +30,16 @@ export const ORG_HEADER = 'x-org-id';
 export const SHOP_SCOPE_ALL = 'all';
 
 /**
+ * Machine-readable marker on the "pick a branch" refusal.
+ *
+ * The message itself arrives translated (EN/FR), so a client that wants to
+ * *act* on this refusal — the dashboard opens a branch picker and replays the
+ * request — must not match on the sentence. Same convention as the account
+ * deletion codes in `users.service.ts`.
+ */
+export const SHOP_REQUIRED_CODE = 'SHOP_REQUIRED';
+
+/**
  * The shop a write must land in.
  *
  * Throws rather than returning null so services can treat `ctx.shopId` as
@@ -39,7 +49,10 @@ export const SHOP_SCOPE_ALL = 'all';
  */
 export function requireShop(ctx: ActorContext): string {
   if (!ctx.shopId) {
-    throw new BadRequestException('Select a shop for this action');
+    throw new BadRequestException({
+      message: 'Select a shop for this action',
+      code: SHOP_REQUIRED_CODE,
+    });
   }
   return ctx.shopId;
 }

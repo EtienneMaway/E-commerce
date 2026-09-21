@@ -892,6 +892,9 @@ const en = {
     allShopsNotice:
       'Viewing every branch. Pick one to record anything — a sale belongs to the branch that made it.',
     pickBranch: (name: string) => `Switch to ${name}`,
+    pickForActionTitle: 'Which branch is this for?',
+    pickForActionBody:
+      'You are viewing every branch, so this could belong to any of them. Pick the one it happened at — the dashboard switches to it and finishes what you started.',
     manageTitle: 'Business & branches',
     manageSubtitle: 'Your business details, and the branches you trade from.',
     businessName: 'Business name',
@@ -2360,6 +2363,9 @@ const fr: Translations = {
     allShopsNotice:
       'Vue de toutes les boutiques. Choisissez-en une pour enregistrer quoi que ce soit — une vente appartient à la boutique qui l\'a faite.',
     pickBranch: (name: string) => `Passer à ${name}`,
+    pickForActionTitle: 'Pour quelle boutique ?',
+    pickForActionBody:
+      "Vous consultez toutes les boutiques, cela pourrait donc concerner n'importe laquelle. Choisissez celle où cela s'est passé — le tableau de bord bascule dessus et termine ce que vous avez commencé.",
     manageTitle: 'Entreprise et boutiques',
     manageSubtitle: 'Les informations de votre entreprise et les boutiques où vous vendez.',
     businessName: "Nom de l'entreprise",

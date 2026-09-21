@@ -13,7 +13,7 @@ import { EmploymentsService } from '../../employments/employments.service';
 import { ALLOWED_FOR_KEY } from '../decorators/allowed-for.decorator';
 import { REQUIRES_SERVICE_KEY } from '../decorators/requires-service.decorator';
 import { ActorContext, ActorTier, ShopScope } from '../types/actor-context';
-import { ORG_HEADER, SHOP_HEADER, SHOP_SCOPE_ALL } from '../shop-scope';
+import { ORG_HEADER, SHOP_HEADER, SHOP_REQUIRED_CODE, SHOP_SCOPE_ALL } from '../shop-scope';
 import { ShopContextService } from '../../shops/shop-context.service';
 import { ServiceKey, resolveGrantedServices } from '../services/service-catalog';
 
@@ -243,7 +243,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (!method || method.toUpperCase() === 'GET' || method.toUpperCase() === 'HEAD') return;
 
     if (ctx.shopScope === 'all') {
-      throw new BadRequestException('Select a shop for this action');
+      throw new BadRequestException({
+        message: 'Select a shop for this action',
+        code: SHOP_REQUIRED_CODE,
+      });
     }
     if (ctx.shopArchived) {
       throw new ConflictException('This branch is closed — reopen it to make changes');

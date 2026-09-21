@@ -74,3 +74,17 @@ export function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return 'An error occurred';
 }
+
+/**
+ * True when the API refused a write because the dashboard is on "All branches"
+ * (or somehow sent no branch at all) — `400` with `code: 'SHOP_REQUIRED'`.
+ *
+ * Matched on the code, never the message: the message arrives translated, so a
+ * French user's refusal reads "Sélectionnez une boutique pour cette action" and
+ * a sentence match would silently stop working for exactly half the users.
+ */
+export function isShopRequiredError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  const data = error.response?.data as { code?: unknown } | undefined;
+  return error.response?.status === 400 && data?.code === 'SHOP_REQUIRED';
+}

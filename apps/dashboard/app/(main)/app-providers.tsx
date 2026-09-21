@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { isAuthError } from '../../lib/utils';
 import { useInboxSignal } from '../../hooks/use-inbox-signal';
+import { BranchRequiredDialog } from '../../components/ui/BranchRequiredDialog';
 
 /**
  * React Query, scoped to the authenticated app.
@@ -79,6 +80,10 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={qc}>
       <InboxSignal />
       <ClearSiteIntent />
+      {/* Sits above the shell, not inside a page: the write it rescues can come
+          from any screen, and the request that triggers it is already in flight
+          by the time anything renders. */}
+      <BranchRequiredDialog />
       {children}
     </QueryClientProvider>
   );

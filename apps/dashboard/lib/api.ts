@@ -1,4 +1,5 @@
-import axios from 'axios';
+import axios, { type InternalAxiosRequestConfig } from 'axios';
+import { isShopRequiredError } from './utils';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
 
@@ -65,6 +66,83 @@ api.interceptors.request.use((config) => {
 
   return config;
 });
+
+// ─── "Select a branch" — pause, ask, replay ──────────────────────────────────
+
+/**
+ * How the UI asks which branch a write belongs to. Resolves with the chosen
+ * branch id, or null if the user backed out.
+ *
+ * A module-level slot rather than React context, because the caller is an axios
+ * interceptor and not a component — the same reason `_token` and `_shopId` live
+ * up here. `components/ui/BranchRequiredDialog.tsx` registers it on mount.
+ */
+type BranchChooser = () => Promise<string | null>;
+let _branchChooser: BranchChooser | null = null;
+let _branchPending: Promise<string | null> | null = null;
+
+export function setBranchChooser(fn: BranchChooser | null): void {
+  _branchChooser = fn;
+}
+
+/**
+ * One prompt, however many requests were refused.
+ *
+ * A screen can have several writes in flight at once (a bulk add, or a form
+ * that saves two things). Without this they would each open the dialog and the
+ * user would answer the same question three times. The first caller opens it;
+ * the rest wait on the same answer.
+ */
+function chooseBranch(): Promise<string | null> {
+  if (!_branchChooser) return Promise.resolve(null);
+  if (!_branchPending) {
+    _branchPending = _branchChooser().finally(() => {
+      _branchPending = null;
+    });
+  }
+  return _branchPending;
+}
+
+type RetriedConfig = InternalAxiosRequestConfig & { _branchRetried?: boolean };
+
+/**
+ * Under "All branches" the API refuses every write — it cannot know which
+ * branch a sale or a teammate belongs to. That refusal used to surface as a
+ * bare error toast, leaving the user to go find the switcher, change branch,
+ * and fill the whole form in again.
+ *
+ * Now it is a question: the dialog asks which branch, and the request that was
+ * refused is replayed against the answer. The caller — a React Query mutation,
+ * usually — never learns any of this happened. Its promise simply takes longer
+ * to settle, and `onSuccess` runs as though the first attempt had worked, so
+ * every existing form resumes with no changes of its own.
+ *
+ * The retry re-runs the request interceptor rather than stamping `X-Shop-Id`
+ * here: the dialog has already written the choice to the shop store, and so to
+ * localStorage, which is what keeps this request and every later one on the
+ * same branch. `_branchRetried` bounds it to one extra attempt, so a request
+ * refused for some *other* reason after the switch cannot loop.
+ */
+api.interceptors.response.use(
+  (response) => response,
+  async (error: unknown) => {
+    const config = axios.isAxiosError(error)
+      ? (error.config as RetriedConfig | undefined)
+      : undefined;
+
+    if (!config || config._branchRetried || !isShopRequiredError(error)) {
+      return Promise.reject(error);
+    }
+
+    const shopId = await chooseBranch();
+    // Backed out, or there was nothing to choose from: let the original
+    // refusal surface exactly the way it always did.
+    if (!shopId) return Promise.reject(error);
+
+    config._branchRetried = true;
+    return api.request(config);
+  },
+);
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 

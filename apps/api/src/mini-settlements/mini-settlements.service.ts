@@ -1059,6 +1059,7 @@ export class MiniSettlementsService {
     return this.miniTeamRepo.save(
       this.miniTeamRepo.create({
         miniId: miniUserId,
+        ...writeScope(ctx),
         name,
         phone,
         settlementId: null,
@@ -1111,6 +1112,10 @@ export class MiniSettlementsService {
     return this.miniTeamRepo.save(
       this.miniTeamRepo.create({
         miniId: settlement.miniId,
+        // The branch of the handover itself, not the caller's header — the row
+        // belongs to the cycle it records.
+        orgId: settlement.orgId,
+        shopId: settlement.shopId,
         name,
         phone,
         settlementId: settlement.id,
