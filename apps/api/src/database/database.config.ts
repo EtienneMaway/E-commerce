@@ -31,6 +31,13 @@ import {
   ProductGroup,
   ProductVariant,
   QuantityDiscount,
+  StockCustody,
+  StockIssue,
+  StockIssueItem,
+  CustodyTeamMember,
+  CustodyHandover,
+  CustodyHandoverItem,
+  CustodyHandoverAdjustment,
 } from '../entities';
 
 dotenv.config();
@@ -68,6 +75,13 @@ export const AppDataSource = new DataSource({
     ProductGroup,
     ProductVariant,
     QuantityDiscount,
+    StockCustody,
+    StockIssue,
+    StockIssueItem,
+    CustodyTeamMember,
+    CustodyHandover,
+    CustodyHandoverItem,
+    CustodyHandoverAdjustment,
   ],
   migrations: [__dirname + '/migrations/*.{ts,js}'],
   synchronize: false,

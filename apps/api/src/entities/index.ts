@@ -6,7 +6,7 @@ export { InventoryEntry, InventorySource } from './inventory-entry.entity';
 export { SupplierDebt } from './supplier-debt.entity';
 export { DebtorCredit } from './debtor-credit.entity';
 export { Payment, PaymentDirection, PaymentStatus } from './payment.entity';
-export { SaleTransaction } from './sale-transaction.entity';
+export { SaleTransaction, SaleApprovalStatus } from './sale-transaction.entity';
 export { ConsignmentRequest, ConsignmentStatus } from './consignment-request.entity';
 export { ConsignmentItem } from './consignment-item.entity';
 export { ConsignmentTeamMember } from './consignment-team-member.entity';
@@ -38,3 +38,19 @@ export { MiniTeamMember } from './mini-team-member.entity';
 export { ProductGroup } from './product-group.entity';
 export { ProductVariant } from './product-variant.entity';
 export { QuantityDiscount } from './quantity-discount.entity';
+export { StockCustody, StockCustodyStatus } from './stock-custody.entity';
+export { StockIssue, StockIssueStatus } from './stock-issue.entity';
+export { StockIssueItem } from './stock-issue-item.entity';
+export { CustodyTeamMember } from './custody-team-member.entity';
+export {
+  CustodyHandover,
+  CustodyHandoverStatus,
+  type CustodyHandoverSoldLine,
+  type CustodyHandoverRejectedLine,
+  type CustodyHandoverMiniLine,
+} from './custody-handover.entity';
+export { CustodyHandoverItem } from './custody-handover-item.entity';
+export {
+  CustodyHandoverAdjustment,
+  CustodyAdjustmentKind,
+} from './custody-handover-adjustment.entity';

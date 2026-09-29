@@ -21,6 +21,7 @@ import {
   StockMovementReason,
 } from '../entities';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
+import { CustodyService } from '../custody/custody.service';
 import { holderCond, holderScope, isOnMyBooks, readScope, writeScope } from '../common/shop-scope';
 import { PricingService } from '../pricing/pricing.service';
 import { RecordSaleDto } from './dto/record-sale.dto';
@@ -98,6 +99,7 @@ export class SalesService {
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
     private readonly pricingService: PricingService,
+    private readonly custody: CustodyService,
   ) {}
 
   async recordSale(
@@ -197,8 +199,20 @@ export class SalesService {
       bySource(InventorySource.CONSIGNED_IN),
       bySource(InventorySource.PERSONAL),
     ]);
+    // Custody narrows what `holderScope` already returned (SHOP_CUSTODY_PLAN.md
+    // §3.4). A lot stamped to a custodian is sellable only by that custodian,
+    // by someone on their team, or by the owner; everyone else sees it as if it
+    // were not there, which is what "not on the team cannot access the stock"
+    // means in practice. Unassigned lots (`custodianId === null`) keep today's
+    // rules, so a branch with no custodian behaves exactly as it always has.
+    const allowedCustodians = await this.custody.allowedCustodianIds(ctx);
     return [...supplier, ...consignedIn, ...personal].filter(
-      (e) => e.quantityRemaining > 0,
+      (e) =>
+        e.quantityRemaining > 0 &&
+        // Falsy, not `=== null`: an unassigned lot reaches here as null from the
+        // database and as undefined from anything that built an entry without
+        // the column. Both mean the same thing — nobody is holding it.
+        (!e.custodianId || allowedCustodians.has(e.custodianId)),
     );
   }
 
@@ -337,11 +351,13 @@ export class SalesService {
         remaining -= deduct;
         await manager.save(InventoryEntry, entry);
 
+        const custodyStamp = await this.custody.saleStamp(ctx, entry);
         const sale = manager.create(SaleTransaction, {
           ownerId,
           orgId,
           shopId,
           actorId,
+          ...custodyStamp,
           productName: entry.productName,
           source: entry.source,
           supplierUserId: entry.supplierUserId,
@@ -513,11 +529,13 @@ export class SalesService {
         p.entry.quantityRemaining -= p.deduct;
         await manager.save(InventoryEntry, p.entry);
 
+        const custodyStamp = await this.custody.saleStamp(ctx, p.entry);
         const sale = manager.create(SaleTransaction, {
           ownerId,
           orgId,
           shopId,
           actorId,
+          ...custodyStamp,
           productName: p.entry.productName,
           source: p.entry.source,
           supplierUserId: p.entry.supplierUserId,

@@ -11,7 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, IsNull, LessThan, Not, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
-import { User } from '../entities';
+import { EmploymentTier, User } from '../entities';
 import { UserSearchResultDto } from './dto/user-search-result.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserChangePasswordDto } from './dto/change-password.dto';
@@ -19,6 +19,7 @@ import { UserPublicDto, toActiveEmploymentDto } from '../auth/dto/auth-response.
 import { EmploymentsService } from '../employments/employments.service';
 import { ShopContextService } from '../shops/shop-context.service';
 import { OrganizationsService } from '../shops/organizations.service';
+import { CustodyAccessService } from '../common/services/custody-access.service';
 import {
   ACCOUNT_DELETION_GRACE_MS,
   ACCOUNT_PURGE_SWEEP_INTERVAL_MS,
@@ -37,11 +38,16 @@ export class UsersService implements OnModuleInit {
     private readonly employmentsService: EmploymentsService,
     private readonly shopContext: ShopContextService,
     private readonly organizations: OrganizationsService,
+    private readonly custodyAccess: CustodyAccessService,
   ) {}
 
   async toPublic(user: User): Promise<UserPublicDto> {
     const employment = await this.employmentsService.findActiveAsEmployee(user.id);
     const tenancy = await this.shopContext.summaryFor(user.id, employment);
+    const isCurrentCustodian =
+      employment && employment.tier !== EmploymentTier.SALES_ONLY
+        ? await this.custodyAccess.isCurrentCustodian(employment.employeeId, employment.shopId)
+        : false;
     return {
       id: user.id,
       username: user.username,
@@ -53,7 +59,7 @@ export class UsersService implements OnModuleInit {
       isMiniEmployee: user.isMiniEmployee,
       isExternalEmployee: user.isExternalEmployee,
       createdAt: user.createdAt,
-      activeEmployment: toActiveEmploymentDto(employment),
+      activeEmployment: toActiveEmploymentDto(employment, isCurrentCustodian),
       ...tenancy,
     };
   }

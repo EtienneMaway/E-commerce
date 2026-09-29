@@ -629,6 +629,24 @@ export default function DashboardScreen() {
           </>
           )}
 
+          {/* The custodian's own stock. Gated on the service, not the persona:
+              `custody.hold` is grantable to a full employee, and an owner never
+              holds it — they are not anybody's custodian. */}
+          {can('custody.hold') && (
+            <Pressable
+              onPress={() => router.push('/custody')}
+              className="flex-row items-center bg-card border border-border rounded-xl px-4 py-3 mb-4"
+              style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
+            >
+              <Text className="text-2xl mr-3">📦</Text>
+              <View className="flex-1">
+                <Text className="text-text font-semibold text-sm">{t.custody.homeTile}</Text>
+                <Text className="text-muted text-xs mt-0.5">{t.custody.homeHint}</Text>
+              </View>
+              <Text className="text-muted text-lg">›</Text>
+            </Pressable>
+          )}
+
           {/* Mini-employee actions (Receive products, Hand over) — placed
               below the statistics and directly above the Expenses tile. */}
           <MiniEmployeeHome />

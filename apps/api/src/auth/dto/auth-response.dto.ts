@@ -42,12 +42,30 @@ export class ActiveEmploymentDto {
  * OWNER for that request and unrestricted. The clients hold the persona and apply
  * that themselves; the guard applies it per request.
  */
+/**
+ * `isCurrentCustodian` is resolved by the caller (via `CustodyAccessService`)
+ * rather than looked up here, so this stays a pure function shared by
+ * `AuthService` and `UsersService`. Being named the current custodian is
+ * itself the authorization for `custody.hold` — see `JwtAuthGuard`, which
+ * applies the identical rule when actually enforcing requests. The two must
+ * stay in lockstep or the dashboard/mobile nav would show (or hide) a screen
+ * the API disagrees about.
+ */
 export function toActiveEmploymentDto(
   employment: Employment | null,
+  isCurrentCustodian = false,
 ): ActiveEmploymentDto | null {
   if (!employment) return null;
   const tier =
     employment.tier === EmploymentTier.SALES_ONLY ? 'MINI_EMPLOYEE' : 'FULL_EMPLOYEE';
+  // `resolveGrantedServices` folds this in before `implies` expansion and the
+  // tier trim, so it is dropped for a mini here too — safe even if a future
+  // caller passes `isCurrentCustodian` without checking tier first.
+  const services = resolveGrantedServices(
+    employment.role?.services ?? null,
+    tier,
+    isCurrentCustodian ? ['custody.hold'] : [],
+  );
   return {
     id: employment.id,
     tier: employment.tier,
@@ -55,7 +73,7 @@ export function toActiveEmploymentDto(
     employer: { id: employment.employer.id, username: employment.employer.username },
     terminationRequestedBy: employment.terminationRequestedBy,
     role: employment.role ? { id: employment.role.id, name: employment.role.name } : null,
-    services: [...resolveGrantedServices(employment.role?.services ?? null, tier)].sort(),
+    services: [...services].sort(),
   };
 }
 

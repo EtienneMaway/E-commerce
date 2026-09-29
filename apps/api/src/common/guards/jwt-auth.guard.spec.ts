@@ -9,6 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { EmploymentStatus, EmploymentTier } from '../../entities';
 import { EmploymentsService } from '../../employments/employments.service';
 import { ShopContextService } from '../../shops/shop-context.service';
+import { CustodyAccessService } from '../services/custody-access.service';
 import { ALLOWED_FOR_KEY } from '../decorators/allowed-for.decorator';
 import { REQUIRES_SERVICE_KEY } from '../decorators/requires-service.decorator';
 import { ServiceKey } from '../services/service-catalog';
@@ -36,6 +37,8 @@ interface Case {
   defaultArchived?: boolean;
   allowedFor?: ActorTier[];
   requiresService?: ServiceKey[];
+  /** Whether the employee is the current custodian of an OPEN custody row at their shop. */
+  isCustodian?: boolean;
 }
 
 const ORG = 'org-1';
@@ -94,6 +97,10 @@ function run(c: Case): Run {
     orgIdOfOwner: jest.fn().mockResolvedValue(EMPLOYER_ORG),
   } as unknown as ShopContextService;
 
+  const custodyAccess = {
+    isCurrentCustodian: jest.fn().mockResolvedValue(c.isCustodian ?? false),
+  } as unknown as CustodyAccessService;
+
   const reflector = {
     getAllAndOverride: jest.fn((key: string) =>
       key === ALLOWED_FOR_KEY
@@ -124,7 +131,7 @@ function run(c: Case): Run {
     getClass: () => jest.fn(),
   } as unknown as ExecutionContext;
 
-  const guard = new JwtAuthGuard(reflector, employmentsService, shopContext);
+  const guard = new JwtAuthGuard(reflector, employmentsService, shopContext, custodyAccess);
   const result = guard.canActivate(context) as Promise<boolean>;
   return { req, result };
 }
@@ -227,6 +234,37 @@ describe('JwtAuthGuard — @RequiresService role gate', () => {
       requiresService: ['withdrawals'],
     });
     await expect(result).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('JwtAuthGuard — custody.hold from appointment, not just role', () => {
+  it('refuses a full employee with no role and no custody appointment', async () => {
+    const { result } = run({
+      employment: { tier: EmploymentTier.FULL, role: null },
+      requiresService: ['custody.hold'],
+      isCustodian: false,
+    });
+    await expect(result).rejects.toThrow(/role does not include this feature/);
+  });
+
+  it('grants custody.hold to whoever is currently the appointed custodian, role or not', async () => {
+    const { req, result } = run({
+      employment: { tier: EmploymentTier.FULL, role: null },
+      requiresService: ['custody.hold'],
+      isCustodian: true,
+    });
+    await expect(result).resolves.toBe(true);
+    expect(req.actorContext?.services.has('custody.hold')).toBe(true);
+  });
+
+  it('never grants custody.hold to a mini, even if somehow named a custodian', async () => {
+    const { req, result } = run({
+      employment: { tier: EmploymentTier.SALES_ONLY, role: null },
+      allowedFor: ['OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE'],
+      isCustodian: true,
+    });
+    await expect(result).resolves.toBe(true);
+    expect(req.actorContext?.services.has('custody.hold')).toBe(false);
   });
 });
 

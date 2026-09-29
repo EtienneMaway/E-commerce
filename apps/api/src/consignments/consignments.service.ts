@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, ILike, In, Repository } from 'typeorm';
+import { DataSource, FindOperator, ILike, In, IsNull, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import {
   ConsignmentItem,
@@ -25,6 +25,7 @@ import { CreateConsignmentDto } from './dto/create-consignment.dto';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
 import { PricingService } from '../pricing/pricing.service';
 import { CurrencyService } from '../currency/currency.service';
+import { CustodyService } from '../custody/custody.service';
 import { ActorContext } from '../common/types/actor-context';
 import { holderScope, readScope, requireShop } from '../common/shop-scope';
 
@@ -51,6 +52,7 @@ export class ConsignmentsService {
     private readonly stockMovements: StockMovementsService,
     private readonly pricingService: PricingService,
     private readonly currencyService: CurrencyService,
+    private readonly custody: CustodyService,
   ) {}
 
   /**
@@ -59,7 +61,13 @@ export class ConsignmentsService {
    * sales.service.fetchSellableLots.
    */
   private stockWhere(
-    scope: { orgId: string; shopId?: string; ownerId?: string },
+    scope: {
+      orgId: string;
+      shopId?: string;
+      ownerId?: string;
+      /** Custody narrows the shelf; `IsNull()` means unassigned stock (§3.4). */
+      custodianId?: string | FindOperator<string>;
+    },
     key: { productName?: string; variantId?: string | null },
   ): Array<Record<string, unknown>> {
     const base = key.variantId
@@ -83,6 +91,16 @@ export class ConsignmentsService {
       throw new BadRequestException('You cannot consign goods to yourself');
     }
 
+    // Which volume these goods leave, when a custodian is the one giving them
+    // out (SHOP_CUSTODY_PLAN.md §3.6). Resolved before the stock checks so the
+    // availability shown here is the same shelf `confirm` will deduct from —
+    // otherwise a give could pass validation and then fail on acceptance.
+    const custodyId = await this.custody.myOpenCustodyId(ctx);
+    const givingCustody = await this.custody.custodyById(custodyId);
+    const giveFrom: string | FindOperator<string> = givingCustody
+      ? givingCustody.custodianId
+      : IsNull();
+
     // Soft-validate stock + apply pricing rule per item
     const itemEntities: ConsignmentItem[] = [];
     for (const dto_item of dto.items) {
@@ -98,7 +116,7 @@ export class ConsignmentsService {
       const productName = (group?.name ?? dto_item.productName).trim().toLowerCase();
       const key = variant ? { variantId: variant.id } : { productName };
 
-      const available = await this.countAvailableStock(ctx, key);
+      const available = await this.countAvailableStock(ctx, key, giveFrom);
       if (available < dto_item.quantity) {
         throw new BadRequestException(
           `Insufficient stock for "${productName}". Available: ${available}, requested: ${dto_item.quantity}`,
@@ -115,7 +133,7 @@ export class ConsignmentsService {
         standardPrice: variant ? variant.sellingPrice : undefined,
       });
 
-      const stockEntries = await this.getStockEntriesSorted(ctx, key);
+      const stockEntries = await this.getStockEntriesSorted(ctx, key, giveFrom);
       const unitCost = stockEntries[0]?.unitCost ?? priceCheck.effectiveUnitPrice;
       const piecesPerCarton = variant
         ? variant.piecesPerCarton
@@ -152,6 +170,7 @@ export class ConsignmentsService {
       .map((m) => this.teamMemberRepo.create(m));
 
     const request = this.requestRepo.create({
+      custodyId,
       supplierId,
       // The giving branch. The receiving one stays null until the debtor
       // confirms — they are the only ones who know which of their branches the
@@ -236,6 +255,13 @@ export class ConsignmentsService {
     }
 
     return this.dataSource.transaction(async (manager) => {
+      // Take the goods off the shelf they were promised from. A consignment
+      // given out of a custody draws on that custodian's lots; every other one
+      // draws on unassigned stock. `IsNull()` is exactly today's behaviour for
+      // every row that pre-dates custody, since they all carry a null holder.
+      const givingCustody = await this.custody.custodyById(request.custodyId);
+      const custodianFilter = { custodianId: givingCustody?.custodianId ?? IsNull() };
+
       for (const item of request.items) {
         const stockEntries = await manager.find(InventoryEntry, {
           where: this.stockWhere(
@@ -245,6 +271,7 @@ export class ConsignmentsService {
               // tenancy-exempt: supplierId names the PERSON whose shelf the
               // goods leave — the confirming debtor is not that holder.
               ownerId: request.supplierId,
+              ...custodianFilter,
             },
             {
               productName: item.productName,
@@ -441,17 +468,21 @@ export class ConsignmentsService {
   async countAvailableStock(
     ctx: ActorContext,
     key: { productName?: string; variantId?: string | null },
+    custodianId?: string | FindOperator<string>,
   ): Promise<number> {
-    const entries = await this.entryRepo.find({ where: this.stockWhere(holderScope(ctx), key) });
+    const scope = { ...holderScope(ctx), ...(custodianId !== undefined ? { custodianId } : {}) };
+    const entries = await this.entryRepo.find({ where: this.stockWhere(scope, key) });
     return entries.reduce((sum, e) => sum + e.quantityRemaining, 0);
   }
 
   private async getStockEntriesSorted(
     ctx: ActorContext,
     key: { productName?: string; variantId?: string | null },
+    custodianId?: string | FindOperator<string>,
   ): Promise<InventoryEntry[]> {
+    const scope = { ...holderScope(ctx), ...(custodianId !== undefined ? { custodianId } : {}) };
     const entries = await this.entryRepo.find({
-      where: this.stockWhere(holderScope(ctx), key),
+      where: this.stockWhere(scope, key),
       order: { createdAt: 'ASC' },
     });
     return [

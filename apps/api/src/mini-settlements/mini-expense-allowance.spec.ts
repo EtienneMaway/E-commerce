@@ -83,7 +83,9 @@ describe('MiniSettlementsService.expenseAllowance', () => {
       currencyService as never,
       {} as never, // variantRepo
       {} as never, // consignmentRepo
-      {} as never, // miniTeamRepo
+      {} as never,
+      // No custody at this branch: returns rejoin unassigned stock, as before.
+      { custodyForMini: jest.fn(async () => null) } as never, // miniTeamRepo
     );
     return { service, miniExpenseRepo };
   }

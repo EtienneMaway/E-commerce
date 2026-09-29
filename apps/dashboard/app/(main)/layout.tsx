@@ -87,6 +87,10 @@ const NAV_ICONS = [
     <circle cx="12" cy="12" r="3"/>
     <path d="M7 12h.01M17 12h.01"/>
   </svg>,
+  <svg key="custody" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M12 2l8 3v6c0 4.5-3.2 8.6-8 11-4.8-2.4-8-6.5-8-11V5z"/>
+    <path d="M9 11.5l2 2 4-4"/>
+  </svg>,
 ];
 
 function UserAvatar({ username }: { username: string }) {
@@ -169,6 +173,9 @@ function MainShell({ children }: { children: React.ReactNode }) {
     // `permitted` below like everything else.
     { href: '/employees', label: t.nav.employees, icon: NAV_ICONS[11] },
     { href: '/pricing', label: t.nav.pricing, icon: NAV_ICONS[12] },
+    // Shown to the owner (custody.manage) to appoint/settle, and to a custodian
+    // (custody.hold) to see their own volume — the page itself branches on which.
+    { href: '/custody', label: t.nav.custody, icon: NAV_ICONS[NAV_ICONS.length - 1] },
     // Never delegatable — owner's own books only.
     ...(isEmployee
       ? []

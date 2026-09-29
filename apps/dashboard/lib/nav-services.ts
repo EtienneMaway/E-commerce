@@ -29,6 +29,9 @@ export const NAV_SERVICE: Record<string, string | string[] | null> = {
   // Longest-prefix match means this beats '/employees' — role admin stays owner-side.
   '/employees/roles': 'employees.manage',
   '/pricing': 'pricing.catalog',
+  // Appointing and settling is owner-only (custody.manage); a custodian reaches
+  // their own volume/accept/handover view through the same route via custody.hold.
+  '/custody': ['custody.manage', 'custody.hold'],
   '/my-salary': null,
   // Longest-prefix wins, so the business page is gated while /settings itself
   // stays open — it carries the account's own language, theme and password.

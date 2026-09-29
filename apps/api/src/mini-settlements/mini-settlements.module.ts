@@ -18,6 +18,7 @@ import { MiniSettlementsService } from './mini-settlements.service';
 import { MiniSettlementsController } from './mini-settlements.controller';
 import { StockMovementsModule } from '../stock-movements/stock-movements.module';
 import { CurrencyModule } from '../currency/currency.module';
+import { CustodyModule } from '../custody/custody.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { CurrencyModule } from '../currency/currency.module';
     ]),
     StockMovementsModule,
     CurrencyModule,
+    CustodyModule,
   ],
   controllers: [MiniSettlementsController],
   providers: [MiniSettlementsService],

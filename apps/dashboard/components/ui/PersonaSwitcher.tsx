@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import { usePersonaStore, type PersonaKind } from '../../store/persona.store';
+import { useShopStore } from '../../store/shop.store';
 import { useT } from '../../lib/i18n';
 
 /**
@@ -21,6 +22,7 @@ export function PersonaSwitcher() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const { kind, setKind } = usePersonaStore();
+  const organization = useShopStore((s) => s.organization);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -40,7 +42,10 @@ export function PersonaSwitcher() {
   // has gone away (terminated etc.), force back to self. activeEmployment is
   // already nullable above, so this only triggers when the field flips between
   // renders while the store kept its value.
-  const employerName = employment.employer.username;
+  //
+  // The business name reads far better here than the employer's raw username —
+  // falls back to it only in the unlikely gap before shop context has hydrated.
+  const employerName = organization?.name ?? employment.employer.username;
   const isEmployerMode = kind === 'employer';
 
   function choose(next: PersonaKind) {

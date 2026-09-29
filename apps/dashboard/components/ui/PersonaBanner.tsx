@@ -3,6 +3,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import { usePersonaStore } from '../../store/persona.store';
+import { useShopStore } from '../../store/shop.store';
 import { useT } from '../../lib/i18n';
 
 /**
@@ -17,9 +18,17 @@ export function PersonaBanner() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const { kind, setKind } = usePersonaStore();
+  const organization = useShopStore((s) => s.organization);
 
   const employment = user?.activeEmployment;
   if (!employment || kind !== 'employer') return null;
+
+  // The business name (`/auth/me`'s `organization`, which is the employer's
+  // while acting for one) reads far better here than the employer's raw
+  // username — a merchant thinks of it as "acting on Amina Trading", not
+  // "acting on @jean_k23". Falls back to the username only in the unlikely gap
+  // before the shop context has hydrated.
+  const employerName = organization?.name ?? employment.employer.username;
 
   function back() {
     setKind('self');
@@ -38,7 +47,7 @@ export function PersonaBanner() {
       <div className="flex items-center gap-2 min-w-0">
         <span aria-hidden>🪪</span>
         <span className="truncate">
-          <b>{t.persona.bannerTitle(employment.employer.username)}</b>
+          <b>{t.persona.bannerTitle(employerName)}</b>
           {employment.status === 'TERMINATION_REQUESTED'
             ? ` · ${t.persona.terminationPending}`
             : ''}

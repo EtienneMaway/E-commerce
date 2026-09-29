@@ -60,7 +60,8 @@ function build(rows: Employment[], one?: Employment) {
     {} as unknown as Repository<User>,
     // Only used on the user-creation paths, which this suite does not exercise.
     {} as unknown as ShopContextService,
-  );
+      // Nobody is holding stock in these scenarios.
+      { hasOpenCustody: jest.fn(async () => false) } as never);
   return { service, qb };
 }
 

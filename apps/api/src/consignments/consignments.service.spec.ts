@@ -68,7 +68,13 @@ describe('ConsignmentsService.create — sized product', () => {
       {} as never, // stockMovements
       pricingService as never,
       currencyService as never,
-    );
+        // No custody at this branch: gives come off unassigned stock, exactly as
+    // they did before the feature existed.
+    {
+      myOpenCustodyId: jest.fn(async () => null),
+      custodyById: jest.fn(async () => null),
+    } as never,
+);
     return { service, get savedRequest() { return savedRequest; }, pricingService };
   }
 

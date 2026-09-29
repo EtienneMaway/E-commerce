@@ -45,6 +45,8 @@ export type ServiceKey =
   | 'products.manage'
   | 'pricing.catalog'
   | 'inventory.movements'
+  | 'custody.manage'
+  | 'custody.hold'
   // NETWORK
   | 'suppliers.view'
   | 'suppliers.pay'
@@ -139,6 +141,30 @@ const DEFINITIONS: Record<ServiceKey, ServiceSpec> = {
   },
   'pricing.catalog': { group: 'STOCK', tiers: STAFF, implies: [] },
   'inventory.movements': { group: 'STOCK', tiers: STAFF, implies: ['inventory.view'] },
+
+  // Appointing the man in charge of a branch's stock, handing him a volume and
+  // settling his handover. Owner-only for the same reason as `withdrawals` and
+  // `shops.manage`: deciding who is accountable for the goods is ownership, not
+  // an operation you delegate to the person being made accountable.
+  'custody.manage': {
+    group: 'STOCK',
+    tiers: OWNER_ONLY,
+    implies: ['inventory.view'],
+  },
+  // Being the custodian: accept a volume, run the team, attest to their sales,
+  // submit a handover. Not mandatory for the whole FULL_EMPLOYEE tier — an
+  // employer who appoints nobody is unaffected — but unlike an ordinary
+  // service, a role never has to list it: `JwtAuthGuard` and
+  // `toActiveEmploymentDto` both grant it directly to whoever is currently
+  // named `custodianId` on an OPEN `StockCustody` row, the same shape as
+  // `handovers.mini` but scoped to the one person appointed rather than the
+  // whole tier. Appointing someone IS the authorization; it cannot be stranded
+  // behind a role the employer forgot to also update.
+  'custody.hold': {
+    group: 'STOCK',
+    tiers: ['FULL_EMPLOYEE'],
+    implies: ['inventory.view', 'sales.history'],
+  },
 
   // -------------------------------------------------------------- NETWORK
   'suppliers.view': { group: 'NETWORK', tiers: STAFF, implies: [] },
@@ -242,13 +268,20 @@ export function allServicesForTier(tier: ActorTier): Set<ServiceKey> {
  * The always-on core (identity, own salary, accepting or leaving the job) is not
  * expressed here — those routes carry no `@RequiresService` at all, so an
  * employee can never be locked out of seeing what they are owed or quitting.
+ *
+ * `extraKeys` is for a grant that comes from being named on some OTHER row
+ * rather than from the role — currently just `custody.hold` for whoever is the
+ * current `custodianId` on an OPEN `StockCustody` (see `CustodyAccessService`).
+ * It is folded in before `implies` expansion and the tier trim, exactly like a
+ * role-granted key, so it behaves identically either way.
  */
 export function resolveGrantedServices(
   roleServices: readonly string[] | null | undefined,
   tier: ActorTier,
+  extraKeys: readonly ServiceKey[] = [],
 ): Set<ServiceKey> {
   if (tier === 'OWNER') return allServicesForTier('OWNER');
-  const expanded = roleServices == null ? new Set<ServiceKey>() : expandServices(roleServices);
+  const expanded = expandServices([...(roleServices ?? []), ...extraKeys]);
   for (const key of mandatoryServicesForTier(tier)) expanded.add(key);
   const granted = new Set<ServiceKey>();
   for (const key of expanded) {

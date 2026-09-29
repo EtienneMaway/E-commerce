@@ -119,6 +119,28 @@ export class InventoryEntry {
   @JoinColumn({ name: 'owner_id' })
   owner: User;
 
+  /**
+   * The full employee currently holding this lot, when it has been issued into
+   * their custody (`SHOP_CUSTODY_PLAN.md` §3.1). **Null means unassigned** — on
+   * the shelf, the owner's to sell or to issue — which is every lot that
+   * pre-dates this feature and every lot at a branch with no custodian, so a
+   * business that never appoints anyone is unaffected.
+   *
+   * This is a THIRD axis, beside tenancy `(org_id, shop_id)` and holder
+   * `owner_id`. It is **not** a tenancy key and must never be used as one: it
+   * narrows *within* `holderScope()`, it does not replace it. The goods stay
+   * the employer's, so `owner_id`, `source` and `unit_cost` are all untouched
+   * when a lot is issued — unlike a mini's `CONSIGNED_IN` lot, custody does not
+   * change the cost basis and creates no debt.
+   */
+  @ApiPropertyOptional({ description: 'Full employee holding this lot; null = unassigned shelf stock' })
+  @Column({ name: 'custodian_id', type: 'uuid', nullable: true })
+  custodianId: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'custodian_id' })
+  custodian: User | null;
+
   @Column({ name: 'supplier_user_id', nullable: true, type: 'uuid' })
   supplierUserId: string | null;
 

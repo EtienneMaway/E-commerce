@@ -33,6 +33,13 @@ import {
   ProductGroup,
   ProductVariant,
   QuantityDiscount,
+  StockCustody,
+  StockIssue,
+  StockIssueItem,
+  CustodyTeamMember,
+  CustodyHandover,
+  CustodyHandoverItem,
+  CustodyHandoverAdjustment,
 } from './entities';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -57,6 +64,8 @@ import { AppVersionModule } from './app-version/app-version.module';
 import { ShopsModule } from './shops/shops.module';
 import { ProductGroupsModule } from './product-groups/product-groups.module';
 import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts.module';
+import { CustodyModule } from './custody/custody.module';
+import { CustodyAccessModule } from './common/services/custody-access.module';
 
 @Module({
   imports: [
@@ -99,6 +108,13 @@ import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts
           ProductGroup,
           ProductVariant,
           QuantityDiscount,
+          StockCustody,
+          StockIssue,
+          StockIssueItem,
+          CustodyTeamMember,
+          CustodyHandover,
+          CustodyHandoverItem,
+          CustodyHandoverAdjustment,
         ],
         // Synchronize is OFF everywhere (including dev). All schema changes go
         // through migrations, so development exercises the exact same migration
@@ -134,6 +150,8 @@ import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts
     MiniSettlementsModule,
     ProductGroupsModule,
     QuantityDiscountsModule,
+    CustodyModule,
+    CustodyAccessModule,
     SyncModule,
     AppVersionModule,
     ShopsModule,

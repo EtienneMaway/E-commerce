@@ -806,3 +806,106 @@ export const appVersionApi = {
       })
       .then((r) => r.data),
 };
+
+// ─── Shop custody (the custodian's own view) ──────────────────────────────────
+
+export interface CustodyVolumeLine {
+  productName: string;
+  variantId: string | null;
+  variantLabel: string | null;
+  quantityRemaining: number;
+  unitCost: string;
+  sellingPrice: string;
+  piecesPerCarton: number | null;
+  entryIds: string[];
+}
+
+export interface CustodyOverview {
+  custody: { id: string; openedAt: string; note: string | null };
+  lines: CustodyVolumeLine[];
+  totalUnits: number;
+  pendingSaleCount: number;
+  pendingIssueCount: number;
+  teamSize: number;
+}
+
+export interface CustodyIssueSummary {
+  id: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
+  isOpeningSweep: boolean;
+  note: string | null;
+  createdAt: string;
+  items: { id: string; productName: string; quantity: number; variantLabel: string | null }[];
+}
+
+export interface CustodyPendingSale {
+  id: string;
+  productName: string;
+  variantLabel: string | null;
+  qtySold: number;
+  salePrice: string;
+  date: string;
+  actor?: { id: string; name: string | null; username: string } | null;
+}
+
+export interface CustodyHandoverPreview {
+  custodyId: string;
+  periodStart: string;
+  periodEnd: string;
+  soldLines: {
+    productName: string;
+    variantLabel: string | null;
+    qtySold: number;
+    piecesPerCarton: number | null;
+    valueFc: string;
+    profitFc: string;
+  }[];
+  rejectedLines: { productName: string; qtySold: number; valueFc: string }[];
+  miniRollupLines: { miniId: string; miniName: string; cashFc: string; returnedUnits: number }[];
+  pendingMiniHandovers: { miniId: string; miniName: string; settlementId: string }[];
+  salesFc: string;
+  miniRollupCashFc: string;
+  expensesFc: string;
+  cashExpectedFc: string;
+  unattestedSaleCount: number;
+  holding: {
+    inventoryEntryId: string;
+    productName: string;
+    variantLabel: string | null;
+    quantityRemaining: number;
+    unitCost: string;
+    piecesPerCarton: number | null;
+  }[];
+}
+
+export const custodyApi = {
+  mine: (): Promise<CustodyOverview | null> =>
+    api.get('/custody/mine').then((r) => r.data),
+  myIssues: (): Promise<CustodyIssueSummary[]> =>
+    api.get('/custody/mine/issues').then((r) => r.data),
+  acceptIssue: (id: string): Promise<CustodyIssueSummary> =>
+    api.patch(`/custody/issues/${id}/accept`).then((r) => r.data),
+  rejectIssue: (id: string, reason?: string): Promise<CustodyIssueSummary> =>
+    api.patch(`/custody/issues/${id}/reject`, { reason }).then((r) => r.data),
+
+  pendingSales: (): Promise<CustodyPendingSale[]> =>
+    api.get('/custody/mine/pending-sales').then((r) => r.data),
+  /**
+   * `expectedCount` is what makes "approve all" honest: the server refuses with
+   * 409 if the queue grew since this screen rendered, rather than sweeping in
+   * lines the custodian never saw.
+   */
+  approveSales: (body: {
+    saleIds: string[];
+    expectedCount: number;
+    reviewed: true;
+  }): Promise<{ approved: number }> =>
+    api.post('/custody/mine/approve-sales', body).then((r) => r.data),
+
+  handoverPreview: (): Promise<CustodyHandoverPreview | null> =>
+    api.get('/custody/mine/handover-preview').then((r) => r.data),
+  // No `items` any more — a handover always hands back everything currently
+  // held (the API computes it), which is what lets approval end the custody.
+  submitHandover: (body: { cashDeclaredFc: string; note?: string }): Promise<{ id: string }> =>
+    api.post('/custody/handovers', body).then((r) => r.data),
+};

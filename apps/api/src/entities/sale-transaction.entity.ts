@@ -11,6 +11,15 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { User } from './user.entity';
 import { InventoryEntry } from './inventory-entry.entity';
 
+export enum SaleApprovalStatus {
+  /** Needs no attestation: outside a custody, or the owner's own sale. */
+  AUTO = 'AUTO',
+  /** A team member's sale, awaiting the custodian's batch review. */
+  PENDING = 'PENDING',
+  /** The custodian has reviewed and attested to this sale. */
+  APPROVED = 'APPROVED',
+}
+
 @Entity('sale_transactions')
 export class SaleTransaction {
   @ApiProperty({ example: 'uuid-v4' })
@@ -192,6 +201,51 @@ export class SaleTransaction {
   })
   @Column({ name: 'carton_sale_id', type: 'uuid', nullable: true })
   cartonSaleId: string | null;
+
+  // ─── Custody & team-sale approval (SHOP_CUSTODY_PLAN.md §3.5) ─────────────
+  // Approval is an ATTESTATION, not a ledger gate. The goods left and the money
+  // arrived the moment the sale was recorded, so this sale counts towards stock
+  // and cash immediately whatever its approval status — a queue of sales that
+  // did not count would make the branch's cash position wrong all day and would
+  // fight the `rejected_at IS NULL` filters on every money query.
+  //
+  // What approval gates is the HANDOVER CLOSE: a `CustodyHandover` cannot be
+  // submitted while any sale in its period is still PENDING. The man in charge
+  // must approve each one or reject it — and rejection is not a new concept, it
+  // is `POST /sales/:id/reject` below.
+
+  @ApiPropertyOptional({
+    description:
+      'The custody period this sale belongs to; null for a sale at a branch with no open custody (every sale that pre-dates this feature).',
+  })
+  @Column({ name: 'custody_id', type: 'uuid', nullable: true })
+  custodyId: string | null;
+
+  @ApiProperty({
+    enum: SaleApprovalStatus,
+    default: SaleApprovalStatus.AUTO,
+    description:
+      "AUTO for a sale needing no attestation — anything outside a custody, and the owner's own sales, because he cannot cheat himself. PENDING for a team member's sale until the custodian reviews it.",
+  })
+  @Column({
+    name: 'approval_status',
+    type: 'enum',
+    enum: SaleApprovalStatus,
+    default: SaleApprovalStatus.AUTO,
+  })
+  approvalStatus: SaleApprovalStatus;
+
+  @ApiPropertyOptional()
+  @Column({ name: 'approved_at', type: 'timestamp', nullable: true })
+  approvedAt: Date | null;
+
+  @ApiPropertyOptional({ description: 'The custodian who attested to this sale' })
+  @Column({ name: 'approved_by_id', type: 'uuid', nullable: true })
+  approvedById: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'approved_by_id' })
+  approvedBy: User | null;
 
   // ─── Rejection (a sale recorded by mistake) ───────────────────────────────
   // A rejected sale is never deleted: the row stays, its quantity goes back on

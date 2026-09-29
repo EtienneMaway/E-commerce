@@ -66,6 +66,16 @@ export function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(iso));
 }
 
+/** Up to two initials for an avatar badge, from a display name or username. */
+export function initialsOf(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join('');
+}
+
 export function getErrorMessage(err: unknown): string {
   if (err && typeof err === 'object' && 'response' in err) {
     const e = err as { response?: { data?: { message?: string } } };

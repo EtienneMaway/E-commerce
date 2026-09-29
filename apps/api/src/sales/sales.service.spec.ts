@@ -123,6 +123,11 @@ describe('SalesService.recordSale — whole-carton sale', () => {
       dataSource as never,
       stockMovements as never,
       pricingService as never,
+      // No custody at this branch: every lot is unassigned, every sale AUTO.
+      {
+        allowedCustodianIds: jest.fn(async () => new Set<string>()),
+        saleStamp: jest.fn(async () => ({ custodyId: null, approvalStatus: 'AUTO' })),
+      } as never,
     );
     return { service, savedSales, group };
   }
@@ -346,6 +351,11 @@ describe('SalesService.recordSale — quantity discount capture (single sale)', 
       dataSource as never,
       stockMovements as never,
       pricingService as never,
+      // No custody at this branch: every lot is unassigned, every sale AUTO.
+      {
+        allowedCustodianIds: jest.fn(async () => new Set<string>()),
+        saleStamp: jest.fn(async () => ({ custodyId: null, approvalStatus: 'AUTO' })),
+      } as never,
     );
     return { service, savedSales };
   }
@@ -455,6 +465,11 @@ describe('SalesService.recordSale — price guard floor (mini vs owner)', () => 
       dataSource as never,
       stockMovements as never,
       pricingService as never,
+      // No custody at this branch: every lot is unassigned, every sale AUTO.
+      {
+        allowedCustodianIds: jest.fn(async () => new Set<string>()),
+        saleStamp: jest.fn(async () => ({ custodyId: null, approvalStatus: 'AUTO' })),
+      } as never,
     );
     return { service, savedSales };
   }
@@ -592,6 +607,11 @@ describe('SalesService.recordSale — mini blocked while a handover is pending',
       { transaction: jest.fn() } as never, // dataSource
       { record: jest.fn() } as never, // stockMovements
       { applyEmployeePriceRule: jest.fn() } as never, // pricingService
+      // No custody at this branch: every lot is unassigned, every sale AUTO.
+      {
+        allowedCustodianIds: jest.fn(async () => new Set<string>()),
+        saleStamp: jest.fn(async () => ({ custodyId: null, approvalStatus: 'AUTO' })),
+      } as never,
     );
     return { service, settlementRepo };
   }

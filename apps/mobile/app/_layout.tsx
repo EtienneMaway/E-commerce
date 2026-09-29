@@ -240,6 +240,10 @@ export default function RootLayout() {
             name="handovers"
             options={{ headerShown: true, title: t.miniEmployee.historyTitle, headerBackTitle: t.screens.back }}
           />
+          <Stack.Screen
+            name="custody"
+            options={{ headerShown: true, title: t.custody.title, headerBackTitle: t.screens.back }}
+          />
         </Stack>
         {/* Sits above every screen: once the API says this build is below the
             minimum supported version, nothing behind it can be trusted to

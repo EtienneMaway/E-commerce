@@ -10,6 +10,7 @@ import {
   SaleTransaction,
 } from '../entities';
 import { StockMovementsModule } from '../stock-movements/stock-movements.module';
+import { CustodyModule } from '../custody/custody.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { StockMovementsModule } from '../stock-movements/stock-movements.module'
       MiniSettlement,
     ]),
     StockMovementsModule,
+    CustodyModule,
   ],
   controllers: [SalesController],
   providers: [SalesService],

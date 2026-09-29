@@ -101,6 +101,7 @@ function build(opts: {
     dataSource as never,
     stockMovements as never,
     {} as never,
+    {} as never, // custody — rejection never consults it
   );
   return { service, sale, entry, stockMovements, manager };
 }

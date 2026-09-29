@@ -63,4 +63,25 @@ describe('toActiveEmploymentDto', () => {
     const dto = toActiveEmploymentDto(employment({ role: role('r', 'Empty', []) }));
     expect(dto?.services).toEqual([]);
   });
+
+  it('grants custody.hold (and its implied reads) to a role-less full employee who is the current custodian', () => {
+    const dto = toActiveEmploymentDto(employment({ role: null }), true);
+    expect(dto?.services).toEqual(['custody.hold', 'inventory.view', 'sales.history']);
+  });
+
+  it('drops custody.hold itself for a mini even when passed isCurrentCustodian', () => {
+    // The real callers (AuthService/UsersService) only ever compute
+    // `isCurrentCustodian` for a full employee, so this input never happens in
+    // practice — but the tier ceiling still holds for the key itself if it
+    // ever did. Its implied `inventory.view`/`sales.history` pass through
+    // because both are already open to EVERYONE tier on their own merits,
+    // the same pre-existing behaviour as any role listing an out-of-ceiling
+    // service: the ceiling is enforced per resolved key, not per input key.
+    const dto = toActiveEmploymentDto(
+      employment({ tier: EmploymentTier.SALES_ONLY, role: null }),
+      true,
+    );
+    expect(dto?.services).not.toContain('custody.hold');
+    expect(dto?.services).toContain('handovers.mini');
+  });
 });

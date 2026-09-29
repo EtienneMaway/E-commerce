@@ -97,4 +97,20 @@ export class ConsignmentRequest {
    */
   @OneToMany(() => ConsignmentTeamMember, (m) => m.consignmentRequest, { cascade: true })
   teamMembers: ConsignmentTeamMember[];
+
+  /**
+   * The custody this batch was given out of, when a custodian sourced it from
+   * their own volume (`SHOP_CUSTODY_PLAN.md` §3.6). Null for an ordinary
+   * consignment off the owner's shelf, which is every one that pre-dates this
+   * feature.
+   *
+   * It is what makes a mini roll up to their custodian rather than past them:
+   * on `MiniSettlement.approve`, a settlement whose consignments carry this
+   * lands its cash on that custodian's open handover and re-stocks the returned
+   * goods into that custody — "+ money, + products" on what the man in charge
+   * still owes.
+   */
+  @ApiPropertyOptional({ description: "Custody this batch came out of; null when given off the owner's shelf" })
+  @Column({ name: 'custody_id', type: 'uuid', nullable: true })
+  custodyId: string | null;
 }

@@ -1339,3 +1339,252 @@ export const organizationsApi = {
   rejectOffer: (orgId: string): Promise<void> =>
     api.patch(`/organizations/offers/${orgId}/reject`).then(() => undefined),
 };
+
+// ─── Shop custody (full-employee accountability) ──────────────────────────────
+
+export type StockCustodyStatus = 'OPEN' | 'CLOSED';
+export type StockIssueStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
+export type CustodyHandoverStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type CustodyAdjustmentKind =
+  | 'CASH_SHORT'
+  | 'CASH_OVER'
+  | 'ITEM_MISSING'
+  | 'ITEM_FOUND'
+  | 'OTHER';
+
+export interface StockCustody {
+  id: string;
+  custodianId: string;
+  custodian?: { id: string; name: string | null; username: string };
+  status: StockCustodyStatus;
+  note: string | null;
+  openedAt: string;
+  closedAt: string | null;
+}
+
+export interface StockIssueItem {
+  id: string;
+  productName: string;
+  quantity: number;
+  variantLabel: string | null;
+}
+
+export interface StockIssue {
+  id: string;
+  status: StockIssueStatus;
+  isOpeningSweep: boolean;
+  note: string | null;
+  rejectionReason: string | null;
+  items: StockIssueItem[];
+  createdAt: string;
+  acceptedAt: string | null;
+}
+
+export interface CustodyTeamMember {
+  id: string;
+  userId: string;
+  user?: { id: string; name: string | null; username: string };
+  addedAt: string;
+}
+
+export interface CustodyHandoverItem {
+  id: string;
+  productName: string;
+  variantLabel: string | null;
+  quantity: number;
+  unitCost: string;
+  piecesPerCarton: number | null;
+}
+
+export interface CustodyHandoverAdjustment {
+  id: string;
+  kind: CustodyAdjustmentKind;
+  amountFc: string | null;
+  productName: string | null;
+  variantLabel: string | null;
+  quantity: number | null;
+  note: string;
+  createdAt: string;
+}
+
+export interface CustodyHandoverSoldLine {
+  productName: string;
+  variantLabel: string | null;
+  qtySold: number;
+  piecesPerCarton: number | null;
+  valueFc: string;
+  profitFc: string;
+}
+
+export interface CustodyHandoverMiniLine {
+  miniId: string;
+  miniName: string;
+  settlementId: string;
+  approvedAt: string;
+  cashFc: string;
+  returnedUnits: number;
+}
+
+export interface CustodyHandover {
+  id: string;
+  custodyId: string;
+  custodianId: string;
+  custodian?: { id: string; name: string | null; username: string };
+  status: CustodyHandoverStatus;
+  periodStart: string;
+  periodEnd: string;
+  cashDeclaredFc: string;
+  cashExpectedFc: string;
+  miniRollupCashFc: string;
+  expensesFc: string;
+  soldLines: CustodyHandoverSoldLine[] | null;
+  rejectedLines:
+    | { productName: string; qtySold: number; valueFc: string; reason: string | null }[]
+    | null;
+  miniRollupLines: CustodyHandoverMiniLine[] | null;
+  note: string | null;
+  items: CustodyHandoverItem[];
+  adjustments: CustodyHandoverAdjustment[];
+  createdAt: string;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+}
+
+// ─── Shop custody (the custodian's own view) ──────────────────────────────────
+// Mirrors apps/mobile/lib/api.ts's custody types — the mobile screen was built
+// first, so these are kept structurally identical to the same endpoints.
+
+export interface CustodyVolumeLine {
+  productName: string;
+  variantId: string | null;
+  variantLabel: string | null;
+  quantityRemaining: number;
+  unitCost: string;
+  sellingPrice: string;
+  piecesPerCarton: number | null;
+  entryIds: string[];
+}
+
+export interface CustodyOverview {
+  custody: { id: string; openedAt: string; note: string | null };
+  lines: CustodyVolumeLine[];
+  totalUnits: number;
+  pendingSaleCount: number;
+  pendingIssueCount: number;
+  teamSize: number;
+}
+
+export interface CustodyPendingSale {
+  id: string;
+  productName: string;
+  variantLabel: string | null;
+  qtySold: number;
+  salePrice: string;
+  date: string;
+  actor?: { id: string; name: string | null; username: string } | null;
+}
+
+export interface CustodyHandoverPreview {
+  custodyId: string;
+  periodStart: string;
+  periodEnd: string;
+  soldLines: CustodyHandoverSoldLine[];
+  rejectedLines: { productName: string; qtySold: number; valueFc: string }[];
+  miniRollupLines: { miniId: string; miniName: string; cashFc: string; returnedUnits: number }[];
+  pendingMiniHandovers: { miniId: string; miniName: string; settlementId: string }[];
+  salesFc: string;
+  miniRollupCashFc: string;
+  expensesFc: string;
+  cashExpectedFc: string;
+  unattestedSaleCount: number;
+  holding: {
+    inventoryEntryId: string;
+    productName: string;
+    variantLabel: string | null;
+    quantityRemaining: number;
+    unitCost: string;
+    piecesPerCarton: number | null;
+  }[];
+}
+
+export const custodyApi = {
+  current: (): Promise<StockCustody | null> =>
+    api.get('/custody/current').then((r) => r.data),
+  appoint: (body: {
+    custodianId: string;
+    sweepExistingStock?: boolean;
+    note?: string;
+  }): Promise<StockCustody> => api.post('/custody', body).then((r) => r.data),
+  close: (id: string): Promise<StockCustody> =>
+    api.patch(`/custody/${id}/close`).then((r) => r.data),
+
+  issues: (custodyId: string): Promise<StockIssue[]> =>
+    api.get(`/custody/${custodyId}/issues`).then((r) => r.data),
+  createIssue: (
+    custodyId: string,
+    body: {
+      items: { productName: string; quantity: number; variantId?: string }[];
+      note?: string;
+    },
+  ): Promise<StockIssue> =>
+    api.post(`/custody/${custodyId}/issues`, body).then((r) => r.data),
+  cancelIssue: (issueId: string): Promise<StockIssue> =>
+    api.patch(`/custody/issues/${issueId}/cancel`).then((r) => r.data),
+
+  team: (custodyId: string): Promise<CustodyTeamMember[]> =>
+    api.get(`/custody/${custodyId}/team`).then((r) => r.data),
+  addTeamMember: (custodyId: string, userId: string): Promise<CustodyTeamMember> =>
+    api.post(`/custody/${custodyId}/team`, { userId }).then((r) => r.data),
+  removeTeamMember: (memberId: string): Promise<void> =>
+    api.delete(`/custody/team/${memberId}`).then((r) => r.data),
+
+  handovers: (params?: {
+    custodianId?: string;
+    status?: CustodyHandoverStatus;
+  }): Promise<CustodyHandover[]> =>
+    api.get('/custody/handovers', { params }).then((r) => r.data),
+  handover: (id: string): Promise<CustodyHandover> =>
+    api.get(`/custody/handovers/${id}`).then((r) => r.data),
+  addAdjustment: (
+    handoverId: string,
+    body: {
+      kind: CustodyAdjustmentKind;
+      amountFc?: string;
+      inventoryEntryId?: string;
+      quantity?: number;
+      note: string;
+    },
+  ): Promise<CustodyHandoverAdjustment> =>
+    api.post(`/custody/handovers/${handoverId}/adjustments`, body).then((r) => r.data),
+  removeAdjustment: (id: string): Promise<void> =>
+    api.delete(`/custody/handovers/adjustments/${id}`).then((r) => r.data),
+  approveHandover: (id: string): Promise<CustodyHandover> =>
+    api.patch(`/custody/handovers/${id}/approve`).then((r) => r.data),
+  rejectHandover: (id: string, reason?: string): Promise<CustodyHandover> =>
+    api.patch(`/custody/handovers/${id}/reject`, { reason }).then((r) => r.data),
+
+  // The custodian's own endpoints (mirrors apps/mobile/lib/api.ts).
+  mine: (): Promise<CustodyOverview | null> =>
+    api.get('/custody/mine').then((r) => r.data),
+  myIssues: (): Promise<StockIssue[]> =>
+    api.get('/custody/mine/issues').then((r) => r.data),
+  acceptIssue: (id: string): Promise<StockIssue> =>
+    api.patch(`/custody/issues/${id}/accept`).then((r) => r.data),
+  rejectIssue: (id: string, reason?: string): Promise<StockIssue> =>
+    api.patch(`/custody/issues/${id}/reject`, { reason }).then((r) => r.data),
+  pendingSales: (): Promise<CustodyPendingSale[]> =>
+    api.get('/custody/mine/pending-sales').then((r) => r.data),
+  approveSales: (body: {
+    saleIds: string[];
+    expectedCount: number;
+    reviewed: true;
+  }): Promise<{ approved: number }> =>
+    api.post('/custody/mine/approve-sales', body).then((r) => r.data),
+  handoverPreview: (): Promise<CustodyHandoverPreview | null> =>
+    api.get('/custody/mine/handover-preview').then((r) => r.data),
+  // No `items` any more — a handover always hands back everything currently
+  // held (the API computes it), which is what lets approval end the custody.
+  submitHandover: (body: { cashDeclaredFc: string; note?: string }): Promise<{ id: string }> =>
+    api.post('/custody/handovers', body).then((r) => r.data),
+};

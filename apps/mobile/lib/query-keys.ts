@@ -42,5 +42,9 @@ export const QK = {
   miniBalance: ['mini-settlements', 'my-balance'] as const,
   miniTeam: ['mini-settlements', 'team'] as const,
   miniStats: (period: string) => ['mini-settlements', 'stats', period] as const,
+  custodyMine: ['custody', 'mine'] as const,
+  custodyIssues: ['custody', 'mine', 'issues'] as const,
+  custodyPendingSales: ['custody', 'mine', 'pending-sales'] as const,
+  custodyPreview: ['custody', 'mine', 'handover-preview'] as const,
   profitSummary: (params?: object) => ['dashboard', 'profit-summary', params ?? {}] as const,
 } as const;

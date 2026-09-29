@@ -16,6 +16,7 @@ import { ActorContext, ActorTier, ShopScope } from '../types/actor-context';
 import { ORG_HEADER, SHOP_HEADER, SHOP_REQUIRED_CODE, SHOP_SCOPE_ALL } from '../shop-scope';
 import { ShopContextService } from '../../shops/shop-context.service';
 import { ServiceKey, resolveGrantedServices } from '../services/service-catalog';
+import { CustodyAccessService } from '../services/custody-access.service';
 
 const DEFAULT_ALLOWED: ActorTier[] = ['OWNER', 'FULL_EMPLOYEE'];
 
@@ -38,6 +39,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     private readonly reflector: Reflector,
     private readonly employmentsService: EmploymentsService,
     private readonly shopContext: ShopContextService,
+    private readonly custodyAccess: CustodyAccessService,
   ) {
     super();
   }
@@ -90,6 +92,22 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     const tenancy = await this.resolveTenancy(user.id, employment, req.headers);
 
+    // Being named the current custodian is itself the authorization to reach
+    // `custody.hold` routes — the owner chose this specific person and they
+    // accepted, the same shape as a mini's mandatory `handovers.mini`. It must
+    // not depend on the owner separately remembering to also grant it through a
+    // role, or an appointment could strand goods with someone who has no way to
+    // reach the accept screen anywhere.
+    const isCustodian =
+      employment && tier === 'FULL_EMPLOYEE'
+        ? await this.custodyAccess.isCurrentCustodian(employment.employeeId, tenancy.shopId)
+        : false;
+    const services = resolveGrantedServices(
+      employment?.role?.services ?? null,
+      tier,
+      isCustodian ? ['custody.hold'] : [],
+    );
+
     const ctx: ActorContext = employment
       ? {
           actorId: user.id,
@@ -100,7 +118,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
           tier,
           // No role assigned resolves to the tier's defaults — the access this
           // employment had before roles existed.
-          services: resolveGrantedServices(employment.role?.services ?? null, tier),
+          services,
           employment,
           ...tenancy,
         }
@@ -108,7 +126,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
           actorId: user.id,
           effectiveOwnerId: user.id,
           tier: 'OWNER',
-          services: resolveGrantedServices(null, 'OWNER'),
+          services,
           employment: null,
           ...tenancy,
         };

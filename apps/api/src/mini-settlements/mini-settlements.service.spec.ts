@@ -146,7 +146,9 @@ describe('MiniSettlementsService.approve', () => {
       currencyService as never,
       {} as never, // variantRepo
       consignmentRepo as never,
-      {} as never, // miniTeamRepo
+      {} as never,
+      // No custody at this branch: returns rejoin unassigned stock, as before.
+      { custodyForMini: jest.fn(async () => null) } as never, // miniTeamRepo
     );
 
     return { service, credit, debt, settlement, savedPayments, miniInEntry, ownerOutEntry, manager };
@@ -271,7 +273,9 @@ describe('MiniSettlementsService.approve', () => {
       {} as never, {} as never, {} as never, dataSource as never, stockMovements as never, currencyService as never,
       {} as never, // variantRepo
       { createQueryBuilder: jest.fn(() => consignmentQb) } as never,
-      {} as never, // miniTeamRepo
+      {} as never,
+      // No custody at this branch: returns rejoin unassigned stock, as before.
+      { custodyForMini: jest.fn(async () => null) } as never, // miniTeamRepo
     );
 
     await service.approve(ctx, 'settle-1');
@@ -472,7 +476,9 @@ describe('MiniSettlementsService.create — one open handover at a time', () => 
       currencyService as never,
       variantRepo as never,
       consignmentRepo as never,
-      {} as never, // miniTeamRepo
+      {} as never,
+      // No custody at this branch: returns rejoin unassigned stock, as before.
+      { custodyForMini: jest.fn(async () => null) } as never, // miniTeamRepo
     );
     return { service, settlementRepo };
   }

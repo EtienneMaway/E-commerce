@@ -29,6 +29,7 @@ import { SetExpenseAllowanceDto } from './dto/set-expense-allowance.dto';
 import { SetCommissionDto } from './dto/set-commission.dto';
 import { CreateExternalEmployeeDto } from './dto/create-external-employee.dto';
 import { UpdateEmployeeProfileDto } from './dto/update-employee-profile.dto';
+import { CustodyService } from '../custody/custody.service';
 
 const OPEN_STATUSES: EmploymentStatus[] = [
   EmploymentStatus.PENDING,
@@ -57,6 +58,7 @@ export class EmploymentsService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly shopContext: ShopContextService,
+    private readonly custody: CustodyService,
   ) {}
 
   /**
@@ -563,11 +565,35 @@ export class EmploymentsService {
     return this.employmentRepo.save(employment);
   }
 
+
+  /**
+   * You cannot walk away — or be walked off — holding the branch's stock
+   * (`SHOP_CUSTODY_PLAN.md` §5.4). Checked when termination is REQUESTED, so
+   * the answer arrives before either party thinks the matter is settled, and
+   * again at approval in case a custody was opened in between.
+   *
+   * The same `409 + code` shape as the account-deletion blocks, so clients can
+   * act on the code rather than matching a sentence that arrives translated.
+   */
+  private async assertNoOpenCustody(employment: Employment): Promise<void> {
+    const holding = await this.custody.hasOpenCustody(
+      employment.employeeId,
+      employment.orgId,
+    );
+    if (holding) {
+      throw new ConflictException({
+        message: 'Settle the stock they are holding before ending this employment',
+        code: 'OPEN_CUSTODY',
+      });
+    }
+  }
+
   async requestTermination(userId: string, id: string): Promise<Employment> {
     const employment = await this.findOne(userId, id);
     if (employment.status !== EmploymentStatus.ACTIVE) {
       throw new BadRequestException('Only active employments can be terminated');
     }
+    await this.assertNoOpenCustody(employment);
     employment.status = EmploymentStatus.TERMINATION_REQUESTED;
     employment.terminationRequestedBy = userId;
     return this.employmentRepo.save(employment);
@@ -581,6 +607,7 @@ export class EmploymentsService {
     if (employment.terminationRequestedBy === userId) {
       throw new ForbiddenException('The party who requested termination cannot approve it');
     }
+    await this.assertNoOpenCustody(employment);
     employment.status = EmploymentStatus.TERMINATED;
     employment.terminatedAt = new Date();
     return this.employmentRepo.save(employment);

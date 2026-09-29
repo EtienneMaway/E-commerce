@@ -11,9 +11,10 @@ import { ConfigService } from '@nestjs/config';
 import { ILike, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { timingSafeEqual } from 'crypto';
-import { User } from '../entities';
+import { EmploymentTier, User } from '../entities';
 import { EmploymentsService } from '../employments/employments.service';
 import { ShopContextService } from '../shops/shop-context.service';
+import { CustodyAccessService } from '../common/services/custody-access.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { PairMiniEmployeeDto } from './dto/pair-mini-employee.dto';
@@ -30,6 +31,7 @@ export class AuthService {
     private readonly employmentsService: EmploymentsService,
     private readonly configService: ConfigService,
     private readonly shopContext: ShopContextService,
+    private readonly custodyAccess: CustodyAccessService,
   ) {}
 
   /**
@@ -223,6 +225,10 @@ export class AuthService {
   private async toPublic(user: User): Promise<UserPublicDto> {
     const employment = await this.employmentsService.findActiveAsEmployee(user.id);
     const tenancy = await this.shopContext.summaryFor(user.id, employment);
+    const isCurrentCustodian =
+      employment && employment.tier !== EmploymentTier.SALES_ONLY
+        ? await this.custodyAccess.isCurrentCustodian(employment.employeeId, employment.shopId)
+        : false;
     return {
       id: user.id,
       username: user.username,
@@ -234,7 +240,7 @@ export class AuthService {
       isMiniEmployee: user.isMiniEmployee,
       isExternalEmployee: user.isExternalEmployee,
       createdAt: user.createdAt,
-      activeEmployment: toActiveEmploymentDto(employment),
+      activeEmployment: toActiveEmploymentDto(employment, isCurrentCustodian),
       ...tenancy,
     };
   }

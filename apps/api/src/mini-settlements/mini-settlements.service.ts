@@ -36,6 +36,7 @@ import {
 import { ActorContext } from '../common/types/actor-context';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
 import { CurrencyService } from '../currency/currency.service';
+import { CustodyService } from '../custody/custody.service';
 import { CreateMiniSettlementDto } from './dto/create-mini-settlement.dto';
 import { CreateMiniExpenseDto } from './dto/create-mini-expense.dto';
 import { CreateMiniTeamMemberDto } from './dto/create-mini-team-member.dto';
@@ -295,6 +296,7 @@ export class MiniSettlementsService {
     private readonly consignmentRepo: Repository<ConsignmentRequest>,
     @InjectRepository(MiniTeamMember)
     private readonly miniTeamRepo: Repository<MiniTeamMember>,
+    private readonly custody: CustodyService,
   ) {}
 
   /** Resolve size labels for a set of variant ids in one query (id → label). */
@@ -1295,6 +1297,19 @@ export class MiniSettlementsService {
     }
     const miniId = settlement.miniId;
 
+    // Where the mini's goods came FROM decides where the unsold ones go BACK to
+    // (SHOP_CUSTODY_PLAN.md §3.6). Consigned out of a custodian's volume, they
+    // return into that volume and he hands them on at his own handover — he is
+    // the one who is accountable for them. Given off the owner's own shelf, as
+    // every consignment before this feature was, this is null and the returns
+    // rejoin unassigned stock exactly as they always have.
+    const returnCustody = await this.custody.custodyForMini(
+      miniId,
+      settlement.orgId,
+      settlement.shopId,
+    );
+    const restockCustodian = returnCustody?.custodianId ?? null;
+
     return this.dataSource.transaction(async (manager) => {
       const credit = await manager.findOne(DebtorCredit, {
         // The owner's credit for this mini — held by the owner approving.
@@ -1381,13 +1396,16 @@ export class MiniSettlementsService {
         // owner's cost + selling prices are left untouched. Prefer a PERSONAL
         // lot, then SUPPLIER; only fall back to a fresh lot if the owner has
         // none (rare — they must have held it to consign it).
+        // `IsNull()` when no custody applies — which is what every lot that
+        // pre-dates this feature carries, so the lookup is unchanged for them.
+        const restockHolder = { custodianId: restockCustodian ?? IsNull() };
         let restockLot = await manager.findOne(InventoryEntry, {
-          where: bySource(ownerId, InventorySource.PERSONAL),
+          where: bySource(ownerId, InventorySource.PERSONAL, restockHolder),
           order: { createdAt: 'DESC' },
         });
         if (!restockLot) {
           restockLot = await manager.findOne(InventoryEntry, {
-            where: bySource(ownerId, InventorySource.SUPPLIER),
+            where: bySource(ownerId, InventorySource.SUPPLIER, restockHolder),
             order: { createdAt: 'DESC' },
           });
         }
@@ -1418,6 +1436,7 @@ export class MiniSettlementsService {
               quantityOriginal: qty,
               quantityRemaining: qty,
               piecesPerCarton: ownerOut[0]?.piecesPerCarton ?? null,
+              custodianId: restockCustodian,
               actorId,
             }),
           );

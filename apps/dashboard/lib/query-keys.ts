@@ -56,5 +56,16 @@ export const QK = {
   employeeRoles: ['employee-roles'] as const,
   employeeRole: (id: string) => ['employee-roles', id] as const,
   serviceCatalog: ['employee-roles', 'catalog'] as const,
+  custodyCurrent: ['custody', 'current'] as const,
+  custodyIssues: (custodyId: string) => ['custody', custodyId, 'issues'] as const,
+  custodyTeam: (custodyId: string) => ['custody', custodyId, 'team'] as const,
+  custodyHandovers: (filters?: object) => ['custody', 'handovers', filters] as const,
+  custodyHandover: (id: string) => ['custody', 'handovers', id] as const,
+  // The custodian's own view (an employee holding a volume), as opposed to the
+  // owner's queries above.
+  custodyMine: ['custody', 'mine'] as const,
+  custodyMyIssues: ['custody', 'mine', 'issues'] as const,
+  custodyMyPendingSales: ['custody', 'mine', 'pending-sales'] as const,
+  custodyMyHandoverPreview: ['custody', 'mine', 'handover-preview'] as const,
   syncSignal: ['sync', 'signal'] as const,
 } as const;
