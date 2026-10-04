@@ -2,7 +2,7 @@
   "expo": {
     "name": "KMB-Talk",
     "slug": "trading-app",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "scheme": "kmb-app",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

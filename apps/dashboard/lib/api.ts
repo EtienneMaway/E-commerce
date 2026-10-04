@@ -859,6 +859,8 @@ export interface Employment {
   employeeId: string;
   employee?: EmploymentParty;
   tier: EmploymentTier;
+  /** Tier the employer has proposed changing this employment to, awaiting the employee's accept/reject. */
+  pendingTier: EmploymentTier | null;
   status: EmploymentStatus;
   terminationRequestedBy: string | null;
   monthlyPay: string | null;
@@ -959,6 +961,18 @@ export const employmentsApi = {
     api.patch(`/employments/${id}/transfer/accept`).then((r) => r.data),
   rejectTransfer: (id: string): Promise<Employment> =>
     api.patch(`/employments/${id}/transfer/reject`).then((r) => r.data),
+
+  /**
+   * Propose changing an employee between mini and full (or vice versa) — the
+   * employment record stays the same, they keep working at their current tier
+   * until they accept.
+   */
+  proposeTierChange: (id: string, tier: EmploymentTier): Promise<Employment> =>
+    api.patch(`/employments/${id}/tier-change`, { tier }).then((r) => r.data),
+  acceptTierChange: (id: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/tier-change/accept`).then((r) => r.data),
+  rejectTierChange: (id: string): Promise<Employment> =>
+    api.patch(`/employments/${id}/tier-change/reject`).then((r) => r.data),
   createMiniEmployee: (body: { name: string; phone?: string }): Promise<CreateMiniEmployeeResult> =>
     api.post('/employments/mini-employee', body).then((r) => r.data),
   accept: (id: string): Promise<Employment> =>

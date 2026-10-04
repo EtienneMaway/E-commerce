@@ -19,6 +19,13 @@ export class ActiveEmploymentDto {
   terminationRequestedBy: string | null;
 
   @ApiPropertyOptional({
+    enum: ['FULL', 'SALES_ONLY'],
+    nullable: true,
+    description: 'Tier the employer has proposed changing this employment to, awaiting this employee\'s accept/reject. Null when nothing is pending.',
+  })
+  pendingTier: 'FULL' | 'SALES_ONLY' | null;
+
+  @ApiPropertyOptional({
     description: 'The role the employer assigned, or null when none is set (the employee then has their tier\'s default access).',
   })
   role: { id: string; name: string } | null;
@@ -72,6 +79,7 @@ export function toActiveEmploymentDto(
     status: employment.status as 'ACTIVE' | 'TERMINATION_REQUESTED',
     employer: { id: employment.employer.id, username: employment.employer.username },
     terminationRequestedBy: employment.terminationRequestedBy,
+    pendingTier: employment.pendingTier ?? null,
     role: employment.role ? { id: employment.role.id, name: employment.role.name } : null,
     services: [...services].sort(),
   };

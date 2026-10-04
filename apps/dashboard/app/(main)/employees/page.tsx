@@ -367,6 +367,9 @@ function EmploymentRow({
             {e.terminatedAt && ` · ${t.employees.terminatedLabel} ${formatDate(e.terminatedAt)}`}
           </div>
           <BranchLine employment={e} isEmployer={isEmployer} isParty={isParty} qc={qc} />
+          {!isExternal && (
+            <TierLine employment={e} isEmployer={isEmployer} isParty={isParty} qc={qc} />
+          )}
 
           {e.status === 'TERMINATION_REQUESTED' && (
             <div className="text-xs mt-2 opacity-80">
@@ -800,6 +803,99 @@ function BranchLine({
             {t.employees.transferBtn}
           </button>
         )
+      )}
+    </div>
+  );
+}
+
+/**
+ * Change this employee between mini and full — the employer wearing-one-hat-
+ * or-the-other case (a manager stepping out to sell as a mini for a while, or
+ * a mini being promoted to run a branch). Only two tiers exist, so there is no
+ * picker: the button always offers "the other one". Same shape as
+ * `BranchLine` — the employment keeps its current tier until the employee
+ * accepts, and there is only ever one proposal in flight.
+ */
+function TierLine({
+  employment,
+  isEmployer,
+  isParty,
+  qc,
+}: {
+  employment: Employment;
+  isEmployer: boolean;
+  isParty: boolean;
+  qc: ReturnType<typeof useQueryClient>;
+}) {
+  const t = useT();
+  const toast = useToast();
+  const confirm = useConfirm();
+
+  const refresh = (): void => {
+    void qc.invalidateQueries({ queryKey: QK.employments() });
+  };
+  const fail = (e: unknown): void => toast({ title: getErrorMessage(e), variant: 'error' });
+
+  const otherTier: EmploymentTier = employment.tier === 'FULL' ? 'SALES_ONLY' : 'FULL';
+
+  const propose = useMutation({
+    mutationFn: (tier: EmploymentTier) => employmentsApi.proposeTierChange(employment.id, tier),
+    onSuccess: refresh,
+    onError: fail,
+  });
+  const respond = useMutation({
+    mutationFn: (accept: boolean) =>
+      accept
+        ? employmentsApi.acceptTierChange(employment.id)
+        : employmentsApi.rejectTierChange(employment.id),
+    onSuccess: refresh,
+    onError: fail,
+  });
+
+  const open = employment.status === 'ACTIVE' || employment.status === 'PENDING';
+  const who = (isEmployer ? employment.employee?.name : null)?.trim() || `@${employment.employee?.username ?? ''}`;
+
+  const handlePropose = async (): Promise<void> => {
+    const ok = await confirm({
+      title: t.employees.tierChangeConfirmTitle(who, tierLabel(t, otherTier)),
+      description: t.employees.tierChangeConfirmBody,
+      confirmLabel: t.employees.tierChangeConfirmCta,
+    });
+    if (ok) propose.mutate(otherTier);
+  };
+
+  return (
+    <div className="text-xs mt-2 flex items-center gap-2 flex-wrap">
+      {employment.pendingTier && (
+        <>
+          <span style={{ color: 'var(--warning)' }}>
+            {t.employees.tierChangePending(tierLabel(t, employment.pendingTier))}
+          </span>
+          {/* Only the employee may answer — that is the consent the flow is for. */}
+          {isParty && !isEmployer && (
+            <>
+              <button className="btn btn-primary" style={{ padding: '2px 10px' }}
+                onClick={() => respond.mutate(true)}>
+                {t.employees.tierChangeAccept}
+              </button>
+              <button className="btn btn-secondary" style={{ padding: '2px 10px' }}
+                onClick={() => respond.mutate(false)}>
+                {t.employees.tierChangeReject}
+              </button>
+            </>
+          )}
+        </>
+      )}
+
+      {isEmployer && open && !employment.pendingTier && (
+        <button
+          className="btn btn-secondary"
+          style={{ padding: '2px 10px' }}
+          disabled={propose.isPending}
+          onClick={handlePropose}
+        >
+          {t.employees.tierChangeBtn(tierLabel(t, otherTier))}
+        </button>
       )}
     </div>
   );

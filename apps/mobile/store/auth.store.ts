@@ -15,6 +15,8 @@ interface UserProfile {
   activeEmployment?: {
     id: string;
     tier: 'FULL' | 'SALES_ONLY';
+    /** Tier the employer has proposed changing this employment to, awaiting accept/reject. */
+    pendingTier?: 'FULL' | 'SALES_ONLY' | null;
     status: 'ACTIVE' | 'TERMINATION_REQUESTED';
     employer: { id: string; username: string };
     terminationRequestedBy: string | null;

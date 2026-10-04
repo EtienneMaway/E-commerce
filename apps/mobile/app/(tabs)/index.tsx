@@ -17,6 +17,7 @@ import { ShopSwitcher } from '../../components/ui/ShopSwitcher';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { UpdateBanner } from '../../components/ui/UpdateNotice';
 import { MiniEmployeeHome } from '../../components/MiniEmployeeHome';
+import { PendingTierChangeCard } from '../../components/PendingTierChangeCard';
 import { MiniHomeStats } from '../../components/MiniHomeStats';
 import { EmployeeActivityStats } from '../../components/EmployeeActivityStats';
 import { useAuthStore } from '../../store/auth.store';
@@ -317,6 +318,8 @@ export default function DashboardScreen() {
       <PersonaBanner />
 
       <UpdateBanner />
+
+      <PendingTierChangeCard />
 
       {/* Offline mode toggle */}
       <TouchableOpacity

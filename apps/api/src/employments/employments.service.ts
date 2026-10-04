@@ -265,28 +265,7 @@ export class EmploymentsService {
     }
 
     const miniId = employment.employeeId;
-
-    const holding = await this.employmentRepo.manager.query<{ n: number }[]>(
-      `SELECT count(*)::int AS n FROM "inventory_entries"
-        WHERE "owner_id" = $1 AND "source" = 'CONSIGNED_IN' AND "quantity_remaining" > 0`,
-      [miniId],
-    );
-    if (Number(holding[0]?.n ?? 0) > 0) {
-      throw new ConflictException(
-        'This employee is still holding stock — settle the handover first',
-      );
-    }
-
-    const pending = await this.employmentRepo.manager.query<{ n: number }[]>(
-      `SELECT count(*)::int AS n FROM "mini_settlements"
-        WHERE "mini_id" = $1 AND "status" = 'PENDING'`,
-      [miniId],
-    );
-    if (Number(pending[0]?.n ?? 0) > 0) {
-      throw new ConflictException(
-        'This employee has a pending handover — approve or reject it first',
-      );
-    }
+    await this.assertMiniSettled(miniId);
 
     return this.employmentRepo.manager.transaction(async (manager) => {
       if (employment.status !== EmploymentStatus.TERMINATED) {
@@ -393,15 +372,31 @@ export class EmploymentsService {
    * their open cycle: settle first, then move.
    */
   private async assertSettledForTransfer(employeeId: string): Promise<void> {
+    await this.assertMiniSettled(
+      employeeId,
+      'This employee is still holding stock — settle the handover before moving them',
+      'This employee has a handover waiting for approval — finish it before moving them',
+    );
+  }
+
+  /**
+   * A mini must not straddle two states while cash or stock is still on their
+   * hands — used before a branch transfer, a mini→full tier change, or
+   * removing the mini outright. Messages are call-site-specific (the same two
+   * checks read differently depending on what is about to happen to them).
+   */
+  private async assertMiniSettled(
+    employeeId: string,
+    holdingMessage = 'This employee is still holding stock — settle the handover first',
+    pendingMessage = 'This employee has a pending handover — approve or reject it first',
+  ): Promise<void> {
     const holding = await this.employmentRepo.manager.query<{ n: number }[]>(
       `SELECT count(*)::int AS n FROM "inventory_entries"
         WHERE "owner_id" = $1 AND "source" = 'CONSIGNED_IN' AND "quantity_remaining" > 0`,
       [employeeId],
     );
     if (Number(holding[0]?.n ?? 0) > 0) {
-      throw new ConflictException(
-        'This employee is still holding stock — settle the handover before moving them',
-      );
+      throw new ConflictException(holdingMessage);
     }
 
     const pending = await this.employmentRepo.manager.query<{ n: number }[]>(
@@ -410,10 +405,97 @@ export class EmploymentsService {
       [employeeId],
     );
     if (Number(pending[0]?.n ?? 0) > 0) {
-      throw new ConflictException(
-        'This employee has a handover waiting for approval — finish it before moving them',
-      );
+      throw new ConflictException(pendingMessage);
     }
+  }
+
+  /**
+   * Propose changing this employment's tier (mini ↔ full) — the employer
+   * wearing-one-hat-or-the-other case: a manager stepping out to sell on the
+   * road as a mini for a while, or a mini being promoted to run a branch.
+   *
+   * Same shape as a branch transfer: the employment keeps operating at its
+   * current tier until the employee accepts, and is refused up front if the
+   * move would strand goods — a full employee still holding an open custody
+   * (they cannot become a mini while the branch's stock is in their name), or
+   * a mini with unsettled stock or a pending handover.
+   */
+  async proposeTierChange(
+    ctx: ActorContext,
+    employmentId: string,
+    tier: EmploymentTier,
+  ): Promise<Employment> {
+    const employment = await this.employmentRepo.findOne({
+      where: { id: employmentId },
+      relations: { employee: true },
+    });
+    if (!employment) throw new NotFoundException('Employment not found');
+    if (employment.employerId !== ctx.effectiveOwnerId) {
+      throw new ForbiddenException('Only the employer can change this employee\'s tier');
+    }
+    // Stricter than transfer's closed-status check: a tier change only makes
+    // sense for someone actually operating right now — not a still-pending
+    // invite they have not accepted yet, and not a relationship already mid
+    // termination.
+    if (employment.status !== EmploymentStatus.ACTIVE) {
+      throw new BadRequestException('Only an active employee can have their tier changed');
+    }
+    if (employment.employee?.isExternalEmployee) {
+      throw new BadRequestException('External employees do not use the app — there is nothing to confirm');
+    }
+    if (employment.tier === tier) {
+      throw new BadRequestException('This employee is already that tier');
+    }
+
+    await this.assertTierChangeSettled(employment);
+
+    employment.pendingTier = tier;
+    return this.employmentRepo.save(employment);
+  }
+
+  /** The employee decides. Accepting is what actually changes their tier. */
+  async respondToTierChange(
+    employeeId: string,
+    employmentId: string,
+    accept: boolean,
+  ): Promise<Employment> {
+    const employment = await this.employmentRepo.findOne({ where: { id: employmentId } });
+    if (!employment) throw new NotFoundException('Employment not found');
+    if (employment.employeeId !== employeeId) {
+      throw new ForbiddenException('This tier change is not yours to answer');
+    }
+    if (!employment.pendingTier) {
+      throw new BadRequestException('No tier change is pending');
+    }
+
+    if (accept) {
+      // Re-checked here, not only at propose: time passes in between, and the
+      // employment or its stock/handover state can have moved since.
+      if (employment.status !== EmploymentStatus.ACTIVE) {
+        throw new BadRequestException('Only an active employee can accept a tier change');
+      }
+      await this.assertTierChangeSettled(employment);
+      employment.tier = employment.pendingTier;
+    }
+    employment.pendingTier = null;
+    return this.employmentRepo.save(employment);
+  }
+
+  /**
+   * A tier change — either direction — only runs on an employee who is
+   * currently clear: nothing left to hand over. Both checks always run,
+   * regardless of which way the change goes, rather than picking one based on
+   * the current tier: a full employee never has a `mini_settlements` row and a
+   * mini never holds a `StockCustody`, so the "wrong" check is always a no-op
+   * for them — there is no direction-specific case to get wrong.
+   */
+  private async assertTierChangeSettled(employment: Employment): Promise<void> {
+    await this.assertNoOpenCustody(employment);
+    await this.assertMiniSettled(
+      employment.employeeId,
+      'This employee is still holding stock — settle the handover before changing their tier',
+      'This employee has a handover waiting for approval — finish it before changing their tier',
+    );
   }
 
   // ─── Employer: edit the employee's profile (name, dob, role) ─────────────

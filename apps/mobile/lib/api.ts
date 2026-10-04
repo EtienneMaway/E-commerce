@@ -273,6 +273,8 @@ export interface EmploymentSummary {
   employerId: string;
   employeeId: string;
   tier: 'FULL' | 'SALES_ONLY';
+  /** Tier the employer has proposed changing this employment to, awaiting accept/reject. */
+  pendingTier?: 'FULL' | 'SALES_ONLY' | null;
   status: 'PENDING' | 'ACTIVE' | 'REJECTED' | 'TERMINATION_REQUESTED' | 'TERMINATED';
   employer?: { id: string; username: string; name?: string | null };
   createdAt: string;
@@ -283,6 +285,10 @@ export const employmentsApi = {
     api.get('/employments', { params }).then((r) => r.data),
   accept: (id: string) => api.patch(`/employments/${id}/accept`).then((r) => r.data),
   reject: (id: string) => api.patch(`/employments/${id}/reject`).then((r) => r.data),
+  // Hiring/tier-management is dashboard-only — mobile only answers a proposal
+  // about its own job.
+  acceptTierChange: (id: string) => api.patch(`/employments/${id}/tier-change/accept`).then((r) => r.data),
+  rejectTierChange: (id: string) => api.patch(`/employments/${id}/tier-change/reject`).then((r) => r.data),
 };
 
 // ─── Consignments (mini receives assigned products) ──────────────────────────

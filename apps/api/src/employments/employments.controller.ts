@@ -22,6 +22,7 @@ import { CreateMiniEmployeeDto } from './dto/create-mini-employee.dto';
 import { EmploymentFilterDto } from './dto/employment-filter.dto';
 import { SetSalaryDto } from './dto/set-salary.dto';
 import { TransferEmploymentDto } from './dto/transfer-employment.dto';
+import { ChangeTierDto } from './dto/change-tier.dto';
 import { SetPayrollActiveDto } from './dto/set-payroll-active.dto';
 import { SetExpenseAllowanceDto } from './dto/set-expense-allowance.dto';
 import { SetCommissionDto } from './dto/set-commission.dto';
@@ -270,6 +271,44 @@ export class EmploymentsController {
   @ApiOperation({ summary: 'Decline a move to another branch' })
   rejectTransfer(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.respondToTransfer(user.id, id, false);
+  }
+
+  @Patch(':id/tier-change')
+  @RequiresService('employees.manage')
+  @ApiOperation({
+    summary: 'Propose changing an employee between mini and full',
+    description:
+      'Only works on an active employee with nothing left to hand over — refused while they hold an ' +
+      'open custody, still hold stock, or have a handover waiting. They keep working at their current ' +
+      'tier until they accept.',
+  })
+  @ApiResponse({ status: 400, description: 'Employee is not active (pending invite, or mid termination)' })
+  @ApiResponse({ status: 409, description: 'Open custody, unsettled stock, or a pending handover' })
+  proposeTierChange(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChangeTierDto,
+  ) {
+    return this.service.proposeTierChange(ctx, id, dto.tier);
+  }
+
+  /**
+   * The employee's side. No `@RequiresService`: answering a proposal about
+   * your own job is part of the employment relationship, not a feature an
+   * employer lends out.
+   */
+  @Patch(':id/tier-change/accept')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @ApiOperation({ summary: 'Accept becoming a mini or full employee' })
+  acceptTierChange(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.respondToTierChange(user.id, id, true);
+  }
+
+  @Patch(':id/tier-change/reject')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @ApiOperation({ summary: 'Decline the tier change' })
+  rejectTierChange(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.respondToTierChange(user.id, id, false);
   }
 
   @Patch(':id/profile')

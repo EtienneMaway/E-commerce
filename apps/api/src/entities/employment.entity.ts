@@ -74,6 +74,18 @@ export class Employment {
   @Column({ type: 'enum', enum: EmploymentTier })
   tier: EmploymentTier;
 
+  /**
+   * Tier the employer has proposed changing this employment to (mini ↔ full),
+   * until the employee accepts. Same shape as `pendingShopId`: the employment
+   * keeps operating at `tier` meanwhile, so there is never a window where they
+   * can do nothing. Refused while the move would strand goods — a full
+   * employee still holding an open custody, or a mini with unsettled stock or
+   * a pending handover.
+   */
+  @ApiPropertyOptional({ enum: EmploymentTier, nullable: true })
+  @Column({ name: 'pending_tier', type: 'enum', enum: EmploymentTier, nullable: true })
+  pendingTier: EmploymentTier | null;
+
   @ApiProperty({ enum: EmploymentStatus })
   @Column({ type: 'enum', enum: EmploymentStatus })
   status: EmploymentStatus;
