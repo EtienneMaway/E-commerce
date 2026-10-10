@@ -471,6 +471,7 @@ export class ProductGroupsService {
         } else {
           qtyBefore = 0;
           const entry = manager.create(InventoryEntry, {
+            ownerId: ctx.effectiveOwnerId,
             ...writeScope(ctx),
             source: InventorySource.PERSONAL,
             productName: group.name,
