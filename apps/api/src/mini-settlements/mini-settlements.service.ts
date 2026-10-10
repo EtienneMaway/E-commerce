@@ -1425,6 +1425,7 @@ export class MiniSettlementsService {
           restockLot = await manager.save(
             InventoryEntry,
             manager.create(InventoryEntry, {
+              ownerId: ctx.effectiveOwnerId,
               ...writeScope(ctx),
               source: InventorySource.PERSONAL,
               productName: item.productName,

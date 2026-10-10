@@ -421,6 +421,7 @@ export class ExternalContactsService {
 
     return this.dataSource.transaction(async (manager) => {
       const entry = manager.create(InventoryEntry, {
+        ownerId: ctx.effectiveOwnerId,
         ...writeScope(ctx),
         actorId,
         source: InventorySource.PERSONAL,
@@ -489,6 +490,7 @@ export class ExternalContactsService {
       for (const item of dto.items) {
         const productNameNorm = item.productName.trim().toLowerCase();
         const entry = manager.create(InventoryEntry, {
+          ownerId: ctx.effectiveOwnerId,
           ...writeScope(ctx),
           actorId,
           source: InventorySource.PERSONAL,
