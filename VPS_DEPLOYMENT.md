@@ -215,8 +215,10 @@ CORS_ORIGINS=https://app.yourdomain.com
 
 # Which mobile release is live on Play. See "Telling the app about a new
 # mobile release" below — these are the only vars that change between deploys.
-MOBILE_ANDROID_LATEST_VERSION=1.0.0
-MOBILE_ANDROID_LATEST_BUILD=5
+# Keep these pointed at the release that is ACTUALLY live on Play: if they lag
+# behind the store, installs on the older build are never told an update exists.
+MOBILE_ANDROID_LATEST_VERSION=1.0.3
+MOBILE_ANDROID_LATEST_BUILD=<versionCode now live on Play — `eas build:version:get --platform android`>
 MOBILE_RELEASE_NOTES_EN=
 MOBILE_RELEASE_NOTES_FR=
 ```
@@ -483,13 +485,15 @@ Play, run this on the VPS:
 
 ```bash
 cd /var/www/ecommerce/apps/api
-pnpm mobile:version 1.0.1 6 "Faster sales screen" "Écran des ventes plus rapide"
+pnpm mobile:version 6 "Faster sales screen" "Écran des ventes plus rapide"
 ```
 
-Two required arguments: the version name (`expo.version` in
-`apps/mobile/app.json`, which `pnpm version:bump` set) and the build number
-(`eas build:version:get --platform android`). The notes are optional and appear
-in the update banner. The script rewrites only those four lines, keeps a
+One required argument: the build number
+(`eas build:version:get --platform android`). The version name is read straight
+from `expo.version` in `apps/mobile/app.json` — the single source of truth, so
+it can never lag behind the build you shipped. (Pin a different one for a one-off
+with `APP_VERSION=1.2.3 pnpm mobile:version …`.) The notes are optional and
+appear in the update banner. The script rewrites only those four lines, keeps a
 `.env.bak`, and restarts `kmb-api` — the API reads `.env` at boot, so without a
 restart nothing changes.
 

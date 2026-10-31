@@ -3,35 +3,64 @@
 # Point the API at the mobile release that is now live on Play, so installed
 # apps start seeing the update banner. Run it on the VPS, after `eas submit`.
 #
-#   ./scripts/set-mobile-version.sh 1.0.1 6
-#   ./scripts/set-mobile-version.sh 1.0.1 6 "Faster sales screen" "Écran des ventes plus rapide"
+# The version name is read straight from apps/mobile/app.json (`expo.version`),
+# the one source of truth for it, so it can never drift out of step with the
+# build you actually shipped. You only pass the build number, which EAS holds
+# remotely (`appVersionSource: "remote"`) and is not in app.json.
+#
+#   ./scripts/set-mobile-version.sh 6
+#   ./scripts/set-mobile-version.sh 6 "Faster sales screen" "Écran des ventes plus rapide"
 #
 # Arguments:
-#   1  version name  — expo.version of the build you shipped (app.json)
-#   2  build number  — `eas build:version:get --platform android`
-#   3  release notes EN (optional)
-#   4  release notes FR (optional)
+#   1  build number  — `eas build:version:get --platform android`
+#   2  release notes EN (optional)
+#   3  release notes FR (optional)
 #
-# Env overrides: ENV_FILE (default /var/www/ecommerce/apps/api/.env),
-#                PM2_APP  (default kmb-api; set to "" to skip the restart)
-#
+# Env overrides: ENV_FILE  (default /var/www/ecommerce/apps/api/.env),
+#                APP_JSON  (default <repo>/apps/mobile/app.json),
+#                APP_VERSION (skip reading app.json and use this version name),
+#                PM2_APP   (default kmb-api; set to "" to skip the restart)
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-/var/www/ecommerce/apps/api/.env}"
+APP_JSON="${APP_JSON:-$SCRIPT_DIR/../../mobile/app.json}"
 PM2_APP="${PM2_APP-kmb-api}"
 
-VERSION="${1:-}"
-BUILD="${2:-}"
-NOTES_EN="${3:-}"
-NOTES_FR="${4:-}"
+BUILD="${1:-}"
+NOTES_EN="${2:-}"
+NOTES_FR="${3:-}"
 
-if [[ -z "$VERSION" || -z "$BUILD" ]]; then
-  echo "usage: $0 <version-name> <build-number> [notes-en] [notes-fr]" >&2
+# The version name comes from app.json unless the caller pinned one explicitly.
+read_app_version() {
+  if command -v node >/dev/null 2>&1; then
+    node -e 'const v=require(process.argv[1])?.expo?.version; if(!v)process.exit(1); process.stdout.write(String(v));' "$APP_JSON" 2>/dev/null && return 0
+  fi
+  # Fallback for a box without node: pull the first "version": "x.y.z" out.
+  grep -Eo '"version"[[:space:]]*:[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"' "$APP_JSON" 2>/dev/null \
+    | head -1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+'
+}
+
+if [[ -n "${APP_VERSION:-}" ]]; then
+  VERSION="$APP_VERSION"
+else
+  [[ -f "$APP_JSON" ]] || {
+    echo "no app.json at $APP_JSON — set APP_JSON=/path/to/app.json or pass APP_VERSION=x.y.z" >&2
+    exit 1
+  }
+  VERSION="$(read_app_version || true)"
+  [[ -n "$VERSION" ]] || { echo "could not read expo.version from $APP_JSON" >&2; exit 1; }
+fi
+
+if [[ -z "$BUILD" ]]; then
+  echo "usage: $0 <build-number> [notes-en] [notes-fr]   (version name is read from app.json)" >&2
   exit 1
 fi
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "version must look like 1.0.1, got '$VERSION'" >&2; exit 1; }
 [[ "$BUILD" =~ ^[0-9]+$ ]] || { echo "build must be a whole number, got '$BUILD'" >&2; exit 1; }
 [[ -f "$ENV_FILE" ]] || { echo "no env file at $ENV_FILE" >&2; exit 1; }
+
+echo "Mobile release: version $VERSION (from ${APP_VERSION:+the APP_VERSION override}${APP_VERSION:-$APP_JSON}), build $BUILD"
 
 cp -p "$ENV_FILE" "$ENV_FILE.bak"
 
