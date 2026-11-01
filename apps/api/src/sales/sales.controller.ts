@@ -19,6 +19,7 @@ import { SalesService } from './sales.service';
 import { RecordSaleDto } from './dto/record-sale.dto';
 import { UpdateSaleClientDto } from './dto/update-sale-client.dto';
 import { RejectSaleDto } from './dto/reject-sale.dto';
+import { AmendSaleDto } from './dto/amend-sale.dto';
 import {
   SalesFilterDto,
   SalesSummaryFilterDto,
@@ -153,5 +154,29 @@ export class SalesController {
     @Body() dto: RejectSaleDto,
   ) {
     return this.salesService.rejectSale(ctx, id, dto);
+  }
+
+  @Post(':id/amend')
+  @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
+  @RequiresService('sales.record')
+  @ApiOperation({
+    summary: 'Amend a sale recorded with the wrong quantity or price (same day, by the seller)',
+    description:
+      'Voids the original sale (restoring its stock) and re-records a corrected sale in one atomic ' +
+      'transaction. Allowed only on the day the sale was recorded, and only by the person who recorded ' +
+      'it. The body is the corrected sale (same shape as recording one); selling below cost returns the ' +
+      'usual 422 price-guard warning — resend with confirmedOverride: true to proceed.',
+  })
+  @ApiResponse({ status: 201, description: 'Sale amended; original voided and corrected sale recorded' })
+  @ApiResponse({ status: 403, description: 'Not the person who recorded the sale' })
+  @ApiResponse({ status: 404, description: 'Sale not found on these books' })
+  @ApiResponse({ status: 409, description: 'Not the same day, already voided, or a mini handover is sealed' })
+  @ApiResponse({ status: 422, description: 'Corrected price is at or below cost (price-guard warning)' })
+  amendSale(
+    @CurrentActorContext() ctx: ActorContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AmendSaleDto,
+  ) {
+    return this.salesService.amendSale(ctx, id, dto);
   }
 }

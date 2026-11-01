@@ -69,11 +69,13 @@ export function EditProductSellingPriceDialog({
   const [mode, setMode] = useState<Mode>('unit');
   const [unitPrice, setUnitPrice] = useState('');
   const [cartonPrice, setCartonPrice] = useState('');
+  const [unitCost, setUnitCost] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (open && latest) {
       setUnitPrice(latest.sellingPrice);
+      setUnitCost(latest.unitCost);
       if (piecesPerCarton) {
         setCartonPrice((parseFloat(latest.sellingPrice) * piecesPerCarton).toFixed(4));
       } else {
@@ -103,10 +105,18 @@ export function EditProductSellingPriceDialog({
   const mutation = useMutation({
     mutationFn: async () => {
       const finalUnit = parseFloat(unitPrice);
+      const finalCost = parseFloat(unitCost);
       if (!finalUnit || finalUnit <= 0) throw new Error('Invalid price');
-      // Update each editable lot in parallel
+      if (!finalCost || finalCost <= 0) throw new Error('Invalid cost');
+      // Update each editable lot in parallel — both the buying price (unit cost)
+      // and the per-piece selling price. Consigned/sold quantities are untouched.
       await Promise.all(
-        editable.map((e) => inventoryApi.updateSellingPrice(e.id, finalUnit.toFixed(4))),
+        editable.map((e) =>
+          inventoryApi.updateEntryPrices(e.id, {
+            unitCost: finalCost.toFixed(4),
+            sellingPrice: finalUnit.toFixed(4),
+          }),
+        ),
       );
     },
     onSuccess: () => {
@@ -127,10 +137,8 @@ export function EditProductSellingPriceDialog({
 
   const productLabel = productName.charAt(0).toUpperCase() + productName.slice(1);
   const parsedUnit = parseFloat(unitPrice);
-  const minCost = editable.length > 0
-    ? Math.min(...editable.map((e) => parseFloat(e.unitCost)))
-    : 0;
-  const belowCost = parsedUnit > 0 && parsedUnit <= minCost;
+  const parsedCost = parseFloat(unitCost);
+  const belowCost = parsedUnit > 0 && parsedCost > 0 && parsedUnit <= parsedCost;
 
   return (
     <div
@@ -219,7 +227,23 @@ export function EditProductSellingPriceDialog({
               </div>
             )}
 
-            {/* Input */}
+            {/* Buying price (unit cost) */}
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--foreground)' }}>
+                {t.inventory.editBuyingLabel}
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={unitCost}
+                onChange={(e) => setUnitCost(e.target.value)}
+                placeholder="0.00"
+                className="input"
+              />
+            </div>
+
+            {/* Selling price */}
             <div>
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--foreground)' }}>
                 {mode === 'unit' ? t.inventory.bulkSellingUnitLabel : t.inventory.bulkSellingCartonLabel}
@@ -237,7 +261,7 @@ export function EditProductSellingPriceDialog({
               />
               {belowCost && (
                 <p className="text-xs mt-1" style={{ color: 'var(--warning)' }}>
-                  ⚠️ {formatCurrency(parsedUnit.toFixed(4))} ≤ cost ({formatCurrency(minCost.toFixed(4))})
+                  ⚠️ {t.inventory.editBelowCostWarning(formatCurrency(parsedCost.toFixed(4)))}
                 </p>
               )}
             </div>
@@ -254,7 +278,7 @@ export function EditProductSellingPriceDialog({
               </button>
               <button
                 onClick={() => mutation.mutate()}
-                disabled={!parsedUnit || parsedUnit <= 0 || mutation.isPending}
+                disabled={!parsedUnit || parsedUnit <= 0 || !parsedCost || parsedCost <= 0 || mutation.isPending}
                 className="btn btn-primary flex-1"
               >
                 {mutation.isPending ? t.inventory.bulkSellingSubmitting : t.inventory.bulkSellingSubmit}

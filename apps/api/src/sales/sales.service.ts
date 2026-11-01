@@ -7,7 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, ILike, IsNull, Repository } from 'typeorm';
+import { DataSource, EntityManager, ILike, IsNull, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import Decimal from 'decimal.js';
 import {
@@ -27,6 +27,7 @@ import { PricingService } from '../pricing/pricing.service';
 import { RecordSaleDto } from './dto/record-sale.dto';
 import { UpdateSaleClientDto } from './dto/update-sale-client.dto';
 import { RejectSaleDto } from './dto/reject-sale.dto';
+import { AmendSaleDto } from './dto/amend-sale.dto';
 import {
   SalesFilterDto,
   SalesHistoryPeriod,
@@ -102,53 +103,68 @@ export class SalesService {
     private readonly custody: CustodyService,
   ) {}
 
+  /**
+   * Record a sale. When `externalManager` is passed the sale is recorded on
+   * that transaction (and that transaction's uncommitted state is visible to
+   * the lot lookups) instead of opening its own — this is how {@link amendSale}
+   * re-records a corrected sale in the same atomic unit as the void. The
+   * idempotency short-circuit and the mini open-handover pre-check only apply
+   * to a fresh sale, not to an amend (which runs its own guards first).
+   */
   async recordSale(
     ctx: ActorContext,
     dto: RecordSaleDto,
+    externalManager?: EntityManager,
   ): Promise<SaleTransaction> {
     const ownerId = ctx.effectiveOwnerId;
     const actorId = ctx.actorId !== ownerId ? ctx.actorId : null;
-
-    // Idempotency: the offline sync queue stamps each sale with a stable
-    // client-generated key. If a retry lands here after a flaky-network
-    // timeout (server already committed, but the response never reached the
-    // device), recognise the key and return the existing row instead of
-    // recording the sale twice. A split sale produces several rows sharing the
-    // same key — returning the first is enough to signal "already done".
     const clientSaleId = dto.clientSaleId?.trim() || null;
-    if (clientSaleId) {
-      const existing = await this.saleRepo.findOne({
-        where: { ...holderScope(ctx), clientSaleId },
-        order: { date: 'ASC' },
-      });
-      if (existing) return existing;
-    }
 
-    // A mini employee hands back cash *and* the unsold goods, so once a
-    // handover is awaiting approval they are physically holding nothing to
-    // sell. The stock only leaves their books on approval, so without this the
-    // app would still offer phantom stock — and the sale would land in the gap
-    // between the handover's window and the next one, where no settlement
-    // accounts for it.
-    if (ctx.tier === 'MINI_EMPLOYEE') {
-      const openHandover = await this.settlementRepo.findOne({
-        // tenancy-exempt: miniId names the PERSON handing over, not a set of
-        // books. Their handover is theirs at whichever branch they work.
-        where: { miniId: ownerId, status: MiniSettlementStatus.PENDING },
-      });
-      if (openHandover) {
-        throw new ConflictException(
-          'Your handover is waiting for approval — you cannot record sales until your employer approves or rejects it',
-        );
+    if (!externalManager) {
+      // Idempotency: the offline sync queue stamps each sale with a stable
+      // client-generated key. If a retry lands here after a flaky-network
+      // timeout (server already committed, but the response never reached the
+      // device), recognise the key and return the existing row instead of
+      // recording the sale twice. A split sale produces several rows sharing
+      // the same key — returning the first is enough to signal "already done".
+      if (clientSaleId) {
+        const existing = await this.saleRepo.findOne({
+          where: { ...holderScope(ctx), clientSaleId },
+          order: { date: 'ASC' },
+        });
+        if (existing) return existing;
+      }
+
+      // A mini employee hands back cash *and* the unsold goods, so once a
+      // handover is awaiting approval they are physically holding nothing to
+      // sell. The stock only leaves their books on approval, so without this the
+      // app would still offer phantom stock — and the sale would land in the gap
+      // between the handover's window and the next one, where no settlement
+      // accounts for it.
+      if (ctx.tier === 'MINI_EMPLOYEE') {
+        const openHandover = await this.settlementRepo.findOne({
+          // tenancy-exempt: miniId names the PERSON handing over, not a set of
+          // books. Their handover is theirs at whichever branch they work.
+          where: { miniId: ownerId, status: MiniSettlementStatus.PENDING },
+        });
+        if (openHandover) {
+          throw new ConflictException(
+            'Your handover is waiting for approval — you cannot record sales until your employer approves or rejects it',
+          );
+        }
       }
     }
 
     // `ownerId` is still written until migration 034 drops the column, which is
     // what keeps each module of Phase 4 independently shippable.
     const base = { ownerId, actorId, clientSaleId, ...writeScope(ctx) };
-    return dto.carton
-      ? this.recordCartonSale(ctx, dto, base)
-      : this.recordSingleSale(ctx, dto, base);
+    const run = (manager: EntityManager): Promise<SaleTransaction> =>
+      dto.carton
+        ? this.recordCartonSale(ctx, dto, base, manager)
+        : this.recordSingleSale(ctx, dto, base, manager);
+    return externalManager
+      ? run(externalManager)
+      : this.dataSource.transaction(run);
   }
 
   /**
@@ -181,13 +197,16 @@ export class SalesService {
   private async fetchSellableLots(
     ctx: ActorContext,
     key: { productName?: string; variantId?: string },
+    manager: EntityManager,
   ): Promise<InventoryEntry[]> {
     const match = key.variantId
       ? { variantId: key.variantId }
       : { productName: ILike((key.productName ?? '').trim().toLowerCase()) };
 
     const bySource = (source: InventorySource) =>
-      this.entryRepo.find({
+      // Read through the transaction manager so a sale being re-recorded inside
+      // an amend sees the stock that same transaction just restored.
+      manager.find(InventoryEntry, {
         // The seller's own lots only: a mini's consigned lot sits at the same
         // branch but is theirs to sell, and the owner's shelf is not the mini's.
         where: { ...holderScope(ctx), ...match, source },
@@ -231,6 +250,7 @@ export class SalesService {
       orgId: string;
       shopId: string;
     },
+    manager: EntityManager,
   ): Promise<SaleTransaction> {
     const { ownerId, actorId, clientSaleId, orgId, shopId } = base;
 
@@ -243,7 +263,7 @@ export class SalesService {
 
     let variant: ProductVariant | null = null;
     if (dto.variantId) {
-      variant = await this.variantRepo.findOne({
+      variant = await manager.findOne(ProductVariant, {
         where: { id: dto.variantId },
       });
       if (!variant) throw new BadRequestException('Size not found');
@@ -254,6 +274,7 @@ export class SalesService {
       dto.variantId
         ? { variantId: dto.variantId }
         : { productName: dto.productName },
+      manager,
     );
 
     if (allEntries.length === 0) {
@@ -331,67 +352,65 @@ export class SalesService {
     // rates is exact per batch. Null for owner/full sales (single USD price).
     const salePriceFc = dto.salePriceFc ? new Decimal(dto.salePriceFc) : null;
 
-    return this.dataSource.transaction(async (manager) => {
-      const sales: SaleTransaction[] = [];
-      let remaining = qtySold;
+    const sales: SaleTransaction[] = [];
+    let remaining = qtySold;
 
-      for (const entry of allEntries) {
-        if (remaining === 0) break;
+    for (const entry of allEntries) {
+      if (remaining === 0) break;
 
-        const deduct = Math.min(entry.quantityRemaining, remaining);
-        const entryCost = new Decimal(entry.unitCost);
-        const lotSalePrice =
-          salePriceFc && entry.usdToFcRateSnapshot
-            ? salePriceFc.div(new Decimal(entry.usdToFcRateSnapshot))
-            : effectiveSalePrice;
-        const entryProfit = lotSalePrice.minus(entryCost).mul(deduct);
-        const qtyBeforeDeduct = entry.quantityRemaining;
+      const deduct = Math.min(entry.quantityRemaining, remaining);
+      const entryCost = new Decimal(entry.unitCost);
+      const lotSalePrice =
+        salePriceFc && entry.usdToFcRateSnapshot
+          ? salePriceFc.div(new Decimal(entry.usdToFcRateSnapshot))
+          : effectiveSalePrice;
+      const entryProfit = lotSalePrice.minus(entryCost).mul(deduct);
+      const qtyBeforeDeduct = entry.quantityRemaining;
 
-        entry.quantityRemaining -= deduct;
-        remaining -= deduct;
-        await manager.save(InventoryEntry, entry);
+      entry.quantityRemaining -= deduct;
+      remaining -= deduct;
+      await manager.save(InventoryEntry, entry);
 
-        const custodyStamp = await this.custody.saleStamp(ctx, entry);
-        const sale = manager.create(SaleTransaction, {
-          ownerId,
-          orgId,
-          shopId,
-          actorId,
-          ...custodyStamp,
-          productName: entry.productName,
-          source: entry.source,
-          supplierUserId: entry.supplierUserId,
-          qtySold: deduct,
-          unitCost: entryCost.toFixed(4),
-          salePrice: lotSalePrice.toFixed(4),
-          profit: entryProfit.toFixed(4),
-          isLoss: entryProfit.lt(0),
-          inventoryEntryId: entry.id,
-          usdToFcRateSnapshot: entry.usdToFcRateSnapshot ?? null,
-          originalUnitPrice: resolvedOriginal,
-          discountReason: resolvedReason,
-          clientName: dto.clientName?.trim() || null,
-          clientPhone: dto.clientPhone?.trim() || null,
-          receiptId: dto.receiptId?.trim() || null,
-          clientSaleId,
-          variantId: variant?.id ?? null,
-          variantLabel: variant?.label ?? null,
-        });
-        const savedSale = await manager.save(SaleTransaction, sale);
-        sales.push(savedSale);
+      const custodyStamp = await this.custody.saleStamp(ctx, entry);
+      const sale = manager.create(SaleTransaction, {
+        ownerId,
+        orgId,
+        shopId,
+        actorId,
+        ...custodyStamp,
+        productName: entry.productName,
+        source: entry.source,
+        supplierUserId: entry.supplierUserId,
+        qtySold: deduct,
+        unitCost: entryCost.toFixed(4),
+        salePrice: lotSalePrice.toFixed(4),
+        profit: entryProfit.toFixed(4),
+        isLoss: entryProfit.lt(0),
+        inventoryEntryId: entry.id,
+        usdToFcRateSnapshot: entry.usdToFcRateSnapshot ?? null,
+        originalUnitPrice: resolvedOriginal,
+        discountReason: resolvedReason,
+        clientName: dto.clientName?.trim() || null,
+        clientPhone: dto.clientPhone?.trim() || null,
+        receiptId: dto.receiptId?.trim() || null,
+        clientSaleId,
+        variantId: variant?.id ?? null,
+        variantLabel: variant?.label ?? null,
+      });
+      const savedSale = await manager.save(SaleTransaction, sale);
+      sales.push(savedSale);
 
-        await this.stockMovements.record(manager, {
-          ownerId,
-          entry,
-          reason: StockMovementReason.SALE,
-          qty: deduct,
-          qtyBefore: qtyBeforeDeduct,
-          saleTransactionId: savedSale.id,
-        });
-      }
+      await this.stockMovements.record(manager, {
+        ownerId,
+        entry,
+        reason: StockMovementReason.SALE,
+        qty: deduct,
+        qtyBefore: qtyBeforeDeduct,
+        saleTransactionId: savedSale.id,
+      });
+    }
 
-      return sales[0];
-    });
+    return sales[0];
   }
 
   /**
@@ -413,6 +432,7 @@ export class SalesService {
       orgId: string;
       shopId: string;
     },
+    manager: EntityManager,
   ): Promise<SaleTransaction> {
     const { ownerId, actorId, clientSaleId, orgId, shopId } = base;
 
@@ -421,7 +441,7 @@ export class SalesService {
     }
     const cartonQty = dto.cartonQty ?? 1;
 
-    const group = await this.groupRepo.findOne({
+    const group = await manager.findOne(ProductGroup, {
       where: { id: dto.groupId },
       relations: { variants: true },
     });
@@ -471,9 +491,11 @@ export class SalesService {
     for (let i = 0; i < gating.length; i++) {
       const variant = gating[i];
       const need = variant.piecesPerCarton * cartonQty;
-      const lots = await this.fetchSellableLots(ctx, {
-        variantId: variant.id,
-      });
+      const lots = await this.fetchSellableLots(
+        ctx,
+        { variantId: variant.id },
+        manager,
+      );
       const available = lots.reduce((s, e) => s + e.quantityRemaining, 0);
       if (available < need) {
         throw new BadRequestException(
@@ -518,59 +540,57 @@ export class SalesService {
 
     const cartonSaleId = randomUUID();
 
-    return this.dataSource.transaction(async (manager) => {
-      const sales: SaleTransaction[] = [];
+    const sales: SaleTransaction[] = [];
 
-      for (const p of plan) {
-        const lotCost = new Decimal(p.entry.unitCost);
-        const profit = p.allocatedUnitPrice.minus(lotCost).mul(p.deduct);
-        const qtyBeforeDeduct = p.entry.quantityRemaining;
+    for (const p of plan) {
+      const lotCost = new Decimal(p.entry.unitCost);
+      const profit = p.allocatedUnitPrice.minus(lotCost).mul(p.deduct);
+      const qtyBeforeDeduct = p.entry.quantityRemaining;
 
-        p.entry.quantityRemaining -= p.deduct;
-        await manager.save(InventoryEntry, p.entry);
+      p.entry.quantityRemaining -= p.deduct;
+      await manager.save(InventoryEntry, p.entry);
 
-        const custodyStamp = await this.custody.saleStamp(ctx, p.entry);
-        const sale = manager.create(SaleTransaction, {
-          ownerId,
-          orgId,
-          shopId,
-          actorId,
-          ...custodyStamp,
-          productName: p.entry.productName,
-          source: p.entry.source,
-          supplierUserId: p.entry.supplierUserId,
-          qtySold: p.deduct,
-          unitCost: lotCost.toFixed(4),
-          salePrice: p.allocatedUnitPrice.toFixed(4),
-          profit: profit.toFixed(4),
-          isLoss: profit.lt(0),
-          inventoryEntryId: p.entry.id,
-          usdToFcRateSnapshot: p.entry.usdToFcRateSnapshot ?? null,
-          originalUnitPrice: resolvedOriginal,
-          discountReason: resolvedReason,
-          clientName: dto.clientName?.trim() || null,
-          clientPhone: dto.clientPhone?.trim() || null,
-          receiptId: dto.receiptId?.trim() || null,
-          clientSaleId,
-          variantId: p.variant.id,
-          variantLabel: p.variant.label,
-          cartonSaleId,
-        });
-        const savedSale = await manager.save(SaleTransaction, sale);
-        sales.push(savedSale);
+      const custodyStamp = await this.custody.saleStamp(ctx, p.entry);
+      const sale = manager.create(SaleTransaction, {
+        ownerId,
+        orgId,
+        shopId,
+        actorId,
+        ...custodyStamp,
+        productName: p.entry.productName,
+        source: p.entry.source,
+        supplierUserId: p.entry.supplierUserId,
+        qtySold: p.deduct,
+        unitCost: lotCost.toFixed(4),
+        salePrice: p.allocatedUnitPrice.toFixed(4),
+        profit: profit.toFixed(4),
+        isLoss: profit.lt(0),
+        inventoryEntryId: p.entry.id,
+        usdToFcRateSnapshot: p.entry.usdToFcRateSnapshot ?? null,
+        originalUnitPrice: resolvedOriginal,
+        discountReason: resolvedReason,
+        clientName: dto.clientName?.trim() || null,
+        clientPhone: dto.clientPhone?.trim() || null,
+        receiptId: dto.receiptId?.trim() || null,
+        clientSaleId,
+        variantId: p.variant.id,
+        variantLabel: p.variant.label,
+        cartonSaleId,
+      });
+      const savedSale = await manager.save(SaleTransaction, sale);
+      sales.push(savedSale);
 
-        await this.stockMovements.record(manager, {
-          ownerId,
-          entry: p.entry,
-          reason: StockMovementReason.SALE,
-          qty: p.deduct,
-          qtyBefore: qtyBeforeDeduct,
-          saleTransactionId: savedSale.id,
-        });
-      }
+      await this.stockMovements.record(manager, {
+        ownerId,
+        entry: p.entry,
+        reason: StockMovementReason.SALE,
+        qty: p.deduct,
+        qtyBefore: qtyBeforeDeduct,
+        saleTransactionId: savedSale.id,
+      });
+    }
 
-      return sales[0];
-    });
+    return sales[0];
   }
 
   async findAll(
@@ -676,28 +696,7 @@ export class SalesService {
     // here, and restoring the stock again would invent inventory.
     if (sale.rejectedAt) return sale;
 
-    if (ctx.tier === 'MINI_EMPLOYEE') {
-      const pending = await this.settlementRepo.findOne({
-        // tenancy-exempt: miniId names the PERSON handing over, not a set of
-        // books. Their handover is theirs at whichever branch they work.
-        where: { miniId: ownerId, status: MiniSettlementStatus.PENDING },
-      });
-      if (pending) {
-        throw new ConflictException(
-          'Your handover is waiting for approval — you cannot reject a sale until your employer approves or rejects it',
-        );
-      }
-      const lastApproved = await this.settlementRepo.findOne({
-        // tenancy-exempt: miniId is a person key (see above).
-        where: { miniId: ownerId, status: MiniSettlementStatus.APPROVED },
-        order: { approvedAt: 'DESC' },
-      });
-      if (lastApproved?.approvedAt && sale.date <= lastApproved.approvedAt) {
-        throw new ConflictException(
-          'This sale was already handed over — ask your employer to correct it',
-        );
-      }
-    }
+    await this.assertMiniSaleNotSealed(ctx, sale, 'reject');
 
     const rejectedById = ctx.actorId;
     const reason = dto.reason?.trim() || null;
@@ -738,6 +737,171 @@ export class SalesService {
       fresh.rejectedById = rejectedById;
       fresh.rejectionReason = reason;
       return manager.save(SaleTransaction, fresh);
+    });
+  }
+
+  /**
+   * A mini employee may not reject or amend a sale once the cash and goods for
+   * its cycle have been handed back: while a handover is PENDING the books are
+   * frozen, and once a cycle is APPROVED its settlement is sealed. Shared by
+   * reject and amend so both enforce the identical rule. `action` only shapes
+   * the message. No-op for owner / full-employee sales.
+   */
+  private async assertMiniSaleNotSealed(
+    ctx: ActorContext,
+    sale: SaleTransaction,
+    action: 'reject' | 'amend',
+  ): Promise<void> {
+    if (ctx.tier !== 'MINI_EMPLOYEE') return;
+    const miniId = ctx.effectiveOwnerId;
+    const pending = await this.settlementRepo.findOne({
+      // tenancy-exempt: miniId names the PERSON handing over, not a set of books.
+      where: { miniId, status: MiniSettlementStatus.PENDING },
+    });
+    if (pending) {
+      throw new ConflictException(
+        `Your handover is waiting for approval — you cannot ${action} a sale until your employer approves or rejects it`,
+      );
+    }
+    const lastApproved = await this.settlementRepo.findOne({
+      where: { miniId, status: MiniSettlementStatus.APPROVED },
+      order: { approvedAt: 'DESC' },
+    });
+    if (lastApproved?.approvedAt && sale.date <= lastApproved.approvedAt) {
+      throw new ConflictException(
+        'This sale was already handed over — ask your employer to correct it',
+      );
+    }
+  }
+
+  /** True when two timestamps fall on the same calendar day (server local time). */
+  private isSameCalendarDay(a: Date, b: Date): boolean {
+    return (
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate()
+    );
+  }
+
+  /**
+   * Amend a sale recorded with the wrong quantity or price, the SAME DAY it was
+   * made, by the person who made it. Modelled as void + re-record in one atomic
+   * transaction: the original row(s) are rejected (stock restored, so every
+   * `rejected_at IS NULL` figure drops them) and linked to the corrected row(s)
+   * that replace them. Re-recording reuses the normal sale path, so stock
+   * availability, SUPPLIER→CONSIGNED_IN→PERSONAL priority, carton splitting,
+   * custody/mini rate stamps and the price-guard 422 all still apply — a 422 (or
+   * any failure) rolls the whole thing back, leaving the original sale intact.
+   *
+   * A carton sale is amended as a unit (every row sharing its cartonSaleId). A
+   * single-product sale that had split across lots is amended per row.
+   */
+  async amendSale(
+    ctx: ActorContext,
+    saleId: string,
+    dto: AmendSaleDto,
+  ): Promise<SaleTransaction> {
+    const original = await this.saleRepo.findOne({ where: { id: saleId } });
+    if (!original || !isOnMyBooks(original, ctx)) {
+      throw new NotFoundException('Sale not found');
+    }
+
+    // Only the person who recorded it may amend it (owner sales: actorId null,
+    // so the recorder is the owner themselves).
+    const recorderId = original.actorId ?? original.ownerId;
+    if (ctx.actorId !== recorderId) {
+      throw new ForbiddenException(
+        'Only the person who made this sale can amend it',
+      );
+    }
+
+    if (original.rejectedAt) {
+      throw new ConflictException(
+        'This sale has already been rejected or amended',
+      );
+    }
+
+    if (!this.isSameCalendarDay(original.date, new Date())) {
+      throw new ConflictException(
+        'A sale can only be amended on the day it was recorded',
+      );
+    }
+
+    await this.assertMiniSaleNotSealed(ctx, original, 'amend');
+
+    // The logical sale: a whole-carton sale is several rows sharing cartonSaleId.
+    const originals = original.cartonSaleId
+      ? await this.saleRepo.find({
+          where: {
+            ...holderScope(ctx),
+            cartonSaleId: original.cartonSaleId,
+            rejectedAt: IsNull(),
+          },
+        })
+      : [original];
+
+    const reason = dto.amendReason?.trim() || 'Amended';
+    // The corrected sale. Drop the idempotency key: an amend is an explicit new
+    // write, never a replay of the voided row.
+    const corrected: RecordSaleDto = { ...dto, clientSaleId: undefined };
+
+    return this.dataSource.transaction(async (manager) => {
+      const now = new Date();
+
+      // 1. Void each original row and put its stock back.
+      for (const row of originals) {
+        const fresh = await manager.findOne(SaleTransaction, {
+          where: { id: row.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!fresh) throw new NotFoundException('Sale not found');
+        if (fresh.rejectedAt) {
+          throw new ConflictException(
+            'This sale has already been rejected or amended',
+          );
+        }
+
+        const entry = await manager.findOne(InventoryEntry, {
+          where: { id: fresh.inventoryEntryId },
+        });
+        if (entry) {
+          const qtyBefore = entry.quantityRemaining;
+          entry.quantityRemaining += fresh.qtySold;
+          await manager.save(InventoryEntry, entry);
+          await this.stockMovements.record(manager, {
+            ownerId: original.ownerId,
+            entry,
+            reason: StockMovementReason.SALE_REJECTED,
+            qty: fresh.qtySold,
+            qtyBefore,
+            notes: reason,
+            saleTransactionId: fresh.id,
+          });
+        }
+
+        fresh.rejectedAt = now;
+        fresh.rejectedById = ctx.actorId;
+        fresh.rejectionReason = reason;
+        fresh.amendedAt = now;
+        await manager.save(SaleTransaction, fresh);
+      }
+
+      // 2. Re-record the corrected sale on the SAME transaction, so it sees the
+      //    stock just restored and commits (or rolls back) atomically with it.
+      const newSale = await this.recordSale(ctx, corrected, manager);
+
+      // 3. Link the pair: new row → original, each voided original → new row.
+      newSale.amendedFromId = original.id;
+      await manager.save(SaleTransaction, newSale);
+      for (const row of originals) {
+        await manager.update(
+          SaleTransaction,
+          { id: row.id },
+          { amendedToId: newSale.id },
+        );
+      }
+
+      return newSale;
     });
   }
 

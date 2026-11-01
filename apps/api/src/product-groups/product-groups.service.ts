@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -200,6 +201,16 @@ export class ProductGroupsService {
     const group = await this.groupRepo.findOne({ where: { id, ...readScope(ctx) } });
     if (!group) throw new NotFoundException('Product group not found');
 
+    // Carton prices are the standard buying/selling basis — owner-only.
+    if (
+      ctx.tier !== 'OWNER' &&
+      (dto.cartonSellingPrice !== undefined || dto.cartonBuyingPrice !== undefined)
+    ) {
+      throw new ForbiddenException(
+        'Only the owner can change the buying or selling price',
+      );
+    }
+
     if (dto.category !== undefined) group.category = dto.category;
     if (dto.cartonSellingPrice !== undefined) {
       group.cartonSellingPrice = new Decimal(dto.cartonSellingPrice).toFixed(4);
@@ -345,6 +356,17 @@ export class ProductGroupsService {
     });
     if (!variant) throw new NotFoundException('Size not found');
 
+    // The per-size buying/selling price is the standard price basis — owner-only.
+    // Other edits (label, pieces/carton, order, archive) remain delegable.
+    if (
+      ctx.tier !== 'OWNER' &&
+      (dto.unitCost !== undefined || dto.sellingPrice !== undefined)
+    ) {
+      throw new ForbiddenException(
+        'Only the owner can change the buying or selling price',
+      );
+    }
+
     if (dto.label !== undefined) {
       const label = dto.label.trim().toLowerCase();
       if (label !== variant.label) {
@@ -369,14 +391,23 @@ export class ProductGroupsService {
 
     const saved = await this.variantRepo.save(variant);
 
-    // A new selling price cascades to the owner's own live lots so the change
-    // takes effect immediately (the read model prefers the lot price). Consigned
-    // lots keep their agreed price.
-    if (dto.sellingPrice !== undefined) {
+    // A new selling price or buying price (unit cost) cascades to the owner's
+    // own live lots so the change takes effect immediately on the stock still on
+    // the shelf (the read model prefers the lot price/cost). Already-sold units
+    // kept their snapshot on sale_transactions, and consigned lots keep their
+    // agreed price — so only PERSONAL/SUPPLIER lots are touched.
+    if (dto.sellingPrice !== undefined || dto.unitCost !== undefined) {
+      const patch: Partial<InventoryEntry> = {};
+      if (dto.sellingPrice !== undefined) {
+        patch.sellingPrice = new Decimal(dto.sellingPrice).toFixed(4);
+      }
+      if (dto.unitCost !== undefined) {
+        patch.unitCost = new Decimal(dto.unitCost).toFixed(4);
+      }
       await this.entryRepo
         .createQueryBuilder()
         .update(InventoryEntry)
-        .set({ sellingPrice: new Decimal(dto.sellingPrice).toFixed(4) })
+        .set(patch)
         .where(...holderColumnsCond(ctx))
         .andWhere('variant_id = :variantId', { variantId })
         .andWhere('source IN (:...sources)', {

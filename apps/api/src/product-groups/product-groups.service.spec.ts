@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { testCtx } from '../common/testing/actor-context.fixture';
 import { ProductGroupsService } from './product-groups.service';
 import { InventoryEntry, InventorySource, ProductGroup, SaleTransaction } from '../entities';
@@ -462,6 +466,96 @@ describe('ProductGroupsService', () => {
           items: [{ variantId: 'nope', quantity: 5 }],
         } as never),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('updateVariant — cost/price cascade to live lots', () => {
+    function cascadeSetup() {
+      let setPayload: Record<string, unknown> | null = null;
+      const chain: Record<string, jest.Mock> = {
+        update: jest.fn(() => chain),
+        set: jest.fn((p: Record<string, unknown>) => {
+          setPayload = p;
+          return chain;
+        }),
+        where: jest.fn(() => chain),
+        andWhere: jest.fn(() => chain),
+        execute: jest.fn(async () => ({ affected: 1 })),
+      };
+      const variant = {
+        id: 'v-l',
+        groupId: 'g1',
+        orgId: 'org-1',
+        shopId: 'shop-1',
+        label: 'large',
+        unitCost: '4.0000',
+        sellingPrice: '6.0000',
+        piecesPerCarton: 20,
+      };
+      const variantRepo = {
+        findOne: jest.fn(async () => variant),
+        save: jest.fn(async (v: unknown) => v),
+      };
+      const entryRepo = { createQueryBuilder: jest.fn(() => chain) };
+      const { service } = makeService({ variantRepo, entryRepo });
+      return { service, chain, getSet: () => setPayload };
+    }
+
+    it('cascades a new buying price (unit cost) to live PERSONAL/SUPPLIER lots', async () => {
+      const { service, chain, getSet } = cascadeSetup();
+      await service.updateVariant(CTX, 'g1', 'v-l', { unitCost: '5' } as never);
+      expect(chain.execute).toHaveBeenCalledTimes(1);
+      expect(getSet()).toEqual({ unitCost: '5.0000' });
+    });
+
+    it('cascades both cost and selling price when both change', async () => {
+      const { service, getSet } = cascadeSetup();
+      await service.updateVariant(CTX, 'g1', 'v-l', {
+        unitCost: '5',
+        sellingPrice: '8',
+      } as never);
+      expect(getSet()).toEqual({ unitCost: '5.0000', sellingPrice: '8.0000' });
+    });
+
+    it('does not cascade when no price field changes', async () => {
+      const { service, chain } = cascadeSetup();
+      await service.updateVariant(CTX, 'g1', 'v-l', { sortOrder: 2 } as never);
+      expect(chain.execute).not.toHaveBeenCalled();
+    });
+
+    it('forbids a non-owner from changing a size price', async () => {
+      const { service } = cascadeSetup();
+      const employee = testCtx({ tier: 'FULL_EMPLOYEE' });
+      await expect(
+        service.updateVariant(employee, 'g1', 'v-l', { sellingPrice: '8' } as never),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('still lets a non-owner edit non-price fields (e.g. sort order)', async () => {
+      const { service, chain } = cascadeSetup();
+      const employee = testCtx({ tier: 'FULL_EMPLOYEE' });
+      await service.updateVariant(employee, 'g1', 'v-l', { sortOrder: 3 } as never);
+      expect(chain.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateGroup — carton price is owner-only', () => {
+    it('forbids a non-owner from changing the carton buying price', async () => {
+      const groupRepo = {
+        findOne: jest.fn(async () => ({
+          id: 'g1',
+          orgId: 'org-1',
+          name: 'casserole',
+          cartonSellingPrice: '220.0000',
+          cartonBuyingPrice: '180.0000',
+        })),
+        save: jest.fn(async (g: unknown) => g),
+      };
+      const { service } = makeService({ groupRepo });
+      const employee = testCtx({ tier: 'FULL_EMPLOYEE' });
+      await expect(
+        service.updateGroup(employee, 'g1', { cartonBuyingPrice: '190' } as never),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 });

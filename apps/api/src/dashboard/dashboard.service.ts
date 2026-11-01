@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, LessThan, Repository } from 'typeorm';
+import { In, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import {
   ConsignmentRequest,
@@ -88,7 +88,12 @@ export interface ProfitByProduct {
 }
 
 export interface AlertItem {
-  type: 'overdue_debtor' | 'low_stock' | 'pending_consignment' | 'inverted_exchange_rates';
+  type:
+    | 'overdue_debtor'
+    | 'low_stock'
+    | 'pending_consignment'
+    | 'inverted_exchange_rates'
+    | 'amended_sale';
   // overdue_debtor fields
   debtorUserId?: string;
   debtorUsername?: string;
@@ -103,6 +108,8 @@ export interface AlertItem {
   // inverted_exchange_rates fields — system selling rate (usdToFcRate) is below the Current Market Rate
   systemSellingRate?: string;
   buyingRate?: string;
+  // amended_sale fields — an employee corrected one of today's sales
+  amendedCount?: number;
 }
 
 export interface ProfitBySource {
@@ -1046,6 +1053,24 @@ export class DashboardService {
           buyingRate: buy.toFixed(4),
         });
       }
+    }
+
+    // ── Sales amended today by an employee ───────────────────────────────────
+    // Surfaces to the owner (and any supervisor) that someone corrected a
+    // recorded sale today — their own amendments are excluded. The link columns
+    // tell an amend apart from a plain rejection.
+    const amendedToday = new Date();
+    amendedToday.setHours(0, 0, 0, 0);
+    const amendedCount = await this.saleRepo.count({
+      where: {
+        ...holderScope(ctx),
+        amendedAt: MoreThanOrEqual(amendedToday),
+        amendedToId: Not(IsNull()),
+        actorId: Not(IsNull()),
+      },
+    });
+    if (amendedCount > 0) {
+      alerts.push({ type: 'amended_sale', amendedCount });
     }
 
     return alerts;

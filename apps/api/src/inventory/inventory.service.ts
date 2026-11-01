@@ -101,6 +101,7 @@ import { ReceiveFromSupplierDto } from './dto/receive-from-supplier.dto';
 import { ConsignToDebtorDto } from './dto/consign-to-debtor.dto';
 import { InventoryFilterDto } from './dto/inventory-filter.dto';
 import { UpdateSellingPriceDto } from './dto/update-selling-price.dto';
+import { UpdateEntryPricesDto } from './dto/update-entry-prices.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { RenameProductDto } from './dto/rename-product.dto';
 import type { EntityManager } from 'typeorm';
@@ -854,22 +855,72 @@ export class InventoryService {
     });
   }
 
-  async updateSellingPrice(
+  /**
+   * Edit the buying price (unit cost) and/or selling price on one on-shelf lot.
+   * The change touches only this lot's own columns, so it affects the REMAINING
+   * quantity's future sales — already-sold units keep the unit_cost/sale_price
+   * snapshotted onto their sale_transactions, and stock already given out
+   * (CONSIGNED_OUT) keeps its agreed price.
+   *
+   * Access splits by what is being edited:
+   *  - OWN stock (PERSONAL/SUPPLIER): editing the merchant's own buying/selling
+   *    price is **owner-only** — it resets the standard price and profit basis,
+   *    so it is never delegated to an employee.
+   *  - CONSIGNED_IN: only the resale SELLING price may be set (the agreed price
+   *    owed — the unit cost — is fixed). This stays delegable, as before.
+   *  - CONSIGNED_OUT: not editable at all.
+   */
+  async updateEntryPrices(
     ctx: ActorContext,
     entryId: string,
-    dto: UpdateSellingPriceDto,
+    dto: UpdateEntryPricesDto,
   ): Promise<InventoryEntry> {
+    if (dto.unitCost === undefined && dto.sellingPrice === undefined) {
+      throw new BadRequestException(
+        'Provide a new unitCost, sellingPrice, or both',
+      );
+    }
     const entry = await this.entryRepo.findOne({ where: { id: entryId } });
     if (!entry) throw new NotFoundException('Inventory entry not found');
     if (!isOnMyBooks(entry, ctx))
       throw new ForbiddenException('You do not own this inventory entry');
     if (entry.source === InventorySource.CONSIGNED_OUT) {
       throw new BadRequestException(
-        'Selling price cannot be updated on CONSIGNED_OUT entries',
+        'Prices cannot be edited on consigned-out stock',
       );
     }
 
-    entry.sellingPrice = dto.sellingPrice;
+    const ownStock =
+      entry.source === InventorySource.PERSONAL ||
+      entry.source === InventorySource.SUPPLIER;
+
+    if (!ownStock) {
+      // CONSIGNED_IN: the cost (agreed price owed) is fixed; only resale price.
+      if (dto.unitCost !== undefined) {
+        throw new BadRequestException(
+          'The buying price of consigned-in stock is fixed and cannot be edited',
+        );
+      }
+    } else if (ctx.tier !== 'OWNER') {
+      // Editing your own standard buying/selling price is owner-only.
+      throw new ForbiddenException(
+        'Only the owner can change the buying or selling price of stock',
+      );
+    }
+
+    if (dto.unitCost !== undefined) {
+      entry.unitCost = new Decimal(dto.unitCost).toFixed(4);
+      // Keep an explicit whole-carton buying price in step with the per-piece
+      // cost so the carton figure the UI shows doesn't drift out of sync.
+      if (entry.cartonPrice !== null && entry.piecesPerCarton) {
+        entry.cartonPrice = new Decimal(entry.unitCost)
+          .times(entry.piecesPerCarton)
+          .toFixed(4);
+      }
+    }
+    if (dto.sellingPrice !== undefined) {
+      entry.sellingPrice = new Decimal(dto.sellingPrice).toFixed(4);
+    }
     return this.entryRepo.save(entry);
   }
 
