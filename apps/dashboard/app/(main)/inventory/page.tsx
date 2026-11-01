@@ -332,7 +332,7 @@ function SizedProductsSection({
   onAddStock: (g: GroupStockTarget) => void;
 }) {
   const t = useT();
-  const { can } = usePermissions();
+  const { can, unrestricted } = usePermissions();
   const formatCurrency = useFormatCurrency();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [priceGroup, setPriceGroup] = useState<GroupPriceTarget | null>(null);
@@ -439,7 +439,7 @@ function SizedProductsSection({
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1.5 justify-end flex-wrap">
-                        {can('inventory.price') && (
+                        {unrestricted && (
                         <button
                           onClick={() =>
                             setPriceGroup({
@@ -450,6 +450,7 @@ function SizedProductsSection({
                               variants: variants.map((v) => ({
                                 variantId: v.variantId,
                                 label: v.label,
+                                unitCost: v.unitCost,
                                 sellingPrice: v.sellingPrice,
                               })),
                             })

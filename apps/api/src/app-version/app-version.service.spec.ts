@@ -57,6 +57,20 @@ describe('AppVersionService', () => {
     expect(service.check('android', '1.0.0', 5).updateRequired).toBe(false);
   });
 
+  it('falls back to the shipped app.json version when the env is unset', () => {
+    // A server nobody configured must still name the version that is actually
+    // live on the store, not a stale literal — otherwise every install on an
+    // older build is wrongly told it is current. Keep this in step with
+    // apps/mobile/app.json's `expo.version`.
+    delete process.env.MOBILE_ANDROID_LATEST_VERSION;
+    delete process.env.MOBILE_ANDROID_LATEST_BUILD;
+    expect(service.check('android').latestVersion).toBe('1.0.3');
+    // an older install learns the update exists off the fallback alone
+    expect(service.check('android', '1.0.0').updateAvailable).toBe(true);
+    // the current install is left alone
+    expect(service.check('android', '1.0.3').updateAvailable).toBe(false);
+  });
+
   it('offers no store button on iOS until one is configured', () => {
     delete process.env.MOBILE_IOS_STORE_URL;
     expect(service.check('ios', '1.0.0').storeUrl).toBeNull();

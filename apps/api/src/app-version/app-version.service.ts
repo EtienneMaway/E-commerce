@@ -57,7 +57,7 @@ function config(platform: MobilePlatform): {
 } {
   if (platform === 'ios') {
     return {
-      latestVersion: process.env.MOBILE_IOS_LATEST_VERSION ?? '1.0.0',
+      latestVersion: process.env.MOBILE_IOS_LATEST_VERSION ?? '1.0.3',
       minSupportedVersion: process.env.MOBILE_IOS_MIN_VERSION ?? '1.0.0',
       latestBuild: envInt('MOBILE_IOS_LATEST_BUILD'),
       minSupportedBuild: envInt('MOBILE_IOS_MIN_BUILD'),
@@ -66,7 +66,7 @@ function config(platform: MobilePlatform): {
     };
   }
   return {
-    latestVersion: process.env.MOBILE_ANDROID_LATEST_VERSION ?? '1.0.0',
+    latestVersion: process.env.MOBILE_ANDROID_LATEST_VERSION ?? '1.0.3',
     minSupportedVersion: process.env.MOBILE_ANDROID_MIN_VERSION ?? '1.0.0',
     // `eas build:version:get --platform android` prints the current value.
     latestBuild: envInt('MOBILE_ANDROID_LATEST_BUILD'),

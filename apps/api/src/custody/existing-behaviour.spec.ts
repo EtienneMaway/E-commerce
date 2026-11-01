@@ -81,6 +81,8 @@ function build(opts: {
   );
 
   const savedSales: SaleTransaction[] = [];
+  const findLots = (o: { where: { source: InventorySource } }) =>
+    o.where.source === opts.lot.source ? [opts.lot] : [];
   const manager = {
     save: jest.fn(async (Entity: unknown, obj: Record<string, unknown>) => {
       if (Entity === SaleTransaction) {
@@ -90,11 +92,13 @@ function build(opts: {
       return obj;
     }),
     create: jest.fn((_E: unknown, obj: Record<string, unknown>) => ({ ...obj })),
+    find: jest.fn(async (Entity: unknown, o: { where: { source: InventorySource } }) =>
+      Entity === InventoryEntry ? findLots(o) : [],
+    ),
+    findOne: jest.fn(async () => null),
   };
   const entryRepo = {
-    find: jest.fn(async (o: { where: { source: InventorySource } }) =>
-      o.where.source === opts.lot.source ? [opts.lot] : [],
-    ),
+    find: jest.fn(async (o: { where: { source: InventorySource } }) => findLots(o)),
   };
   const pricingService = {
     applyEmployeePriceRule: jest.fn(async (args: { submittedUnitPrice: string }) => ({

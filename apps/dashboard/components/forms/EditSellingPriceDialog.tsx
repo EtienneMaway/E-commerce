@@ -14,6 +14,7 @@ interface Target {
   productName: string;
   unitCost: string;
   sellingPrice: string;
+  source: string;
 }
 
 interface Props {
@@ -27,17 +28,27 @@ export function EditSellingPriceDialog({ entry, onClose }: Props) {
   const qc = useQueryClient();
   const toast = useToast();
   const [price, setPrice] = useState('');
+  const [cost, setCost] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (entry) {
       setPrice(entry.sellingPrice);
+      setCost(entry.unitCost);
       setError('');
     }
   }, [entry]);
 
+  // Own stock (PERSONAL/SUPPLIER) can have its buying price edited; consigned-in
+  // stock can only have its resale selling price set (the cost owed is fixed).
+  const isOwnStock = entry?.source === 'PERSONAL' || entry?.source === 'SUPPLIER';
+
   const mutation = useMutation({
-    mutationFn: () => inventoryApi.updateSellingPrice(entry!.id, price),
+    mutationFn: () =>
+      inventoryApi.updateEntryPrices(entry!.id, {
+        ...(isOwnStock ? { unitCost: parseFloat(cost).toFixed(4) } : {}),
+        sellingPrice: parseFloat(price).toFixed(4),
+      }),
     onSuccess: () => {
       const product = entry?.productName ?? '';
       qc.invalidateQueries({ queryKey: QK.inventoryProducts });
@@ -58,8 +69,12 @@ export function EditSellingPriceDialog({ entry, onClose }: Props) {
 
   const productLabel = entry.productName.charAt(0).toUpperCase() + entry.productName.slice(1);
   const parsedPrice = parseFloat(price);
-  const unitCost = parseFloat(entry.unitCost);
-  const belowCost = parsedPrice > 0 && parsedPrice <= unitCost;
+  const parsedCost = parseFloat(cost);
+  const belowCost = parsedPrice > 0 && parsedCost > 0 && parsedPrice <= parsedCost;
+  const canSubmit =
+    parsedPrice > 0 &&
+    (!isOwnStock || parsedCost > 0) &&
+    !mutation.isPending;
 
   return (
     <div
@@ -93,6 +108,23 @@ export function EditSellingPriceDialog({ entry, onClose }: Props) {
         </div>
 
         <div className="space-y-3">
+          {isOwnStock && (
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--foreground)' }}>
+                {t.inventory.editBuyingLabel}
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={cost}
+                onChange={(e) => setCost(e.target.value)}
+                placeholder="0.00"
+                className="input"
+              />
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--foreground)' }}>
               {t.inventory.editPriceLabel}
@@ -108,7 +140,7 @@ export function EditSellingPriceDialog({ entry, onClose }: Props) {
             />
             {belowCost && (
               <p className="text-xs mt-1" style={{ color: 'var(--warning, #f59e0b)' }}>
-                ⚠️ Selling price is at or below your cost ({formatCurrency(entry.unitCost)})
+                ⚠️ {t.inventory.editBelowCostWarning(formatCurrency(parsedCost.toFixed(4)))}
               </p>
             )}
           </div>
@@ -125,7 +157,7 @@ export function EditSellingPriceDialog({ entry, onClose }: Props) {
             </button>
             <button
               onClick={() => mutation.mutate()}
-              disabled={!price || parsedPrice <= 0 || mutation.isPending}
+              disabled={!canSubmit}
               className="btn btn-primary flex-1"
             >
               {mutation.isPending ? t.inventory.editPriceSubmitting : t.inventory.editPriceSubmit}

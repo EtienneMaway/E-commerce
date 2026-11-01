@@ -12,6 +12,7 @@ import { ReceiveFromSupplierDto } from './dto/receive-from-supplier.dto';
 import { ConsignToDebtorDto } from './dto/consign-to-debtor.dto';
 import { InventoryFilterDto } from './dto/inventory-filter.dto';
 import { UpdateSellingPriceDto } from './dto/update-selling-price.dto';
+import { UpdateEntryPricesDto } from './dto/update-entry-prices.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { RenameProductDto } from './dto/rename-product.dto';
 import { UpdateMiniCartonPriceDto } from './dto/update-mini-carton-price.dto';
@@ -118,22 +119,24 @@ export class InventoryController {
   @AllowedFor('OWNER', 'FULL_EMPLOYEE')
   @RequiresService('inventory.price')
   @ApiOperation({
-    summary: 'Update selling price on an inventory entry (owner, or an employee whose role grants it)',
+    summary: 'Update the buying price (unit cost) and/or selling price on an inventory lot',
     description:
-      'Not open to employees by default because changing a product\'s standard price affects all ' +
-      'subsequent sales; an employer can delegate it with the `inventory.price` service — ' +
-      'employees use per-transaction discountReason instead.',
+      'Edits the remaining stock in one lot; already-sold and consigned-out quantities keep ' +
+      'their snapshotted prices. Editing your OWN stock (PERSONAL/SUPPLIER) buying/selling ' +
+      'price is owner-only — it resets the standard price and profit basis. Setting the resale ' +
+      'selling price on CONSIGNED_IN stock stays delegable via the `inventory.price` service; ' +
+      'employees use per-transaction discountReason for one-off discounts instead.',
   })
-  @ApiResponse({ status: 200, description: 'Selling price updated' })
-  @ApiResponse({ status: 400, description: 'Entry is not CONSIGNED_IN' })
+  @ApiResponse({ status: 200, description: 'Prices updated' })
+  @ApiResponse({ status: 400, description: 'Empty body, or entry is consigned stock' })
   @ApiResponse({ status: 403, description: 'Entry does not belong to you' })
   @ApiResponse({ status: 404, description: 'Entry not found' })
-  updateSellingPrice(
+  updateEntryPrices(
     @CurrentActorContext() ctx: ActorContext,
     @Param('id') id: string,
-    @Body() dto: UpdateSellingPriceDto,
+    @Body() dto: UpdateEntryPricesDto,
   ) {
-    return this.inventoryService.updateSellingPrice(ctx, id, dto);
+    return this.inventoryService.updateEntryPrices(ctx, id, dto);
   }
 
   @Patch(':id/mini-selling-price')

@@ -13,7 +13,12 @@ export interface GroupPriceTarget {
   name: string;
   cartonSellingPrice: string | null;
   cartonBuyingPrice: string | null;
-  variants: { variantId: string; label: string; sellingPrice: string }[];
+  variants: {
+    variantId: string;
+    label: string;
+    unitCost: string | null;
+    sellingPrice: string;
+  }[];
 }
 
 interface Props {
@@ -29,6 +34,7 @@ export function EditGroupPricesDialog({ group, onClose }: Props) {
   const [cartonPrice, setCartonPrice] = useState('');
   const [cartonCost, setCartonCost] = useState('');
   const [priceByVariant, setPriceByVariant] = useState<Record<string, string>>({});
+  const [costByVariant, setCostByVariant] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,6 +43,14 @@ export function EditGroupPricesDialog({ group, onClose }: Props) {
     setCartonCost(group.cartonBuyingPrice ? String(parseFloat(group.cartonBuyingPrice)) : '');
     setPriceByVariant(
       Object.fromEntries(group.variants.map((v) => [v.variantId, String(parseFloat(v.sellingPrice))])),
+    );
+    setCostByVariant(
+      Object.fromEntries(
+        group.variants.map((v) => [
+          v.variantId,
+          v.unitCost ? String(parseFloat(v.unitCost)) : '',
+        ]),
+      ),
     );
     setError(null);
   }, [group?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -56,15 +70,22 @@ export function EditGroupPricesDialog({ group, onClose }: Props) {
       });
       await Promise.all(
         group.variants
-          .filter((v) => {
-            const p = parseFloat(priceByVariant[v.variantId] ?? '');
-            return p > 0 && p.toFixed(4) !== parseFloat(v.sellingPrice).toFixed(4);
+          .map((v) => {
+            const newPrice = parseFloat(priceByVariant[v.variantId] ?? '');
+            const newCost = parseFloat(costByVariant[v.variantId] ?? '');
+            const priceChanged =
+              newPrice > 0 &&
+              newPrice.toFixed(4) !== parseFloat(v.sellingPrice).toFixed(4);
+            const costChanged =
+              newCost > 0 &&
+              newCost.toFixed(4) !== (v.unitCost ? parseFloat(v.unitCost).toFixed(4) : '');
+            if (!priceChanged && !costChanged) return null;
+            return productGroupsApi.updateVariant(group.id, v.variantId, {
+              ...(priceChanged ? { sellingPrice: newPrice.toFixed(4) } : {}),
+              ...(costChanged ? { unitCost: newCost.toFixed(4) } : {}),
+            });
           })
-          .map((v) =>
-            productGroupsApi.updateVariant(group.id, v.variantId, {
-              sellingPrice: parseFloat(priceByVariant[v.variantId]).toFixed(4),
-            }),
-          ),
+          .filter((p): p is Promise<unknown> => p !== null),
       );
     },
     onSuccess: () => {
@@ -144,13 +165,31 @@ export function EditGroupPricesDialog({ group, onClose }: Props) {
               {t.sizedProducts.perSizePrices}
             </span>
             <div className="mt-2 space-y-2">
+              <div className="flex items-center gap-3">
+                <span className="flex-1" />
+                <span className="w-24 text-[11px] font-semibold text-center" style={{ color: 'var(--muted)' }}>
+                  {t.inventory.editBuyingLabel}
+                </span>
+                <span className="w-24 text-[11px] font-semibold text-center" style={{ color: 'var(--muted)' }}>
+                  {t.inventory.editPriceLabel}
+                </span>
+              </div>
               {group.variants.map((v) => (
                 <div key={v.variantId} className="flex items-center gap-3">
                   <span className="flex-1 text-sm font-medium capitalize" style={{ color: 'var(--foreground)' }}>
                     {v.label}
                   </span>
                   <input
-                    className="input w-28"
+                    className="input w-24"
+                    inputMode="decimal"
+                    value={costByVariant[v.variantId] ?? ''}
+                    onChange={(e) =>
+                      setCostByVariant((prev) => ({ ...prev, [v.variantId]: e.target.value }))
+                    }
+                    placeholder="0.00"
+                  />
+                  <input
+                    className="input w-24"
                     inputMode="decimal"
                     value={priceByVariant[v.variantId] ?? ''}
                     onChange={(e) =>

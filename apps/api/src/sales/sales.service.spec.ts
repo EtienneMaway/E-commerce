@@ -1,7 +1,13 @@
 import { BadRequestException, UnprocessableEntityException } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { SalesService, allocateCartonUnitPrices } from './sales.service';
-import { InventoryEntry, InventorySource, SaleTransaction } from '../entities';
+import {
+  InventoryEntry,
+  InventorySource,
+  ProductGroup,
+  ProductVariant,
+  SaleTransaction,
+} from '../entities';
 import type { ActorContext } from '../common/types/actor-context';
 import { testCtx } from '../common/testing/actor-context.fixture';
 
@@ -81,6 +87,10 @@ describe('SalesService.recordSale — whole-carton sale', () => {
     };
 
     const savedSales: SaleTransaction[] = [];
+    const findLots = (o: { where: { variantId: string; source: InventorySource } }) => {
+      const { variantId, source } = o.where;
+      return opts.lots[variantId]?.[source] ?? [];
+    };
     const manager = {
       save: jest.fn(async (Entity: unknown, obj: Record<string, unknown>) => {
         if (Entity === SaleTransaction) {
@@ -90,13 +100,18 @@ describe('SalesService.recordSale — whole-carton sale', () => {
         return obj;
       }),
       create: jest.fn((_Entity: unknown, obj: Record<string, unknown>) => ({ ...obj })),
+      find: jest.fn(async (Entity: unknown, o: { where: { variantId: string; source: InventorySource } }) =>
+        Entity === InventoryEntry ? findLots(o) : [],
+      ),
+      findOne: jest.fn(async (Entity: unknown) =>
+        Entity === ProductGroup ? group : null,
+      ),
     };
 
     const entryRepo = {
-      find: jest.fn(async (o: { where: { variantId: string; source: InventorySource } }) => {
-        const { variantId, source } = o.where;
-        return opts.lots[variantId]?.[source] ?? [];
-      }),
+      find: jest.fn(async (o: { where: { variantId: string; source: InventorySource } }) =>
+        findLots(o),
+      ),
     };
     const groupRepo = { findOne: jest.fn(async () => group) };
     const variantRepo = { findOne: jest.fn(async () => null) };
@@ -313,6 +328,8 @@ describe('SalesService.recordSale — whole-carton sale', () => {
 describe('SalesService.recordSale — quantity discount capture (single sale)', () => {
   function build(lot: Partial<InventoryEntry> & { source: InventorySource }) {
     const savedSales: SaleTransaction[] = [];
+    const findLots = (o: { where: { source: InventorySource } }) =>
+      o.where.source === lot.source ? [lot] : [];
     const manager = {
       save: jest.fn(async (Entity: unknown, obj: Record<string, unknown>) => {
         if (Entity === SaleTransaction) {
@@ -322,11 +339,13 @@ describe('SalesService.recordSale — quantity discount capture (single sale)', 
         return obj;
       }),
       create: jest.fn((_E: unknown, obj: Record<string, unknown>) => ({ ...obj })),
+      find: jest.fn(async (Entity: unknown, o: { where: { source: InventorySource } }) =>
+        Entity === InventoryEntry ? findLots(o) : [],
+      ),
+      findOne: jest.fn(async () => null),
     };
     const entryRepo = {
-      find: jest.fn(async (o: { where: { source: InventorySource } }) =>
-        o.where.source === lot.source ? [lot] : [],
-      ),
+      find: jest.fn(async (o: { where: { source: InventorySource } }) => findLots(o)),
     };
     const saleRepo = { findOne: jest.fn(async () => null) };
     const dataSource = {
@@ -425,6 +444,8 @@ describe('SalesService.recordSale — price guard floor (mini vs owner)', () => 
     variant?: { id: string; sellingPrice: string },
   ) {
     const savedSales: SaleTransaction[] = [];
+    const findLots = (o: { where: { source: InventorySource } }) =>
+      o.where.source === lot.source ? [lot] : [];
     const manager = {
       save: jest.fn(async (Entity: unknown, obj: Record<string, unknown>) => {
         if (Entity === SaleTransaction) {
@@ -434,11 +455,15 @@ describe('SalesService.recordSale — price guard floor (mini vs owner)', () => 
         return obj;
       }),
       create: jest.fn((_E: unknown, obj: Record<string, unknown>) => ({ ...obj })),
+      find: jest.fn(async (Entity: unknown, o: { where: { source: InventorySource } }) =>
+        Entity === InventoryEntry ? findLots(o) : [],
+      ),
+      findOne: jest.fn(async (Entity: unknown) =>
+        Entity === ProductVariant ? (variant ?? null) : null,
+      ),
     };
     const entryRepo = {
-      find: jest.fn(async (o: { where: { source: InventorySource } }) =>
-        o.where.source === lot.source ? [lot] : [],
-      ),
+      find: jest.fn(async (o: { where: { source: InventorySource } }) => findLots(o)),
     };
     const saleRepo = { findOne: jest.fn(async () => null) };
     const dataSource = {
@@ -598,13 +623,25 @@ describe('SalesService.recordSale — mini blocked while a handover is pending',
   function build(openHandover: unknown) {
     const settlementRepo = { findOne: jest.fn(async () => openHandover) };
     const entryRepo = { find: jest.fn(async () => []), findOne: jest.fn(async () => null) };
+    // Manager reads come back empty; the transaction mock runs the callback so
+    // the sale path (and its guards) actually executes.
+    const manager = {
+      find: jest.fn(async () => []),
+      findOne: jest.fn(async () => null),
+      save: jest.fn(async (_E: unknown, obj: unknown) => obj),
+      create: jest.fn((_E: unknown, obj: unknown) => obj),
+    };
     const service = new SalesService(
       { findOne: jest.fn(async () => null) } as never, // saleRepo
       entryRepo as never,
       { findOne: jest.fn(async () => null) } as never, // groupRepo
       { findOne: jest.fn(async () => null) } as never, // variantRepo
       settlementRepo as never,
-      { transaction: jest.fn() } as never, // dataSource
+      {
+        transaction: jest.fn(async (cb: (m: typeof manager) => Promise<unknown>) =>
+          cb(manager),
+        ),
+      } as never, // dataSource
       { record: jest.fn() } as never, // stockMovements
       { applyEmployeePriceRule: jest.fn() } as never, // pricingService
       // No custody at this branch: every lot is unassigned, every sale AUTO.

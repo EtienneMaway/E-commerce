@@ -42,6 +42,7 @@ interface EditPriceTarget {
   productName: string;
   unitCost: string;
   sellingPrice: string;
+  source: string;
 }
 
 interface AdjustTarget {
@@ -59,7 +60,7 @@ export default function ProductDetailPage({
   const { name } = use(params);
   const productName = decodeURIComponent(name);
   const t = useT();
-  const { can } = usePermissions();
+  const { can, unrestricted } = usePermissions();
   const router = useRouter();
   const formatCurrency = useFormatCurrency();
   const [editPriceTarget, setEditPriceTarget] = useState<EditPriceTarget | null>(null);
@@ -216,26 +217,33 @@ export default function ProductDetailPage({
     {
       key: 'actions',
       header: '',
-      render: (r) => (
-        <div className="flex gap-1 flex-wrap justify-end">
-          {r.source === 'CONSIGNED_IN' && (
-            <button
-              onClick={() =>
-                setEditPriceTarget({
-                  id: r.id,
-                  productName: r.productName,
-                  unitCost: r.unitCost,
-                  sellingPrice: r.sellingPrice,
-                })
-              }
-              className="btn btn-secondary"
-              style={{ fontSize: '12px', padding: '5px 12px' }}
-            >
-              {t.inventory.editPriceBtn}
-            </button>
-          )}
-        </div>
-      ),
+      render: (r) => {
+        const ownStock = r.source === 'PERSONAL' || r.source === 'SUPPLIER';
+        // Own stock price edit is owner-only; consigned-in resale price stays delegable.
+        const showEdit =
+          r.source === 'CONSIGNED_IN' ? can('inventory.price') : ownStock && unrestricted;
+        return (
+          <div className="flex gap-1 flex-wrap justify-end">
+            {showEdit && (
+              <button
+                onClick={() =>
+                  setEditPriceTarget({
+                    id: r.id,
+                    productName: r.productName,
+                    unitCost: r.unitCost,
+                    sellingPrice: r.sellingPrice,
+                    source: r.source,
+                  })
+                }
+                className="btn btn-secondary"
+                style={{ fontSize: '12px', padding: '5px 12px' }}
+              >
+                {t.inventory.editPriceBtn}
+              </button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -402,7 +410,7 @@ export default function ProductDetailPage({
               {t.inventory.adjustStockTopBtn}
             </button>
             )}
-            {can('inventory.price') && (
+            {unrestricted && (
             <button onClick={() => setBulkPriceOpen(true)} className="btn btn-primary">
               {t.inventory.editSellingPriceTopBtn}
             </button>

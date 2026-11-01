@@ -274,4 +274,32 @@ export class SaleTransaction {
   })
   @Column({ name: 'rejection_reason', type: 'varchar', nullable: true })
   rejectionReason: string | null;
+
+  // ─── Amendment (a sale corrected the same day) ────────────────────────────
+  // An amend is a void + re-record in one transaction: the original row is
+  // rejected (so it drops out of every `rejected_at IS NULL` figure) and these
+  // columns link it to the corrected row(s) that replaced it. A voided row with
+  // `amended_to_id` set was amended, not plainly rejected — the UI and the owner
+  // alert feed use that to tell the two apart.
+
+  @ApiPropertyOptional({
+    description:
+      'When this row was superseded by an amendment. Set on the voided original; null otherwise.',
+  })
+  @Column({ name: 'amended_at', type: 'timestamp', nullable: true })
+  amendedAt: Date | null;
+
+  @ApiPropertyOptional({
+    description:
+      'On the VOIDED original: the id of the corrected sale row that replaced it.',
+  })
+  @Column({ name: 'amended_to_id', type: 'uuid', nullable: true })
+  amendedToId: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'On a corrected row: the id of the original sale it was amended from.',
+  })
+  @Column({ name: 'amended_from_id', type: 'uuid', nullable: true })
+  amendedFromId: string | null;
 }
