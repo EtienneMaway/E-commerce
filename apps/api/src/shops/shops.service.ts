@@ -164,6 +164,25 @@ export class ShopsService {
       );
     }
 
+    // A closed branch refuses writes, so goods in escrow to or from it could
+    // never be received or sent back, and a balance could never be paid.
+    // Raw SQL rather than BranchTransfersService: this module is global and
+    // stays free of feature-module imports.
+    const openBranchBusiness = await this.shops.manager.query<{ n: number }[]>(
+      `SELECT (
+         (SELECT count(*) FROM "branch_transfers"
+           WHERE "status" = 'IN_TRANSIT' AND ("from_shop_id" = $1 OR "to_shop_id" = $1))
+       + (SELECT count(*) FROM "branch_balances"
+           WHERE "outstanding" > 0 AND ("creditor_shop_id" = $1 OR "debtor_shop_id" = $1))
+       )::int AS n`,
+      [id],
+    );
+    if (Number(openBranchBusiness[0]?.n ?? 0) > 0) {
+      throw new ConflictException(
+        'Settle the transfers and balances between this branch and the others before closing it',
+      );
+    }
+
     shop.archivedAt = new Date();
     return this.shops.save(shop);
   }

@@ -27,6 +27,10 @@ export enum StockMovementReason {
   CUSTODY_IN = 'CUSTODY_IN',
   /** Unsold goods come back off a custodian's volume onto the unassigned shelf. */
   CUSTODY_RETURN_IN = 'CUSTODY_RETURN_IN',
+  /** A lot arrives at the receiving branch of a branch transfer. */
+  TRANSFER_IN = 'TRANSFER_IN',
+  /** A rejected or cancelled branch transfer puts the goods back on the lot they left. */
+  TRANSFER_RETURN_IN = 'TRANSFER_RETURN_IN',
   // Negative (qty out)
   SALE = 'SALE',
   CONSIGN_OUT = 'CONSIGN_OUT',
@@ -36,6 +40,8 @@ export enum StockMovementReason {
   CUSTODY_OUT = 'CUSTODY_OUT',
   /** Goods leave a custodian's volume at handover (the giving leg of a return). */
   CUSTODY_RETURN_OUT = 'CUSTODY_RETURN_OUT',
+  /** Goods leave the sending branch into the escrow of a branch transfer. */
+  TRANSFER_OUT = 'TRANSFER_OUT',
   EXTERNAL_OUT = 'EXTERNAL_OUT',
   DAMAGE = 'DAMAGE',
   LOSS = 'LOSS',
@@ -77,6 +83,8 @@ export const POSITIVE_REASONS: ReadonlySet<StockMovementReason> = new Set([
   StockMovementReason.SALE_REJECTED,
   StockMovementReason.CUSTODY_IN,
   StockMovementReason.CUSTODY_RETURN_IN,
+  StockMovementReason.TRANSFER_IN,
+  StockMovementReason.TRANSFER_RETURN_IN,
 ]);
 
 export const NOTES_REQUIRED_REASONS: ReadonlySet<StockMovementReason> = new Set([

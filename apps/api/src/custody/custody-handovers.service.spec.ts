@@ -1,3 +1,4 @@
+import { branchTransfersStub } from '../common/testing/branch-transfers.fixture';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { CustodyHandoversService } from './custody-handovers.service';
 import {
@@ -115,7 +116,7 @@ function build(opts: {
     { find: jest.fn(async () => []) } as never, // settlementRepo,
     {} as never,
     {} as never,
-    { getRate: jest.fn(async () => ({ usdToFcRate: opts.rate ?? '2700.0000' })) } as never);
+    { getRate: jest.fn(async () => ({ usdToFcRate: opts.rate ?? '2700.0000' })) } as never, branchTransfersStub() as never);
   return { service, saved, entry, handoverRepo };
 }
 
@@ -308,7 +309,7 @@ describe('CustodyHandoversService.approve', () => {
         transaction: jest.fn(async (cb: (m: typeof manager) => Promise<unknown>) => cb(manager)),
       } as never,
       stockMovements as never,
-      {} as never);
+      {} as never, branchTransfersStub() as never);
     return {
       service,
       handover,

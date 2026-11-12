@@ -19,6 +19,7 @@ import { authApi, dashboardApi } from '../lib/api';
 import { isAuthError } from '../lib/utils';
 import { initConnectivity } from '../lib/connectivity';
 import { useInboxSignal } from '../hooks/use-inbox-signal';
+import { useOfflineWarmup } from '../hooks/use-offline-warmup';
 import { scheduleAlertNotifications } from '../lib/notifications';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { UpdateRequiredGate } from '../components/ui/UpdateNotice';
@@ -204,6 +205,12 @@ function InboxSignalSync() {
   return null;
 }
 
+/** Pre-loads the main lists while online so they open offline. See the hook. */
+function OfflineWarmup() {
+  useOfflineWarmup();
+  return null;
+}
+
 function DynamicStatusBar() {
   const theme = useThemeStore((s) => s.theme);
   return <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />;
@@ -223,6 +230,7 @@ export default function RootLayout() {
         <LocaleSync />
         <AuthGuard />
         <InboxSignalSync />
+        <OfflineWarmup />
         <DynamicStatusBar />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" />
@@ -243,6 +251,10 @@ export default function RootLayout() {
           <Stack.Screen
             name="custody"
             options={{ headerShown: true, title: t.custody.title, headerBackTitle: t.screens.back }}
+          />
+          <Stack.Screen
+            name="branch-transfers"
+            options={{ headerShown: true, title: t.branchTransfers.title, headerBackTitle: t.screens.back }}
           />
         </Stack>
         {/* Sits above every screen: once the API says this build is below the

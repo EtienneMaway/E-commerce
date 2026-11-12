@@ -40,8 +40,10 @@ export function ReceiveFromSupplierDialog({ open, onClose }: Props) {
   const toast = useToast();
 
   const { data, isLoading } = useQuery({
-    queryKey: QK.consignmentsIncoming,
-    queryFn: () => consignmentsApi.incoming(),
+    // Pending only: this dialog acts on deliveries awaiting an answer, and that
+    // list stays short however long the consignment history grows.
+    queryKey: [...QK.consignmentsIncoming, 'pending'],
+    queryFn: () => consignmentsApi.incomingPending(),
     enabled: open,
     staleTime: 0,
   });

@@ -23,6 +23,7 @@ import { usePermissions } from '../../lib/permissions';
 import { NAV_SERVICE, serviceForPath } from '../../lib/nav-services';
 import { RouteGuard } from '../../components/ui/RouteGuard';
 import { AppProviders } from './app-providers';
+import './sidebar.css';
 
 const NAV_ICONS = [
   <svg key="dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -87,11 +88,99 @@ const NAV_ICONS = [
     <circle cx="12" cy="12" r="3"/>
     <path d="M7 12h.01M17 12h.01"/>
   </svg>,
+  <svg key="branch-transfers" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M3 7h13l-3-3"/><path d="M21 17H8l3 3"/>
+  </svg>,
   <svg key="custody" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <path d="M12 2l8 3v6c0 4.5-3.2 8.6-8 11-4.8-2.4-8-6.5-8-11V5z"/>
     <path d="M9 11.5l2 2 4-4"/>
   </svg>,
 ];
+
+interface NavItem {
+  readonly href: string;
+  readonly label: string;
+  readonly icon: React.ReactElement;
+}
+interface NavGroupNode {
+  readonly id: string;
+  readonly label: string;
+  readonly icon: React.ReactElement;
+  readonly items: readonly NavItem[];
+}
+type NavNode = NavItem | NavGroupNode;
+const isGroup = (n: NavNode): n is NavGroupNode => 'items' in n;
+
+const OPEN_GROUPS_KEY = 'kmb_nav_open_groups';
+
+function readOpenGroups(): string[] {
+  try {
+    const raw = localStorage.getItem(OPEN_GROUPS_KEY);
+    const v: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function NavLink({ item, active, nested = false }: { item: NavItem; active: boolean; nested?: boolean }) {
+  return (
+    <Link
+      href={item.href}
+      className={`nav-link group ${nested ? 'nav-link-nested' : ''} ${active ? 'is-active' : ''}`}
+      aria-current={active ? 'page' : undefined}
+    >
+      {active && <span className="nav-link-bar" />}
+      <span className="nav-link-icon">{item.icon}</span>
+      <span className="truncate">{item.label}</span>
+    </Link>
+  );
+}
+
+function NavGroup({ group, activeHref }: { group: NavGroupNode; activeHref: string | undefined }) {
+  const containsActive = group.items.some((i) => i.href === activeHref);
+  const [open, setOpen] = useState<boolean>(() => containsActive || readOpenGroups().includes(group.id));
+
+  // Navigating into a folded group (a link, a typed URL) unfolds it.
+  useEffect(() => {
+    if (containsActive) setOpen(true);
+  }, [containsActive]);
+
+  const toggle = (): void => {
+    const next = !open;
+    setOpen(next);
+    try {
+      const set = new Set(readOpenGroups());
+      if (next) set.add(group.id);
+      else set.delete(group.id);
+      localStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify([...set]));
+    } catch {
+      /* storage blocked — the group still toggles for this visit */
+    }
+  };
+
+  return (
+    <div className={`nav-group ${open ? 'is-open' : ''} ${containsActive ? 'has-active' : ''}`}>
+      <button type="button" onClick={toggle} className="nav-link nav-group-head group" aria-expanded={open}>
+        <span className="nav-link-icon">{group.icon}</span>
+        <span className="flex-1 text-left truncate">{group.label}</span>
+        {!open && containsActive && <span className="nav-group-dot" aria-hidden />}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="nav-group-chevron w-3.5 h-3.5">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      <div className="nav-group-body">
+        <div className="nav-group-inner">
+          {group.items.map((item, i) => (
+            <div key={item.href} style={{ ['--i' as string]: i }} className="nav-group-item">
+              <NavLink item={item} active={item.href === activeHref} nested />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function UserAvatar({ username }: { username: string }) {
   const initials = username.slice(0, 2).toUpperCase();
@@ -118,6 +207,7 @@ function MainShell({ children }: { children: React.ReactNode }) {
   // `setContext` and loops ("Maximum update depth exceeded").
   const hydrateShop = useShopStore((s) => s.hydrate);
   const setShopContext = useShopStore((s) => s.setContext);
+  const shopCount = useShopStore((s) => s.shops.length);
   const persona = usePersonaStore();
   const t = useT();
   const [hydrated, setHydrated] = useState(false);
@@ -144,7 +234,7 @@ function MainShell({ children }: { children: React.ReactNode }) {
   // they have an active employment AND (b) they've explicitly switched to it.
   const isEmployee = !!user?.activeEmployment && persona.kind === 'employer';
   const hasEmployment = !!user?.activeEmployment;
-  const { canAny } = usePermissions();
+  const { canAny, can } = usePermissions();
 
   // A second, finer filter on top of the persona rule above: the employer's role
   // decides which of the remaining entries this employee actually sees. Entries
@@ -155,37 +245,84 @@ function MainShell({ children }: { children: React.ReactNode }) {
     return canAny(...(Array.isArray(required) ? required : [required]));
   };
 
-  const NAV_ALL = [
-    { href: '/dashboard', label: t.nav.dashboard, icon: NAV_ICONS[0] },
-    { href: '/inventory', label: t.nav.inventory, icon: NAV_ICONS[1] },
-    { href: '/inventory/movements', label: t.nav.movements, icon: NAV_ICONS[2] },
-    { href: '/suppliers', label: t.nav.suppliers, icon: NAV_ICONS[3] },
-    { href: '/debtors', label: t.nav.debtors, icon: NAV_ICONS[4] },
-    { href: '/sales', label: t.nav.sales, icon: NAV_ICONS[5] },
-    { href: '/consignments', label: t.nav.consignments, icon: NAV_ICONS[6] },
-    { href: '/external-contacts', label: t.nav.externalContacts, icon: NAV_ICONS[7] },
-    { href: '/expenses', label: t.nav.expenses, icon: NAV_ICONS[8] },
-    { href: '/activity', label: t.nav.activity, icon: NAV_ICONS[13] },
-    ...(hasEmployment
-      ? [{ href: '/my-salary', label: t.nav.mySalary, icon: NAV_ICONS[14] }]
-      : []),
-    // Delegatable: shown to an employee whose role grants them, and filtered by
-    // `permitted` below like everything else.
-    { href: '/employees', label: t.nav.employees, icon: NAV_ICONS[11] },
-    { href: '/pricing', label: t.nav.pricing, icon: NAV_ICONS[12] },
-    // Shown to the owner (custody.manage) to appoint/settle, and to a custodian
-    // (custody.hold) to see their own volume — the page itself branches on which.
-    { href: '/custody', label: t.nav.custody, icon: NAV_ICONS[NAV_ICONS.length - 1] },
-    // Never delegatable — owner's own books only.
-    ...(isEmployee
-      ? []
-      : [
-          { href: '/withdrawals', label: t.nav.withdrawals, icon: NAV_ICONS[9] },
-          { href: '/settings', label: t.nav.settings, icon: NAV_ICONS[10] },
-        ]),
+  const icon = (key: string): React.ReactElement =>
+    NAV_ICONS.find((i) => i.key === key) ?? NAV_ICONS[0];
+
+  // Grouped so the drawer stays short: related pages fold under one heading
+  // that drops down on click. Items are filtered by persona and role exactly as
+  // before; a group left with one entry renders as a plain link, and an empty
+  // one disappears.
+  const NAV_TREE: NavNode[] = [
+    { href: '/dashboard', label: t.nav.dashboard, icon: icon('dashboard') },
+    {
+      id: 'stock',
+      label: t.nav.groupStock,
+      icon: icon('inventory'),
+      items: [
+        { href: '/inventory', label: t.nav.inventory, icon: icon('inventory') },
+        { href: '/inventory/movements', label: t.nav.movements, icon: icon('movements') },
+        { href: '/sales', label: t.nav.sales, icon: icon('sales') },
+        // Owner (custody.manage) appoints/settles; a custodian (custody.hold)
+        // sees their own volume — the page branches on which.
+        { href: '/custody', label: t.nav.custody, icon: icon('custody') },
+        // Meaningless at a one-branch business, so the owner sees it only once
+        // there is a second branch. A custodian always sees it; `permitted`
+        // limits it to the owner and the person in charge.
+        ...(shopCount > 1 || !can('custody.manage')
+          ? [{ href: '/branch-transfers', label: t.nav.branchTransfers, icon: icon('branch-transfers') }]
+          : []),
+        { href: '/pricing', label: t.nav.pricing, icon: icon('pricing') },
+      ],
+    },
+    {
+      id: 'partners',
+      label: t.nav.groupPartners,
+      icon: icon('debtors'),
+      items: [
+        { href: '/suppliers', label: t.nav.suppliers, icon: icon('suppliers') },
+        { href: '/debtors', label: t.nav.debtors, icon: icon('debtors') },
+        { href: '/consignments', label: t.nav.consignments, icon: icon('consignments') },
+        { href: '/external-contacts', label: t.nav.externalContacts, icon: icon('external-contacts') },
+      ],
+    },
+    {
+      id: 'money',
+      label: t.nav.groupMoney,
+      icon: icon('withdrawals'),
+      items: [
+        { href: '/expenses', label: t.nav.expenses, icon: icon('expenses') },
+        // Never delegatable — owner's own books only.
+        ...(isEmployee ? [] : [{ href: '/withdrawals', label: t.nav.withdrawals, icon: icon('withdrawals') }]),
+        ...(hasEmployment ? [{ href: '/my-salary', label: t.nav.mySalary, icon: icon('my-salary') }] : []),
+      ],
+    },
+    {
+      id: 'team',
+      label: t.nav.groupTeam,
+      icon: icon('employees'),
+      items: [
+        // Delegatable: shown to an employee whose role grants it.
+        { href: '/employees', label: t.nav.employees, icon: icon('employees') },
+        { href: '/activity', label: t.nav.activity, icon: icon('activity') },
+      ],
+    },
+    ...(isEmployee ? [] : [{ href: '/settings', label: t.nav.settings, icon: icon('settings') }]),
   ];
 
-  const NAV = NAV_ALL.filter((item) => permitted(item.href));
+  const NAV: NavNode[] = NAV_TREE.flatMap((node): NavNode[] => {
+    if (!isGroup(node)) return permitted(node.href) ? [node] : [];
+    const items = node.items.filter((i) => permitted(i.href));
+    if (items.length === 0) return [];
+    if (items.length === 1) return [items[0]];
+    return [{ ...node, items }];
+  });
+
+  // Longest matching href wins, so '/inventory/movements' doesn't also light
+  // up '/inventory'.
+  const activeHref = NAV.flatMap((n) => (isGroup(n) ? n.items : [n]))
+    .map((i) => i.href)
+    .filter((h) => pathname === h || (h !== '/dashboard' && pathname.startsWith(h + '/')))
+    .sort((a, b) => b.length - a.length)[0];
 
   // Hiding a nav entry is not a boundary — a typed URL, a stale bookmark or a
   // link would still land on the page and fire queries the API refuses. Guarding
@@ -321,7 +458,7 @@ function MainShell({ children }: { children: React.ReactNode }) {
 
       {/* ─── Sidebar ─────────────────────────────────────────────────────── */}
       <aside
-        className={`${isMobile ? 'fixed inset-y-0 left-0 z-50' : 'relative flex-shrink-0'} flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${isMobile ? (sidebarOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}`}
+        className={`${isMobile ? 'fixed inset-y-0 left-0 z-50' : 'sticky top-0 h-screen self-start flex-shrink-0'} flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${isMobile ? (sidebarOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}`}
         style={{
           width: !isMobile && !sidebarOpen ? 0 : 240,
           paddingTop: isMobile ? 0 : 56,
@@ -368,48 +505,14 @@ function MainShell({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Nav items */}
-        <nav className="relative flex-1 px-3 space-y-0.5">
-          {NAV.map((item) => {
-            const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative"
-                style={{
-                  color: active ? 'var(--sidebar-fg)' : 'rgba(var(--sidebar-fg-rgb),0.7)',
-                  background: active ? 'var(--sidebar-accent)' : 'transparent',
-                  boxShadow: active ? 'inset 0 0 0 1px var(--sidebar-accent-border)' : 'none',
-                }}
-              >
-                {/* Active indicator bar */}
-                {active && (
-                  <div
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full"
-                    style={{ background: 'var(--primary)', boxShadow: '0 0 8px rgba(var(--primary-rgb),0.8)' }}
-                  />
-                )}
-
-                {/* Icon */}
-                <span
-                  className="transition-colors duration-200 flex-shrink-0"
-                  style={{ color: active ? 'var(--primary-dark)' : 'rgba(var(--sidebar-fg-rgb),0.35)', }}
-                >
-                  {item.icon}
-                </span>
-
-                <span>{item.label}</span>
-
-                {/* Hover glow */}
-                {!active && (
-                  <span
-                    className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
-                    style={{ background: 'rgba(var(--sidebar-fg-rgb),0.04)' }}
-                  />
-                )}
-              </Link>
-            );
-          })}
+        <nav className="relative flex-1 min-h-0 px-3 space-y-0.5 overflow-y-auto pb-3 sidebar-scroll">
+          {NAV.map((node) =>
+            isGroup(node) ? (
+              <NavGroup key={node.id} group={node} activeHref={activeHref} />
+            ) : (
+              <NavLink key={node.href} item={node} active={node.href === activeHref} />
+            ),
+          )}
         </nav>
 
         {/* Bottom section */}

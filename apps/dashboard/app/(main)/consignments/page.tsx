@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { consignmentsApi, inventoryApi } from '../../../lib/api';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { consignmentsApi, inventoryApi, PAGE_SIZE, type Paged } from '../../../lib/api';
+import { Pagination, useClampPage } from '../../../components/ui/Pagination';
 import { QK } from '../../../lib/query-keys';
 import { formatDate, getErrorMessage } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
@@ -118,10 +119,15 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
     staleTime: 60_000,
   });
   const ppcMap = new Map((productsData ?? []).map((p) => [p.productName, p.piecesPerCarton]));
+  const [page, setPage] = useState(1);
+  // Keyed under QK.consignmentsOutgoing, so every existing invalidation of
+  // that key still refreshes whichever page is open.
   const { data, isLoading } = useQuery({
-    queryKey: QK.consignmentsOutgoing,
-    queryFn: () => consignmentsApi.outgoing(),
+    queryKey: [...QK.consignmentsOutgoing, 'page', page],
+    queryFn: () => consignmentsApi.outgoingPage<ConsignmentRequest>(page),
     staleTime: 30_000,
+    // The page you're on stays visible while the next one loads.
+    placeholderData: keepPreviousData,
   });
 
   const cancelMutation = useMutation({
@@ -129,7 +135,9 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
     onSuccess: () => qc.invalidateQueries({ queryKey: QK.consignmentsOutgoing }),
   });
 
-  const rows = (data as ConsignmentRequest[] | undefined) ?? [];
+  const paged = data as Paged<ConsignmentRequest> | undefined;
+  const rows = paged?.data ?? [];
+  useClampPage(page, paged?.pagination.totalPages, setPage);
 
   if (isLoading) return <div className="loading-state"><div className="spinner" /><span>{t.consignments.loading}</span></div>;
   if (rows.length === 0) return <EmptyState message={t.consignments.noOutgoing} />;
@@ -218,6 +226,15 @@ function OutgoingTab({ expandedId, setExpandedId }: { expandedId: string | null;
         </tbody>
       </table>
       </div>
+      {paged && (
+        <Pagination
+          page={paged.pagination.page}
+          totalPages={paged.pagination.totalPages}
+          total={paged.pagination.total}
+          pageSize={PAGE_SIZE}
+          onChange={setPage}
+        />
+      )}
     </div>
     </>
   );
@@ -238,10 +255,12 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
   });
   const ppcMap = new Map((productsData2 ?? []).map((p) => [p.productName, p.piecesPerCarton]));
 
+  const [page, setPage] = useState(1);
   const { data, isLoading } = useQuery({
-    queryKey: QK.consignmentsIncoming,
-    queryFn: () => consignmentsApi.incoming(),
+    queryKey: [...QK.consignmentsIncoming, 'page', page],
+    queryFn: () => consignmentsApi.incomingPage<ConsignmentRequest>(page),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
     // No polling: useInboxSignal invalidates this key when the consignments
     // stamp moves (a supplier entrusts goods while this tab sits open).
   });
@@ -258,7 +277,9 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
     onError: (err, id) => setActionError((prev) => ({ ...prev, [id]: getErrorMessage(err) })),
   });
 
-  const rows = (data as ConsignmentRequest[] | undefined) ?? [];
+  const paged = data as Paged<ConsignmentRequest> | undefined;
+  const rows = paged?.data ?? [];
+  useClampPage(page, paged?.pagination.totalPages, setPage);
 
   if (isLoading) return <div className="loading-state"><div className="spinner" /><span>{t.consignments.loading}</span></div>;
   if (rows.length === 0) return <EmptyState message={t.consignments.noIncoming} />;
@@ -361,6 +382,15 @@ function IncomingTab({ expandedId, setExpandedId }: { expandedId: string | null;
         </tbody>
       </table>
       </div>
+      {paged && (
+        <Pagination
+          page={paged.pagination.page}
+          totalPages={paged.pagination.totalPages}
+          total={paged.pagination.total}
+          pageSize={PAGE_SIZE}
+          onChange={setPage}
+        />
+      )}
     </div>
     </>
   );

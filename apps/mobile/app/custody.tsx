@@ -412,6 +412,12 @@ function HandoverTab() {
         {Number(p.expensesFc) > 0 && (
           <Row label={t.custody.youSpent} value={`−${fc(p.expensesFc)} FC`} />
         )}
+        {Number(p.branchReceivedFc ?? 0) > 0 && (
+          <Row label={t.custody.youReceivedBranches} value={`${fc(p.branchReceivedFc)} FC`} />
+        )}
+        {Number(p.branchPaidOutFc ?? 0) > 0 && (
+          <Row label={t.custody.youPaidBranches} value={`−${fc(p.branchPaidOutFc)} FC`} />
+        )}
         <View className="h-px bg-neutral-200 dark:bg-neutral-800 my-2" />
         <Row label={t.custody.youOwe} value={`${fc(p.cashExpectedFc)} FC`} strong />
       </View>

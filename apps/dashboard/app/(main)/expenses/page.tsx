@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
   EXPENSE_CATEGORIES,
   ExpenseCategory,
@@ -99,6 +99,8 @@ export default function ExpensesPage() {
 
   const { data: listData, isLoading: listLoading } = useQuery({
     queryKey: QK.expenses(listParams),
+    // Previous page stays on screen while the next loads — no spinner flash.
+    placeholderData: keepPreviousData,
     queryFn: () => expensesApi.list(listParams),
   });
 

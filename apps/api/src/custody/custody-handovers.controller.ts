@@ -16,7 +16,7 @@ import { RequiresService } from '../common/decorators/requires-service.decorator
 import { CurrentActorContext } from '../common/decorators/current-actor-context.decorator';
 import type { ActorContext } from '../common/types/actor-context';
 import { CustodyHandoversService } from './custody-handovers.service';
-import type { CustodyHandoverPreview } from './custody-handovers.service';
+import type { CustodyHandoverPage, CustodyHandoverPreview } from './custody-handovers.service';
 import { CreateCustodyHandoverDto } from './dto/create-handover.dto';
 import { CreateHandoverAdjustmentDto } from './dto/handover-adjustment.dto';
 import { ListCustodyHandoversDto, RejectCustodyHandoverDto } from './dto/list-handovers.dto';
@@ -83,7 +83,7 @@ export class CustodyHandoversController {
   list(
     @CurrentActorContext() ctx: ActorContext,
     @Query() query: ListCustodyHandoversDto,
-  ): Promise<CustodyHandover[]> {
+  ): Promise<CustodyHandover[] | CustodyHandoverPage> {
     return this.service.list(ctx, query);
   }
 

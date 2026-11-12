@@ -419,6 +419,14 @@ export const consignmentsApi = {
   }) => api.post('/consignments', body).then((r) => r.data),
   outgoing: () => api.get('/consignments/outgoing').then((r) => r.data),
   incoming: () => api.get('/consignments/incoming').then((r) => r.data),
+  /** One page, newest first. The unpaged readers above stay for callers that need the whole set. */
+  outgoingPage: <T = unknown>(page: number): Promise<Paged<T>> =>
+    api.get('/consignments/outgoing', { params: { page, limit: PAGE_SIZE } }).then((r) => r.data),
+  incomingPage: <T = unknown>(page: number): Promise<Paged<T>> =>
+    api.get('/consignments/incoming', { params: { page, limit: PAGE_SIZE } }).then((r) => r.data),
+  /** Only deliveries still waiting for an answer — a short list however long the history gets. */
+  incomingPending: () =>
+    api.get('/consignments/incoming', { params: { status: 'PENDING' } }).then((r) => r.data),
   confirm: (id: string) => api.patch(`/consignments/${id}/confirm`).then((r) => r.data),
   reject: (id: string) => api.patch(`/consignments/${id}/reject`).then((r) => r.data),
   cancel: (id: string) => api.patch(`/consignments/${id}/cancel`).then((r) => r.data),
@@ -740,6 +748,15 @@ export interface PaginationMeta {
   total: number;
   totalPages: number;
 }
+
+/** `{ data, pagination }` — what a list endpoint returns when sent `page`. */
+export interface Paged<T> {
+  data: T[];
+  pagination: PaginationMeta;
+}
+
+/** Rows per page on the dashboard's paged lists. */
+export const PAGE_SIZE = 20;
 
 export interface ExpenseListResponse {
   data: Expense[];
@@ -1087,6 +1104,16 @@ export const salaryPaymentsApi = {
     periodMonth?: string;
   }): Promise<SalaryPayment[]> =>
     api.get('/salary-payments', { params }).then((r) => r.data),
+  listPage: (
+    page: number,
+    params?: {
+      role?: 'employer' | 'employee';
+      employmentId?: string;
+      status?: SalaryPaymentStatus;
+      periodMonth?: string;
+    },
+  ): Promise<Paged<SalaryPayment>> =>
+    api.get('/salary-payments', { params: { ...params, page, limit: PAGE_SIZE } }).then((r) => r.data),
   pending: (): Promise<SalaryPayment[]> =>
     api.get('/salary-payments/pending').then((r) => r.data),
   summary: (employmentId: string, periodMonth?: string): Promise<SalarySummary> =>
@@ -1451,6 +1478,9 @@ export interface CustodyHandover {
   cashExpectedFc: string;
   miniRollupCashFc: string;
   expensesFc: string;
+  /** Branch-transfer cash, sealed at submit. 0 on handovers that pre-date it. */
+  branchPaidOutFc: string;
+  branchReceivedFc: string;
   soldLines: CustodyHandoverSoldLine[] | null;
   rejectedLines:
     | { productName: string; qtySold: number; valueFc: string; reason: string | null }[]
@@ -1510,6 +1540,8 @@ export interface CustodyHandoverPreview {
   salesFc: string;
   miniRollupCashFc: string;
   expensesFc: string;
+  branchPaidOutFc: string;
+  branchReceivedFc: string;
   cashExpectedFc: string;
   unattestedSaleCount: number;
   holding: {
@@ -1558,6 +1590,12 @@ export const custodyApi = {
     status?: CustodyHandoverStatus;
   }): Promise<CustodyHandover[]> =>
     api.get('/custody/handovers', { params }).then((r) => r.data),
+  /** One page, plus everyone who has ever handed over (for the person filter). */
+  handoversPage: (
+    page: number,
+    params?: { custodianId?: string; status?: CustodyHandoverStatus },
+  ): Promise<Paged<CustodyHandover> & { custodians: NonNullable<CustodyHandover['custodian']>[] }> =>
+    api.get('/custody/handovers', { params: { ...params, page, limit: PAGE_SIZE } }).then((r) => r.data),
   handover: (id: string): Promise<CustodyHandover> =>
     api.get(`/custody/handovers/${id}`).then((r) => r.data),
   addAdjustment: (
@@ -1601,4 +1639,130 @@ export const custodyApi = {
   // held (the API computes it), which is what lets approval end the custody.
   submitHandover: (body: { cashDeclaredFc: string; note?: string }): Promise<{ id: string }> =>
     api.post('/custody/handovers', body).then((r) => r.data),
+};
+
+// ─── Branch transfers (same business, branch A → branch B) ────────────────────
+// See BRANCH_TRANSFER_PLAN.md. Only the owner or the branch's custodian may act.
+
+export type BranchTransferStatus = 'IN_TRANSIT' | 'RECEIVED' | 'REJECTED' | 'CANCELLED';
+export type BranchPaymentStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED';
+export type BranchPaymentCurrency = 'USD' | 'FC';
+
+interface BranchShopRef {
+  id: string;
+  name: string;
+}
+
+interface BranchPersonRef {
+  id: string;
+  username: string;
+  name?: string | null;
+}
+
+export interface BranchDestination {
+  shopId: string;
+  name: string;
+  isDefault: boolean;
+}
+
+export interface BranchTransferItem {
+  id: string;
+  productName: string;
+  quantity: number;
+  unitCost: string;
+  variantId: string | null;
+  variantLabel: string | null;
+  piecesPerCarton: number | null;
+}
+
+export interface BranchTransfer {
+  id: string;
+  orgId: string;
+  fromShopId: string;
+  toShopId: string;
+  fromShop: BranchShopRef;
+  toShop: BranchShopRef;
+  status: BranchTransferStatus;
+  sentBy: BranchPersonRef | null;
+  answeredBy: BranchPersonRef | null;
+  fromCustodyId: string | null;
+  toCustodyId: string | null;
+  /** Σ quantity × carried unit cost, USD at 4dp — what the receiver owes once received. */
+  totalValue: string;
+  note: string | null;
+  rejectionReason: string | null;
+  sentAt: string;
+  answeredAt: string | null;
+  items: BranchTransferItem[];
+}
+
+export interface BranchBalance {
+  id: string;
+  creditorShopId: string;
+  debtorShopId: string;
+  creditorShop: BranchShopRef;
+  debtorShop: BranchShopRef;
+  totalGiven: string;
+  totalPaid: string;
+  outstanding: string;
+  updatedAt: string;
+}
+
+export interface BranchPayment {
+  id: string;
+  balanceId: string;
+  fromShopId: string;
+  toShopId: string;
+  fromShop: BranchShopRef;
+  toShop: BranchShopRef;
+  amount: string;
+  currency: BranchPaymentCurrency;
+  amountUsd: string;
+  status: BranchPaymentStatus;
+  note: string | null;
+  paidBy: BranchPersonRef | null;
+  answeredBy: BranchPersonRef | null;
+  createdAt: string;
+  answeredAt: string | null;
+}
+
+export const branchTransfersApi = {
+  destinations: (): Promise<BranchDestination[]> =>
+    api.get('/branch-transfers/destinations').then((r) => r.data),
+  list: (params?: {
+    direction?: 'incoming' | 'outgoing';
+    status?: BranchTransferStatus;
+  }): Promise<BranchTransfer[]> => api.get('/branch-transfers', { params }).then((r) => r.data),
+  listPage: (
+    page: number,
+    params?: { direction?: 'incoming' | 'outgoing'; status?: BranchTransferStatus },
+  ): Promise<Paged<BranchTransfer>> =>
+    api.get('/branch-transfers', { params: { ...params, page, limit: PAGE_SIZE } }).then((r) => r.data),
+  get: (id: string): Promise<BranchTransfer> =>
+    api.get(`/branch-transfers/${id}`).then((r) => r.data),
+  send: (body: {
+    toShopId: string;
+    items: { productName: string; quantity: number; variantId?: string }[];
+    note?: string;
+  }): Promise<BranchTransfer> => api.post('/branch-transfers', body).then((r) => r.data),
+  receive: (id: string): Promise<BranchTransfer> =>
+    api.patch(`/branch-transfers/${id}/receive`).then((r) => r.data),
+  reject: (id: string, reason: string): Promise<BranchTransfer> =>
+    api.patch(`/branch-transfers/${id}/reject`, { reason }).then((r) => r.data),
+  cancel: (id: string): Promise<BranchTransfer> =>
+    api.patch(`/branch-transfers/${id}/cancel`).then((r) => r.data),
+  balances: (): Promise<BranchBalance[]> =>
+    api.get('/branch-transfers/balances').then((r) => r.data),
+  payments: (): Promise<BranchPayment[]> =>
+    api.get('/branch-transfers/payments').then((r) => r.data),
+  pay: (body: {
+    toShopId: string;
+    amount: string;
+    currency: BranchPaymentCurrency;
+    note?: string;
+  }): Promise<BranchPayment> => api.post('/branch-transfers/payments', body).then((r) => r.data),
+  confirmPayment: (id: string): Promise<BranchPayment> =>
+    api.patch(`/branch-transfers/payments/${id}/confirm`).then((r) => r.data),
+  rejectPayment: (id: string): Promise<BranchPayment> =>
+    api.patch(`/branch-transfers/payments/${id}/reject`).then((r) => r.data),
 };

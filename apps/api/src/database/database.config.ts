@@ -38,6 +38,11 @@ import {
   CustodyHandover,
   CustodyHandoverItem,
   CustodyHandoverAdjustment,
+  BranchTransfer,
+  BranchTransferItem,
+  BranchTransferLotDraw,
+  BranchBalance,
+  BranchPayment,
 } from '../entities';
 
 dotenv.config();
@@ -82,6 +87,11 @@ export const AppDataSource = new DataSource({
     CustodyHandover,
     CustodyHandoverItem,
     CustodyHandoverAdjustment,
+    BranchTransfer,
+    BranchTransferItem,
+    BranchTransferLotDraw,
+    BranchBalance,
+    BranchPayment,
   ],
   migrations: [__dirname + '/migrations/*.{ts,js}'],
   synchronize: false,

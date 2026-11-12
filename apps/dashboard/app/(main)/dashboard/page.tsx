@@ -53,7 +53,13 @@ interface SourceRow { source: string; supplierUsername?: string; totalProfit: st
 interface SaleRow { id: string; productName: string; salePrice: string; qtySold: number; profit: string; isLoss: boolean; date: string; shopId: string; }
 interface SalesPage { data: SaleRow[]; total: number; }
 interface AlertItem {
-  type: 'overdue_debtor' | 'low_stock' | 'inverted_exchange_rates' | 'pending_consignment';
+  type:
+    | 'overdue_debtor'
+    | 'low_stock'
+    | 'inverted_exchange_rates'
+    | 'pending_consignment'
+    | 'incoming_branch_transfer'
+    | 'pending_branch_payment';
   debtorUserId?: string;
   debtorUsername?: string;
   outstandingBalance?: string;
@@ -63,6 +69,7 @@ interface AlertItem {
   systemSellingRate?: string;
   buyingRate?: string;
   pendingCount?: number;
+  transferCount?: number;
 }
 
 export default function DashboardPage() {
@@ -135,6 +142,8 @@ export default function DashboardPage() {
   const overdueDebtors = alerts.filter((a) => a.type === 'overdue_debtor');
   const lowStockItems  = alerts.filter((a) => a.type === 'low_stock');
   const invertedRates  = alerts.find((a) => a.type === 'inverted_exchange_rates');
+  const incomingTransfers = alerts.find((a) => a.type === 'incoming_branch_transfer');
+  const branchPaymentsIn  = alerts.find((a) => a.type === 'pending_branch_payment');
 
   const s = summary as Summary | undefined;
   const net = s ? parseFloat(s.netPosition) : 0;
@@ -181,6 +190,46 @@ export default function DashboardPage() {
                 </a>
               </div>
             )}
+            {[
+              incomingTransfers && {
+                key: 'incoming',
+                title: t.branchTransfers.alertIncomingTitle(incomingTransfers.transferCount ?? 0),
+                body: t.branchTransfers.alertIncomingBody,
+                icon: '🚚',
+              },
+              branchPaymentsIn && {
+                key: 'payments',
+                title: t.branchTransfers.alertPaymentsTitle(branchPaymentsIn.transferCount ?? 0),
+                body: t.branchTransfers.alertPaymentsBody,
+                icon: '💵',
+              },
+            ]
+              .filter((a): a is { key: string; title: string; body: string; icon: string } => !!a)
+              .map((a) => (
+                <div
+                  key={a.key}
+                  className="alert-box"
+                  style={{ background: 'rgba(var(--primary-rgb),0.08)', borderColor: 'rgba(var(--primary-rgb),0.25)' }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-base"
+                    style={{ background: 'rgba(var(--primary-rgb),0.15)' }}
+                  >
+                    {a.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm" style={{ color: 'var(--primary)' }}>
+                      {a.title}
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--foreground)', opacity: 0.75 }}>
+                      {a.body}
+                    </p>
+                  </div>
+                  <a href="/branch-transfers" className="btn btn-primary text-xs flex-shrink-0">
+                    {t.branchTransfers.alertCta} →
+                  </a>
+                </div>
+              ))}
             {overdueDebtors.length > 0 && (
               <div
                 className="alert-box"

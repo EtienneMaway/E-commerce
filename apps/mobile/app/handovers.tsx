@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
+  FlatList,
   Pressable,
   TouchableOpacity,
   ActivityIndicator,
@@ -18,6 +19,9 @@ import {
   type ConsignmentSummary,
 } from '../lib/api';
 import { QK } from '../lib/query-keys';
+import { usePagedList, fromPaginated, MOBILE_PAGE_SIZE } from '../lib/paged-list';
+import { useIsOnline } from '../lib/connectivity';
+import { ListFooter } from '../components/ui/ListFooter';
 import { EmptyState } from '../components/ui/EmptyState';
 import { formatDate, getErrorMessage } from '../lib/utils';
 import { formatFcValue, useExchangeRate } from '../lib/currency';
@@ -135,16 +139,26 @@ function ReceivedTab() {
   const rate = useExchangeRate();
   const [printingId, setPrintingId] = useState<string | null>(null);
 
-  const { data, isLoading, isRefetching, refetch } = useQuery({
-    queryKey: QK.consignmentsIncoming,
-    queryFn: consignmentsApi.incoming,
+  const online = useIsOnline();
+  // Paged, newest first; loaded pages persist so the history reads offline.
+  const list = usePagedList<ConsignmentSummary>({
+    queryKey: QK.consignmentsHistoryPages,
+    fetchPage: async (page) =>
+      fromPaginated(await consignmentsApi.incomingPage(page, MOBILE_PAGE_SIZE)),
     staleTime: 15_000,
+    getId: (c) => c.id,
   });
+  const isLoading = list.isInitialLoading;
+  const isRefetching = list.isRefreshing;
+  const refetch = list.refetch;
   // Received = accepted consignments; also surface rejected/cancelled for the
   // record. Pending ones live in the Receive inbox, not history.
-  const received = ((data as ConsignmentSummary[] | undefined) ?? []).filter(
-    (c) => c.status !== 'PENDING',
-  );
+  const received = list.rows.filter((c) => c.status !== 'PENDING');
+  // Pending rows are filtered out here, so a page can come back nearly empty;
+  // an almost-empty list never scrolls, so pull the next page ourselves.
+  useEffect(() => {
+    if (online && received.length < 8 && list.hasNextPage && !list.isFetchingNextPage) list.loadMore();
+  }, [online, received.length, list.hasNextPage, list.isFetchingNextPage, list.loadMore]);
   const self = { name: user?.name ?? undefined, handle: user?.username };
 
   const handlePrint = async (c: ConsignmentSummary) => {
@@ -164,26 +178,36 @@ function ReceivedTab() {
   };
 
   if (isLoading) return <ActivityIndicator className="mt-10" />;
-  if (received.length === 0)
+  if (received.length === 0 && !list.hasNextPage)
     return <EmptyState emoji="📥" title={t.miniEmployee.tabReceived} subtitle={t.miniEmployee.receivedHistoryEmpty} />;
 
   return (
-    <ScrollView
+    <FlatList
       className="flex-1"
       contentContainerClassName="px-4 pt-3 pb-8"
+      data={received}
+      keyExtractor={(c) => c.id}
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />}
-    >
-      {received.map((c) => (
+      onEndReached={list.loadMore}
+      onEndReachedThreshold={0.5}
+      renderItem={({ item: c }) => (
         <ReceivedCard
-          key={c.id}
           consignment={c}
           rate={rate}
           printing={printingId === c.id}
           onPrint={() => void handlePrint(c)}
           onShare={() => void shareReceivedGoodsPdf(toReceivedGoodsSlip(c, self, rate))}
         />
-      ))}
-    </ScrollView>
+      )}
+      ListFooterComponent={
+        <ListFooter
+          isFetchingNextPage={list.isFetchingNextPage}
+          hasNextPage={list.hasNextPage}
+          offline={!online}
+          count={received.length}
+        />
+      }
+    />
   );
 }
 

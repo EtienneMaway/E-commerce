@@ -208,7 +208,7 @@ nano /var/www/ecommerce/apps/api/.env
 ```bash
 DATABASE_URL=postgresql://trading_user:YOUR_DB_PASSWORD@localhost:5432/trading_app
 JWT_SECRET=PASTE_OUTPUT_OF_openssl_rand_hex_32
-JWT_EXPIRES_IN=7d
+JWT_EXPIRES_IN=30d
 PORT=3000
 NODE_ENV=production
 CORS_ORIGINS=https://app.yourdomain.com

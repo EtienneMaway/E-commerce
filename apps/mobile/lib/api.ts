@@ -317,6 +317,15 @@ export interface ConsignmentSummary {
 export const consignmentsApi = {
   incoming: (): Promise<ConsignmentSummary[]> =>
     api.get('/consignments/incoming').then((r) => r.data),
+  /** Only deliveries still waiting for an answer — short however long the history is. */
+  incomingPending: (): Promise<ConsignmentSummary[]> =>
+    api.get('/consignments/incoming', { params: { status: 'PENDING' } }).then((r) => r.data),
+  /** One page of incoming consignments, newest first. */
+  incomingPage: (
+    page: number,
+    limit: number,
+  ): Promise<{ data: ConsignmentSummary[]; pagination: { total: number } }> =>
+    api.get('/consignments/incoming', { params: { page, limit } }).then((r) => r.data),
   confirm: (id: string) => api.patch(`/consignments/${id}/confirm`).then((r) => r.data),
   reject: (id: string) => api.patch(`/consignments/${id}/reject`).then((r) => r.data),
 };
@@ -872,6 +881,9 @@ export interface CustodyHandoverPreview {
   salesFc: string;
   miniRollupCashFc: string;
   expensesFc: string;
+  /** Branch-transfer cash the custodian moved in the period (FC). */
+  branchPaidOutFc: string;
+  branchReceivedFc: string;
   cashExpectedFc: string;
   unattestedSaleCount: number;
   holding: {
@@ -914,4 +926,114 @@ export const custodyApi = {
   // held (the API computes it), which is what lets approval end the custody.
   submitHandover: (body: { cashDeclaredFc: string; note?: string }): Promise<{ id: string }> =>
     api.post('/custody/handovers', body).then((r) => r.data),
+};
+
+// ─── Branch transfers (same business, branch A → branch B) ────────────────────
+// Online only by design: nothing here goes through the offline queue.
+// Mirrors apps/dashboard/lib/api.ts.
+
+export type BranchTransferStatus = 'IN_TRANSIT' | 'RECEIVED' | 'REJECTED' | 'CANCELLED';
+export type BranchPaymentStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED';
+
+interface BranchShopRef {
+  id: string;
+  name: string;
+}
+
+interface BranchPersonRef {
+  id: string;
+  username: string;
+  name?: string | null;
+}
+
+export interface BranchDestination {
+  shopId: string;
+  name: string;
+  isDefault: boolean;
+}
+
+export interface BranchTransferItem {
+  id: string;
+  productName: string;
+  quantity: number;
+  unitCost: string;
+  variantId: string | null;
+  variantLabel: string | null;
+}
+
+export interface BranchTransfer {
+  id: string;
+  fromShopId: string;
+  toShopId: string;
+  fromShop: BranchShopRef;
+  toShop: BranchShopRef;
+  status: BranchTransferStatus;
+  sentBy: BranchPersonRef | null;
+  answeredBy: BranchPersonRef | null;
+  /** USD, 4dp — what the receiver owes once received. */
+  totalValue: string;
+  note: string | null;
+  rejectionReason: string | null;
+  sentAt: string;
+  answeredAt: string | null;
+  items: BranchTransferItem[];
+}
+
+export interface BranchBalance {
+  id: string;
+  creditorShopId: string;
+  debtorShopId: string;
+  creditorShop: BranchShopRef;
+  debtorShop: BranchShopRef;
+  totalGiven: string;
+  totalPaid: string;
+  outstanding: string;
+}
+
+export interface BranchPayment {
+  id: string;
+  fromShopId: string;
+  toShopId: string;
+  fromShop: BranchShopRef;
+  toShop: BranchShopRef;
+  amount: string;
+  currency: 'USD' | 'FC';
+  amountUsd: string;
+  status: BranchPaymentStatus;
+  paidBy: BranchPersonRef | null;
+  createdAt: string;
+}
+
+export const branchTransfersApi = {
+  destinations: (): Promise<BranchDestination[]> =>
+    api.get('/branch-transfers/destinations').then((r) => r.data),
+  list: (direction: 'incoming' | 'outgoing'): Promise<BranchTransfer[]> =>
+    api.get('/branch-transfers', { params: { direction } }).then((r) => r.data),
+  listPage: (
+    direction: 'incoming' | 'outgoing',
+    page: number,
+    limit: number,
+  ): Promise<{ data: BranchTransfer[]; pagination: { total: number } }> =>
+    api.get('/branch-transfers', { params: { direction, page, limit } }).then((r) => r.data),
+  send: (body: {
+    toShopId: string;
+    items: { productName: string; quantity: number; variantId?: string }[];
+    note?: string;
+  }): Promise<BranchTransfer> => api.post('/branch-transfers', body).then((r) => r.data),
+  receive: (id: string): Promise<BranchTransfer> =>
+    api.patch(`/branch-transfers/${id}/receive`).then((r) => r.data),
+  reject: (id: string, reason: string): Promise<BranchTransfer> =>
+    api.patch(`/branch-transfers/${id}/reject`, { reason }).then((r) => r.data),
+  cancel: (id: string): Promise<BranchTransfer> =>
+    api.patch(`/branch-transfers/${id}/cancel`).then((r) => r.data),
+  balances: (): Promise<BranchBalance[]> =>
+    api.get('/branch-transfers/balances').then((r) => r.data),
+  payments: (): Promise<BranchPayment[]> =>
+    api.get('/branch-transfers/payments').then((r) => r.data),
+  pay: (body: { toShopId: string; amount: string; currency: 'USD' | 'FC'; note?: string }): Promise<BranchPayment> =>
+    api.post('/branch-transfers/payments', body).then((r) => r.data),
+  confirmPayment: (id: string): Promise<BranchPayment> =>
+    api.patch(`/branch-transfers/payments/${id}/confirm`).then((r) => r.data),
+  rejectPayment: (id: string): Promise<BranchPayment> =>
+    api.patch(`/branch-transfers/payments/${id}/reject`).then((r) => r.data),
 };

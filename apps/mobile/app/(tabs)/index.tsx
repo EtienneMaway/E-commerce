@@ -25,6 +25,7 @@ import { usePersonaStore } from '../../store/persona.store';
 import { useThemeStore } from '../../store/theme.store';
 import { useLocaleStore } from '../../store/locale.store';
 import { useOfflineStore } from '../../store/offline.store';
+import { useShopStore } from '../../store/shop.store';
 import { syncPendingSales } from '../../lib/sync';
 import { formatMoney } from '../../lib/currency';
 import type { AlertItem } from '../../lib/notifications';
@@ -47,8 +48,14 @@ export default function DashboardScreen() {
   const user = useAuthStore((s) => s.user);
   // Show salary surfaces whenever the user has an active employment — the
   // salary is theirs regardless of which persona they're currently acting as.
-  const { can, canAny, hasNoAccess } = usePermissions();
+  const { can, canAny, hasNoAccess, unrestricted } = usePermissions();
   const isEmployee = !!user?.activeEmployment;
+  // Branch transfers: the owner once the business has a second branch, or the
+  // custodian (person in charge) of this branch. Nobody else can act on them.
+  const shopCount = useShopStore((s) => s.shops.length);
+  const ownsBusiness = useShopStore((s) => !!s.organization?.isOwner);
+  const showBranchTransfers =
+    (unrestricted && ownsBusiness && shopCount > 1) || (!unrestricted && can('custody.hold'));
   // A mini (SALES_ONLY) employee sees their own handover-oriented stats instead
   // of the owner dashboard cards. A FULL employee sees the owner cards plus a
   // self-scoped "my activity" card while acting on the employer's books.
@@ -120,6 +127,10 @@ export default function DashboardScreen() {
 
   const alerts = (alertsData as AlertItem[] | undefined) ?? [];
   const lowStockItems = alerts.filter((a) => a.type === 'low_stock');
+  // Transfers to verify + payments to confirm at this branch.
+  const branchWaiting = alerts
+    .filter((a) => a.type === 'incoming_branch_transfer' || a.type === 'pending_branch_payment')
+    .reduce((n, a) => n + (a.transferCount ?? 0), 0);
 
   // Pending sales + expenses stats for sync banner
   const pendingCount = pendingSales.length;
@@ -646,6 +657,26 @@ export default function DashboardScreen() {
                 <Text className="text-text font-semibold text-sm">{t.custody.homeTile}</Text>
                 <Text className="text-muted text-xs mt-0.5">{t.custody.homeHint}</Text>
               </View>
+              <Text className="text-muted text-lg">›</Text>
+            </Pressable>
+          )}
+
+          {showBranchTransfers && (
+            <Pressable
+              onPress={() => router.push('/branch-transfers')}
+              className="flex-row items-center bg-card border border-border rounded-xl px-4 py-3 mb-4"
+              style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
+            >
+              <Text className="text-2xl mr-3">🚚</Text>
+              <View className="flex-1">
+                <Text className="text-text font-semibold text-sm">{t.branchTransfers.homeTile}</Text>
+                <Text className="text-muted text-xs mt-0.5">{t.branchTransfers.homeHint}</Text>
+              </View>
+              {branchWaiting > 0 && (
+                <View className="bg-warning rounded-full min-w-[22px] h-[22px] px-1.5 items-center justify-center mr-2">
+                  <Text className="text-white text-xs font-bold">{branchWaiting}</Text>
+                </View>
+              )}
               <Text className="text-muted text-lg">›</Text>
             </Pressable>
           )}

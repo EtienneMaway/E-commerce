@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { PAGE_SIZE } from '../../../lib/api';
+import { Pagination, useClampPage } from '../../../components/ui/Pagination';
 import {
   custodyApi,
   type CustodyHandover,
@@ -64,12 +66,18 @@ function OwnerCustodyPanel() {
     ...(statusFilter ? { status: statusFilter } : {}),
     ...(custodianFilter ? { custodianId: custodianFilter } : {}),
   };
-  const { data: handovers, isLoading: loadingHandovers } = useQuery({
-    queryKey: QK.custodyHandovers(handoverFilters),
-    queryFn: () => custodyApi.handovers(handoverFilters),
+  const [page, setPage] = useState(1);
+  // New filters are a new list: back to its first page.
+  useEffect(() => setPage(1), [statusFilter, custodianFilter]);
+  const { data: handoverPage, isLoading: loadingHandovers } = useQuery({
+    queryKey: QK.custodyHandovers({ ...handoverFilters, page }),
+    queryFn: () => custodyApi.handoversPage(page, handoverFilters),
     enabled: tab === 'handovers',
     staleTime: 15_000,
+    placeholderData: keepPreviousData,
   });
+  const handovers = handoverPage?.data;
+  useClampPage(page, handoverPage?.pagination.totalPages, setPage);
 
   const close = useMutation({
     mutationFn: (id: string) => custodyApi.close(id),
@@ -90,13 +98,9 @@ function OwnerCustodyPanel() {
   const rows = (handovers as CustodyHandover[] | undefined) ?? [];
   // Everyone who has ever handed over, so the filter offers real names rather
   // than asking the owner to remember an id.
-  const custodians = [
-    ...new Map(
-      rows
-        .filter((h) => h.custodian)
-        .map((h) => [h.custodianId, h.custodian!] as const),
-    ).values(),
-  ];
+  // The API sends everyone who has ever handed over here, not just this page's
+  // people, so the filter keeps offering every name.
+  const custodians = handoverPage?.custodians ?? [];
 
   const onClose = async (c: StockCustody): Promise<void> => {
     const ok = await confirm({
@@ -260,6 +264,15 @@ function OwnerCustodyPanel() {
                   })}
                 </tbody>
               </table>
+              {handoverPage && (
+                <Pagination
+                  page={handoverPage.pagination.page}
+                  totalPages={handoverPage.pagination.totalPages}
+                  total={handoverPage.pagination.total}
+                  pageSize={PAGE_SIZE}
+                  onChange={setPage}
+                />
+              )}
             </div>
           )}
         </>

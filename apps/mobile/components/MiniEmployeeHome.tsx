@@ -62,8 +62,10 @@ export function MiniEmployeeHome() {
 
   // Count of consignments waiting to be received (badge on the Receive card).
   const { data: incoming } = useQuery({
-    queryKey: QK.consignmentsIncoming,
-    queryFn: consignmentsApi.incoming,
+    // Pending only — the badge counts deliveries awaiting an answer, and that
+    // list stays short however long the consignment history grows.
+    queryKey: QK.consignmentsPending,
+    queryFn: consignmentsApi.incomingPending,
     enabled: isActiveMini,
     staleTime: 15_000,
     // No polling: useInboxSignal invalidates this key when the consignments

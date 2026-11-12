@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   stockMovementsApi,
@@ -58,6 +58,8 @@ export default function StockMovementsPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: QK.stockMovements(filters),
+    // Previous page stays on screen while the next loads — no spinner flash.
+    placeholderData: keepPreviousData,
     queryFn: () => stockMovementsApi.list(filters),
     staleTime: 30_000,
   });

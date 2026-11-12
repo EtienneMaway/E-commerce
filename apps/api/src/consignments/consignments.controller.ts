@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -22,6 +23,8 @@ import type { ActorContext } from '../common/types/actor-context';
 import { ConsignmentsService } from './consignments.service';
 import { CreateConsignmentDto } from './dto/create-consignment.dto';
 import { ConsignmentRequest } from '../entities';
+import { ListConsignmentsDto } from './dto/list-consignments.dto';
+import type { Paginated } from '../common/pagination';
 
 @ApiTags('consignments')
 @ApiBearerAuth()
@@ -47,10 +50,13 @@ export class ConsignmentsController {
 
   @Get('outgoing')
   @RequiresService('consignments.send')
-  @ApiOperation({ summary: 'List all consignment requests sent by the current user (as supplier)' })
+  @ApiOperation({ summary: 'List consignment requests sent by the current user (as supplier). Send `page` for a paginated envelope.' })
   @ApiResponse({ status: 200, type: [ConsignmentRequest] })
-  findOutgoing(@CurrentActorContext() ctx: ActorContext): Promise<ConsignmentRequest[]> {
-    return this.consignmentsService.findOutgoing(ctx);
+  findOutgoing(
+    @CurrentActorContext() ctx: ActorContext,
+    @Query() query: ListConsignmentsDto,
+  ): Promise<ConsignmentRequest[] | Paginated<ConsignmentRequest>> {
+    return this.consignmentsService.findOutgoing(ctx, query);
   }
 
   @Patch(':id/cancel')
@@ -71,10 +77,13 @@ export class ConsignmentsController {
   @Get('incoming')
   @AllowedFor('OWNER', 'FULL_EMPLOYEE', 'MINI_EMPLOYEE')
   @RequiresService('consignments.receive')
-  @ApiOperation({ summary: 'List all consignment requests sent to the current user (as debtor)' })
+  @ApiOperation({ summary: 'List consignment requests sent to the current user (as debtor). Send `page` for a paginated envelope.' })
   @ApiResponse({ status: 200, type: [ConsignmentRequest] })
-  findIncoming(@CurrentActorContext() ctx: ActorContext): Promise<ConsignmentRequest[]> {
-    return this.consignmentsService.findIncoming(ctx);
+  findIncoming(
+    @CurrentActorContext() ctx: ActorContext,
+    @Query() query: ListConsignmentsDto,
+  ): Promise<ConsignmentRequest[] | Paginated<ConsignmentRequest>> {
+    return this.consignmentsService.findIncoming(ctx, query);
   }
 
   @Patch(':id/confirm')

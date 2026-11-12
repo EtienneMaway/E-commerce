@@ -37,8 +37,8 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
   const [printing, setPrinting] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: QK.consignmentsIncoming,
-    queryFn: consignmentsApi.incoming,
+    queryKey: QK.consignmentsPending,
+    queryFn: consignmentsApi.incomingPending,
     enabled: visible,
     staleTime: 15_000,
   });

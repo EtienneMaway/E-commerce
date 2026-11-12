@@ -32,6 +32,9 @@ export const NAV_SERVICE: Record<string, string | string[] | null> = {
   // Appointing and settling is owner-only (custody.manage); a custodian reaches
   // their own volume/accept/handover view through the same route via custody.hold.
   '/custody': ['custody.manage', 'custody.hold'],
+  // Owner (custody.manage) or the branch's person in charge (custody.hold). The
+  // API re-checks that the custody is at the branch being acted on.
+  '/branch-transfers': ['custody.manage', 'custody.hold'],
   '/my-salary': null,
   // Longest-prefix wins, so the business page is gated while /settings itself
   // stays open — it carries the account's own language, theme and password.

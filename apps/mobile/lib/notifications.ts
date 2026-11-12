@@ -61,7 +61,16 @@ export async function scheduleAlertNotifications(alerts: AlertItem[]): Promise<v
 }
 
 export interface AlertItem {
-  type: 'overdue_debtor' | 'low_stock';
+  type:
+    | 'overdue_debtor'
+    | 'low_stock'
+    | 'pending_consignment'
+    | 'inverted_exchange_rates'
+    | 'amended_sale'
+    | 'incoming_branch_transfer'
+    | 'pending_branch_payment';
+  // incoming_branch_transfer / pending_branch_payment
+  transferCount?: number;
   // overdue_debtor
   debtorUserId?: string;
   debtorUsername?: string;

@@ -18,6 +18,7 @@ import { ConsignmentsModule } from '../consignments/consignments.module';
 import { CurrencyModule } from '../currency/currency.module';
 import { SalesModule } from '../sales/sales.module';
 import { SalaryPaymentsModule } from '../salary-payments/salary-payments.module';
+import { BranchTransfersModule } from '../branch-transfers/branch-transfers.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { SalaryPaymentsModule } from '../salary-payments/salary-payments.module'
     // For the /dashboard/home aggregate, which folds the employee's pending
     // salary confirmations into the same response.
     SalaryPaymentsModule,
+    BranchTransfersModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

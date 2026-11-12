@@ -11,6 +11,104 @@ interface Translation {
 }
 
 export const FR_TRANSLATIONS: Translation[] = [
+  // ─── Branch transfers ────────────────────────────────────────────────────
+  {
+    pattern: /^Only the owner or the person in charge of this branch can do this$/,
+    fr: () => 'Seul le propriétaire ou le responsable de cette boutique peut faire cela',
+  },
+  {
+    pattern: /^Choose a different branch to send to$/,
+    fr: () => 'Choisissez une autre boutique comme destination',
+  },
+  {
+    pattern: /^Branch not found$/,
+    fr: () => 'Boutique introuvable',
+  },
+  {
+    pattern: /^That branch is closed$/,
+    fr: () => 'Cette boutique est fermée',
+  },
+  {
+    pattern: /^"(.+)" appears twice — combine the quantities$/,
+    fr: (m) => `« ${m[1]} » apparaît deux fois — regroupez les quantités`,
+  },
+  {
+    pattern: /^Not enough stock for "(.+)" — available (\d+), requested (\d+)$/,
+    fr: (m) => `Stock insuffisant pour « ${m[1]} » — disponible ${m[2]}, demandé ${m[3]}`,
+  },
+  {
+    pattern: /^This transfer is not addressed to this branch$/,
+    fr: () => "Ce transfert n'est pas destiné à cette boutique",
+  },
+  {
+    pattern: /^Only the sending branch can cancel this transfer$/,
+    fr: () => "Seule la boutique d'envoi peut annuler ce transfert",
+  },
+  {
+    pattern: /^Transfer not found$/,
+    fr: () => 'Transfert introuvable',
+  },
+  {
+    pattern: /^This transfer has already been answered$/,
+    fr: () => 'Ce transfert a déjà reçu une réponse',
+  },
+  {
+    pattern: /^Size not found for "(.+)"$/,
+    fr: (m) => `Taille introuvable pour « ${m[1]} »`,
+  },
+  {
+    pattern: /^System rate not set — configure the USD → FC rate in Settings before recording FC payments$/,
+    fr: () =>
+      "Taux système non défini — configurez le taux USD → FC dans les Paramètres avant d'enregistrer des paiements en FC",
+  },
+  {
+    pattern: /^This branch owes nothing to that branch$/,
+    fr: () => 'Cette boutique ne doit rien à cette boutique-là',
+  },
+  {
+    pattern: /^Payment is more than this branch owes$/,
+    fr: () => 'Le paiement dépasse ce que cette boutique doit',
+  },
+  {
+    pattern: /^A payment to that branch is still waiting to be confirmed$/,
+    fr: () => 'Un paiement vers cette boutique attend encore sa confirmation',
+  },
+  {
+    pattern: /^This payment is not addressed to this branch$/,
+    fr: () => "Ce paiement n'est pas destiné à cette boutique",
+  },
+  {
+    pattern: /^Payment not found$/,
+    fr: () => 'Paiement introuvable',
+  },
+  {
+    pattern: /^This payment has already been answered$/,
+    fr: () => 'Ce paiement a déjà reçu une réponse',
+  },
+  {
+    pattern: /^Cannot rename while this product is in transit between branches\. Wait until the transfer is received or rejected\.$/,
+    fr: () =>
+      "Impossible de renommer pendant que ce produit est en transit entre boutiques. Attendez que le transfert soit reçu ou refusé.",
+  },
+  {
+    pattern: /^Settle the transfers and balances between this branch and the others before closing it$/,
+    fr: () =>
+      'Réglez les transferts et les soldes entre cette boutique et les autres avant de la fermer',
+  },
+  {
+    pattern: /^Goods sent from this volume to another branch are still in transit — wait until they are received or rejected$/,
+    fr: () =>
+      'Des marchandises envoyées depuis ce volume vers une autre boutique sont encore en transit — attendez leur réception ou leur refus',
+  },
+  {
+    pattern: /^Goods you sent to another branch are still in transit — wait until they are received or rejected$/,
+    fr: () =>
+      'Les marchandises que vous avez envoyées à une autre boutique sont encore en transit — attendez leur réception ou leur refus',
+  },
+  {
+    pattern: /^A payment you made to another branch is still waiting to be confirmed$/,
+    fr: () => 'Un paiement que vous avez fait à une autre boutique attend encore sa confirmation',
+  },
   // ─── Shops / branches ────────────────────────────────────────────────────
   {
     pattern: /^A branch with this name already exists$/,

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import {
   ACTIVITY_LOG_TYPES,
   ActivityLogEntry,
@@ -108,6 +108,8 @@ export default function ActivityPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: QK.activityLogs(params),
+    // Previous page stays on screen while the next loads — no spinner flash.
+    placeholderData: keepPreviousData,
     queryFn: () => activityLogsApi.list(params),
   });
 
