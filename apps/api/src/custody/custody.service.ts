@@ -186,7 +186,9 @@ export class CustodyService {
           quantityRemaining: e.quantityRemaining,
           unitCost: e.unitCost,
           sellingPrice: e.sellingPrice,
-          piecesPerCarton: e.piecesPerCarton,
+          // A size's carton count lives on its variant (the lot's own column is
+          // often empty for sized stock) — branch-transfer carton picking needs it.
+          piecesPerCarton: e.variant?.piecesPerCarton ?? e.piecesPerCarton,
           entryIds: [e.id],
         });
       }
