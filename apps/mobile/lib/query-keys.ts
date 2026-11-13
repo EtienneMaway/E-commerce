@@ -3,9 +3,12 @@ export const QK = {
   appVersion: (version: string, build: number | null) =>
     ['app-version', version, build] as const,
   inventoryProducts: ['inventory', 'products'] as const,
-  inventory: (filters?: object) => ['inventory', filters] as const,
-  salesHistory: (filters?: object) => ['sales', 'history', filters] as const,
-  topProducts: (filters?: object) => ['sales', 'top-products', filters] as const,
+  inventory: (filters?: object) => ['inventory', filters ?? {}] as const,
+  salesHistory: (filters?: object) => ['sales', 'history', filters ?? {}] as const,
+  // Infinite (paged) history. The `pages` marker keeps it apart from the old
+  // single-page entries an older build persisted under salesHistory(filters).
+  salesHistoryPages: (filters: object) => ['sales', 'history', { ...filters, pages: true }] as const,
+  topProducts: (filters?: object) => ['sales', 'top-products', filters ?? {}] as const,
   dashboard: ['dashboard', 'summary'] as const,
   /** Composite home payload — replaces 5 separate calls. See dashboardApi.home. */
   dashboardHome: ['dashboard', 'home'] as const,
@@ -33,8 +36,14 @@ export const QK = {
   // expense mutation refreshes the full-employee daily allowance too.
   expenseAllowance: ['expenses', 'allowance'] as const,
   cashPosition: ['dashboard', 'cash-position'] as const,
-  employments: (filters?: object) => ['employments', filters] as const,
+  employments: (filters?: object) => ['employments', filters ?? {}] as const,
   consignmentsIncoming: ['consignments', 'incoming'] as const,
+  // Children of consignmentsIncoming, so its invalidations (inbox signal,
+  // confirm/reject) refresh them. Distinct keys, never the bare prefix: a cache
+  // persisted by an older build holds a plain array there, and an infinite
+  // query reading it would crash.
+  consignmentsPending: ['consignments', 'incoming', 'pending'] as const,
+  consignmentsHistoryPages: ['consignments', 'incoming', 'history-pages'] as const,
   miniSettlementsOutgoing: ['mini-settlements', 'outgoing'] as const,
   miniExpenses: ['mini-settlements', 'expenses'] as const,
   miniExpensesAll: ['mini-settlements', 'expenses', 'all'] as const,
@@ -43,6 +52,13 @@ export const QK = {
   miniTeam: ['mini-settlements', 'team'] as const,
   miniStats: (period: string) => ['mini-settlements', 'stats', period] as const,
   custodyMine: ['custody', 'mine'] as const,
+  // Branch transfers — one prefix so a single invalidation refreshes them all.
+  branchTransfersAll: ['branch-transfers'] as const,
+  branchTransfers: (direction: string) => ['branch-transfers', 'list', direction] as const,
+  branchTransferPages: (direction: string) => ['branch-transfers', 'list', direction, 'pages'] as const,
+  branchDestinations: ['branch-transfers', 'destinations'] as const,
+  branchBalances: ['branch-transfers', 'balances'] as const,
+  branchPayments: ['branch-transfers', 'payments'] as const,
   custodyIssues: ['custody', 'mine', 'issues'] as const,
   custodyPendingSales: ['custody', 'mine', 'pending-sales'] as const,
   custodyPreview: ['custody', 'mine', 'handover-preview'] as const,

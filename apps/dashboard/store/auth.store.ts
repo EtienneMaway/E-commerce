@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { clearPersistedQueryCache } from '../lib/query-cache-key';
 import { setAuthToken } from '../lib/api';
 
 export interface ActiveEmployment {
@@ -45,6 +46,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   token: null,
   user: null,
   login: (token, user) => {
+    // A fresh sign-in starts from the server, never from a previous session's cache.
+    clearPersistedQueryCache();
     localStorage.setItem('auth_token', token);
     localStorage.setItem('auth_user', JSON.stringify(user));
     setAuthToken(token);
@@ -57,6 +60,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
+    // The saved query cache holds this account's books — never leave it behind.
+    clearPersistedQueryCache();
     setAuthToken(null);
     set({ token: null, user: null });
   },

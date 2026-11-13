@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { salesApi, inventoryApi } from '../../lib/api';
@@ -24,6 +23,7 @@ import {
   type ReceiptItem,
 } from '../../lib/receipt';
 import { formatDate, getErrorMessage } from '../../lib/utils';
+import { showAlert } from '../../lib/alert';
 
 interface SaleRow {
   id: string;
@@ -159,9 +159,9 @@ export function ReprintReceiptModal({ source, onClose }: Props) {
       onClose();
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+        showAlert(t.printer.printFailed, getErrorMessage(err));
       } else {
-        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
+        showAlert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrinting(false);
@@ -180,7 +180,7 @@ export function ReprintReceiptModal({ source, onClose }: Props) {
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View className="flex-1 justify-end bg-black/50">
         <View className="bg-background rounded-t-3xl px-5 py-6 max-h-[85%]">
-          <Text className="text-text font-bold text-lg mb-1">
+          <Text className="font-bold text-xl text-text mb-1">
             {t.sales.reprintTitle}
           </Text>
           <Text className="text-muted text-xs mb-3">

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ScrollView, View, Text, RefreshControl, TouchableOpacity, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScrollView, View, Text, TouchableOpacity, Pressable, ActivityIndicator } from 'react-native';
 import Constants from 'expo-constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
@@ -12,6 +13,11 @@ import { usePermissions } from '../../lib/permissions';
 import { NoAccessNotice } from '../../components/NoAccessNotice';
 import { StatCard } from '../../components/ui/StatCard';
 import { Card } from '../../components/ui/Card';
+import { Icon } from '../../components/ui/Icon';
+import { NavRow } from '../../components/ui/NavRow';
+import { Sheet, SheetPoint } from '../../components/ui/Sheet';
+import { Button } from '../../components/ui/Button';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { PersonaSwitcher } from '../../components/ui/PersonaSwitcher';
 import { ShopSwitcher } from '../../components/ui/ShopSwitcher';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
@@ -25,9 +31,12 @@ import { usePersonaStore } from '../../store/persona.store';
 import { useThemeStore } from '../../store/theme.store';
 import { useLocaleStore } from '../../store/locale.store';
 import { useOfflineStore } from '../../store/offline.store';
+import { useShopStore } from '../../store/shop.store';
 import { syncPendingSales } from '../../lib/sync';
 import { formatMoney } from '../../lib/currency';
 import type { AlertItem } from '../../lib/notifications';
+import { showAlert } from '../../lib/alert';
+import { PullRefreshControl } from '../../components/ui/PullRefreshControl';
 
 interface ProductSummary {
   productName: string;
@@ -42,13 +51,24 @@ interface ProductSummary {
 }
 
 export default function DashboardScreen() {
+  const insets = useSafeAreaInsets();
   const brand = useBrand();
   const t = useT();
   const user = useAuthStore((s) => s.user);
   // Show salary surfaces whenever the user has an active employment — the
   // salary is theirs regardless of which persona they're currently acting as.
-  const { can, canAny, hasNoAccess } = usePermissions();
+  const { can, canAny, hasNoAccess, unrestricted } = usePermissions();
   const isEmployee = !!user?.activeEmployment;
+  // Branch transfers: the owner once the business has a second branch, or the
+  // custodian (person in charge) of this branch. Nobody else can act on them.
+  const shopCount = useShopStore((s) => s.shops.length);
+  const ownsBusiness = useShopStore((s) => !!s.organization?.isOwner);
+  // Whose books the money card shows: the branch in view, or — acting for an
+  // employer — their business.
+  const branchName = useShopStore((s) => s.shops.find((x) => x.id === (s.selectedId ?? s.defaultShopId))?.name);
+  const orgName = useShopStore((s) => s.organization?.name);
+  const showBranchTransfers =
+    (unrestricted && ownsBusiness && shopCount > 1) || (!unrestricted && can('custody.hold'));
   // A mini (SALES_ONLY) employee sees their own handover-oriented stats instead
   // of the owner dashboard cards. A FULL employee sees the owner cards plus a
   // self-scoped "my activity" card while acting on the employer's books.
@@ -120,6 +140,10 @@ export default function DashboardScreen() {
 
   const alerts = (alertsData as AlertItem[] | undefined) ?? [];
   const lowStockItems = alerts.filter((a) => a.type === 'low_stock');
+  // Transfers to verify + payments to confirm at this branch.
+  const branchWaiting = alerts
+    .filter((a) => a.type === 'incoming_branch_transfer' || a.type === 'pending_branch_payment')
+    .reduce((n, a) => n + (a.transferCount ?? 0), 0);
 
   // Pending sales + expenses stats for sync banner
   const pendingCount = pendingSales.length;
@@ -144,62 +168,58 @@ export default function DashboardScreen() {
       ? Math.min(100, Math.round((syncProgress.completed / syncProgress.total) * 100))
       : 0;
 
-  const handleToggleOffline = () => {
-    if (isOffline) {
-      Alert.alert(t.home.onlineConfirmTitle, t.home.onlineConfirmMsg, [
-        { text: t.common.cancel, style: 'cancel' },
-        { text: t.home.goOnline, onPress: () => disableOfflineMode() },
+  // The confirmation sheet replaces the bare system alerts: which way we are
+  // going decides its tone, points and button.
+  const [offlineSheet, setOfflineSheet] = useState<'goOffline' | 'goOnline' | null>(null);
+  const handleToggleOffline = () => setOfflineSheet(isOffline ? 'goOnline' : 'goOffline');
+
+  const confirmGoOffline = async () => {
+    setOfflineSheet(null);
+    setPreparingOffline(true);
+    try {
+      // Fetch the current rate + products in parallel so the offline
+      // snapshot freezes both at the same moment. The rate is admin-
+      // set on the API and doesn't change intraday, so locking it in
+      // for the session keeps every FC display correct without
+      // re-querying.
+      // Minis also carry their expense ceiling into the session, so
+      // offline expenses can be checked on the spot instead of piling
+      // up to be rejected when the queue drains.
+      const [products, rate, allowance] = await Promise.all([
+        inventoryApi.listProducts() as Promise<ProductSummary[]>,
+        currencyApi.getRate(),
+        isMini
+          ? miniSettlementsApi.expenseAllowance().catch(() => null)
+          : Promise.resolve(null),
       ]);
-    } else {
-      Alert.alert(t.home.offlineConfirmTitle, t.home.offlineConfirmMsg, [
-        { text: t.common.cancel, style: 'cancel' },
-        {
-          text: t.home.goOffline,
-          onPress: async () => {
-            setPreparingOffline(true);
-            try {
-              // Fetch the current rate + products in parallel so the offline
-              // snapshot freezes both at the same moment. The rate is admin-
-              // set on the API and doesn't change intraday, so locking it in
-              // for the session keeps every FC display correct without
-              // re-querying.
-              // Minis also carry their expense ceiling into the session, so
-              // offline expenses can be checked on the spot instead of piling
-              // up to be rejected when the queue drains.
-              const [products, rate, allowance] = await Promise.all([
-                inventoryApi.listProducts() as Promise<ProductSummary[]>,
-                currencyApi.getRate(),
-                isMini
-                  ? miniSettlementsApi.expenseAllowance().catch(() => null)
-                  : Promise.resolve(null),
-              ]);
-              enableOfflineMode(
-                products
-                  .filter((p) => p.totalAvailable > 0)
-                  .map((p) => ({
-                    productName: p.productName,
-                    unitCost: p.latestUnitCost,
-                    availableQty: p.totalAvailable,
-                    piecesPerCarton: p.piecesPerCarton,
-                    latestSellingPrice: p.latestSellingPrice,
-                    latestCartonPrice: p.latestCartonPrice,
-                    category: p.category,
-                    usdToFcRateSnapshot: p.usdToFcRateSnapshot,
-                  })),
-                rate.usdToFcRate,
-                allowance
-                  ? { pct: allowance.pct, soldFc: allowance.soldFc, spentFc: allowance.spentFc }
-                  : null,
-              );
-            } catch {
-              Alert.alert(t.common.error, t.home.preparingOffline);
-            } finally {
-              setPreparingOffline(false);
-            }
-          },
-        },
-      ]);
+      enableOfflineMode(
+        products
+          .filter((p) => p.totalAvailable > 0)
+          .map((p) => ({
+            productName: p.productName,
+            unitCost: p.latestUnitCost,
+            availableQty: p.totalAvailable,
+            piecesPerCarton: p.piecesPerCarton,
+            latestSellingPrice: p.latestSellingPrice,
+            latestCartonPrice: p.latestCartonPrice,
+            category: p.category,
+            usdToFcRateSnapshot: p.usdToFcRateSnapshot,
+          })),
+        rate.usdToFcRate,
+        allowance
+          ? { pct: allowance.pct, soldFc: allowance.soldFc, spentFc: allowance.spentFc }
+          : null,
+      );
+    } catch {
+      showAlert(t.common.error, t.home.preparingOffline);
+    } finally {
+      setPreparingOffline(false);
     }
+  };
+
+  const confirmGoOnline = () => {
+    setOfflineSheet(null);
+    disableOfflineMode();
   };
 
   const runSync = async () => {
@@ -214,9 +234,9 @@ export default function DashboardScreen() {
 
     if (result.failed === 0) {
       // Nothing to report when there was nothing to do (e.g. a no-op restart).
-      if (result.synced > 0) Alert.alert('✅', t.home.syncDone(result.synced));
+      if (result.synced > 0) showAlert('✅', t.home.syncDone(result.synced));
     } else {
-      Alert.alert(
+      showAlert(
         t.home.syncFailed(result.failed),
         result.errors.length > 0 ? `${t.home.syncErrors}\n${result.errors.join('\n')}` : undefined,
       );
@@ -243,17 +263,23 @@ export default function DashboardScreen() {
     ? t.home.offlineSnapshotAt(new Date(snapshotTakenAt).toLocaleTimeString())
     : null;
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? t.home.greetMorning : hour < 18 ? t.home.greetAfternoon : t.home.greetEvening;
+
   const lastSyncedLabel = lastSyncedAt
     ? t.home.lastSynced(new Date(lastSyncedAt).toLocaleTimeString())
     : null;
 
   return (
+    <View className="flex-1 bg-background">
     <ScrollView
       className="flex-1 bg-background"
-      contentContainerClassName="px-4 pt-14 pb-8"
+      contentContainerClassName="px-5 pb-8"
+      // Real status-bar height + a margin: a fixed pt-14 put the date line
+      // under the paper strip on phones whose status bar is ~56dp tall.
+      contentContainerStyle={{ paddingTop: insets.top + 16 }}
       refreshControl={
-        <RefreshControl
-          refreshing={isRefetching}
+        <PullRefreshControl
           onRefresh={() => {
             // Re-read the profile so a role the employer changed since app start
             // takes effect here — otherwise granted features would stay hidden
@@ -266,19 +292,30 @@ export default function DashboardScreen() {
               });
             // For minis the dashboard query is disabled, so refetch() is a no-op;
             // invalidate their stats explicitly so pull-to-refresh still works.
-            if (isMini) qc.invalidateQueries({ queryKey: ['mini-settlements'] });
-            else void refetch();
+            // Returned so the spinner stays until the figures are back.
+            return isMini ? qc.invalidateQueries({ queryKey: ['mini-settlements'] }) : refetch();
           }}
           enabled={!isOffline}
         />
       }
     >
-      {/* Header */}
-      <View className="flex-row items-center justify-between mb-4">
-        <View className="flex-1 pr-2">
-          <Text className="text-2xl font-bold text-text">{t.home.title}</Text>
-          <View className="flex-row items-center gap-2 mt-0.5">
-            <Text className="text-muted text-sm">@{user?.username}</Text>
+      {/* Header — greeting in the serif, date as a copper kicker */}
+      <Animated.View entering={FadeInDown.duration(420)} className="flex-row items-start justify-between mb-6">
+        <View className="flex-1 pr-3">
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-accent mb-1.5" numberOfLines={1}>
+            {new Date().toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </Text>
+          <Text className="font-bold text-[30px] leading-[34px] text-text">
+            {greeting}
+            {user?.name || user?.username ? ',' : ''}
+          </Text>
+          {user?.name || user?.username ? (
+            <Text className="font-bold italic text-[30px] leading-[36px] text-primary" numberOfLines={1} adjustsFontSizeToFit>
+              {user?.name ? user.name.split(' ')[0] : user?.username}
+            </Text>
+          ) : null}
+          <View className="flex-row items-center gap-2 mt-3 flex-wrap">
+            <Text className="font-mono text-xs text-muted">@{user?.username}</Text>
             {/* Always rendered for any active employment (PersonaSwitcher itself
                 no-ops without one) — a mini (SALES_ONLY) employee needs this too,
                 since PersonaBanner's "switch to self" link is a one-way door for
@@ -288,18 +325,26 @@ export default function DashboardScreen() {
             <ShopSwitcher />
           </View>
         </View>
-        <View className="flex-row items-center gap-3">
-          <TouchableOpacity onPress={toggle}>
-            <Text className="text-xl">{theme === 'dark' ? '☀️' : '🌙'}</Text>
+        <View className="flex-row items-center gap-2 pt-4">
+          <TouchableOpacity
+            onPress={toggle}
+            className="w-10 h-10 rounded-full bg-card border border-border items-center justify-center"
+            accessibilityLabel={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          >
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={17} />
           </TouchableOpacity>
-          <View className="flex-row items-center gap-1 bg-card rounded-lg px-1 py-0.5">
+          {/* Both languages on show, the active one filled — tapping the other
+              is self-evident, unlike a single "EN" button. */}
+          <View className="h-10 flex-row items-center rounded-full bg-card border border-border p-1">
             {(['en', 'fr'] as const).map((l) => (
               <TouchableOpacity
                 key={l}
                 onPress={() => void useLocaleStore.getState().setLocale(l)}
-                className={`px-2 py-1 rounded-md ${locale === l ? 'bg-primary' : ''}`}
+                className={`h-8 px-2.5 rounded-full items-center justify-center ${locale === l ? 'bg-text' : ''}`}
+                accessibilityLabel={l === 'en' ? 'English' : 'Français'}
+                accessibilityState={{ selected: locale === l }}
               >
-                <Text className={`text-xs font-bold ${locale === l ? 'text-white' : 'text-muted'}`}>
+                <Text className={`font-mono-bold text-[11px] ${locale === l ? 'text-background' : 'text-muted'}`}>
                   {l.toUpperCase()}
                 </Text>
               </TouchableOpacity>
@@ -309,11 +354,12 @@ export default function DashboardScreen() {
             onPress={() => router.push('/account')}
             hitSlop={8}
             accessibilityLabel={t.account.menuTitle}
+            className="w-10 h-10 rounded-full bg-primary items-center justify-center"
           >
-            <Text className="text-xl">👤</Text>
+            <Text className="text-white font-mono-bold text-sm">{(user?.username ?? '?').slice(0, 1).toUpperCase()}</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </Animated.View>
 
       <PersonaBanner />
 
@@ -324,67 +370,68 @@ export default function DashboardScreen() {
       {/* Offline mode toggle */}
       <TouchableOpacity
         onPress={preparingOffline ? undefined : handleToggleOffline}
-        className={`flex-row items-center justify-between rounded-2xl px-4 py-3 mb-4 border ${
-          isOffline
-            ? 'bg-amber-50 dark:bg-amber-950 border-amber-300 dark:border-amber-700'
-            : 'bg-card border-border'
+        className={`flex-row items-center justify-between rounded-3xl px-4 py-3 mb-4 border ${
+          isOffline ? 'bg-warning-light border-warning/40' : 'bg-card border-border'
         }`}
         activeOpacity={0.8}
       >
-        <View className="flex-row items-center gap-3">
-          {preparingOffline ? (
-            <ActivityIndicator size="small" color={brand.warning} />
-          ) : (
-            <Text className="text-base">{isOffline ? '📴' : '📶'}</Text>
-          )}
-          <View>
-            <Text className={`font-semibold text-sm ${isOffline ? 'text-amber-700 dark:text-amber-300' : 'text-text'}`}>
+        <View className="flex-row items-center gap-3 flex-1">
+          <View className={`w-9 h-9 rounded-2xl items-center justify-center ${isOffline ? 'bg-warning/15' : 'bg-surface'}`}>
+            {preparingOffline ? (
+              <ActivityIndicator size="small" color={brand.warning} />
+            ) : (
+              <Icon name={isOffline ? 'wifi-off' : 'wifi'} size={17} tone={isOffline ? 'warning' : 'muted'} />
+            )}
+          </View>
+          <View className="flex-1">
+            <Text className={`font-semibold text-sm ${isOffline ? 'text-warning' : 'text-text'}`}>
               {preparingOffline ? t.home.preparingOffline : isOffline ? t.home.offlineModeActive : t.home.goOffline}
             </Text>
-            {isOffline && snapshotLabel && (
-              <Text className="text-amber-600 dark:text-amber-400 text-xs">{snapshotLabel}</Text>
-            )}
+            {isOffline && snapshotLabel ? (
+              <Text className="text-warning text-xs opacity-80">{snapshotLabel}</Text>
+            ) : !isOffline && !preparingOffline ? (
+              <Text className="text-muted text-xs">{t.home.goOfflineHint}</Text>
+            ) : null}
           </View>
         </View>
         {!preparingOffline && (
-          <View className={`px-3 py-1 rounded-full ${isOffline ? 'bg-amber-200 dark:bg-amber-800' : 'bg-background'}`}>
-            <Text className={`text-xs font-bold ${isOffline ? 'text-amber-800 dark:text-amber-200' : 'text-muted'}`}>
-              {isOffline ? t.home.goOnline : 'OFF'}
-            </Text>
+          // A switch, drawn: the knob sits right when offline mode is on.
+          <View className={`w-11 h-6 rounded-full p-0.5 ${isOffline ? 'bg-warning items-end' : 'bg-muted-subtle items-start'}`}>
+            <View className="w-5 h-5 rounded-full bg-white" />
           </View>
         )}
       </TouchableOpacity>
 
       {/* Sync banner — shown whenever there are pending sales or expenses */}
       {(pendingCount > 0 || pendingExpenseCount > 0 || pendingRejectionCount > 0) && (
-        <View className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-2xl px-4 py-3 mb-4">
+        <View className="bg-primary-light border border-primary/30 rounded-3xl px-4 py-3.5 mb-4">
           <View className="flex-row items-center justify-between mb-2">
             <View className="flex-1 pr-2">
-              <Text className="text-blue-700 dark:text-blue-300 font-bold text-sm">
-                🔄 {pendingCount > 0 ? t.home.pendingSalesCount(pendingCount) : t.home.pendingSyncTitle}
+              <Text className="text-primary font-bold text-sm">
+                {pendingCount > 0 ? t.home.pendingSalesCount(pendingCount) : t.home.pendingSyncTitle}
               </Text>
               {pendingCount > 0 && (
-                <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5">
+                <Text className="text-primary/80 text-xs mt-0.5">
                   {formatMoney(pendingTotalFc, '1')} total
                 </Text>
               )}
               {pendingExpenseCount > 0 && (
-                <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5">
-                  🧾 {t.home.pendingExpensesCount(pendingExpenseCount)}
+                <Text className="text-primary/80 text-xs mt-0.5">
+                  {t.home.pendingExpensesCount(pendingExpenseCount)}
                 </Text>
               )}
               {pendingRejectionCount > 0 && (
-                <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5">
-                  ⛔ {t.home.pendingRejectionsCount(pendingRejectionCount)}
+                <Text className="text-primary/80 text-xs mt-0.5">
+                  {t.home.pendingRejectionsCount(pendingRejectionCount)}
                 </Text>
               )}
               {isSyncing && syncProgress ? (
-                <Text className="text-blue-600 dark:text-blue-400 text-xs mt-0.5 tabular-nums">
+                <Text className="text-primary/80 text-xs mt-0.5 tabular-nums">
                   {t.home.syncProgress(syncProgress.completed, syncProgress.total, syncPct)}
                 </Text>
               ) : (
                 lastSyncedLabel && (
-                  <Text className="text-blue-500 dark:text-blue-500 text-xs mt-0.5">{lastSyncedLabel}</Text>
+                  <Text className="text-primary/70 text-xs mt-0.5">{lastSyncedLabel}</Text>
                 )
               )}
             </View>
@@ -392,24 +439,24 @@ export default function DashboardScreen() {
             {/* Action area: spinner while syncing; Resume+Restart after a
                 partial failure; a single Sync button otherwise. */}
             {isSyncing ? (
-              <View className="px-4 py-2 rounded-xl bg-blue-200 dark:bg-blue-800">
+              <View className="px-4 py-2 rounded-full bg-primary/15">
                 <ActivityIndicator size="small" color={brand.primary} />
               </View>
             ) : hasSyncErrors ? (
               <View className="flex-row gap-2">
                 <TouchableOpacity
                   onPress={handleSync}
-                  className="px-3 py-2 rounded-xl bg-primary"
+                  className="px-3 py-2 rounded-full bg-primary"
                   activeOpacity={0.8}
                 >
                   <Text className="text-white font-semibold text-sm">{t.home.syncResume}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleRestart}
-                  className="px-3 py-2 rounded-xl border border-blue-400 dark:border-blue-600"
+                  className="px-3 py-2 rounded-full border border-primary/40"
                   activeOpacity={0.8}
                 >
-                  <Text className="text-blue-700 dark:text-blue-300 font-semibold text-sm">
+                  <Text className="text-primary font-semibold text-sm">
                     {t.home.syncRestart}
                   </Text>
                 </TouchableOpacity>
@@ -417,7 +464,7 @@ export default function DashboardScreen() {
             ) : (
               <TouchableOpacity
                 onPress={handleSync}
-                className="px-4 py-2 rounded-xl bg-primary"
+                className="px-4 py-2 rounded-full bg-primary"
                 activeOpacity={0.8}
               >
                 <Text className="text-white font-semibold text-sm">{t.home.syncNow}</Text>
@@ -427,7 +474,7 @@ export default function DashboardScreen() {
 
           {/* Progress bar — real width from completed/total */}
           {(isSyncing || (syncProgress && syncProgress.completed < syncProgress.total)) && (
-            <View className="h-1.5 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden mt-1">
+            <View className="h-1.5 bg-primary/15 rounded-full overflow-hidden mt-1">
               <View
                 className="h-full bg-primary rounded-full"
                 style={{ width: `${syncPct}%` }}
@@ -437,7 +484,7 @@ export default function DashboardScreen() {
 
           {/* Failed sales + expenses list + retry hint */}
           {hasSyncErrors && (
-            <View className="mt-2 border-t border-blue-200 dark:border-blue-700 pt-2 gap-1">
+            <View className="mt-2 border-t border-primary/20 pt-2 gap-1">
               {pendingSales
                 .filter((s) => s.syncError)
                 .map((s) => (
@@ -449,17 +496,17 @@ export default function DashboardScreen() {
                 .filter((r) => r.syncError)
                 .map((r) => (
                   <Text key={r.id} className="text-danger text-xs">
-                    ⚠ ⛔ {r.productName} ×{r.qtySold} — {r.syncError}
+                    ⚠ {r.productName} ×{r.qtySold} — {r.syncError}
                   </Text>
                 ))}
               {pendingExpenses
                 .filter((e) => e.syncError)
                 .map((e) => (
                   <Text key={e.id} className="text-danger text-xs">
-                    ⚠ 🧾 {e.amount} — {e.syncError}
+                    ⚠ {e.amount} — {e.syncError}
                   </Text>
                 ))}
-              <Text className="text-blue-500 dark:text-blue-500 text-[11px] mt-1">
+              <Text className="text-primary/70 text-[11px] mt-1">
                 {t.home.syncRetryHint}
               </Text>
             </View>
@@ -471,21 +518,23 @@ export default function DashboardScreen() {
       {!isOffline && isEmployee && pendingSalaryCount > 0 && (
         <Pressable
           onPress={() => router.push('/salary')}
-          className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-xl px-4 py-3 mb-4 flex-row items-start gap-3"
-          style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
+          className="bg-warning-light border border-warning/30 rounded-3xl px-4 py-3.5 mb-4 flex-row items-center gap-3"
+          style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] })}
         >
-          <Text className="text-lg">💵</Text>
+          <View className="w-9 h-9 rounded-2xl bg-warning/15 items-center justify-center">
+            <Icon name="credit-card" size={17} tone="warning" />
+          </View>
           <View className="flex-1">
-            <Text className="text-amber-700 dark:text-amber-300 font-semibold text-sm">
+            <Text className="text-warning font-semibold text-sm">
               {pendingSalaryCount === 1
                 ? '1 salary payment to confirm'
                 : `${pendingSalaryCount} salary payments to confirm`}
             </Text>
-            <Text className="text-amber-600 dark:text-amber-400 text-sm mt-0.5">
+            <Text className="text-warning text-xs mt-0.5 opacity-80">
               {formatCurrency(pendingSalaryTotal.toFixed(4))} total · tap to review
             </Text>
           </View>
-          <Text className="text-amber-700 dark:text-amber-300 text-sm font-medium">›</Text>
+          <Icon name="chevron-right" size={18} tone="warning" />
         </Pressable>
       )}
 
@@ -495,21 +544,23 @@ export default function DashboardScreen() {
           {lowStockItems.length > 0 && (
             <Pressable
               onPress={() => router.push('/(tabs)/inventory')}
-              className="bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-900 rounded-xl px-4 py-3 flex-row items-start gap-3"
-              style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
+              className="bg-warning-light border border-warning/30 rounded-3xl px-4 py-3.5 flex-row items-center gap-3"
+              style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] })}
             >
-              <Text className="text-lg">📦</Text>
+              <View className="w-9 h-9 rounded-2xl bg-warning/15 items-center justify-center">
+                <Icon name="alert-triangle" size={17} tone="warning" />
+              </View>
               <View className="flex-1">
                 <Text className="text-warning font-semibold text-sm">
                   {t.home.lowStockItems(lowStockItems.length)}
                 </Text>
-                <Text className="text-warning text-sm mt-0.5">
+                <Text className="text-warning text-xs mt-0.5 opacity-80">
                   {lowStockItems.slice(0, 2).map((a) => a.productName).join(', ')}
                   {lowStockItems.length > 2 && ` +${lowStockItems.length - 2} more`}
                   {` ${t.home.lowStockSuffix}`}
                 </Text>
               </View>
-              <Text className="text-warning text-sm font-medium">{t.home.viewArrow}</Text>
+              <Icon name="chevron-right" size={18} tone="warning" />
             </Pressable>
           )}
         </View>
@@ -517,30 +568,28 @@ export default function DashboardScreen() {
 
       {/* Offline mode — simplified view */}
       {isOffline ? (
-        <View className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-6 items-center">
-          <Text className="text-3xl mb-2">📴</Text>
-          <Text className="text-amber-700 dark:text-amber-300 font-bold text-base text-center">
-            {t.home.offlineModeActive}
-          </Text>
-          <Text className="text-amber-600 dark:text-amber-400 text-sm text-center mt-1">
+        <View className="bg-warning-light border border-warning/30 rounded-3xl px-5 py-7 items-center">
+          <View className="w-14 h-14 rounded-full bg-warning/15 items-center justify-center mb-3">
+            <Icon name="wifi-off" size={24} tone="warning" />
+          </View>
+          <Text className="font-bold text-xl text-warning text-center">{t.home.offlineModeActive}</Text>
+          <Text className="text-warning text-sm text-center mt-1 opacity-90">
             {useOfflineStore.getState().cachedProducts.length} products available
           </Text>
-          <Text className="text-amber-500 dark:text-amber-500 text-xs text-center mt-1">
+          <Text className="text-warning text-xs text-center mt-1 opacity-70">
             Go to the Sales tab to record sales offline
           </Text>
 
-          <Pressable
-            onPress={() => router.push('/expenses')}
-            className="mt-4 self-stretch flex-row items-center bg-card border border-amber-300 dark:border-amber-700 rounded-xl px-4 py-3"
-            style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
-          >
-            <Text className="text-2xl mr-3">🧾</Text>
-            <View className="flex-1">
-              <Text className="text-text font-semibold text-sm">{t.expenses.title}</Text>
-              <Text className="text-muted text-xs mt-0.5">{t.home.recordExpenseOffline}</Text>
-            </View>
-            <Text className="text-muted text-lg">›</Text>
-          </Pressable>
+          <View className="self-stretch mt-5">
+            <NavRow
+              icon="file-text"
+              title={t.expenses.title}
+              subtitle={t.home.recordExpenseOffline}
+              onPress={() => router.push('/expenses')}
+              tone="warning"
+              className="mb-0"
+            />
+          </View>
         </View>
       ) : (
         <>
@@ -558,46 +607,67 @@ export default function DashboardScreen() {
               without it still sees their own scoped activity below. */}
           {can('cash.overview') && (
           <>
-          {/* Net Position */}
-          <Card className="mb-3">
-            <Text className="text-muted text-sm font-medium uppercase tracking-wide mb-1">{t.home.netPosition}</Text>
-            {isLoading ? (
-              <Text className="text-3xl font-bold text-text">—</Text>
-            ) : (
-              <Text
-                className={`text-3xl font-bold ${
-                  parseFloat(data?.netPosition ?? '0') >= 0 ? 'text-success' : 'text-danger'
-                }`}
-              >
-                {formatCurrency(data?.netPosition ?? '0')}
+          {/* The money hero — a deep malachite slip with a copper glow (the
+              site's closing band). Cash in the till leads; net position sits
+              under the rule. */}
+          <Animated.View
+            entering={FadeInDown.delay(80).duration(480)}
+            className="rounded-[28px] px-5 pt-5 pb-4 mb-4 overflow-hidden"
+            style={{
+              backgroundColor: '#0B3A2F',
+              experimental_backgroundImage:
+                'radial-gradient(120% 90% at 100% 0%, rgba(240,154,96,0.35) 0%, rgba(240,154,96,0) 60%), radial-gradient(90% 80% at 0% 100%, rgba(95,217,174,0.18) 0%, rgba(95,217,174,0) 65%)',
+              boxShadow: '0px 18px 34px -18px rgba(11, 58, 47, 0.8)',
+            }}
+          >
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="font-mono text-[10px] uppercase tracking-widest" style={{ color: 'rgba(239,232,216,0.6)' }}>
+                {t.home.availableBusinessCash}
               </Text>
-            )}
-            <Text className="text-muted text-sm mt-1">{t.home.netPositionSub}</Text>
-          </Card>
-
-          {/* Available Business Cash — what's actually in the till. Honors persona via X-Acting-As. */}
-          <Card className="mb-4">
-            <Text className="text-muted text-sm font-medium uppercase tracking-wide mb-1">
-              {t.home.availableBusinessCash}
+              <View className="flex-row items-center gap-1.5 rounded-full px-2 py-0.5" style={{ backgroundColor: 'rgba(239,232,216,0.1)' }}>
+                <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#6FE0B6' }} />
+                <Text className="font-mono text-[10px]" style={{ color: 'rgba(239,232,216,0.75)' }} numberOfLines={1}>
+                  {user?.activeEmployment
+                    ? persona === 'employer'
+                      ? (orgName ?? t.home.moneyKicker)
+                      : t.persona.selfSub
+                    : (branchName ?? orgName ?? t.home.moneyKicker)}
+                </Text>
+              </View>
+            </View>
+            <Text
+              className="font-bold text-[40px] leading-[46px]"
+              style={{ color: cashData && parseFloat(cashData.availableBusinessCash) < 0 ? '#F2A27A' : '#EFE8D8' }}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {cashData ? formatCurrency(cashData.availableBusinessCash) : '—'}
             </Text>
-            {cashData ? (
-              <Text
-                className={`text-3xl font-bold ${
-                  parseFloat(cashData.availableBusinessCash) >= 0 ? 'text-success' : 'text-danger'
-                }`}
-              >
-                {formatCurrency(cashData.availableBusinessCash)}
-              </Text>
-            ) : (
-              <Text className="text-3xl font-bold text-text">—</Text>
-            )}
-            <Text className="text-muted text-sm mt-1">
+            <Text className="text-xs mt-1" style={{ color: 'rgba(239,232,216,0.6)' }}>
               {cashData && parseFloat(cashData.availableBusinessCash) < 0
                 ? t.home.availableBusinessCashOver
                 : t.home.availableBusinessCashSub}
             </Text>
-          </Card>
+            <View className="my-4" style={{ borderTopWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(239,232,216,0.18)' }} />
+            <View className="flex-row items-end justify-between">
+              <View className="flex-1 pr-2">
+                <Text className="font-mono text-[10px] uppercase tracking-widest" style={{ color: 'rgba(239,232,216,0.6)' }}>
+                  {t.home.netPosition}
+                </Text>
+                <Text className="text-[11px] mt-0.5" style={{ color: 'rgba(239,232,216,0.45)' }} numberOfLines={1}>
+                  {t.home.netPositionSub}
+                </Text>
+              </View>
+              <Text
+                className="font-mono-bold text-lg"
+                style={{ color: parseFloat(data?.netPosition ?? '0') >= 0 ? '#6FE0B6' : '#F2A27A' }}
+              >
+                {isLoading ? '—' : formatCurrency(data?.netPosition ?? '0')}
+              </Text>
+            </View>
+          </Animated.View>
 
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2 ml-1">{t.home.sectionMoney}</Text>
           {/* KPI row 1 */}
           <View className="flex-row gap-3 mb-3">
             <StatCard
@@ -636,18 +706,18 @@ export default function DashboardScreen() {
               `custody.hold` is grantable to a full employee, and an owner never
               holds it — they are not anybody's custodian. */}
           {can('custody.hold') && (
-            <Pressable
-              onPress={() => router.push('/custody')}
-              className="flex-row items-center bg-card border border-border rounded-xl px-4 py-3 mb-4"
-              style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
-            >
-              <Text className="text-2xl mr-3">📦</Text>
-              <View className="flex-1">
-                <Text className="text-text font-semibold text-sm">{t.custody.homeTile}</Text>
-                <Text className="text-muted text-xs mt-0.5">{t.custody.homeHint}</Text>
-              </View>
-              <Text className="text-muted text-lg">›</Text>
-            </Pressable>
+            <NavRow icon="shield" title={t.custody.homeTile} subtitle={t.custody.homeHint} onPress={() => router.push('/custody')} />
+          )}
+
+          {showBranchTransfers && (
+            <NavRow
+              icon="truck"
+              tone="accent"
+              title={t.branchTransfers.homeTile}
+              subtitle={t.branchTransfers.homeHint}
+              badge={branchWaiting}
+              onPress={() => router.push('/branch-transfers')}
+            />
           )}
 
           {/* Mini-employee actions (Receive products, Hand over) — placed
@@ -656,59 +726,47 @@ export default function DashboardScreen() {
 
           {/* Expenses entry tile */}
           {canAny('expenses.view', 'expenses.record') && (
-          <Pressable
-            onPress={() => router.push('/expenses')}
-            className="flex-row items-center bg-card border border-border rounded-2xl px-4 py-4 mb-3"
-            style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
-          >
-            <Text className="text-2xl mr-3">🧾</Text>
-            <View className="flex-1">
-              <Text className="text-text font-semibold text-base">{t.expenses.title}</Text>
-              <Text className="text-muted text-xs mt-0.5">{t.expenses.subtitle}</Text>
-            </View>
-            <Text className="text-muted text-xl">›</Text>
-          </Pressable>
+            <NavRow icon="file-text" title={t.expenses.title} subtitle={t.expenses.subtitle} onPress={() => router.push('/expenses')} />
           )}
 
           {/* Salary entry tile — shown to anyone with an active employment */}
           {isEmployee && (
-            <Pressable
+            <NavRow
+              icon="credit-card"
+              tone="accent"
+              title={t.salary.title}
+              subtitle={t.salary.homeSubtitle}
               onPress={() => router.push('/salary')}
-              className="flex-row items-center bg-card border border-border rounded-2xl px-4 py-4 mb-5"
-              style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
-            >
-              <Text className="text-2xl mr-3">💵</Text>
-              <View className="flex-1">
-                <Text className="text-text font-semibold text-base">{t.salary.title}</Text>
-                <Text className="text-muted text-xs mt-0.5">{t.salary.homeSubtitle}</Text>
-              </View>
-              <Text className="text-muted text-xl">›</Text>
-            </Pressable>
+              className="mb-5"
+            />
           )}
 
           {/* Top Suppliers — owner/full-employee only; a mini's only "supplier"
               is their employer, already surfaced as "I owe". */}
           {!isMini && can('suppliers.view') && (suppliers?.length ?? 0) > 0 && (
             <View className="mb-5">
-              <Text className="text-text font-semibold text-lg mb-2">{t.home.topSuppliers}</Text>
+              <Text className="font-bold text-xl text-text mb-3 mt-2">{t.home.topSuppliers}</Text>
               {(suppliers as Array<{ supplierUserId: string; supplierUsername: string; outstandingBalance: string }>)
                 .slice(0, 3)
                 .map((s) => (
                   <Pressable
                     key={s.supplierUserId}
                     onPress={() => router.push(`/supplier/${s.supplierUserId}`)}
-                    className="flex-row items-center justify-between bg-card border border-border rounded-xl px-4 py-3 mb-2"
-                    style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] })}
+                    className="flex-row items-center bg-card border border-border rounded-3xl px-4 py-3 mb-2"
+                    style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] })}
                   >
-                    <View>
-                      <Text className="text-text font-semibold text-base">@{s.supplierUsername}</Text>
-                      <Text className="text-muted text-sm">{t.home.youOwe}</Text>
+                    <View className="w-10 h-10 rounded-full bg-accent-light items-center justify-center mr-3">
+                      <Text className="font-bold text-base text-accent">{s.supplierUsername.slice(0, 1).toUpperCase()}</Text>
                     </View>
-                    <Text className="text-danger font-bold text-base">{formatCurrency(s.outstandingBalance)}</Text>
+                    <View className="flex-1">
+                      <Text className="text-text font-semibold text-[15px]">@{s.supplierUsername}</Text>
+                      <Text className="text-muted text-xs">{t.home.youOwe}</Text>
+                    </View>
+                    <Text className="font-mono-bold text-danger text-[15px]">{formatCurrency(s.outstandingBalance)}</Text>
                   </Pressable>
                 ))}
               <TouchableOpacity onPress={() => router.push('/(tabs)/network')}>
-                <Text className="text-primary text-sm font-medium text-center mt-1">{t.home.viewAllSuppliers}</Text>
+                <Text className="text-primary text-sm font-semibold text-center mt-2">{t.home.viewAllSuppliers}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -718,11 +776,54 @@ export default function DashboardScreen() {
 
       {/* App version footer — keep last so the value is easy for users to read out during bug reports. */}
       <View className="items-center mt-8 mb-4">
-        <Text className="text-muted text-xs tabular-nums">
-          v{Constants.expoConfig?.version ?? Constants.nativeAppVersion ?? '—'}
+        <Text className="font-mono text-muted text-[10px] tracking-widest">
+          KMB-TALK · v{Constants.expoConfig?.version ?? Constants.nativeAppVersion ?? '—'}
           {Constants.nativeBuildVersion ? ` (${Constants.nativeBuildVersion})` : ''}
         </Text>
       </View>
     </ScrollView>
+    <Sheet
+      visible={offlineSheet !== null}
+      onClose={() => setOfflineSheet(null)}
+      icon={offlineSheet === 'goOnline' ? 'wifi' : 'wifi-off'}
+      tone={offlineSheet === 'goOnline' ? 'primary' : 'warning'}
+      title={offlineSheet === 'goOnline' ? t.home.onlineConfirmTitle : t.home.offlineConfirmTitle}
+      actions={
+        <>
+          <Button
+            label={offlineSheet === 'goOnline' ? t.home.onlineConfirmBtn : t.home.offlineConfirmBtn}
+            icon={offlineSheet === 'goOnline' ? 'wifi' : 'wifi-off'}
+            variant={offlineSheet === 'goOnline' ? 'primary' : 'ink'}
+            onPress={() => (offlineSheet === 'goOnline' ? confirmGoOnline() : void confirmGoOffline())}
+          />
+          <Button label={t.common.cancel} variant="ghost" onPress={() => setOfflineSheet(null)} />
+        </>
+      }
+    >
+      {offlineSheet === 'goOnline' ? (
+        <>
+          <SheetPoint icon="refresh-cw" text={t.home.onlinePoint1} />
+          <SheetPoint icon="inbox" text={t.home.onlinePoint2} />
+          {pendingCount + pendingExpenseCount + pendingRejectionCount > 0 ? (
+            <View className="bg-warning-light rounded-2xl px-4 py-3 flex-row items-center gap-2.5 mt-1">
+              <Icon name="alert-circle" size={16} tone="warning" />
+              <Text className="text-warning text-[13px] flex-1">
+                {t.home.onlinePendingNote(pendingCount + pendingExpenseCount + pendingRejectionCount)}
+              </Text>
+            </View>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <SheetPoint icon="download" tone="warning" text={t.home.offlinePoint1} />
+          <SheetPoint icon="shopping-bag" tone="warning" text={t.home.offlinePoint2} />
+          <SheetPoint icon="refresh-cw" tone="warning" text={t.home.offlinePoint3} />
+        </>
+      )}
+    </Sheet>
+    {/* Paper strip behind the status bar, so scrolled content slides under it
+        instead of colliding with the clock. */}
+    <View className="absolute top-0 left-0 right-0 bg-background" style={{ height: insets.top }} pointerEvents="none" />
+    </View>
   );
 }

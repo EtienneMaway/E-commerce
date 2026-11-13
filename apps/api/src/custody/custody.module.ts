@@ -21,6 +21,7 @@ import { CustodyHandoversService } from './custody-handovers.service';
 import { CustodyHandoversController } from './custody-handovers.controller';
 import { StockMovementsModule } from '../stock-movements/stock-movements.module';
 import { CurrencyModule } from '../currency/currency.module';
+import { BranchTransfersModule } from '../branch-transfers/branch-transfers.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { CurrencyModule } from '../currency/currency.module';
     ]),
     StockMovementsModule,
     CurrencyModule,
+    BranchTransfersModule,
   ],
   // Order matters. `CustodyHandoversController` owns the literal `handovers`
   // segment and is registered first so `CustodyController`'s `:id` patterns

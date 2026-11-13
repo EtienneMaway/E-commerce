@@ -29,7 +29,7 @@ export function UserSearchField({ label, selected, onSelect }: Props) {
   if (selected) {
     return (
       <View className="mb-4">
-        <Text className="text-sm font-medium text-text mb-1.5">{label}</Text>
+        <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">{label}</Text>
         <View className="flex-row items-center justify-between border border-border rounded-xl px-4 py-3 bg-card">
           <View>
             <Text className="text-text font-medium">@{selected.username}</Text>
@@ -45,7 +45,7 @@ export function UserSearchField({ label, selected, onSelect }: Props) {
 
   return (
     <View className="mb-4">
-      <Text className="text-sm font-medium text-text mb-1.5">{label}</Text>
+      <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">{label}</Text>
       <View className="border border-border rounded-xl bg-card overflow-hidden">
         <View className="flex-row items-center px-4 py-3 border-b border-border">
           <TextInput

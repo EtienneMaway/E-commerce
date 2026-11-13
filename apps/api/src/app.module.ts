@@ -40,6 +40,11 @@ import {
   CustodyHandover,
   CustodyHandoverItem,
   CustodyHandoverAdjustment,
+  BranchTransfer,
+  BranchTransferItem,
+  BranchTransferLotDraw,
+  BranchBalance,
+  BranchPayment,
 } from './entities';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -65,6 +70,7 @@ import { ShopsModule } from './shops/shops.module';
 import { ProductGroupsModule } from './product-groups/product-groups.module';
 import { QuantityDiscountsModule } from './quantity-discounts/quantity-discounts.module';
 import { CustodyModule } from './custody/custody.module';
+import { BranchTransfersModule } from './branch-transfers/branch-transfers.module';
 import { CustodyAccessModule } from './common/services/custody-access.module';
 
 @Module({
@@ -115,6 +121,11 @@ import { CustodyAccessModule } from './common/services/custody-access.module';
           CustodyHandover,
           CustodyHandoverItem,
           CustodyHandoverAdjustment,
+          BranchTransfer,
+          BranchTransferItem,
+          BranchTransferLotDraw,
+          BranchBalance,
+          BranchPayment,
         ],
         // Synchronize is OFF everywhere (including dev). All schema changes go
         // through migrations, so development exercises the exact same migration
@@ -151,6 +162,7 @@ import { CustodyAccessModule } from './common/services/custody-access.module';
     ProductGroupsModule,
     QuantityDiscountsModule,
     CustodyModule,
+    BranchTransfersModule,
     CustodyAccessModule,
     SyncModule,
     AppVersionModule,

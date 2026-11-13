@@ -137,6 +137,14 @@ export class InventoryEntry {
   @Column({ name: 'custodian_id', type: 'uuid', nullable: true })
   custodianId: string | null;
 
+  /**
+   * The branch transfer this lot arrived through (`BRANCH_TRANSFER_PLAN.md`).
+   * Null for every lot bought, consigned or issued in the ordinary way.
+   * Provenance only: it never scopes a query.
+   */
+  @Column({ name: 'branch_transfer_id', type: 'uuid', nullable: true })
+  branchTransferId: string | null;
+
   @ManyToOne(() => User, { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'custodian_id' })
   custodian: User | null;

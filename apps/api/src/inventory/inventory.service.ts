@@ -25,6 +25,7 @@ import {
   User,
 } from '../entities';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
+import { BranchTransfersService } from '../branch-transfers/branch-transfers.service';
 import { ShopContextService } from '../shops/shop-context.service';
 import {
   holderColumnsCond,
@@ -133,6 +134,7 @@ export class InventoryService {
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
     private readonly shopContext: ShopContextService,
+    private readonly branchTransfers: BranchTransfersService,
   ) {}
 
   async findAll(
@@ -752,6 +754,14 @@ export class InventoryService {
         externalTxUpdated: 0,
         pricingUpdated: 0,
       };
+    }
+
+    // Goods in escrow carry the old name on their transfer line. Renaming now
+    // would land them at the other branch under a name this one no longer uses.
+    if (await this.branchTransfers.productInTransit(ctx.orgId, requireShop(ctx), oldNorm)) {
+      throw new BadRequestException(
+        'Cannot rename while this product is in transit between branches. Wait until the transfer is received or rejected.',
+      );
     }
 
     return this.dataSource.transaction(async (manager) => {

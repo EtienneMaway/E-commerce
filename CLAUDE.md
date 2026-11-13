@@ -19,7 +19,7 @@ e-commerce-app/
 └── CLAUDE.md
 ```
 
-Feature modules in `apps/api/src/`: `auth`, `users`, `inventory`, `sales`, `payments`, `dashboard`, `consignments`, `currency`, `external-contacts`, `stock-movements`, `expenses`, `withdrawals`, `activity-logs`, `employments`, `pricing`, `salary-payments`
+Feature modules in `apps/api/src/`: `auth`, `users`, `inventory`, `sales`, `payments`, `dashboard`, `consignments`, `currency`, `external-contacts`, `stock-movements`, `expenses`, `withdrawals`, `activity-logs`, `employments`, `pricing`, `salary-payments`, `branch-transfers`
 
 Sibling planning docs at repo root (`DEPLOYMENT.md`, `PLAN.md`, `POS_AND_RECEIPTS.md`, `PERSONA_SWITCHING_PLAN.md`, `app_requirements.md`) capture product decisions that don't live in code — consult them when motivation behind a feature is unclear.
 
@@ -108,7 +108,7 @@ src/inventory/
 
 All entities live in `apps/api/src/entities/` (not inside modules).
 
-Entities: `User`, `InventoryEntry`, `SupplierDebt`, `DebtorCredit`, `Payment`, `SaleTransaction`, `ConsignmentRequest`, `ConsignmentItem`, `ExchangeRate`, `ExternalContact`, `ExternalTransaction`, `StockMovement`, `Expense`, `Withdrawal`, `Employment`, `ProductPrice`, `SalaryPayment`
+Entities: `User`, `InventoryEntry`, `SupplierDebt`, `DebtorCredit`, `Payment`, `SaleTransaction`, `ConsignmentRequest`, `ConsignmentItem`, `ExchangeRate`, `ExternalContact`, `ExternalTransaction`, `StockMovement`, `Expense`, `Withdrawal`, `Employment`, `ProductPrice`, `SalaryPayment`, `BranchTransfer`, `BranchTransferItem`, `BranchTransferLotDraw`, `BranchBalance`, `BranchPayment`
 
 ### Controllers
 - Thin controllers: only parse request, call service, return response
@@ -309,7 +309,27 @@ Inventory and pricing endpoints frequently touched:
 - `PATCH /inventory/products/:name/rename` — atomic cascade rename across `inventory_entries` (PERSONAL+SUPPLIER only), `sale_transactions`, `external_transactions`, `product_prices`. Blocked when active consignment-linked stock exists.
 - `PATCH /inventory/:id/selling-price` — change selling price on a single entry.
 - `POST /inventory/:entryId/adjust` — typed stock adjustment (damage, recount, customer return, supplier return, etc.).
-- `GET /dashboard/alerts` — homepage alert feed. Alert types: `overdue_debtor`, `low_stock`, `pending_consignment`, `inverted_exchange_rates`.
+- `GET /dashboard/alerts` — homepage alert feed. Alert types: `overdue_debtor`, `low_stock`, `pending_consignment`, `inverted_exchange_rates`, `amended_sale`, `incoming_branch_transfer`, `pending_branch_payment`.
+
+## Branch transfers (same business, branch A → branch B)
+
+See `BRANCH_TRANSFER_PLAN.md`. Only the owner or the branch's OPEN custodian may send, receive, reject, cancel, pay or confirm. Guard: `@RequiresService('custody.manage', 'custody.hold')`, and the service re-checks that the custody is at *this* branch.
+- **Escrow**: sending decrements A's lots at once and records each `branch_transfer_lot_draws` row. Nothing exists at B until receipt. Reject/cancel add each draw back onto the exact lot it left (`TRANSFER_RETURN_IN`).
+- **All or nothing**: B receives every line or rejects the whole transfer. There is no partial receipt.
+- **Cost carried, no internal profit**: each draw becomes one lot at B with the same `unit_cost` and `source` (`supplier_debt_id` null, since A's supplier is still owed by A). B owes A `total_value` in `branch_balances`, which is NOT `supplier_debts`/`debtor_credits`.
+- **Payments** (`branch_payments`): the owner's payments confirm immediately, a custodian's wait for the other branch. Confirmed payments move `availableBusinessCash` (+in at A, −out at B; excluded under "All branches"), and count in a custodian's handover `cashExpectedFc`. FC payments convert at the System Rate with no market-rate spread, because nothing is exchanged.
+- **Send form (dashboard `SendTransferDialog`, mobile `SendBranchTransferModal`)**: multi-select checklist, one card per product. Quantity rules live in `lib/transfer-pick.ts` — an identical copy in each app, tested in `apps/mobile/__tests__/transfer-pick.test.ts`; change both. Simple products take cartons and/or pieces. Sized products are either "all sizes" (the same amount for every size: N pieces = N of each, capped by the smallest size; N cartons = each size's own per-carton count × N) or "split" (ticked sizes, pieces only). Everything resolves to pieces per size before `POST /branch-transfers`, so the API is unchanged. `/custody/mine` lines report the size's carton count from the variant.
+- Guards elsewhere: rename blocked while the product is in transit; custody close and handover submit blocked while goods sent from the custody are in transit (and handover submit while the custodian's own payment is pending); branch archive blocked while transfers are in transit or a balance is outstanding.
+
+## Lists, pagination and caching
+
+- **Opt-in pagination** (`apps/api/src/common/pagination.ts`): list endpoints that used to return everything (`/consignments/incoming|outgoing`, `/branch-transfers`, `/custody/handovers`, `/salary-payments`) return the plain array when called WITHOUT `page` — mobile builds in the field parse arrays — and `{ data, pagination }` when sent `page` (+ optional `limit`, max 100). New list endpoints should follow `PageQueryDto` / `pageWindow` / `toPaginated`. `/custody/handovers?page=` also returns `custodians` (everyone who ever handed over) for the person filter.
+- Lists that must stay whole: `/mini-settlements/incoming` (the employee page derives handover cycles from every approved handover) and salary history (monthly summary is computed client-side). Pending-only readers use `?status=PENDING` instead of the full list (e.g. `ReceiveFromSupplierDialog`).
+- Dashboard paged lists use `PAGE_SIZE` + `Paged<T>` from `lib/api.ts`, `placeholderData: keepPreviousData`, and `useClampPage` from `components/ui/Pagination.tsx`. Keep paged query keys under the existing prefix (e.g. `[...QK.consignmentsIncoming, 'page', n]`) so prefix invalidations still hit them.
+- **Saved query cache (dashboard)**: `lib/query-persist.ts` persists React Query to localStorage (`kmb_query_cache`, 24 h, buster = user id). `auth.store` clears it on login and logout. Bump `CACHE_VERSION` there when a response shape changes incompatibly. Mobile already persists via AsyncStorage.
+- **Mobile infinite lists**: `apps/mobile/lib/paged-list.ts` (`usePagedList`, `MOBILE_PAGE_SIZE` 20) on sales history/rejected, Received consignments and branch transfers, with `components/ui/ListFooter.tsx`. Loaded pages persist with the AsyncStorage cache (readable offline as far as scrolled); spinners only on `isInitialLoading` (nothing cached), background refreshes stay silent. Infinite queries need their OWN keys (`QK.salesHistoryPages`, `consignmentsHistoryPages`, `branchTransferPages`) under the existing prefixes — never reuse a key an older build persisted with a different shape. `/sales?page=1` also returns `totals` (whole-filter revenue/profit) so totals don't depend on rows loaded. `hooks/use-offline-warmup.ts` pre-fetches the first page of the main lists while online (keys/params must match the screens' defaults).
+- Query-key factories with an optional filter use `filters ?? {}`: `QK.x()` must match every filtered variant when invalidating (`['a', undefined]` matches nothing).
+- Migration `1000000000043-AddListAndScopeIndexes` adds `(org_id, <date> DESC)` indexes for "All branches" and `(shop_id, <date> DESC)` for single-branch lists.
 
 ## Consignment Status Lifecycle
 
@@ -339,7 +359,7 @@ On confirmation (atomic transaction):
 # apps/api/.env
 DATABASE_URL=postgresql://user:password@localhost:5432/trading_app
 JWT_SECRET=your-secret-here
-JWT_EXPIRES_IN=7d
+JWT_EXPIRES_IN=30d
 PORT=3000
 
 # apps/mobile/.env

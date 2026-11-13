@@ -32,6 +32,7 @@ import { SalesSummaryFilterDto } from '../sales/dto/sales-filter.dto';
 import type { ActorContext } from '../common/types/actor-context';
 import { holderCond, holderScope, readScope } from '../common/shop-scope';
 import { applyActorCondToQb, resolveActorFilter } from '../common/actor-filter';
+import { BranchTransfersService } from '../branch-transfers/branch-transfers.service';
 
 export interface DashboardSummary {
   totalIOwe: string;
@@ -93,7 +94,9 @@ export interface AlertItem {
     | 'low_stock'
     | 'pending_consignment'
     | 'inverted_exchange_rates'
-    | 'amended_sale';
+    | 'amended_sale'
+    | 'incoming_branch_transfer'
+    | 'pending_branch_payment';
   // overdue_debtor fields
   debtorUserId?: string;
   debtorUsername?: string;
@@ -110,6 +113,8 @@ export interface AlertItem {
   buyingRate?: string;
   // amended_sale fields — an employee corrected one of today's sales
   amendedCount?: number;
+  // incoming_branch_transfer / pending_branch_payment — waiting on this branch
+  transferCount?: number;
 }
 
 export interface ProfitBySource {
@@ -142,7 +147,7 @@ export interface CashPosition {
   // Cash-basis view — actual money that has arrived
   totalCashReceived: string;        // direct sales + debtor payments + external PAYMENT_IN
   totalWithdrawn: string;           // Cumulative withdrawals (USD)
-  availableBusinessCash: string;    // totalCashReceived − totalExpenses − totalWithdrawn
+  availableBusinessCash: string;    // totalCashReceived + branchIn − branchOut − totalExpenses − totalWithdrawn
   breakdown: {
     directSalesRevenue: string;         // Accrual
     consignmentRevenue: string;         // Accrual at ACCEPTED
@@ -150,6 +155,13 @@ export interface CashPosition {
     directSalesCash: string;
     debtorPaymentsCash: string;
     externalPaymentInCash: string;
+    /**
+     * Confirmed branch-transfer payments into / out of this branch (USD). Cash
+     * moving between two branches of one business: never profit, never an
+     * expense. Both are zero under "All branches", where they cancel out.
+     */
+    branchPaymentsInCash: string;
+    branchPaymentsOutCash: string;
   };
 }
 
@@ -219,6 +231,7 @@ export class DashboardService {
     private readonly currencyService: CurrencyService,
     private readonly salesService: SalesService,
     private readonly salaryPaymentsService: SalaryPaymentsService,
+    private readonly branchTransfers: BranchTransfersService,
   ) {}
 
   /**
@@ -614,7 +627,16 @@ export class DashboardService {
       .plus(debtorPaymentsCash)
       .plus(externalPaymentInCash);
     const totalWithdrawn = new Decimal(withdrawnAgg?.total ?? 0);
+    // Money paid between branches of this business (BRANCH_TRANSFER_PLAN.md §5).
+    // One branch's outflow is another's inflow, so the org-wide figure skips it.
+    // It is the BUSINESS's money: a mini's cash position is their own books
+    // (holder scope) at the employer's branch, and must never pick it up.
+    const branchCash = ctx.shopId && ctx.tier !== 'MINI_EMPLOYEE'
+      ? await this.branchTransfers.cashFlows(ctx.orgId, ctx.shopId)
+      : { in: new Decimal(0), out: new Decimal(0) };
     const availableBusinessCash = totalCashReceived
+      .plus(branchCash.in)
+      .minus(branchCash.out)
       .minus(totalExpenses)
       .minus(totalWithdrawn);
 
@@ -639,6 +661,8 @@ export class DashboardService {
         directSalesCash: directSalesCash.toFixed(4),
         debtorPaymentsCash: debtorPaymentsCash.toFixed(4),
         externalPaymentInCash: externalPaymentInCash.toFixed(4),
+        branchPaymentsInCash: branchCash.in.toFixed(4),
+        branchPaymentsOutCash: branchCash.out.toFixed(4),
       },
     };
   }
@@ -1071,6 +1095,18 @@ export class DashboardService {
     });
     if (amendedCount > 0) {
       alerts.push({ type: 'amended_sale', amendedCount });
+    }
+
+    // ── Branch transfers waiting on this branch ──────────────────────────────
+    // Only the owner and the branch's custodian can act on them, so only they
+    // see the alerts.
+    if (ctx.shopId && (await this.branchTransfers.isBranchActor(ctx, ctx.shopId))) {
+      const [incoming, paymentsIn] = await Promise.all([
+        this.branchTransfers.countIncoming(ctx.orgId, ctx.shopId),
+        this.branchTransfers.countPendingPaymentsIn(ctx.orgId, ctx.shopId),
+      ]);
+      if (incoming > 0) alerts.push({ type: 'incoming_branch_transfer', transferCount: incoming });
+      if (paymentsIn > 0) alerts.push({ type: 'pending_branch_payment', transferCount: paymentsIn });
     }
 
     return alerts;

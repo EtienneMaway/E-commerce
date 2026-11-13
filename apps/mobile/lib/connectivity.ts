@@ -1,4 +1,5 @@
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
+import { useSyncExternalStore } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { onlineManager, focusManager } from '@tanstack/react-query';
 import { useOfflineStore } from '../store/offline.store';
@@ -80,4 +81,18 @@ export function initConnectivity(): () => void {
     unsubscribeNet();
     appStateSub.remove();
   };
+}
+
+/**
+ * True when requests can go out: the device has signal (React Query's
+ * onlineManager, fed by NetInfo above) AND the merchant hasn't switched on
+ * manual offline mode.
+ */
+export function useIsOnline(): boolean {
+  const deviceOnline = useSyncExternalStore(
+    (cb) => onlineManager.subscribe(cb),
+    () => onlineManager.isOnline(),
+  );
+  const manualOffline = useOfflineStore((s) => s.isOffline);
+  return deviceOnline && !manualOffline;
 }

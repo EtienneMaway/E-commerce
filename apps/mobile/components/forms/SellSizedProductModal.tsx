@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ProductSummary, ProductVariantSummary } from '@trading-app/types';
@@ -30,6 +29,10 @@ import { receiptIdentity } from '../../lib/receipt-identity';
 import { Button } from '../ui/Button';
 import { useT } from '../../lib/i18n';
 import { useBrand } from '../../lib/theme';
+import { usePermissions } from '../../lib/permissions';
+import { RoleDeniedSheet } from '../ui/RoleDeniedSheet';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props {
   visible: boolean;
@@ -72,7 +75,7 @@ interface SizePriceGuardPending {
  * don't yet flow through the offline queue). Both modes end with the same
  * print/share/skip receipt prompt used by the regular sale flow.
  */
-export function SellSizedProductModal({ visible, onClose, group, onSellWithOthers }: Props) {
+function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }: Props) {
   const brand = useBrand();
   const t = useT();
   const qc = useQueryClient();
@@ -191,9 +194,9 @@ export function SellSizedProductModal({ visible, onClose, group, onSellWithOther
       await printReceipt(data);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+        showAlert(t.printer.printFailed, getErrorMessage(err));
       } else {
-        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
+        showAlert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrintingReceipt(false);
@@ -227,7 +230,7 @@ export function SellSizedProductModal({ visible, onClose, group, onSellWithOther
         className="flex-1 justify-center bg-black/50 px-6"
       >
         <View className="bg-surface rounded-2xl p-5">
-          <Text className="text-text font-bold text-lg">
+          <Text className="font-bold text-xl text-text">
             {t.recordSaleModal.receiptPromptTitle}
           </Text>
           <Text className="text-muted text-sm mt-1 mb-4">
@@ -463,12 +466,12 @@ export function SellSizedProductModal({ visible, onClose, group, onSellWithOther
     } catch (err) {
       if (isPriceGuardWarning(err)) {
         const w = getPriceGuardWarning(err);
-        Alert.alert(t.sizedSale.priceGuardTitle, w?.message ?? '', [
+        showAlert(t.sizedSale.priceGuardTitle, w?.message ?? '', [
           { text: t.common.cancel, style: 'cancel' },
           { text: t.sizedSale.confirmLoss, style: 'destructive', onPress: () => void submitCarton(true) },
         ]);
       } else {
-        Alert.alert(t.common.error, getErrorMessage(err));
+        showAlert(t.common.error, getErrorMessage(err));
       }
     } finally {
       setSubmitting(false);
@@ -512,7 +515,7 @@ export function SellSizedProductModal({ visible, onClose, group, onSellWithOther
           const w = getPriceGuardWarning(err);
           priceGuard.push({ row, warning: w?.message ?? '' });
         } else {
-          Alert.alert(t.common.error, `${row.label}: ${getErrorMessage(err)}`);
+          showAlert(t.common.error, `${row.label}: ${getErrorMessage(err)}`);
         }
       }
     }
@@ -583,7 +586,7 @@ export function SellSizedProductModal({ visible, onClose, group, onSellWithOther
   // ── Sub-screen: by-size price guard confirmation ──────────────────────────
   if (sizePriceGuardPending.length > 0) {
     return (
-      <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <FormModal visible onRequestClose={onClose}>
         <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8">
           <View className="bg-card border border-danger rounded-2xl p-5 mb-5">
             <Text className="text-2xl mb-2">⚠️</Text>
@@ -606,20 +609,20 @@ export function SellSizedProductModal({ visible, onClose, group, onSellWithOther
           />
           <Button label={t.common.cancel} variant="ghost" onPress={handleCancelSizePriceGuard} />
         </ScrollView>
-      </Modal>
+      </FormModal>
     );
   }
 
   return (
     <>
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView
         className="flex-1 bg-background"
         contentContainerClassName="px-6 py-8"
         keyboardShouldPersistTaps="handled"
       >
         <View className="flex-row justify-between items-center mb-4">
-          <Text className="text-xl font-bold text-text capitalize flex-1 mr-2" numberOfLines={2}>
+          <Text className="font-bold text-2xl text-text capitalize flex-1 mr-2" numberOfLines={2}>
             {group.productName}
           </Text>
           <Pressable onPress={onClose}>
@@ -816,14 +819,14 @@ export function SellSizedProductModal({ visible, onClose, group, onSellWithOther
                           onPress={() => adjustSizeQty(v.variantId, -1)}
                           className="w-8 h-8 rounded-full bg-background items-center justify-center"
                         >
-                          <Text className="text-text font-bold text-lg leading-none">−</Text>
+                          <Text className="font-bold text-xl text-text leading-none">−</Text>
                         </TouchableOpacity>
                         <Text className="text-text font-bold w-6 text-center">{row.qty}</Text>
                         <TouchableOpacity
                           onPress={() => adjustSizeQty(v.variantId, 1)}
                           className="w-8 h-8 rounded-full bg-background items-center justify-center"
                         >
-                          <Text className="text-text font-bold text-lg leading-none">+</Text>
+                          <Text className="font-bold text-xl text-text leading-none">+</Text>
                         </TouchableOpacity>
                         <Text className="text-primary font-semibold text-sm ml-1">
                           {formatFcValue(row.unitPriceFc * row.qty)}
@@ -871,10 +874,24 @@ export function SellSizedProductModal({ visible, onClose, group, onSellWithOther
           </View>
         )}
       </ScrollView>
-    </Modal>
+    </FormModal>
 
     {/* Post-sale: print/share/skip the receipt (covers whole-carton and by-size sales alike). */}
     {receiptPromptModal}
     </>
   );
+}
+
+/**
+ * Role gate: an employee whose role lacks `sales.record` gets the denial sheet
+ * the moment they tap Record Sale, instead of filling the whole form and being
+ * refused by the server at submit. The API still enforces it.
+ */
+export function SellSizedProductModal(props: Props) {
+  const { can } = usePermissions();
+  const t = useT();
+  if (props.visible && !can('sales.record')) {
+    return <RoleDeniedSheet visible onClose={props.onClose} feature={t.denied.featureRecordSale} />;
+  }
+  return <SellSizedProductModalForm {...props} />;
 }

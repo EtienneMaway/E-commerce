@@ -182,9 +182,23 @@ export default function HandoverDetail({
             <div className="p-6">
               <div className="grid gap-3 sm:grid-cols-4 mb-4">
                 {[
-                  [t.custody.sold, fc(Number(h.cashExpectedFc) - Number(h.miniRollupCashFc) + Number(h.expensesFc))],
+                  // Sold is what is left of expected once every other part is
+                  // taken out — branch cash included (0 before branch transfers).
+                  [
+                    t.custody.sold,
+                    fc(
+                      Number(h.cashExpectedFc) -
+                        Number(h.miniRollupCashFc) +
+                        Number(h.expensesFc) -
+                        Number(h.branchReceivedFc ?? 0) +
+                        Number(h.branchPaidOutFc ?? 0),
+                    ),
+                  ],
                   [t.custody.fromMinis, fc(h.miniRollupCashFc)],
                   [t.custody.spent, `−${fc(h.expensesFc)}`],
+                  ...(Number(h.branchPaidOutFc ?? 0) !== 0 || Number(h.branchReceivedFc ?? 0) !== 0
+                    ? [[t.custody.branchCash, fc(Number(h.branchReceivedFc) - Number(h.branchPaidOutFc))]]
+                    : []),
                   [t.custody.expectedBack, fc(h.cashExpectedFc)],
                 ].map(([label, value]) => (
                   <div

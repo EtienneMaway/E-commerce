@@ -4,8 +4,6 @@ import {
   Text,
   ScrollView,
   Pressable,
-  RefreshControl,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,6 +22,8 @@ import { formatFcValue } from '../lib/currency';
 import { computeOfflineAllowance } from '../lib/mini-allowance';
 import { useOfflineStore } from '../store/offline.store';
 import { useT } from '../lib/i18n';
+import { showAlert } from '../lib/alert';
+import { PullRefreshControl } from './ui/PullRefreshControl';
 
 /**
  * Mini-employee expense history. Lists every expense the mini has recorded — both
@@ -84,13 +84,13 @@ export function MiniExpensesView() {
       qc.invalidateQueries({ queryKey: QK.miniExpenses });
       qc.invalidateQueries({ queryKey: ['mini-settlements', 'handover-preview'] });
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   const confirmDelete = (e: MiniExpenseSummary) => {
     // Handed-over expenses are part of a submitted settlement — not deletable.
     if (e.settlementId) return;
-    Alert.alert(t.expenses.deleteConfirmTitle, t.expenses.deleteConfirmBody, [
+    showAlert(t.expenses.deleteConfirmTitle, t.expenses.deleteConfirmBody, [
       { text: t.common.cancel, style: 'cancel' },
       { text: t.expenses.deleteBtn, style: 'destructive', onPress: () => deleteMutation.mutate(e.id) },
     ]);
@@ -99,16 +99,16 @@ export function MiniExpensesView() {
   const StatusBadge = ({ label, tone }: { label: string; tone: 'pending' | 'done' | 'sync' }) => {
     const cls =
       tone === 'done'
-        ? 'bg-emerald-100 dark:bg-emerald-900'
+        ? 'bg-success-light'
         : tone === 'sync'
-          ? 'bg-blue-100 dark:bg-blue-900'
-          : 'bg-amber-100 dark:bg-amber-900';
+          ? 'bg-primary-light'
+          : 'bg-warning-light';
     const txt =
       tone === 'done'
-        ? 'text-emerald-700 dark:text-emerald-300'
+        ? 'text-success'
         : tone === 'sync'
-          ? 'text-blue-700 dark:text-blue-300'
-          : 'text-amber-700 dark:text-amber-300';
+          ? 'text-primary'
+          : 'text-warning';
     return (
       <View className={`px-2 py-0.5 rounded-full ${cls}`}>
         <Text className={`text-[10px] font-bold uppercase tracking-wide ${txt}`}>{label}</Text>
@@ -120,7 +120,7 @@ export function MiniExpensesView() {
     <View className="flex-1 bg-background">
       <ScrollView
         contentContainerClassName="px-4 pt-4 pb-24"
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} enabled={!isOffline} />}
+        refreshControl={<PullRefreshControl onRefresh={refetch} enabled={!isOffline} />}
       >
         {/* Total card */}
         <Card>
@@ -161,8 +161,8 @@ export function MiniExpensesView() {
 
         {/* Queued offline — recorded but not yet synced */}
         {queued.length > 0 && (
-          <Card className="mt-4 border border-blue-300 dark:border-blue-800">
-            <Text className="text-blue-600 dark:text-blue-400 text-xs font-semibold uppercase tracking-wide mb-2">
+          <Card className="mt-4 border border-primary/30">
+            <Text className="text-primary text-xs font-semibold uppercase tracking-wide mb-2">
               🔄 {t.expenses.pendingSyncLabel(queued.length)}
             </Text>
             {queued.map((e) => (

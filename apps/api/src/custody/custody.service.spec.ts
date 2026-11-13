@@ -1,3 +1,4 @@
+import { branchTransfersStub } from '../common/testing/branch-transfers.fixture';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { CustodyService } from './custody.service';
 import {
@@ -63,6 +64,8 @@ describe('CustodyService — appointment', () => {
     {} as never, // consignmentRepo
       {} as never,
       {} as never,
+     
+     branchTransfersStub() as never,
   );
 
     await expect(
@@ -88,6 +91,8 @@ describe('CustodyService — appointment', () => {
     {} as never, // consignmentRepo
       {} as never,
       {} as never,
+     
+     branchTransfersStub() as never,
   );
 
     await expect(
@@ -162,7 +167,7 @@ describe('CustodyService.acceptIssue', () => {
       {
         transaction: jest.fn(async (cb: (m: typeof manager) => Promise<unknown>) => cb(manager)),
       } as never,
-      stockMovements as never);
+      stockMovements as never, branchTransfersStub() as never);
     return { service, sourceLot, created, stockMovements };
   }
 
@@ -211,6 +216,8 @@ describe('CustodyService.allowedCustodianIds — who may touch the stock', () =>
     {} as never, // consignmentRepo
       {} as never,
       {} as never,
+     
+     branchTransfersStub() as never,
   );
   }
 
@@ -254,6 +261,8 @@ describe('CustodyService.saleStamp — who has to be attested to', () => {
     {} as never, // consignmentRepo
       {} as never,
       {} as never,
+     
+     branchTransfersStub() as never,
   );
   }
   const heldLot = {
@@ -302,6 +311,8 @@ describe('CustodyService.approveSales — the batch warning', () => {
     {} as never, // consignmentRepo
       {} as never,
       {} as never,
+     
+     branchTransfersStub() as never,
   );
   }
 

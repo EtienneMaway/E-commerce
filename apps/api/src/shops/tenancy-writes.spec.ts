@@ -34,6 +34,9 @@ const TENANCY_ENTITIES = [
   'Payment',
   'Employment',
   'SalaryPayment',
+  'BranchTransfer',
+  'BranchBalance',
+  'BranchPayment',
 ];
 
 /** Ways a create can legitimately get its tenancy. */

@@ -5,7 +5,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, FindOperator, ILike, In, IsNull, Repository } from 'typeorm';
+import {
+  DataSource,
+  FindOperator,
+  FindOptionsRelations,
+  FindOptionsWhere,
+  ILike,
+  In,
+  IsNull,
+  Repository,
+} from 'typeorm';
 import Decimal from 'decimal.js';
 import {
   ConsignmentItem,
@@ -22,6 +31,8 @@ import {
   User,
 } from '../entities';
 import { CreateConsignmentDto } from './dto/create-consignment.dto';
+import { ListConsignmentsDto } from './dto/list-consignments.dto';
+import { pageWindow, toPaginated, type Paginated } from '../common/pagination';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
 import { PricingService } from '../pricing/pricing.service';
 import { CurrencyService } from '../currency/currency.service';
@@ -190,32 +201,66 @@ export class ConsignmentsService {
 
   // ─── Debtor: view incoming consignments ────────────────────────────────────
 
-  async findIncoming(ctx: ActorContext): Promise<ConsignmentRequest[]> {
-    const requests = await this.requestRepo.find({
-      // tenancy-exempt: an incoming consignment is addressed to a PERSON, and
-      // a PENDING one has no receiving branch yet — the debtor picks it when
-      // they confirm.
-      where: { debtorId: ctx.effectiveOwnerId },
-      relations: { supplier: true, items: { actor: true }, teamMembers: true },
-      order: { createdAt: 'DESC' },
-    });
-    await this.attachVariantLabels(requests);
-    return requests;
+  async findIncoming(
+    ctx: ActorContext,
+    query: ListConsignmentsDto = {},
+  ): Promise<ConsignmentRequest[] | Paginated<ConsignmentRequest>> {
+    return this.list(
+      {
+        // tenancy-exempt: an incoming consignment is addressed to a PERSON, and
+        // a PENDING one has no receiving branch yet — the debtor picks it when
+        // they confirm.
+        debtorId: ctx.effectiveOwnerId,
+        ...(query.status ? { status: query.status } : {}),
+      },
+      { supplier: true, items: { actor: true }, teamMembers: true },
+      query,
+    );
   }
 
   // ─── Supplier: view outgoing consignments ──────────────────────────────────
 
-  async findOutgoing(ctx: ActorContext): Promise<ConsignmentRequest[]> {
-    const requests = await this.requestRepo.find({
-      where: {
+  async findOutgoing(
+    ctx: ActorContext,
+    query: ListConsignmentsDto = {},
+  ): Promise<ConsignmentRequest[] | Paginated<ConsignmentRequest>> {
+    return this.list(
+      {
         supplierOrgId: ctx.orgId,
         ...(ctx.shopId ? { supplierShopId: ctx.shopId } : {}),
+        ...(query.status ? { status: query.status } : {}),
       },
-      relations: { debtor: true, items: { actor: true }, teamMembers: true },
-      order: { createdAt: 'DESC' },
+      { debtor: true, items: { actor: true }, teamMembers: true },
+      query,
+    );
+  }
+
+  /**
+   * Shared reader. Without `page` it returns the full array (what mobile builds
+   * in the field expect); with `page` it returns one page plus the total.
+   * Paging runs on request ids first so the one-to-many `items` join can't
+   * shrink a page (TypeORM does this automatically for skip/take + relations).
+   */
+  private async list(
+    where: FindOptionsWhere<ConsignmentRequest>,
+    relations: FindOptionsRelations<ConsignmentRequest>,
+    query: ListConsignmentsDto,
+  ): Promise<ConsignmentRequest[] | Paginated<ConsignmentRequest>> {
+    const w = pageWindow(query);
+    if (!w) {
+      const all = await this.requestRepo.find({ where, relations, order: { createdAt: 'DESC' } });
+      await this.attachVariantLabels(all);
+      return all;
+    }
+    const [rows, total] = await this.requestRepo.findAndCount({
+      where,
+      relations,
+      order: { createdAt: 'DESC', id: 'DESC' },
+      skip: w.skip,
+      take: w.take,
     });
-    await this.attachVariantLabels(requests);
-    return requests;
+    await this.attachVariantLabels(rows);
+    return toPaginated(rows, total, w);
   }
 
   /** Resolve each sized item's size label (transient, for display). */

@@ -25,6 +25,8 @@ module.exports = {
         'primary-dark': 'rgb(var(--primary-dark) / <alpha-value>)',
         'primary-light': 'rgb(var(--primary-light) / <alpha-value>)',
         'brand-violet': 'rgb(var(--brand-violet) / <alpha-value>)',
+        accent: 'rgb(var(--accent) / <alpha-value>)',
+        'accent-light': 'rgb(var(--accent-light) / <alpha-value>)',
 
         // Semantic
         danger: 'rgb(var(--danger) / <alpha-value>)',
@@ -46,6 +48,15 @@ module.exports = {
         'text-secondary': 'rgb(var(--foreground-secondary) / <alpha-value>)',
         muted: 'rgb(var(--muted) / <alpha-value>)',
         'muted-subtle': 'rgb(var(--muted-subtle) / <alpha-value>)',
+      },
+      // Titles and figures use the phone's own font (Roboto on Android) in
+      // bold — the serif was dropped for readability (Nov 2026). Only the mono
+      // labels are loaded (app/_layout.tsx, expo-font). React Native picks a
+      // font by its exact family name, so each mono weight is its own family —
+      // never pair `font-mono*` with `font-bold`/`font-semibold`.
+      fontFamily: {
+        mono: ['JetBrainsMono_500Medium'],
+        'mono-bold': ['JetBrainsMono_700Bold'],
       },
     },
   },

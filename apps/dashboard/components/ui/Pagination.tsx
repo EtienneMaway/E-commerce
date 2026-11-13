@@ -1,6 +1,17 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useT } from '../../lib/i18n';
+
+/**
+ * Steps back when the page you're on stops existing — e.g. you cancelled the
+ * only row on the last page — instead of showing an empty table.
+ */
+export function useClampPage(page: number, totalPages: number | undefined, setPage: (p: number) => void): void {
+  useEffect(() => {
+    if (totalPages !== undefined && page > totalPages) setPage(Math.max(1, totalPages));
+  }, [page, totalPages, setPage]);
+}
 
 interface Props {
   page: number;

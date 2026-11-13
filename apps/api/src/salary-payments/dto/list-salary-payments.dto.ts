@@ -1,13 +1,14 @@
 import { IsEnum, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { SalaryPaymentStatus } from '../../entities';
+import { PageQueryDto } from '../../common/pagination';
 
 export enum SalaryRoleFilter {
   EMPLOYER = 'employer',
   EMPLOYEE = 'employee',
 }
 
-export class ListSalaryPaymentsDto {
+export class ListSalaryPaymentsDto extends PageQueryDto {
   @ApiPropertyOptional({
     enum: SalaryRoleFilter,
     description: 'Perspective to list from. Defaults to employer.',

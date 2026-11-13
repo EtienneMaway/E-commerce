@@ -2,6 +2,7 @@ import { View, Text } from 'react-native';
 import { useAuthStore } from '../store/auth.store';
 import { usePersonaStore } from '../store/persona.store';
 import { useT } from '../lib/i18n';
+import { Icon } from './ui/Icon';
 
 /**
  * Shown on the home tab when the employer has opened nothing for this employee.
@@ -18,8 +19,8 @@ export function NoAccessNotice() {
 
   return (
     <View className="bg-card border border-border rounded-2xl px-5 py-6 mb-4">
-      <Text className="text-4xl text-center mb-3">🔒</Text>
-      <Text className="text-text font-bold text-lg text-center mb-2">
+      <View className="items-center mb-3"><Icon name="lock" size={32} tone="muted" /></View>
+      <Text className="font-bold text-xl text-text text-center mb-2">
         {t.roles.noAccessTitle}
       </Text>
       <Text className="text-muted text-sm text-center leading-5">

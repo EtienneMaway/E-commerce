@@ -32,6 +32,7 @@ const CONVERTED_MODULES = [
   'mini-settlements',
   'activity-logs',
   'employee-roles',
+  'branch-transfers',
 ];
 
 /**

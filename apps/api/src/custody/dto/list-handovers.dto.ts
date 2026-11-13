@@ -1,12 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsUUID, IsString, MaxLength } from 'class-validator';
 import { CustodyHandoverStatus } from '../../entities';
+import { PageQueryDto } from '../../common/pagination';
 
 /**
  * The owner's "handovers of all full employees" view: one list, filtered by
  * whichever of person, branch and state they care about.
  */
-export class ListCustodyHandoversDto {
+export class ListCustodyHandoversDto extends PageQueryDto {
   @ApiPropertyOptional({ description: 'Only this employee, across branches and appointments' })
   @IsOptional()
   @IsUUID()

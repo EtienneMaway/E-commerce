@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TOKEN_KEY } from '../lib/api';
 import { usePersonaStore } from './persona.store';
 import { useShopStore, type OrganizationSummary, type ShopSummary } from './shop.store';
@@ -37,6 +38,20 @@ interface UserProfile {
 }
 
 /** Hand the branch context from `/auth/me` to the shop store. */
+/**
+ * The last profile from /auth/me, kept on the device so a cold start (and an
+ * offline one) knows the name, the employment and its granted services at once
+ * — before this, the profile only existed in memory and the app opened with no
+ * name, no persona switcher and no role limits until /auth/me answered.
+ */
+const USER_KEY = 'auth_user_profile';
+
+function saveProfile(user: UserProfile): void {
+  void AsyncStorage.setItem(USER_KEY, JSON.stringify(user)).catch(() => {
+    /* storage full / unavailable — the in-memory profile still works */
+  });
+}
+
 function applyShopContext(user: UserProfile): Promise<void> {
   return useShopStore.getState().setContext({
     shops: user.shops ?? [],
@@ -68,6 +83,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   setUser: (user) => {
     set({ user });
+    saveProfile(user);
     // A refreshed profile can carry a new branch (a transfer accepted, a branch
     // closed) — keep the header in step with it.
     void applyShopContext(user);
@@ -76,6 +92,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (token, user) => {
     await SecureStore.setItemAsync(TOKEN_KEY, token);
     set({ token, user });
+    saveProfile(user);
     // Resolve persona now that we know whether the user has an active
     // employment. Mobile defaults to 'employer' when employed so an employee's
     // first action (sale, expense, etc.) lands on the employer's books rather
@@ -87,6 +104,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await AsyncStorage.removeItem(USER_KEY).catch(() => undefined);
     // Clear the persisted persona choice (not just reset it to 'self') so the
     // next login — same employee or a different user on a shared device —
     // isn't treated as if 'self' were an explicit prior choice. That would
@@ -101,8 +119,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   hydrate: async () => {
     const token = await SecureStore.getItemAsync(TOKEN_KEY);
     if (token) {
-      // Token exists — user will be loaded via /auth/me in the layout
-      set({ token, isLoading: false });
+      // Restore the saved profile at once; the layout refreshes it from
+      // /auth/me in the background.
+      let user: UserProfile | null = null;
+      try {
+        const raw = await AsyncStorage.getItem(USER_KEY);
+        user = raw ? (JSON.parse(raw) as UserProfile) : null;
+      } catch {
+        user = null;
+      }
+      set({ token, user, isLoading: false });
     } else {
       set({ isLoading: false });
     }

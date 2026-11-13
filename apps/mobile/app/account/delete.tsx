@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, View, Text, Alert } from 'react-native';
+import { ScrollView, View, Text } from 'react-native';
 import { router } from 'expo-router';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -7,6 +7,7 @@ import { accountApi } from '../../lib/api';
 import { useAuthStore } from '../../store/auth.store';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+import { showAlert } from '../../lib/alert';
 
 export default function DeleteAccountScreen() {
   const t = useT();
@@ -26,7 +27,7 @@ export default function DeleteAccountScreen() {
     setSubmitting(true);
     try {
       const { expiresAt } = await accountApi.deleteAccount({ password });
-      Alert.alert(
+      showAlert(
         t.account.deleteSuccessTitle,
         t.account.deleteSuccessBody(formatDate(expiresAt)),
         [
@@ -40,7 +41,7 @@ export default function DeleteAccountScreen() {
         ],
       );
     } catch (err) {
-      Alert.alert(t.account.deleteFailed, getErrorMessage(err));
+      showAlert(t.account.deleteFailed, getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

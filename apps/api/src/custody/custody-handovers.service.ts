@@ -26,6 +26,7 @@ import {
   StockCustody,
   StockCustodyStatus,
   StockMovementReason,
+  User,
 } from '../entities';
 import type {
   CustodyHandoverMiniLine,
@@ -36,9 +37,16 @@ import type { ActorContext } from '../common/types/actor-context';
 import { holderCond, readScope } from '../common/shop-scope';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
 import { CurrencyService } from '../currency/currency.service';
+import { BranchTransfersService } from '../branch-transfers/branch-transfers.service';
 import { CreateCustodyHandoverDto } from './dto/create-handover.dto';
 import { CreateHandoverAdjustmentDto } from './dto/handover-adjustment.dto';
 import { ListCustodyHandoversDto, RejectCustodyHandoverDto } from './dto/list-handovers.dto';
+import { pageWindow, toPaginated, type Paginated } from '../common/pagination';
+
+/** A page of handovers plus every custodian on these books, for the filter. */
+export interface CustodyHandoverPage extends Paginated<CustodyHandover> {
+  readonly custodians: User[];
+}
 
 /** What a custodian would owe if they closed the period right now. */
 export interface CustodyHandoverPreview {
@@ -60,7 +68,11 @@ export interface CustodyHandoverPreview {
   pendingMiniHandovers: { miniId: string; miniName: string; settlementId: string }[];
   /** FC the custodian spent out of the till in the period. */
   expensesFc: string;
-  /** salesFc + miniRollupCashFc − expensesFc. */
+  /** FC the custodian paid to other branches (confirmed) in the period. */
+  branchPaidOutFc: string;
+  /** FC the custodian confirmed receiving from other branches in the period. */
+  branchReceivedFc: string;
+  /** salesFc + miniRollupCashFc + branchReceivedFc − expensesFc − branchPaidOutFc. */
   cashExpectedFc: string;
   /** Sales nobody has attested to yet. A handover cannot be submitted above zero. */
   unattestedSaleCount: number;
@@ -80,6 +92,9 @@ interface PeriodFigures {
   rejectedLines: CustodyHandoverRejectedLine[];
   salesFc: Decimal;
   expensesFc: Decimal;
+  /** Branch-transfer payments the custodian handed out / took in (BRANCH_TRANSFER_PLAN.md). */
+  branchPaidOutFc: Decimal;
+  branchReceivedFc: Decimal;
   unattestedSaleCount: number;
   miniRollupLines: CustodyHandoverMiniLine[];
   miniRollupCashFc: Decimal;
@@ -125,6 +140,7 @@ export class CustodyHandoversService {
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
     private readonly currency: CurrencyService,
+    private readonly branchTransfers: BranchTransfersService,
   ) {}
 
   // ─── The custodian's side ──────────────────────────────────────────────────
@@ -150,10 +166,9 @@ export class CustodyHandoversService {
       salesFc: figures.salesFc.toFixed(4),
       miniRollupCashFc: figures.miniRollupCashFc.toFixed(4),
       expensesFc: figures.expensesFc.toFixed(4),
-      cashExpectedFc: figures.salesFc
-        .plus(figures.miniRollupCashFc)
-        .minus(figures.expensesFc)
-        .toFixed(4),
+      branchPaidOutFc: figures.branchPaidOutFc.toFixed(4),
+      branchReceivedFc: figures.branchReceivedFc.toFixed(4),
+      cashExpectedFc: this.expectedCash(figures).toFixed(4),
       unattestedSaleCount: figures.unattestedSaleCount,
       holding: held.map((e) => ({
         inventoryEntryId: e.id,
@@ -187,6 +202,20 @@ export class CustodyHandoversService {
     });
     if (open) throw new ConflictException('A handover is already awaiting approval');
 
+    // Approval ends the custody. Goods in escrow out of it would have no lot to
+    // come back to on a reject, and an unconfirmed payment would leave the
+    // cash figure wrong in a document both sides sign.
+    if (await this.branchTransfers.custodyHasTransferInTransit(custody.id)) {
+      throw new ConflictException(
+        'Goods you sent to another branch are still in transit — wait until they are received or rejected',
+      );
+    }
+    if (await this.branchTransfers.custodianHasPendingPayment(custody)) {
+      throw new ConflictException(
+        'A payment you made to another branch is still waiting to be confirmed',
+      );
+    }
+
     const periodStart = await this.periodStartFor(custody);
     const periodEnd = new Date();
     const figures = await this.periodFigures(ctx, custody, periodStart, periodEnd);
@@ -219,12 +248,11 @@ export class CustodyHandoversService {
       periodStart,
       periodEnd,
       cashDeclaredFc: new Decimal(dto.cashDeclaredFc).toFixed(4),
-      cashExpectedFc: figures.salesFc
-        .plus(figures.miniRollupCashFc)
-        .minus(figures.expensesFc)
-        .toFixed(4),
+      cashExpectedFc: this.expectedCash(figures).toFixed(4),
       miniRollupCashFc: figures.miniRollupCashFc.toFixed(4),
       expensesFc: figures.expensesFc.toFixed(4),
+      branchPaidOutFc: figures.branchPaidOutFc.toFixed(4),
+      branchReceivedFc: figures.branchReceivedFc.toFixed(4),
       // Sealed at submit. Re-deriving these at read time would let a later rate
       // change, a renamed product or a post-close rejection rewrite a figure
       // both parties already signed off on (§3.9, §3.10).
@@ -253,16 +281,46 @@ export class CustodyHandoversService {
   // ─── The owner's side ──────────────────────────────────────────────────────
 
   /** "Switch dashboard work, filterable by handovers of all full employees." */
-  async list(ctx: ActorContext, query: ListCustodyHandoversDto): Promise<CustodyHandover[]> {
-    return this.handoverRepo.find({
-      where: {
-        ...readScope(ctx),
-        ...(query.custodianId ? { custodianId: query.custodianId } : {}),
-        ...(query.status ? { status: query.status } : {}),
-      },
-      relations: { custodian: true, items: true, adjustments: true },
-      order: { createdAt: 'DESC' },
-    });
+  async list(
+    ctx: ActorContext,
+    query: ListCustodyHandoversDto,
+  ): Promise<CustodyHandover[] | CustodyHandoverPage> {
+    const where = {
+      ...readScope(ctx),
+      ...(query.custodianId ? { custodianId: query.custodianId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+    };
+    const relations = { custodian: true, items: true, adjustments: true };
+    const w = pageWindow(query);
+    if (!w) return this.handoverRepo.find({ where, relations, order: { createdAt: 'DESC' } });
+
+    const [[rows, total], custodians] = await Promise.all([
+      this.handoverRepo.findAndCount({
+        where,
+        relations,
+        order: { createdAt: 'DESC', id: 'DESC' },
+        skip: w.skip,
+        take: w.take,
+      }),
+      this.custodiansInScope(ctx),
+    ]);
+    return { ...toPaginated(rows, total, w), custodians };
+  }
+
+  /**
+   * Everyone who has ever handed over on these books, whatever the filters.
+   * The page's "person" filter needs the whole set, which one page of rows
+   * would no longer give it.
+   */
+  private async custodiansInScope(ctx: ActorContext): Promise<User[]> {
+    const ids = await this.handoverRepo
+      .createQueryBuilder('h')
+      .select('DISTINCT h.custodian_id', 'id')
+      .where('h.org_id = :org', { org: ctx.orgId })
+      .andWhere(ctx.shopId ? 'h.shop_id = :shop' : '1=1', { shop: ctx.shopId })
+      .getRawMany<{ id: string }>();
+    if (ids.length === 0) return [];
+    return this.dataSource.getRepository(User).find({ where: { id: In(ids.map((r) => r.id)) } });
   }
 
   async findOne(ctx: ActorContext, id: string): Promise<CustodyHandover> {
@@ -478,6 +536,15 @@ export class CustodyHandoversService {
    * figure is frozen onto the handover and never re-derived, which is the
    * property §3.9 actually needs.
    */
+  /** What the custodian should hand over in cash for a period. */
+  private expectedCash(figures: PeriodFigures): Decimal {
+    return figures.salesFc
+      .plus(figures.miniRollupCashFc)
+      .plus(figures.branchReceivedFc)
+      .minus(figures.expensesFc)
+      .minus(figures.branchPaidOutFc);
+  }
+
   private async periodFigures(
     ctx: ActorContext,
     custody: StockCustody,
@@ -574,11 +641,16 @@ export class CustodyHandoversService {
       );
     }
 
+    // Money the custodian moved between branches out of, or into, the till.
+    const branchCash = await this.branchTransfers.custodianCashFc(custody, from, to, systemRate);
+
     return {
       soldLines: [...soldByKey.values()],
       rejectedLines,
       salesFc,
       expensesFc,
+      branchPaidOutFc: branchCash.paidOutFc,
+      branchReceivedFc: branchCash.receivedFc,
       unattestedSaleCount,
       miniRollupLines,
       miniRollupCashFc,

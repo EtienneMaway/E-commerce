@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { pageWindow, toPaginated, type Paginated } from '../common/pagination';
 import Decimal from 'decimal.js';
 import {
   Employment,
@@ -159,7 +160,10 @@ export class SalaryPaymentsService {
 
   // ─── List (employer or employee perspective) ─────────────────────────────
 
-  async list(actorId: string, filter: ListSalaryPaymentsDto): Promise<SalaryPaymentView[]> {
+  async list(
+    actorId: string,
+    filter: ListSalaryPaymentsDto,
+  ): Promise<SalaryPaymentView[] | Paginated<SalaryPaymentView>> {
     const role = filter.role ?? SalaryRoleFilter.EMPLOYER;
     const qb = this.paymentRepo
       .createQueryBuilder('sp')
@@ -184,7 +188,10 @@ export class SalaryPaymentsService {
       qb.andWhere('sp.periodMonth = :periodMonth', { periodMonth: filter.periodMonth });
     }
 
-    return this.withShopNames(await qb.getMany());
+    const w = pageWindow(filter);
+    if (!w) return this.withShopNames(await qb.getMany());
+    const [rows, total] = await qb.addOrderBy('sp.id', 'DESC').skip(w.skip).take(w.take).getManyAndCount();
+    return toPaginated(await this.withShopNames(rows), total, w);
   }
 
   /** Pending confirmations from the employee's perspective. */

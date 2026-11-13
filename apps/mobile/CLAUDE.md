@@ -54,6 +54,15 @@ app/
 - Use `className` (NativeWind) everywhere — no `StyleSheet.create`
 - Path alias `@/*` maps to repo root (e.g., `@/lib/api`, `@/components/ui/Button`)
 
+## Design system ("market ledger" — same identity as the public site)
+
+- **Palette**: tokens in `global.css` (light + `.dark:root`), literals for native props in `lib/theme.ts` (`useBrand`). Paper/ink neutrals, `primary` = malachite, `accent` = copper (`brand-violet` is a legacy alias of copper). Never use raw Tailwind palettes (`bg-blue-50`, `text-amber-700`…) or `dark:` overrides — tokens flip on their own.
+- **Type**: titles and big figures use the phone's own font (Roboto on Android) via `font-bold` / `font-semibold` — the Fraunces serif was dropped in Nov 2026 because it tired the eyes. `font-mono` / `font-mono-bold` (JetBrains Mono, loaded in `app/_layout.tsx`) for small uppercase labels and figures; never combine those with `font-bold`/`font-semibold` (Android falls back to the system font).
+- **Icons**: `components/ui/Icon.tsx` (Feather). No emoji as icons.
+- **Building blocks**: `Card` (+ `CARD_SHADOW`), `StatCard`, `Button` (pill; `primary|ink|danger|outline|ghost`, optional `icon`), `Badge`, `EmptyState`, `Input`, `ScreenHeader` (kicker + serif title, tab screens), `NavRow` (icon chip row), `ListFooter`. Native stack headers come from `useHeaderOptions()` — add it to any new nested Stack.
+- **Alerts**: call `showAlert` (`lib/alert.ts`, same arguments as `Alert.alert`, optional 4th `{ tone, icon }`), never `Alert.alert`. `components/ui/AlertHost.tsx` renders it as a lit `Sheet` on Android (tone inferred: failures red, validation amber, destructive confirms red); iOS keeps the native alert because a second modal can't present over a pageSheet form there. Server role refusals (403 "role does not include this feature") are detected and shown as `RoleDeniedSheet`; forms a role can't use should open that sheet up-front (see the `sales.record` gate at the bottom of `RecordSaleModal`).
+- Tab bar is custom (`app/(tabs)/_layout.tsx`), floating, with an animated active pill. Gradients/shadows use RN 0.83 `experimental_backgroundImage` / `boxShadow` (New Architecture) — no native gradient library, so design changes stay OTA-shippable.
+
 ## Price Guard (422 handling)
 
 `RecordSaleModal` is the reference implementation. When a sale is submitted below cost:

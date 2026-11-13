@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Modal, ScrollView, Alert, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { paymentsApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
@@ -9,6 +9,8 @@ import { getErrorMessage } from '../../lib/utils';
 import { useFormatCurrency, useExchangeRate, fcToUsd } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { useBrand } from '../../lib/theme';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props {
   visible: boolean;
@@ -38,27 +40,27 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
       setNote('');
       onClose();
     },
-    onError: (err) => Alert.alert('Error', getErrorMessage(err)),
+    onError: (err) => showAlert('Error', getErrorMessage(err)),
   });
 
   const handleSubmit = () => {
     const parsedFc = parseFloat(amountFc);
     if (!amountFc || isNaN(parsedFc) || parsedFc <= 0) {
-      Alert.alert(t.common.invalidAmount, t.paySupplierModal.invalidAmountMsg);
+      showAlert(t.common.invalidAmount, t.paySupplierModal.invalidAmountMsg);
       return;
     }
     if (parseFloat(amountUsd) > parseFloat(outstandingBalance)) {
-      Alert.alert(t.common.invalidAmount, t.paySupplierModal.exceedsBalance);
+      showAlert(t.common.invalidAmount, t.paySupplierModal.exceedsBalance);
       return;
     }
     mutate();
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-xl font-bold text-text">{t.paySupplierModal.title}</Text>
+          <Text className="font-bold text-2xl text-text">{t.paySupplierModal.title}</Text>
           <TouchableOpacity onPress={onClose}><Text className="text-primary font-medium">{t.common.cancel}</Text></TouchableOpacity>
         </View>
 
@@ -91,7 +93,7 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
             placeholder="0"
             keyboardType="decimal-pad"
             placeholderTextColor={brand.mutedSubtle}
-            className="border rounded-xl px-4 py-3 text-text bg-card text-base border-border"
+            className="border rounded-2xl px-4 py-3.5 text-text bg-card text-base border-border"
           />
         </View>
         <Input
@@ -104,6 +106,6 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
 
         <Button label={t.paySupplierModal.submit} onPress={handleSubmit} loading={isPending} />
       </ScrollView>
-    </Modal>
+    </FormModal>
   );
 }

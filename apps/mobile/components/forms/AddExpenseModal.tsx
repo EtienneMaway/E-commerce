@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { View, Text, Modal, ScrollView, Alert, TouchableOpacity, Pressable } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Pressable } from 'react-native';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   EXPENSE_CATEGORIES,
@@ -12,6 +12,8 @@ import { Button } from '../ui/Button';
 import { getErrorMessage } from '../../lib/utils';
 import { useOfflineStore } from '../../store/offline.store';
 import { useT } from '../../lib/i18n';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props {
   visible: boolean;
@@ -46,17 +48,17 @@ export function AddExpenseModal({ visible, onClose }: Props) {
       setDescription('');
       onClose();
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   const handleSubmit = () => {
     const n = parseFloat(amount);
     if (!amount || isNaN(n) || n <= 0) {
-      Alert.alert(t.common.error, t.expenses.amountRequiredMsg);
+      showAlert(t.common.error, t.expenses.amountRequiredMsg);
       return;
     }
     if (date && date > today) {
-      Alert.alert(t.common.error, t.expenses.futureDateMsg);
+      showAlert(t.common.error, t.expenses.futureDateMsg);
       return;
     }
     // Offline → queue for sync (synced alongside sales); online → submit now.
@@ -71,7 +73,7 @@ export function AddExpenseModal({ visible, onClose }: Props) {
       setAmount('');
       setDescription('');
       onClose();
-      Alert.alert('✅', t.expenses.queuedOffline);
+      showAlert('✅', t.expenses.queuedOffline);
       return;
     }
     mutate();
@@ -81,21 +83,21 @@ export function AddExpenseModal({ visible, onClose }: Props) {
     (t.expenses as unknown as Record<string, string>)[`cat${c}`] ?? c;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView
         className="flex-1 bg-background"
         contentContainerClassName="px-6 py-8"
         keyboardShouldPersistTaps="handled"
       >
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-xl font-bold text-text">{t.expenses.addBtn}</Text>
+          <Text className="font-bold text-2xl text-text">{t.expenses.addBtn}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
         </View>
 
         <View className="mb-4">
-          <Text className="text-sm font-medium text-text mb-1.5">
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">
             {t.expenses.amount} (FC)
           </Text>
           <Input
@@ -108,7 +110,7 @@ export function AddExpenseModal({ visible, onClose }: Props) {
         </View>
 
         <View className="mb-4">
-          <Text className="text-sm font-medium text-text mb-1.5">
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">
             {t.expenses.category}
           </Text>
           <View className="flex-row flex-wrap gap-2">
@@ -143,7 +145,7 @@ export function AddExpenseModal({ visible, onClose }: Props) {
         />
 
         <View className="mb-4">
-          <Text className="text-sm font-medium text-text mb-1.5">
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">
             {t.expenses.description}
           </Text>
           <Input
@@ -163,6 +165,6 @@ export function AddExpenseModal({ visible, onClose }: Props) {
           className="mt-2"
         />
       </ScrollView>
-    </Modal>
+    </FormModal>
   );
 }

@@ -1,14 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
+  FlatList,
   Pressable,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
-  RefreshControl,
-} from 'react-native';
+  } from 'react-native';
 import { Stack } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -18,6 +17,9 @@ import {
   type ConsignmentSummary,
 } from '../lib/api';
 import { QK } from '../lib/query-keys';
+import { usePagedList, fromPaginated, MOBILE_PAGE_SIZE } from '../lib/paged-list';
+import { useIsOnline } from '../lib/connectivity';
+import { ListFooter } from '../components/ui/ListFooter';
 import { EmptyState } from '../components/ui/EmptyState';
 import { formatDate, getErrorMessage } from '../lib/utils';
 import { formatFcValue, useExchangeRate } from '../lib/currency';
@@ -34,6 +36,8 @@ import {
   toReceivedGoodsSlip,
 } from '../lib/handover-receipt';
 import { useRequireService } from '../hooks/use-require-service';
+import { showAlert } from '../lib/alert';
+import { PullRefreshControl } from '../components/ui/PullRefreshControl';
 
 type Tab = 'handovers' | 'received';
 
@@ -96,9 +100,9 @@ function HandoversTab() {
       await printApprovedHandover(slip);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+        showAlert(t.printer.printFailed, getErrorMessage(err));
       } else {
-        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
+        showAlert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrintingId(null);
@@ -113,7 +117,7 @@ function HandoversTab() {
     <ScrollView
       className="flex-1"
       contentContainerClassName="px-4 pt-3 pb-8"
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />}
+      refreshControl={<PullRefreshControl onRefresh={() => void refetch()} />}
     >
       {handovers.map((s) => (
         <HandoverCard
@@ -135,16 +139,26 @@ function ReceivedTab() {
   const rate = useExchangeRate();
   const [printingId, setPrintingId] = useState<string | null>(null);
 
-  const { data, isLoading, isRefetching, refetch } = useQuery({
-    queryKey: QK.consignmentsIncoming,
-    queryFn: consignmentsApi.incoming,
+  const online = useIsOnline();
+  // Paged, newest first; loaded pages persist so the history reads offline.
+  const list = usePagedList<ConsignmentSummary>({
+    queryKey: QK.consignmentsHistoryPages,
+    fetchPage: async (page) =>
+      fromPaginated(await consignmentsApi.incomingPage(page, MOBILE_PAGE_SIZE)),
     staleTime: 15_000,
+    getId: (c) => c.id,
   });
+  const isLoading = list.isInitialLoading;
+  const isRefetching = list.isRefreshing;
+  const refetch = list.refetch;
   // Received = accepted consignments; also surface rejected/cancelled for the
   // record. Pending ones live in the Receive inbox, not history.
-  const received = ((data as ConsignmentSummary[] | undefined) ?? []).filter(
-    (c) => c.status !== 'PENDING',
-  );
+  const received = list.rows.filter((c) => c.status !== 'PENDING');
+  // Pending rows are filtered out here, so a page can come back nearly empty;
+  // an almost-empty list never scrolls, so pull the next page ourselves.
+  useEffect(() => {
+    if (online && received.length < 8 && list.hasNextPage && !list.isFetchingNextPage) list.loadMore();
+  }, [online, received.length, list.hasNextPage, list.isFetchingNextPage, list.loadMore]);
   const self = { name: user?.name ?? undefined, handle: user?.username };
 
   const handlePrint = async (c: ConsignmentSummary) => {
@@ -154,9 +168,9 @@ function ReceivedTab() {
       await printReceivedGoods(slip);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+        showAlert(t.printer.printFailed, getErrorMessage(err));
       } else {
-        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
+        showAlert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrintingId(null);
@@ -164,26 +178,36 @@ function ReceivedTab() {
   };
 
   if (isLoading) return <ActivityIndicator className="mt-10" />;
-  if (received.length === 0)
+  if (received.length === 0 && !list.hasNextPage)
     return <EmptyState emoji="📥" title={t.miniEmployee.tabReceived} subtitle={t.miniEmployee.receivedHistoryEmpty} />;
 
   return (
-    <ScrollView
+    <FlatList
       className="flex-1"
       contentContainerClassName="px-4 pt-3 pb-8"
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />}
-    >
-      {received.map((c) => (
+      data={received}
+      keyExtractor={(c) => c.id}
+      refreshControl={<PullRefreshControl onRefresh={() => void refetch()} />}
+      onEndReached={list.loadMore}
+      onEndReachedThreshold={0.5}
+      renderItem={({ item: c }) => (
         <ReceivedCard
-          key={c.id}
           consignment={c}
           rate={rate}
           printing={printingId === c.id}
           onPrint={() => void handlePrint(c)}
           onShare={() => void shareReceivedGoodsPdf(toReceivedGoodsSlip(c, self, rate))}
         />
-      ))}
-    </ScrollView>
+      )}
+      ListFooterComponent={
+        <ListFooter
+          isFetchingNextPage={list.isFetchingNextPage}
+          hasNextPage={list.hasNextPage}
+          offline={!online}
+          count={received.length}
+        />
+      }
+    />
   );
 }
 
@@ -226,10 +250,10 @@ function HandoverCard({
   const returnsCount = s.items.reduce((n, it) => n + it.quantity, 0);
   const badge =
     s.status === 'APPROVED'
-      ? { label: t.miniEmployee.statusApproved, cls: 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300' }
+      ? { label: t.miniEmployee.statusApproved, cls: 'bg-success-light text-success' }
       : s.status === 'REJECTED'
-        ? { label: t.miniEmployee.statusRejected, cls: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' }
-        : { label: t.miniEmployee.statusPending, cls: 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300' };
+        ? { label: t.miniEmployee.statusRejected, cls: 'bg-danger-light text-danger' }
+        : { label: t.miniEmployee.statusPending, cls: 'bg-warning-light text-warning' };
 
   return (
     <View className="bg-card border border-border rounded-2xl px-4 py-4 mb-3">
@@ -282,9 +306,9 @@ function ReceivedCard({
   const itemsCount = c.items.reduce((n, it) => n + it.quantity, 0);
   const badge =
     c.status === 'ACCEPTED'
-      ? { label: t.miniEmployee.statusReceived, cls: 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300' }
+      ? { label: t.miniEmployee.statusReceived, cls: 'bg-success-light text-success' }
       : c.status === 'REJECTED'
-        ? { label: t.miniEmployee.statusRejected, cls: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' }
+        ? { label: t.miniEmployee.statusRejected, cls: 'bg-danger-light text-danger' }
         : { label: t.miniEmployee.statusCancelled, cls: 'bg-background text-muted' };
 
   return (
@@ -332,7 +356,7 @@ function PrintRow({
       <TouchableOpacity
         onPress={onPrint}
         disabled={printing}
-        className="flex-1 bg-emerald-600 rounded-xl py-2.5 flex-row items-center justify-center gap-2"
+        className="flex-1 bg-success rounded-xl py-2.5 flex-row items-center justify-center gap-2"
         style={{ opacity: printing ? 0.6 : 1 }}
       >
         {printing && <ActivityIndicator size="small" color="#fff" />}
@@ -340,9 +364,9 @@ function PrintRow({
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onShare}
-        className="px-4 rounded-xl py-2.5 items-center justify-center border border-emerald-600"
+        className="px-4 rounded-xl py-2.5 items-center justify-center border border-success/60"
       >
-        <Text className="text-emerald-700 dark:text-emerald-300 font-semibold text-sm">
+        <Text className="text-success font-semibold text-sm">
           {t.miniEmployee.shareBtn}
         </Text>
       </TouchableOpacity>

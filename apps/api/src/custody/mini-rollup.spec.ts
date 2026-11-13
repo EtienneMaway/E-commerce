@@ -1,3 +1,4 @@
+import { branchTransfersStub } from '../common/testing/branch-transfers.fixture';
 import { CustodyHandoversService } from './custody-handovers.service';
 import { CustodyService } from './custody.service';
 import {
@@ -84,6 +85,8 @@ function build(opts: { consignments?: unknown[]; settlements?: unknown[] }) {
     {} as never,
     {} as never,
     { getRate: jest.fn(async () => ({ usdToFcRate: '2700.0000' })) } as never,
+   
+   branchTransfersStub() as never,
   );
 }
 
@@ -167,6 +170,8 @@ describe('CustodyService.custodyForMini — where the goods came from', () => {
       { findOne: jest.fn(async () => request) } as never,
       {} as never,
       {} as never,
+     
+     branchTransfersStub() as never,
     );
   }
 

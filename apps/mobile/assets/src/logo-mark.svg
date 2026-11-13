@@ -1,38 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!--
-    The in-app brand mark: a pale ring around a gradient disc with the K inside.
-
-    This is the badge form of the icon, used by components/ui/KmbLogo.tsx on the
-    auth screens. It is deliberately NOT the launcher icon — assets/src/icon.svg
-    stays a full-bleed square, because iOS masks the tile itself and a circle
-    baked into that tile would float on an empty corner.
-
-    Transparent outside the ring, so the same file reads on the light
-    (#EEF1FA) and dark (#090C18) page backgrounds without a variant.
-
-    Geometry is measured from the reference: ring 10.5% of the outer diameter,
-    inner disc 79% of it, K 49.5% of it. The glyph is the same path as icon.svg,
-    scaled 0.851 so its stroke lands at the reference weight.
-  -->
+<!--
+  KMB-Talk mark ("market ledger" identity, November 2026): a paper K on a
+  malachite field whose copper leg crosses over the arm, the two sides of the
+  books ("Know what you are owed. Know what you owe."). The crossing gap is a
+  mask, not a field-coloured stroke, so it stays correct on any background.
+  Every file in assets/src is drawn from the same K geometry (1024 space).
+  In-app mark (KmbLogo on mobile): the rounded tile, transparent outside it.
+-->
   <defs>
-    <linearGradient id="bg" x1="108" y1="108" x2="916" y2="916" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#4F46E5"/>
-      <stop offset="100%" stop-color="#7C3AED"/>
+    <radialGradient id="field" gradientUnits="userSpaceOnUse" cx="330" cy="260" r="900">
+      <stop offset="0" stop-color="#1E9E76"/><stop offset="0.5" stop-color="#0E7A5B"/><stop offset="1" stop-color="#094A37"/>
+    </radialGradient>
+    <linearGradient id="copper" gradientUnits="userSpaceOnUse" x1="564" y1="446" x2="746" y2="760">
+      <stop offset="0" stop-color="#F2A86C"/><stop offset="1" stop-color="#C25E27"/>
     </linearGradient>
+    <mask id="cross" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#FFFFFF"/>
+      <path d="M564 446 L 746 760" stroke="#000000" stroke-width="172" stroke-linecap="round"/>
+    </mask>
   </defs>
-
-  <!-- Ring: stroked at r=458 with width 108, so it spans r 404→512. -->
-  <circle cx="512" cy="512" r="458" fill="none" stroke="#D3CEFB" stroke-width="108"/>
-
-  <!-- Disc -->
-  <circle cx="512" cy="512" r="404" fill="url(#bg)"/>
-
-  <!-- K -->
-  <g transform="translate(512,512) scale(0.851) translate(-512,-512)"
-     stroke="#FFFFFF" stroke-width="108" stroke-linecap="round"
-     stroke-linejoin="round" fill="none">
-    <path d="M364 268 V 756"/>
-    <path d="M364 512 L 660 268"/>
-    <path d="M364 512 L 660 756"/>
+  <rect width="1024" height="1024" rx="230" fill="url(#field)"/>
+  <g fill="none" stroke-linecap="round" stroke-width="112">
+    <g mask="url(#cross)" stroke="#F3ECDF">
+      <path d="M370 264 V 760"/>
+      <path d="M370 600 L 706 264"/>
+    </g>
+    <path d="M564 446 L 746 760" stroke="url(#copper)"/>
   </g>
 </svg>

@@ -36,7 +36,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trading_app_ci
       JWT_SECRET: ci-secret-not-used-outside-ci
-      JWT_EXPIRES_IN: 7d
+      JWT_EXPIRES_IN: 30d
 
     steps:
       - uses: actions/checkout@v4

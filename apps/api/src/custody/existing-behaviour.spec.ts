@@ -1,3 +1,4 @@
+import { branchTransfersStub } from '../common/testing/branch-transfers.fixture';
 import Decimal from 'decimal.js';
 import { SalesService } from '../sales/sales.service';
 import { CustodyService } from './custody.service';
@@ -78,6 +79,8 @@ function build(opts: {
     {} as never, // consignmentRepo
     {} as never,
     {} as never,
+   
+   branchTransfersStub() as never,
   );
 
   const savedSales: SaleTransaction[] = [];

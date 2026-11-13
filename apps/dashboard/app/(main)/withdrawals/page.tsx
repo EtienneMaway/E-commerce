@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
   AvailableWithdrawal,
   Withdrawal,
@@ -46,6 +46,8 @@ export default function WithdrawalsPage() {
   });
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: [...QK.withdrawals, page, PAGE_SIZE],
+    // Previous page stays on screen while the next loads — no spinner flash.
+    placeholderData: keepPreviousData,
     queryFn: () => withdrawalsApi.list({ page, limit: PAGE_SIZE }),
     enabled: isOwner,
   });

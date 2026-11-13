@@ -4,8 +4,6 @@ import {
   Text,
   ScrollView,
   Pressable,
-  RefreshControl,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -34,6 +32,8 @@ import { usePersonaStore } from '../store/persona.store';
 import { useT } from '../lib/i18n';
 import { personHandle } from '../lib/person';
 import { useRequireService } from '../hooks/use-require-service';
+import { showAlert } from '../lib/alert';
+import { PullRefreshControl } from '../components/ui/PullRefreshControl';
 
 type FilterKey = 'all' | 'today' | 'week' | 'month' | 'lastN';
 
@@ -160,11 +160,11 @@ function OwnerExpensesScreen() {
       qc.invalidateQueries({ queryKey: ['expenses'] });
       qc.invalidateQueries({ queryKey: QK.dashboardAll });
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   const confirmDelete = (id: string) => {
-    Alert.alert(t.expenses.deleteConfirmTitle, t.expenses.deleteConfirmBody, [
+    showAlert(t.expenses.deleteConfirmTitle, t.expenses.deleteConfirmBody, [
       { text: t.common.cancel, style: 'cancel' },
       { text: t.expenses.deleteBtn, style: 'destructive', onPress: () => deleteMutation.mutate(id) },
     ]);
@@ -174,7 +174,7 @@ function OwnerExpensesScreen() {
     <View className="flex-1 bg-background">
       <ScrollView
         contentContainerClassName="px-4 pt-4 pb-24"
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+        refreshControl={<PullRefreshControl onRefresh={refetch} />}
       >
         {/* Total card */}
         <Card>
@@ -305,8 +305,8 @@ function OwnerExpensesScreen() {
 
         {/* Queued offline — recorded but not yet synced */}
         {pendingOffline.length > 0 && (
-          <Card className="mt-4 border border-blue-300 dark:border-blue-800">
-            <Text className="text-blue-600 dark:text-blue-400 text-xs font-semibold uppercase tracking-wide mb-2">
+          <Card className="mt-4 border border-primary/30">
+            <Text className="text-primary text-xs font-semibold uppercase tracking-wide mb-2">
               🔄 {t.expenses.pendingSyncLabel(pendingOffline.length)}
             </Text>
             {pendingOffline.map((e) => (

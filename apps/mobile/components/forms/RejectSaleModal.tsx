@@ -4,7 +4,6 @@ import {
   View,
   Text,
   TextInput,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -16,6 +15,7 @@ import { useOfflineStore } from '../../store/offline.store';
 import { useT } from '../../lib/i18n';
 import { useBrand } from '../../lib/theme';
 import { Button } from '../ui/Button';
+import { showAlert } from '../../lib/alert';
 
 /**
  * What is being rejected. Two kinds, because a sale can be voided before it has
@@ -82,7 +82,7 @@ export function RejectSaleModal({ target, onClose }: Props) {
       reason.trim() || undefined,
     );
     onClose();
-    Alert.alert(t.sales.rejectQueued, '');
+    showAlert(t.sales.rejectQueued, '');
   };
 
   const handleConfirm = async (): Promise<void> => {
@@ -90,7 +90,7 @@ export function RejectSaleModal({ target, onClose }: Props) {
     if (target.kind === 'pending') {
       rejectPendingSale(target.id, reason.trim() || undefined);
       onClose();
-      Alert.alert(t.sales.rejectQueued, '');
+      showAlert(t.sales.rejectQueued, '');
       return;
     }
 
@@ -104,7 +104,7 @@ export function RejectSaleModal({ target, onClose }: Props) {
       await salesApi.reject(target.id, reason.trim() ? { reason: reason.trim() } : {});
       invalidate();
       onClose();
-      Alert.alert(t.sales.rejectDone, '');
+      showAlert(t.sales.rejectDone, '');
     } catch (err) {
       // No verdict from the server — queue it instead of dropping the
       // correction on the floor. The endpoint is idempotent, so replaying it
@@ -112,7 +112,7 @@ export function RejectSaleModal({ target, onClose }: Props) {
       if (isNetworkError(err)) {
         queueIt();
       } else {
-        Alert.alert(t.common.error, getErrorMessage(err));
+        showAlert(t.common.error, getErrorMessage(err));
       }
     } finally {
       setSubmitting(false);
@@ -126,7 +126,7 @@ export function RejectSaleModal({ target, onClose }: Props) {
         className="flex-1 justify-center bg-black/50 px-6"
       >
         <View className="bg-surface rounded-2xl p-5">
-          <Text className="text-text font-bold text-lg">{t.sales.rejectTitle}</Text>
+          <Text className="font-bold text-xl text-text">{t.sales.rejectTitle}</Text>
           <Text className="text-muted text-sm mt-1 mb-4 capitalize">
             {t.sales.rejectBody(label, target.qtySold)}
           </Text>

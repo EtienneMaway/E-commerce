@@ -9,8 +9,8 @@ const { withAndroidColors, AndroidConfig } = require('expo/config-plugins');
  *
  * Keep in sync with `lib/theme.ts` / `tailwind.config.js`.
  */
-const BRAND_PRIMARY = '#4F46E5';
-const BRAND_PRIMARY_DARK = '#4338CA';
+const BRAND_PRIMARY = '#0E7A5B';
+const BRAND_PRIMARY_DARK = '#0B5842';
 
 module.exports = function withBrandColors(config) {
   return withAndroidColors(config, (cfg) => {

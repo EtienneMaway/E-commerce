@@ -1,6 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <!-- Adaptive-icon background: the badge's pale field. Flat on purpose — the
-       launcher masks this layer to whatever shape it uses, and the gradient
-       lives on the disc in adaptive-foreground.svg. -->
-  <rect width="512" height="512" fill="#D3CEFB"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 1024 1024">
+<!--
+  KMB-Talk mark ("market ledger" identity, November 2026): a paper K on a
+  malachite field whose copper leg crosses over the arm, the two sides of the
+  books ("Know what you are owed. Know what you owe."). The crossing gap is a
+  mask, not a field-coloured stroke, so it stays correct on any background.
+  Every file in assets/src is drawn from the same K geometry (1024 space).
+  Adaptive-icon background layer: the field only; the launcher masks it.
+-->
+  <defs>
+    <radialGradient id="field" gradientUnits="userSpaceOnUse" cx="330" cy="260" r="900">
+      <stop offset="0" stop-color="#1E9E76"/><stop offset="0.5" stop-color="#0E7A5B"/><stop offset="1" stop-color="#094A37"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#field)"/>
 </svg>

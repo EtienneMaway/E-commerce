@@ -6,9 +6,7 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
-  Alert,
-  RefreshControl,
-} from 'react-native';
+  } from 'react-native';
 import { Stack } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,6 +21,8 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { breakdownQuantity, formatBreakdown, formatDate, getErrorMessage } from '../lib/utils';
 import { useRequireService } from '../hooks/use-require-service';
 import { useT } from '../lib/i18n';
+import { showAlert } from '../lib/alert';
+import { PullRefreshControl } from '../components/ui/PullRefreshControl';
 
 type Tab = 'volume' | 'approve' | 'handover';
 
@@ -66,17 +66,17 @@ export default function CustodyScreen() {
     mutationFn: (id: string) => custodyApi.acceptIssue(id),
     onSuccess: () => {
       refreshAll();
-      Alert.alert(t.custody.takenTitle, t.custody.takenBody);
+      showAlert(t.custody.takenTitle, t.custody.takenBody);
     },
-    onError: (e) => Alert.alert(t.custody.couldNotTake, getErrorMessage(e)),
+    onError: (e) => showAlert(t.custody.couldNotTake, getErrorMessage(e)),
   });
   const refuse = useMutation({
     mutationFn: (id: string) => custodyApi.rejectIssue(id),
     onSuccess: () => {
       refreshAll();
-      Alert.alert(t.custody.refusedTitle, t.custody.refuseBody);
+      showAlert(t.custody.refusedTitle, t.custody.refuseBody);
     },
-    onError: (e) => Alert.alert(t.custody.couldNotRefuse, getErrorMessage(e)),
+    onError: (e) => showAlert(t.custody.couldNotRefuse, getErrorMessage(e)),
   });
 
   if (!allowed) return null;
@@ -97,7 +97,7 @@ export default function CustodyScreen() {
               key={key}
               onPress={() => setTab(key)}
               className={`px-4 py-2 rounded-full ${
-                tab === key ? 'bg-indigo-600' : 'bg-neutral-100 dark:bg-neutral-800'
+ tab === key ? 'bg-primary' : 'bg-neutral-100 dark:bg-neutral-800'
               }`}
             >
               <Text
@@ -127,7 +127,7 @@ export default function CustodyScreen() {
           <ScrollView
             className="flex-1 px-4 pt-4"
             refreshControl={
-              <RefreshControl refreshing={mine.isFetching} onRefresh={() => refreshAll()} />
+              <PullRefreshControl onRefresh={() => refreshAll()} />
             }
           >
             <View className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-4 mb-4">
@@ -172,7 +172,7 @@ export default function CustodyScreen() {
                     </Text>
                     <View className="flex-row gap-2 mt-3">
                       <Pressable
-                        className="flex-1 bg-indigo-600 rounded-xl py-3 items-center"
+                        className="flex-1 bg-primary rounded-xl py-3 items-center"
                         disabled={accept.isPending}
                         onPress={() => accept.mutate(i.id)}
                       >
@@ -182,7 +182,7 @@ export default function CustodyScreen() {
                         className="px-4 rounded-xl py-3 items-center justify-center border border-neutral-300 dark:border-neutral-700"
                         disabled={refuse.isPending}
                         onPress={() =>
-                          Alert.alert(t.custody.refuseTitle, t.custody.refuseBody, [
+                          showAlert(t.custody.refuseTitle, t.custody.refuseBody, [
                             { text: 'Cancel', style: 'cancel' },
                             { text: t.custody.refuse, style: 'destructive', onPress: () => refuse.mutate(i.id) },
                           ])
@@ -257,9 +257,9 @@ function ApproveQueue() {
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['custody'] });
       setReviewed(false);
-      Alert.alert(t.custody.approvedTitle, `${r.approved} ${t.custody.approvedBody}`);
+      showAlert(t.custody.approvedTitle, `${r.approved} ${t.custody.approvedBody}`);
     },
-    onError: (e) => Alert.alert(t.custody.notApproved, getErrorMessage(e)),
+    onError: (e) => showAlert(t.custody.notApproved, getErrorMessage(e)),
   });
 
   if (isLoading) {
@@ -284,8 +284,7 @@ function ApproveQueue() {
     <ScrollView
       className="flex-1 px-4 pt-4"
       refreshControl={
-        <RefreshControl
-          refreshing={isFetching}
+        <PullRefreshControl
           onRefresh={() => qc.invalidateQueries({ queryKey: QK.custodyPendingSales })}
         />
       }
@@ -310,8 +309,8 @@ function ApproveQueue() {
         </View>
       ))}
 
-      <View className="bg-amber-50 dark:bg-amber-950/40 rounded-2xl p-4 mt-5">
-        <Text className="text-amber-900 dark:text-amber-200 text-sm">
+      <View className="bg-warning-light /40 rounded-2xl p-4 mt-5">
+        <Text className="text-warning text-sm">
           {sales.length} · {total.toFixed(2)} · {t.custody.approveWarning}
         </Text>
         <Pressable
@@ -320,12 +319,12 @@ function ApproveQueue() {
         >
           <View
             className={`w-5 h-5 rounded border items-center justify-center ${
-              reviewed ? 'bg-amber-600 border-amber-600' : 'border-amber-500'
+ reviewed ? 'bg-warning border-warning/60' : 'border-warning/60'
             }`}
           >
             {reviewed && <Text className="text-white text-xs">✓</Text>}
           </View>
-          <Text className="text-amber-900 dark:text-amber-200 text-sm flex-1">
+          <Text className="text-warning text-sm flex-1">
             {t.custody.approveCheckbox}
           </Text>
         </Pressable>
@@ -333,7 +332,7 @@ function ApproveQueue() {
 
       <Pressable
         className={`rounded-xl py-4 items-center mt-4 ${
-          reviewed ? 'bg-indigo-600' : 'bg-neutral-300 dark:bg-neutral-800'
+ reviewed ? 'bg-primary' : 'bg-neutral-300 dark:bg-neutral-800'
         }`}
         disabled={!reviewed || approve.isPending}
         onPress={() => approve.mutate()}
@@ -370,9 +369,9 @@ function HandoverTab() {
       qc.invalidateQueries({ queryKey: ['custody'] });
       setCash('');
       setNote('');
-      Alert.alert(t.custody.handedOverTitle, t.custody.handedOverBody);
+      showAlert(t.custody.handedOverTitle, t.custody.handedOverBody);
     },
-    onError: (e) => Alert.alert(t.custody.notHandedOver, getErrorMessage(e)),
+    onError: (e) => showAlert(t.custody.notHandedOver, getErrorMessage(e)),
   });
 
   if (isLoading) {
@@ -390,8 +389,7 @@ function HandoverTab() {
     <ScrollView
       className="flex-1 px-4 pt-4"
       refreshControl={
-        <RefreshControl
-          refreshing={isFetching}
+        <PullRefreshControl
           onRefresh={() => qc.invalidateQueries({ queryKey: QK.custodyPreview })}
         />
       }
@@ -412,13 +410,19 @@ function HandoverTab() {
         {Number(p.expensesFc) > 0 && (
           <Row label={t.custody.youSpent} value={`−${fc(p.expensesFc)} FC`} />
         )}
+        {Number(p.branchReceivedFc ?? 0) > 0 && (
+          <Row label={t.custody.youReceivedBranches} value={`${fc(p.branchReceivedFc)} FC`} />
+        )}
+        {Number(p.branchPaidOutFc ?? 0) > 0 && (
+          <Row label={t.custody.youPaidBranches} value={`−${fc(p.branchPaidOutFc)} FC`} />
+        )}
         <View className="h-px bg-neutral-200 dark:bg-neutral-800 my-2" />
         <Row label={t.custody.youOwe} value={`${fc(p.cashExpectedFc)} FC`} strong />
       </View>
 
       {p.pendingMiniHandovers.length > 0 && (
-        <View className="bg-blue-50 dark:bg-blue-950/40 rounded-2xl p-4 mb-4">
-          <Text className="text-blue-900 dark:text-blue-200 text-sm">
+        <View className="bg-primary-light /40 rounded-2xl p-4 mb-4">
+          <Text className="text-primary text-sm">
             {t.custody.stillOutTitle}{' '}
             {p.pendingMiniHandovers.map((m) => m.miniName).join(', ')}. {t.custody.stillOutBody}
           </Text>
@@ -426,8 +430,8 @@ function HandoverTab() {
       )}
 
       {blocked && (
-        <View className="bg-amber-50 dark:bg-amber-950/40 rounded-2xl p-4 mb-4">
-          <Text className="text-amber-900 dark:text-amber-200 text-sm">
+        <View className="bg-warning-light /40 rounded-2xl p-4 mb-4">
+          <Text className="text-warning text-sm">
             {p.unattestedSaleCount} {t.custody.blockedByApproval}
           </Text>
         </View>
@@ -521,15 +525,15 @@ function HandoverTab() {
         placeholderTextColor="#9ca3af"
       />
 
-      <View className="bg-amber-50 dark:bg-amber-950/40 rounded-2xl p-4 mb-4">
-        <Text className="text-amber-900 dark:text-amber-200 text-sm">
+      <View className="bg-warning-light /40 rounded-2xl p-4 mb-4">
+        <Text className="text-warning text-sm">
           {t.custody.fullReturnWarning}
         </Text>
       </View>
 
       <Pressable
         className={`rounded-xl py-4 items-center mt-1 ${
-          blocked ? 'bg-neutral-300 dark:bg-neutral-800' : 'bg-indigo-600'
+ blocked ? 'bg-neutral-300 dark:bg-neutral-800' : 'bg-primary'
         }`}
         disabled={blocked || submit.isPending}
         onPress={() => submit.mutate()}

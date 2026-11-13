@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Modal, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
@@ -9,6 +9,8 @@ import { UserSearchField } from './UserSearchField';
 import { getErrorMessage } from '../../lib/utils';
 import { useExchangeRate, formatFcValue } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface User { id: string; username: string; email: string | null; phone: string | null; }
 interface Props { visible: boolean; onClose: () => void; }
@@ -46,23 +48,23 @@ export function ReceiveFromSupplierModal({ visible, onClose }: Props) {
       setForm({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '', piecesPerCarton: '' });
       onClose();
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   const handleSubmit = () => {
-    if (!supplier) { Alert.alert(t.receiveSupplierModal.selectSupplierAlert, t.receiveSupplierModal.selectSupplierMsg); return; }
+    if (!supplier) { showAlert(t.receiveSupplierModal.selectSupplierAlert, t.receiveSupplierModal.selectSupplierMsg); return; }
     if (!form.productName || !form.unitCost || !form.sellingPrice || !form.quantity) {
-      Alert.alert(t.common.missingFields, t.receiveSupplierModal.missingFieldsMsg);
+      showAlert(t.common.missingFields, t.receiveSupplierModal.missingFieldsMsg);
       return;
     }
     mutate();
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-xl font-bold text-text">{t.receiveSupplierModal.title}</Text>
+          <Text className="font-bold text-2xl text-text">{t.receiveSupplierModal.title}</Text>
           <TouchableOpacity onPress={onClose}><Text className="text-primary font-medium">{t.common.cancel}</Text></TouchableOpacity>
         </View>
         <UserSearchField label={t.receiveSupplierModal.selectSupplier} selected={supplier} onSelect={setSupplier} />
@@ -83,6 +85,6 @@ export function ReceiveFromSupplierModal({ visible, onClose }: Props) {
         </View>
         <Button label={t.receiveSupplierModal.submit} onPress={handleSubmit} loading={isPending} />
       </ScrollView>
-    </Modal>
+    </FormModal>
   );
 }

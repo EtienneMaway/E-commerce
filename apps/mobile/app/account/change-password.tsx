@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { ScrollView, Alert } from 'react-native';
+import { ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { accountApi } from '../../lib/api';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+import { showAlert } from '../../lib/alert';
 
 export default function ChangePasswordScreen() {
   const t = useT();
@@ -16,28 +17,28 @@ export default function ChangePasswordScreen() {
 
   const handleSubmit = async () => {
     if (!currentPassword || !newPassword || !confirm) {
-      Alert.alert(t.common.missingFields);
+      showAlert(t.common.missingFields);
       return;
     }
     if (newPassword.length < 8) {
-      Alert.alert(t.common.error, t.account.passwordMinChars);
+      showAlert(t.common.error, t.account.passwordMinChars);
       return;
     }
     if (newPassword !== confirm) {
-      Alert.alert(t.common.error, t.account.passwordsMismatch);
+      showAlert(t.common.error, t.account.passwordsMismatch);
       return;
     }
     if (newPassword === currentPassword) {
-      Alert.alert(t.common.error, t.account.samePasswordMsg);
+      showAlert(t.common.error, t.account.samePasswordMsg);
       return;
     }
     setSaving(true);
     try {
       await accountApi.changePassword({ currentPassword, newPassword });
-      Alert.alert(t.account.passwordUpdated);
+      showAlert(t.account.passwordUpdated);
       router.back();
     } catch (err) {
-      Alert.alert(t.account.passwordChangeFailed, getErrorMessage(err));
+      showAlert(t.account.passwordChangeFailed, getErrorMessage(err));
     } finally {
       setSaving(false);
     }

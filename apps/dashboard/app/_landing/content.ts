@@ -46,6 +46,8 @@ export interface LandingContent {
    */
   readonly extract: {
     caption: string;
+    /** Stamped across the card once the rows have landed. */
+    stamp: string;
     rows: readonly { label: string; value: string; accent?: 'owed' | 'owe' | 'net' }[];
   };
   readonly flow: {
@@ -71,7 +73,16 @@ export interface LandingContent {
     title: string;
     items: readonly { term: string; def: string }[];
   };
-  readonly close: { title: string; lead: string; cta: string; secondary: string };
+  /** Entries scrolling across the band under the hero — illustrative goods. */
+  readonly ticker: readonly { item: string; move: string; value: string }[];
+  readonly close: {
+    title: string;
+    lead: string;
+    cta: string;
+    secondary: string;
+    /** Text running round the circular stamp; repeats, so keep it short. */
+    badge: string;
+  };
   readonly footer: { privacy: string; contact: string; rights: string; tagline: string };
 }
 
@@ -94,6 +105,7 @@ const en: LandingContent = {
   },
   extract: {
     caption: 'Example figures',
+    stamp: 'Balanced',
     rows: [
       { label: 'Cash in till', value: '1 240 000 FC' },
       { label: 'System rate', value: '2 850 FC / $' },
@@ -170,11 +182,22 @@ const en: LandingContent = {
       { term: 'Phone and web', def: 'The phone app for the counter and the road; the web dashboard for the long view — the same books, either way.' },
     ],
   },
+  ticker: [
+    { item: 'Sugar 50 kg', move: 'sold ×4', value: '+ 380 000 FC' },
+    { item: 'Cooking oil 20 L', move: 'received on credit', value: '$ 210.00' },
+    { item: 'Rice 25 kg', move: 'sold ×2', value: '+ 142 000 FC' },
+    { item: 'Soap carton', move: 'consigned', value: '$ 64.00' },
+    { item: 'Flour 50 kg', move: 'supplier paid', value: '− 300 000 FC' },
+    { item: 'Sardines ×48', move: 'sold ×1', value: '+ 96 000 FC' },
+    { item: 'Wax print 6 yd', move: 'returned', value: '+ 2 in stock' },
+    { item: 'Milk powder', move: 'low stock', value: '3 left' },
+  ],
   close: {
     title: 'Open your book',
     lead: 'Create an account, add what is on your shelf, and record the first sale. Nothing to install to try it on the web.',
     cta: 'Create an account',
     secondary: 'I already have one',
+    badge: 'Free to start · Works offline · English & Français · ',
   },
   footer: {
     privacy: 'Privacy policy',
@@ -203,6 +226,7 @@ const fr: LandingContent = {
   },
   extract: {
     caption: 'Chiffres d’exemple',
+    stamp: 'Équilibré',
     rows: [
       { label: 'Caisse', value: '1 240 000 FC' },
       { label: 'Taux système', value: '2 850 FC / $' },
@@ -279,11 +303,22 @@ const fr: LandingContent = {
       { term: 'Téléphone et web', def: 'L’application mobile pour le comptoir et la route ; le tableau de bord web pour la vue d’ensemble — les mêmes livres des deux côtés.' },
     ],
   },
+  ticker: [
+    { item: 'Sucre 50 kg', move: 'vendu ×4', value: '+ 380 000 FC' },
+    { item: 'Huile 20 L', move: 'reçu à crédit', value: '210,00 $' },
+    { item: 'Riz 25 kg', move: 'vendu ×2', value: '+ 142 000 FC' },
+    { item: 'Carton de savon', move: 'consigné', value: '64,00 $' },
+    { item: 'Farine 50 kg', move: 'fournisseur payé', value: '− 300 000 FC' },
+    { item: 'Sardines ×48', move: 'vendu ×1', value: '+ 96 000 FC' },
+    { item: 'Pagne wax 6 yd', move: 'retourné', value: '+ 2 en stock' },
+    { item: 'Lait en poudre', move: 'stock bas', value: '3 restants' },
+  ],
   close: {
     title: 'Ouvrez votre carnet',
     lead: 'Créez un compte, saisissez ce qui est sur l’étagère, et enregistrez la première vente. Rien à installer pour l’essayer sur le web.',
     cta: 'Créer un compte',
     secondary: 'J’en ai déjà un',
+    badge: 'Gratuit pour commencer · Hors ligne · Français & English · ',
   },
   footer: {
     privacy: 'Politique de confidentialité',

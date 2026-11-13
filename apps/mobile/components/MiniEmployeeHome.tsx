@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Pressable, Alert } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -17,8 +17,10 @@ import { personName } from '../lib/person';
 import { usePermissions } from '../lib/permissions';
 import { ReceiveConsignmentModal } from './forms/ReceiveConsignmentModal';
 import { HandoverModal } from './forms/HandoverModal';
+import { NavRow } from './ui/NavRow';
 import { HandoverStatusBanner } from './ui/HandoverStatusBanner';
 import { usePendingHandover } from '../hooks/use-pending-handover';
+import { showAlert } from '../lib/alert';
 
 /**
  * Mini-employee home surfaces. Two states:
@@ -62,8 +64,10 @@ export function MiniEmployeeHome() {
 
   // Count of consignments waiting to be received (badge on the Receive card).
   const { data: incoming } = useQuery({
-    queryKey: QK.consignmentsIncoming,
-    queryFn: consignmentsApi.incoming,
+    // Pending only — the badge counts deliveries awaiting an answer, and that
+    // list stays short however long the consignment history grows.
+    queryKey: QK.consignmentsPending,
+    queryFn: consignmentsApi.incomingPending,
     enabled: isActiveMini,
     staleTime: 15_000,
     // No polling: useInboxSignal invalidates this key when the consignments
@@ -85,12 +89,12 @@ export function MiniEmployeeHome() {
   const acceptM = useMutation({
     mutationFn: (id: string) => employmentsApi.accept(id),
     onSuccess: refreshMe,
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
   const rejectM = useMutation({
     mutationFn: (id: string) => employmentsApi.reject(id),
     onSuccess: refreshMe,
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   // ── Pending invite state (or not a mini at all) ──
@@ -131,56 +135,35 @@ export function MiniEmployeeHome() {
     <View className="mb-4 gap-3">
       <HandoverStatusBanner />
       {can('consignments.receive') && (
-      <Pressable
-        onPress={() => setReceiveOpen(true)}
-        className="flex-row items-center bg-card border border-border rounded-2xl px-4 py-4"
-        style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
-      >
-        <Text className="text-2xl mr-3">📥</Text>
-        <View className="flex-1">
-          <Text className="text-text font-semibold text-base">{t.miniEmployee.receiveCardTitle}</Text>
-          <Text className="text-muted text-xs mt-0.5">{t.miniEmployee.receiveCardSub}</Text>
-        </View>
-        {pendingReceiveCount > 0 && (
-          <View className="bg-primary rounded-full min-w-6 h-6 px-1.5 items-center justify-center mr-1">
-            <Text className="text-white text-xs font-bold">{pendingReceiveCount}</Text>
-          </View>
-        )}
-        <Text className="text-muted text-xl">›</Text>
-      </Pressable>
+        <NavRow
+          icon="download"
+          title={t.miniEmployee.receiveCardTitle}
+          subtitle={t.miniEmployee.receiveCardSub}
+          badge={pendingReceiveCount}
+          onPress={() => setReceiveOpen(true)}
+          className="mb-0"
+        />
       )}
 
       {can('handovers.mini') && (
-      <>
-      <Pressable
-        onPress={() => setHandoverOpen(true)}
-        disabled={handoverPending}
-        className="flex-row items-center bg-card border border-border rounded-2xl px-4 py-4"
-        style={({ pressed }) => ({ opacity: handoverPending ? 0.5 : pressed ? 0.8 : 1 })}
-      >
-        <Text className="text-2xl mr-3">🤲</Text>
-        <View className="flex-1">
-          <Text className="text-text font-semibold text-base">{t.miniEmployee.handoverCardTitle}</Text>
-          <Text className="text-muted text-xs mt-0.5">
-            {handoverPending ? t.miniEmployee.handoverCardWaiting : t.miniEmployee.handoverCardSub}
-          </Text>
-        </View>
-        {!handoverPending && <Text className="text-muted text-xl">›</Text>}
-      </Pressable>
-
-      <Pressable
-        onPress={() => router.push('/handovers')}
-        className="flex-row items-center bg-card border border-border rounded-2xl px-4 py-4"
-        style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
-      >
-        <Text className="text-2xl mr-3">🧾</Text>
-        <View className="flex-1">
-          <Text className="text-text font-semibold text-base">{t.miniEmployee.historyCardTitle}</Text>
-          <Text className="text-muted text-xs mt-0.5">{t.miniEmployee.historyCardSub}</Text>
-        </View>
-        <Text className="text-muted text-xl">›</Text>
-      </Pressable>
-      </>
+        <>
+          <NavRow
+            icon="repeat"
+            tone="accent"
+            title={t.miniEmployee.handoverCardTitle}
+            subtitle={handoverPending ? t.miniEmployee.handoverCardWaiting : t.miniEmployee.handoverCardSub}
+            onPress={() => setHandoverOpen(true)}
+            disabled={handoverPending}
+            className="mb-0"
+          />
+          <NavRow
+            icon="book-open"
+            title={t.miniEmployee.historyCardTitle}
+            subtitle={t.miniEmployee.historyCardSub}
+            onPress={() => router.push('/handovers')}
+            className="mb-0"
+          />
+        </>
       )}
 
       <ReceiveConsignmentModal visible={receiveOpen} onClose={() => setReceiveOpen(false)} />

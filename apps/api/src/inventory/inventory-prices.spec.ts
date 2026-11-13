@@ -1,3 +1,4 @@
+import { branchTransfersStub } from '../common/testing/branch-transfers.fixture';
 import {
   BadRequestException,
   ForbiddenException,
@@ -33,6 +34,7 @@ describe('InventoryService.updateEntryPrices', () => {
       {} as never, // dataSource
       {} as never, // stockMovements
       {} as never, // shopContext
+      branchTransfersStub() as never, // branchTransfers
     );
     return { service, entryRepo };
   }

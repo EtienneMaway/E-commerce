@@ -140,6 +140,14 @@ export class CustodyHandover {
   @Column({ name: 'expenses_fc', type: 'decimal', precision: 14, scale: 4, default: '0.0000' })
   expensesFc: string;
 
+  @ApiProperty({ example: '28000.0000', description: 'FC the custodian paid to other branches in the period (BRANCH_TRANSFER_PLAN.md)' })
+  @Column({ name: 'branch_paid_out_fc', type: 'decimal', precision: 14, scale: 4, default: '0.0000' })
+  branchPaidOutFc: string;
+
+  @ApiProperty({ example: '0.0000', description: 'FC the custodian confirmed receiving from other branches in the period' })
+  @Column({ name: 'branch_received_fc', type: 'decimal', precision: 14, scale: 4, default: '0.0000' })
+  branchReceivedFc: string;
+
   @ApiPropertyOptional({ description: 'Products sold from this custody during the period' })
   @Column({ name: 'sold_lines', type: 'jsonb', nullable: true })
   soldLines: CustodyHandoverSoldLine[] | null;

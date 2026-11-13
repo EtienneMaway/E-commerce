@@ -1,6 +1,8 @@
 'use client';
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { persistOptions } from '../../lib/query-persist';
 import { useEffect, useState } from 'react';
 import { isAuthError } from '../../lib/utils';
 import { useInboxSignal } from '../../hooks/use-inbox-signal';
@@ -76,8 +78,11 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       },
     },
   }));
+  const [persist] = useState(persistOptions);
   return (
-    <QueryClientProvider client={qc}>
+    // Restores the last session's cache from localStorage so screens paint at
+    // once, then refetch in the background. See lib/query-persist.ts.
+    <PersistQueryClientProvider client={qc} persistOptions={persist}>
       <InboxSignal />
       <ClearSiteIntent />
       {/* Sits above the shell, not inside a page: the write it rescues can come
@@ -85,6 +90,6 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
           by the time anything renders. */}
       <BranchRequiredDialog />
       {children}
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }

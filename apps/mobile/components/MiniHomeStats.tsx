@@ -9,6 +9,7 @@ import { formatDate, getErrorMessage } from '../lib/utils';
 import { useT } from '../lib/i18n';
 import { Card } from './ui/Card';
 import { StatCard } from './ui/StatCard';
+import { Icon } from './ui/Icon';
 
 /**
  * Home-screen statistics for a mini employee. Replaces the owner-oriented cards
@@ -127,7 +128,7 @@ export function MiniHomeStats() {
             {isLoading ? (
               <ActivityIndicator size="small" color={brand.primary} />
             ) : (
-              <Text className="text-sm">💡</Text>
+              <Icon name="info" size={14} tone="primary" />
             )}
             <Text className="flex-1 text-muted text-xs leading-4">{notice}</Text>
           </View>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Modal, ScrollView, View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { consignmentsApi, type ConsignmentSummary } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
@@ -14,6 +14,8 @@ import {
   shareReceivedGoodsPdf,
   toReceivedGoodsSlip,
 } from '../../lib/handover-receipt';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props {
   visible: boolean;
@@ -37,8 +39,8 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
   const [printing, setPrinting] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: QK.consignmentsIncoming,
-    queryFn: consignmentsApi.incoming,
+    queryKey: QK.consignmentsPending,
+    queryFn: consignmentsApi.incomingPending,
     enabled: visible,
     staleTime: 15_000,
   });
@@ -60,12 +62,12 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
       // Surface the print/share record for the goods just accepted.
       setJustReceived(c);
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
   const rejectM = useMutation({
     mutationFn: (id: string) => consignmentsApi.reject(id),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
   const busy = confirmM.isPending || rejectM.isPending;
 
@@ -90,9 +92,9 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
       await printReceivedGoods(receivedSlip);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+        showAlert(t.printer.printFailed, getErrorMessage(err));
       } else {
-        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
+        showAlert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrinting(false);
@@ -105,10 +107,10 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
+    <FormModal visible={visible} onRequestClose={close}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-xl font-bold text-text">{t.miniEmployee.receiveTitle}</Text>
+          <Text className="font-bold text-2xl text-text">{t.miniEmployee.receiveTitle}</Text>
           <TouchableOpacity onPress={close}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
@@ -116,14 +118,14 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
         <Text className="text-muted text-sm mb-5">{t.miniEmployee.receiveSubtitle}</Text>
 
         {receivedSlip && (
-          <View className="bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-900 rounded-2xl px-4 py-4 mb-4">
+          <View className="bg-success-light border border-success/30 rounded-2xl px-4 py-4 mb-4">
             <View className="flex-row items-start gap-2">
               <Text className="text-base mt-0.5">✅</Text>
               <View className="flex-1">
-                <Text className="text-emerald-700 dark:text-emerald-300 font-semibold text-sm">
+                <Text className="text-success font-semibold text-sm">
                   {t.miniEmployee.receivedDoneTitle}
                 </Text>
-                <Text className="text-emerald-600 dark:text-emerald-400 text-xs mt-0.5">
+                <Text className="text-success text-xs mt-0.5">
                   {t.miniEmployee.receivedDoneSub}
                 </Text>
               </View>
@@ -132,7 +134,7 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
               <TouchableOpacity
                 onPress={() => void handlePrint()}
                 disabled={printing}
-                className="flex-1 bg-emerald-600 rounded-xl py-2.5 flex-row items-center justify-center gap-2"
+                className="flex-1 bg-success rounded-xl py-2.5 flex-row items-center justify-center gap-2"
                 style={{ opacity: printing ? 0.6 : 1 }}
               >
                 {printing && <ActivityIndicator size="small" color="#fff" />}
@@ -140,9 +142,9 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => void shareReceivedGoodsPdf(receivedSlip)}
-                className="px-4 rounded-xl py-2.5 items-center justify-center border border-emerald-600"
+                className="px-4 rounded-xl py-2.5 items-center justify-center border border-success/60"
               >
-                <Text className="text-emerald-700 dark:text-emerald-300 font-semibold text-sm">
+                <Text className="text-success font-semibold text-sm">
                   {t.miniEmployee.shareBtn}
                 </Text>
               </TouchableOpacity>
@@ -276,6 +278,6 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
           ))
         )}
       </ScrollView>
-    </Modal>
+    </FormModal>
   );
 }

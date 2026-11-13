@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
@@ -8,6 +8,8 @@ import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props {
   visible: boolean;
@@ -148,7 +150,7 @@ export function EditMiniPriceModal({
       qc.invalidateQueries({ queryKey: QK.inventory() });
       onClose();
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   const priceUsd = (parseFloat(priceFc) || 0) / r;
@@ -160,11 +162,11 @@ export function EditMiniPriceModal({
       for (const g of sizeGroups) {
         const fc = parseFloat(priceByVariant[g.variantId] ?? '');
         if (!(fc > 0)) {
-          Alert.alert(t.common.error, t.miniEmployee.priceInvalid);
+          showAlert(t.common.error, t.miniEmployee.priceInvalid);
           return;
         }
         if (fc / g.rate < g.agreedUsd) {
-          Alert.alert(
+          showAlert(
             t.common.error,
             `${g.label}: ${t.miniEmployee.priceBelowAgreed(formatFcValue(Math.ceil(g.agreedUsd * g.rate)))}`,
           );
@@ -174,7 +176,7 @@ export function EditMiniPriceModal({
       if (showCarton) {
         const cFc = parseFloat(cartonPriceFc);
         if (cFc > 0 && cFc / cartonRate < cartonFloorUsd) {
-          Alert.alert(
+          showAlert(
             t.common.error,
             `${t.sizedSale.cartonPrice}: ${t.miniEmployee.priceBelowAgreed(formatFcValue(Math.ceil(cartonFloorUsd * cartonRate)))}`,
           );
@@ -186,11 +188,11 @@ export function EditMiniPriceModal({
     }
     if (!entries.length) return;
     if (!(parseFloat(priceFc) > 0)) {
-      Alert.alert(t.common.error, t.miniEmployee.priceInvalid);
+      showAlert(t.common.error, t.miniEmployee.priceInvalid);
       return;
     }
     if (belowFloor) {
-      Alert.alert(t.common.error, t.miniEmployee.priceBelowAgreed(formatFcValue(Math.ceil(agreedUsd * r))));
+      showAlert(t.common.error, t.miniEmployee.priceBelowAgreed(formatFcValue(Math.ceil(agreedUsd * r))));
       return;
     }
     mutate();
@@ -199,10 +201,10 @@ export function EditMiniPriceModal({
   const hasStock = isSized ? sizeGroups.length > 0 : entries.length > 0;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-xl font-bold text-text capitalize">{productName}</Text>
+          <Text className="font-bold text-2xl text-text capitalize">{productName}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
@@ -285,6 +287,6 @@ export function EditMiniPriceModal({
           </>
         )}
       </ScrollView>
-    </Modal>
+    </FormModal>
   );
 }

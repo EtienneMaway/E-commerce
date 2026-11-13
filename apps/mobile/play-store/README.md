@@ -1,6 +1,8 @@
 # Play Store listing assets
 
-Icons generated 27 August 2026; screenshots retaken **1 September 2026**. Sources
+Icons redrawn **13 November 2026** (malachite tile, paper K, copper leg — the
+"market ledger" identity; `scripts/gen-native-icons.sh` regenerates every native
+size from `../assets/src`); earlier icons generated 27 August 2026; screenshots retaken **13 November 2026** (new "market ledger" look in Roboto; 01–03 dark theme, 04–06 light theme). Sources
 for the icon set live in `../assets/src/*.svg` — edit the SVG and re-render rather
 than touching the PNGs by hand.
 
@@ -11,6 +13,9 @@ than touching the PNGs by hand.
 | `screenshots/01-dashboard.png` | Phone screenshot | 1200×2400, RGB |
 | `screenshots/02-inventory.png` | Phone screenshot | 1200×2400, RGB |
 | `screenshots/03-sales-history.png` | Phone screenshot | 1200×2400, RGB |
+| `screenshots/04-dashboard-light.png` | Phone screenshot (light theme) | 1200×2400, RGB |
+| `screenshots/05-inventory-light.png` | Phone screenshot (light theme) | 1200×2400, RGB |
+| `screenshots/06-sales-history-light.png` | Phone screenshot (light theme) | 1200×2400, RGB |
 
 ## Why the screenshots are 1200×2400, not 1080×2400
 
@@ -36,11 +41,17 @@ rsvg-convert -w 432  -h 432  src/adaptive-monochrome.svg -o android-icon-monochr
 rsvg-convert -w 1024 -h 1024 src/splash-icon.svg         -o splash-icon.png
 rsvg-convert -w 48   -h 48   src/splash-icon.svg         -o favicon.png
 rsvg-convert -w 512  -h 512  src/icon.svg                -o ../play-store/icon-512.png
-rsvg-convert -w 1024 -h 500  src/feature-graphic.svg     -o ../play-store/feature-graphic-1024x500.png
+# feature graphic: NOT rsvg-convert — it uses macOS's own fonts and silently falls back
+# to Helvetica for Fraunces / JetBrains Mono. Render it in headless Chrome with the
+# fonts from node_modules/@expo-google-fonts loaded via @font-face (see the
+# November 2026 redesign notes), at exactly 1024x500.
 # then flatten the two listing files to RGB — Play rejects alpha
 ```
 
-Screenshots — captured from the real app on the `Medium_Phone_API_36.1` emulator,
+Screenshots — captured from the real app on an Android emulator (13 Nov 2026: `Pixel_9_Pro_XL`,
+1344×2992, scaled to 1080 wide and trimmed to 1080×2400 before padding), with the
+status bar in Android demo mode (`adb shell settings put global sysui_demo_allowed 1`,
+then `am broadcast -a com.android.systemui.demo -e command clock -e hhmm 1200`, etc.),
 signed in as `@demo_kmb` against a **local** API, so no demo data reaches
 production:
 
@@ -52,8 +63,12 @@ adb exec-out screencap -p > 01-dashboard.png   # Home / Inventory / Sales tabs
 python3 pad-screenshots.py <capture-dir>       # -> screenshots/, 1200×2400
 ```
 
-`seed-demo.sh` is idempotent only in the sense that it fails cleanly if `demo_kmb`
-already exists — drop the user first if you want to reseed from scratch.
+`seed-demo.sh` only creates the account: it fails cleanly if `demo_kmb` already
+exists. To reseed, delete the old demo user and its rows first, in one transaction
+on the LOCAL database: `stock_movements`, `sale_transactions`, `inventory_entries`
+(by `owner_id`), then its organization's `exchange_rates`,
+`organization_ownership_history`, `shops`, the `organizations` row
+(`owner_user_id`), and finally the `users` row. Done this way on 13 Nov 2026.
 
 `SET_RATE=1` sets the exchange rate to 2900 FC/USD, which is what makes the FC
 figures in the shots look like real Goma prices. **Only pass it on a local

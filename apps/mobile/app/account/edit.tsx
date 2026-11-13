@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, View, Text, Alert } from 'react-native';
+import { ScrollView, View, Text } from 'react-native';
 import { router } from 'expo-router';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -7,6 +7,7 @@ import { accountApi, authApi } from '../../lib/api';
 import { useAuthStore } from '../../store/auth.store';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+import { showAlert } from '../../lib/alert';
 
 export default function EditProfileScreen() {
   const t = useT();
@@ -21,7 +22,7 @@ export default function EditProfileScreen() {
 
   const handleSave = async () => {
     if (!email.trim() && !phone.trim()) {
-      Alert.alert(t.common.missingFields, t.account.contactRequiredMsg);
+      showAlert(t.common.missingFields, t.account.contactRequiredMsg);
       return;
     }
     setSaving(true);
@@ -34,10 +35,10 @@ export default function EditProfileScreen() {
       // Refresh the auth-store user from /auth/me so derived UI updates immediately.
       const fresh = await authApi.me();
       if (token) await login(token, fresh);
-      Alert.alert(t.account.saved);
+      showAlert(t.account.saved);
       router.back();
     } catch (err) {
-      Alert.alert(t.account.updateFailed, getErrorMessage(err));
+      showAlert(t.account.updateFailed, getErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -50,10 +51,10 @@ export default function EditProfileScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <View className="mb-4">
-        <Text className="text-sm font-medium text-text mb-1.5">
+        <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">
           {t.account.username}
         </Text>
-        <View className="border rounded-xl px-4 py-3 bg-card border-border">
+        <View className="border rounded-2xl px-4 py-3.5 bg-card border-border">
           <Text className="text-text text-base">@{user?.username}</Text>
         </View>
         <Text className="text-muted text-xs mt-1">

@@ -3,8 +3,6 @@ import {
   ScrollView,
   View,
   Text,
-  RefreshControl,
-  Alert,
   Pressable,
   Modal,
   TextInput,
@@ -25,11 +23,13 @@ import { useFormatCurrency, formatFcValue } from '../lib/currency';
 import { useT } from '../lib/i18n';
 import { personHandle, personName } from '../lib/person';
 import { useBrand } from '../lib/theme';
+import { showAlert } from '../lib/alert';
+import { PullRefreshControl } from '../components/ui/PullRefreshControl';
 
 const STATUS_PILL: Record<SalaryPaymentStatus, string> = {
-  PENDING_CONFIRMATION: 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300',
-  CONFIRMED: 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300',
-  REJECTED: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300',
+  PENDING_CONFIRMATION: 'bg-warning-light text-warning',
+  CONFIRMED: 'bg-success-light text-success',
+  REJECTED: 'bg-danger-light text-danger',
   CANCELLED: 'bg-background text-muted',
 };
 
@@ -91,11 +91,11 @@ export default function SalaryScreen() {
   const confirmM = useMutation({
     mutationFn: (id: string) => salaryPaymentsApi.confirm(id),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert(t.salary.rejectFailed, getErrorMessage(err)),
+    onError: (err) => showAlert(t.salary.rejectFailed, getErrorMessage(err)),
   });
 
   const handleConfirm = (p: SalaryPayment) => {
-    Alert.alert(
+    showAlert(
       t.salary.confirmCash,
       t.salary.confirmCashMsg(
         formatCurrency(p.amount),
@@ -146,7 +146,7 @@ export default function SalaryScreen() {
       <ScrollView
         className="flex-1"
         contentContainerClassName="px-4 pt-3 pb-8"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+        refreshControl={<PullRefreshControl onRefresh={refresh} />}
       >
         {/* Employer banner */}
         {employerName && (
@@ -159,7 +159,7 @@ export default function SalaryScreen() {
               className="bg-primary rounded-xl px-3 py-2"
               style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
             >
-              <Text className="text-white font-semibold text-xs">💵 {t.salary.requestAdvance}</Text>
+              <Text className="text-white font-semibold text-xs">{t.salary.requestAdvance}</Text>
             </Pressable>
           </View>
         )}
@@ -291,7 +291,7 @@ export default function SalaryScreen() {
                     {formatCurrency(totals.confirmed.toFixed(4))}
                   </Text>
                   {totals.pending > 0 && (
-                    <Text className="text-amber-600 dark:text-amber-400 text-[10px]">
+                    <Text className="text-warning text-[10px]">
                       + {formatCurrency(totals.pending.toFixed(4))} {t.salary.pending.toLowerCase()}
                     </Text>
                   )}
@@ -356,9 +356,9 @@ function SummaryCell({
     tone === 'success'
       ? 'text-success'
       : tone === 'warning'
-        ? 'text-amber-600 dark:text-amber-400'
+        ? 'text-warning'
         : tone === 'info'
-          ? 'text-indigo-600 dark:text-indigo-300'
+          ? 'text-primary'
           : 'text-text';
   return (
     <View className="w-1/2 px-1 mb-2">
@@ -416,12 +416,12 @@ function PaymentCard({
       <View className="flex-row items-start justify-between">
         <View className="flex-1 mr-3">
           <View className="flex-row items-center gap-2 flex-wrap">
-            <Text className="text-2xl font-bold text-text">
+            <Text className="font-bold text-[28px] text-text">
               {formatCurrency(p.amount)}
             </Text>
             {p.kind === 'COMMISSION' && (
-              <View className="bg-emerald-100 dark:bg-emerald-900 rounded-md px-2 py-0.5">
-                <Text className="text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
+              <View className="bg-success-light rounded-md px-2 py-0.5">
+                <Text className="text-success text-[10px] font-bold">
                   {t.salary.commissionTag}
                 </Text>
               </View>
@@ -451,7 +451,7 @@ function PaymentCard({
         </Text>
       )}
       {p.rejectionReason && (
-        <Text className="text-red-600 dark:text-red-400 text-xs mt-2">
+        <Text className="text-danger text-xs mt-2">
           {p.rejectionReason}
         </Text>
       )}
@@ -496,7 +496,7 @@ function RejectModal({
       setReason('');
       onClose();
     },
-    onError: (err) => Alert.alert(t.salary.rejectFailed, getErrorMessage(err)),
+    onError: (err) => showAlert(t.salary.rejectFailed, getErrorMessage(err)),
   });
 
   if (!payment) return null;
@@ -508,7 +508,7 @@ function RejectModal({
         className="flex-1 justify-end bg-black/50"
       >
         <View className="bg-background rounded-t-3xl p-5">
-          <Text className="text-text font-bold text-lg mb-2">
+          <Text className="font-bold text-xl text-text mb-2">
             {t.salary.rejectBtn}
           </Text>
           <TextInput
@@ -562,7 +562,7 @@ function RequestAdvanceModal({
   const handleSubmit = () => {
     const n = parseFloat(amount);
     if (!isFinite(n) || n <= 0) {
-      Alert.alert(t.common.invalidAmount, t.salary.requestAdvanceInvalidAmount);
+      showAlert(t.common.invalidAmount, t.salary.requestAdvanceInvalidAmount);
       return;
     }
     // Placeholder mutation — until a backend endpoint exists, we acknowledge
@@ -571,7 +571,7 @@ function RequestAdvanceModal({
     setSending(true);
     setTimeout(() => {
       setSending(false);
-      Alert.alert(
+      showAlert(
         t.salary.requestAdvanceSuccess,
         t.salary.requestAdvanceSuccessMsg(formatFcValue(n), employerName),
       );
@@ -589,7 +589,7 @@ function RequestAdvanceModal({
         className="flex-1 justify-end bg-black/50"
       >
         <View className="bg-background rounded-t-3xl p-5">
-          <Text className="text-text font-bold text-lg">
+          <Text className="font-bold text-xl text-text">
             {t.salary.requestAdvanceTitle}
           </Text>
           <Text className="text-muted text-xs mt-1 mb-4">

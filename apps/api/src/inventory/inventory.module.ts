@@ -11,6 +11,7 @@ import {
   User,
 } from '../entities';
 import { StockMovementsModule } from '../stock-movements/stock-movements.module';
+import { BranchTransfersModule } from '../branch-transfers/branch-transfers.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { StockMovementsModule } from '../stock-movements/stock-movements.module'
       ProductVariant,
     ]),
     StockMovementsModule,
+    BranchTransfersModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService],

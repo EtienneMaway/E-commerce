@@ -28,6 +28,7 @@ import {
 import type { ActorContext } from '../common/types/actor-context';
 import { holderCond, holderScope, readScope, requireShop, writeScope } from '../common/shop-scope';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
+import { BranchTransfersService } from '../branch-transfers/branch-transfers.service';
 import { AppointCustodianDto } from './dto/appoint-custodian.dto';
 import { CreateStockIssueDto } from './dto/create-stock-issue.dto';
 import { RejectStockIssueDto } from './dto/reject-stock-issue.dto';
@@ -89,6 +90,7 @@ export class CustodyService {
     private readonly consignmentRepo: Repository<ConsignmentRequest>,
     private readonly dataSource: DataSource,
     private readonly stockMovements: StockMovementsService,
+    private readonly branchTransfers: BranchTransfersService,
   ) {}
 
   // ─── Appointment ───────────────────────────────────────────────────────────
@@ -184,7 +186,9 @@ export class CustodyService {
           quantityRemaining: e.quantityRemaining,
           unitCost: e.unitCost,
           sellingPrice: e.sellingPrice,
-          piecesPerCarton: e.piecesPerCarton,
+          // A size's carton count lives on its variant (the lot's own column is
+          // often empty for sized stock) — branch-transfer carton picking needs it.
+          piecesPerCarton: e.variant?.piecesPerCarton ?? e.piecesPerCarton,
           entryIds: [e.id],
         });
       }
@@ -239,6 +243,12 @@ export class CustodyService {
     });
     if (unattested > 0) {
       throw new ConflictException('Approve or reject the outstanding sales before ending the custody');
+    }
+
+    if (await this.branchTransfers.custodyHasTransferInTransit(custody.id)) {
+      throw new ConflictException(
+        'Goods sent from this volume to another branch are still in transit — wait until they are received or rejected',
+      );
     }
 
     custody.status = StockCustodyStatus.CLOSED;

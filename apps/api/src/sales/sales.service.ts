@@ -596,7 +596,7 @@ export class SalesService {
   async findAll(
     ctx: ActorContext,
     filter: SalesFilterDto,
-  ): Promise<{ data: SaleTransaction[]; total: number }> {
+  ): Promise<{ data: SaleTransaction[]; total: number; totals?: { revenue: string; profit: string } }> {
     const ownerId = ctx.effectiveOwnerId;
     const page = filter.page ?? 1;
     const limit = filter.limit ?? 10;
@@ -652,8 +652,32 @@ export class SalesService {
       }
     }
 
-    const [data, total] = await qb.getManyAndCount();
-    return { data, total };
+    // Totals for the WHOLE filter, not just this page — a phone scrolling page
+    // by page would otherwise sum only the rows it had loaded so far. Page 1
+    // only: later pages share the same filter, so the client keeps page 1's.
+    const wantTotals = (filter.page ?? 1) === 1;
+    const [[data, total], sums] = await Promise.all([
+      qb.getManyAndCount(),
+      wantTotals
+        ? qb
+            .clone()
+            .skip(undefined)
+            .take(undefined)
+            .orderBy()
+            .select('COALESCE(SUM(CAST(sale.salePrice AS DECIMAL) * sale.qtySold), 0)', 'revenue')
+            .addSelect('COALESCE(SUM(CAST(sale.profit AS DECIMAL)), 0)', 'profit')
+            .getRawOne<{ revenue: string; profit: string }>()
+        : Promise.resolve(undefined),
+    ]);
+    if (!sums) return { data, total };
+    return {
+      data,
+      total,
+      totals: {
+        revenue: new Decimal(sums.revenue).toFixed(4),
+        profit: new Decimal(sums.profit).toFixed(4),
+      },
+    };
   }
 
   /**

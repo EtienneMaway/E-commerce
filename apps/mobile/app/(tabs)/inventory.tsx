@@ -5,10 +5,8 @@ import {
   FlatList,
   Pressable,
   ActivityIndicator,
-  RefreshControl,
   ActionSheetIOS,
   Platform,
-  Alert,
   TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -20,6 +18,10 @@ import { useFormatCurrency, useExchangeRate, formatMoney } from '../../lib/curre
 import { useT } from '../../lib/i18n';
 import { usePermissions } from '../../lib/permissions';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { Icon } from '../../components/ui/Icon';
+import { ScreenHeader } from '../../components/ui/ScreenHeader';
+import { CARD_SHADOW } from '../../components/ui/Card';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
 import { HandoverStatusBanner } from '../../components/ui/HandoverStatusBanner';
 import { usePendingHandover } from '../../hooks/use-pending-handover';
@@ -33,6 +35,8 @@ import { usePersonaStore } from '../../store/persona.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
 import type { ProductSummary } from '@trading-app/types';
+import { showAlert } from '../../lib/alert';
+import { PullRefreshControl } from '../../components/ui/PullRefreshControl';
 
 type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'recordSale' | 'editPrice' | 'sellSized';
 
@@ -73,36 +77,50 @@ function ProductCard({
     <Pressable
       onPress={() => router.push(`/product/${encodeURIComponent(item.productName)}`)}
       onLongPress={() => onSell(item)}
-      className="bg-card border border-border rounded-2xl p-4 mb-3"
-      style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
+      className="bg-card border border-border rounded-3xl p-4 mb-3"
+      style={({ pressed }) => ({
+        boxShadow: CARD_SHADOW,
+        opacity: pressed ? 0.85 : 1,
+        transform: [{ scale: pressed ? 0.985 : 1 }],
+      })}
     >
-      {/* Name row */}
-      <View className="flex-row justify-between items-start mb-1">
-        <Text
-          className="text-text font-semibold text-base flex-1 mr-2"
-          numberOfLines={2}
+      {/* Name row: initial tile, serif name, stock state */}
+      <View className="flex-row items-center mb-1">
+        <View
+          className={`w-11 h-11 rounded-2xl items-center justify-center mr-3 ${
+            isOutOfStock ? 'bg-surface' : isGroup ? 'bg-accent-light' : 'bg-primary-light'
+          }`}
         >
-          {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
-        </Text>
+          <Text className={`font-bold text-lg ${isOutOfStock ? 'text-muted' : isGroup ? 'text-accent' : 'text-primary'}`}>
+            {item.productName.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View className="flex-1 mr-2">
+          <Text className="font-semibold text-text text-[17px]" numberOfLines={2}>
+            {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
+          </Text>
+          {item.category ? <Text className="text-muted text-xs mt-0.5">{item.category}</Text> : null}
+        </View>
         {isOutOfStock ? (
-          <Text className="text-muted text-xs font-medium">Out of stock</Text>
+          <View className="bg-surface rounded-full px-2.5 py-1">
+            <Text className="font-mono text-[10px] uppercase tracking-wider text-muted">Out</Text>
+          </View>
         ) : isLowStock ? (
-          <Text className="text-danger text-xs font-semibold">⚠️ {t.inventory.low}</Text>
+          <View className="bg-danger-light rounded-full px-2.5 py-1 flex-row items-center gap-1">
+            <Icon name="alert-triangle" size={11} tone="danger" />
+            <Text className="font-mono text-[10px] uppercase tracking-wider text-danger">{t.inventory.low}</Text>
+          </View>
         ) : null}
       </View>
-
-      {item.category && (
-        <Text className="text-muted text-xs mb-2">{item.category}</Text>
-      )}
 
       {/* Stock + prices row */}
       {isGroup ? (
         <View className="mt-2">
           <View className="flex-row justify-between items-start">
             <View>
-              <Text className="text-muted text-sm mb-0.5">{t.inventory.available}</Text>
+              <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-1">{t.inventory.available}</Text>
               <Text
-                className={`text-base font-bold ${
+                className={`font-mono-bold text-base ${
                   isOutOfStock ? 'text-muted' : 'text-text'
                 }`}
               >
@@ -110,8 +128,8 @@ function ProductCard({
               </Text>
               <Text className="text-muted text-sm">{item.totalAvailable} pcs</Text>
               {soldOfflinePending > 0 && (
-                <Text className="text-amber-600 dark:text-amber-400 text-xs mt-1 font-medium">
-                  ⏳ {soldOfflinePending} sold · pending sync
+                <Text className="text-warning text-xs mt-1 font-medium">
+                  {soldOfflinePending} sold · pending sync
                 </Text>
               )}
             </View>
@@ -142,9 +160,9 @@ function ProductCard({
         <View className="flex-row justify-between items-end mt-2">
           {/* Available breakdown */}
           <View>
-            <Text className="text-muted text-sm mb-0.5">{t.inventory.available}</Text>
+            <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-1">{t.inventory.available}</Text>
             <Text
-              className={`text-base font-bold ${
+              className={`font-mono-bold text-base ${
                 isOutOfStock
                   ? 'text-muted'
                   : isLowStock
@@ -160,38 +178,30 @@ function ProductCard({
               </Text>
             ) : null}
             {soldOfflinePending > 0 && (
-              <Text className="text-amber-600 dark:text-amber-400 text-xs mt-1 font-medium">
-                ⏳ {soldOfflinePending} sold · pending sync
+              <Text className="text-warning text-xs mt-1 font-medium">
+                {soldOfflinePending} sold · pending sync
               </Text>
             )}
           </View>
 
           {/* Cost · sell + source chips */}
           <View className="items-end">
-            <Text className="text-muted text-sm">{t.inventory.costSell}</Text>
-            <Text className="text-text text-sm font-medium">
+            <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-1">{t.inventory.costSell}</Text>
+            <Text className="font-mono text-text text-[13px]">
               {money(item.latestUnitCost)} · {money(item.latestSellingPrice)}
             </Text>
             <View className="flex-row gap-1.5 mt-1.5 flex-wrap justify-end">
               {item.sourceBreakdown.personal > 0 && (
-                <Text className="text-sm bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5">
-                  P: {item.sourceBreakdown.personal}
-                </Text>
+                <View className="bg-surface rounded-full px-2 py-0.5"><Text className="font-mono text-[11px] text-text-secondary">P: {item.sourceBreakdown.personal}</Text></View>
               )}
               {item.sourceBreakdown.supplier > 0 && (
-                <Text className="text-sm bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 rounded px-1.5 py-0.5">
-                  S: {item.sourceBreakdown.supplier}
-                </Text>
+                <View className="bg-primary-light rounded-full px-2 py-0.5"><Text className="font-mono text-[11px] text-primary">S: {item.sourceBreakdown.supplier}</Text></View>
               )}
               {item.sourceBreakdown.consignedIn > 0 && (
-                <Text className="text-sm bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 rounded px-1.5 py-0.5">
-                  IN: {item.sourceBreakdown.consignedIn}
-                </Text>
+                <View className="bg-accent-light rounded-full px-2 py-0.5"><Text className="font-mono text-[11px] text-accent">IN: {item.sourceBreakdown.consignedIn}</Text></View>
               )}
               {item.sourceBreakdown.consignedOut > 0 && (
-                <Text className="text-sm bg-background text-muted rounded px-1.5 py-0.5">
-                  OUT: {item.sourceBreakdown.consignedOut}
-                </Text>
+                <View className="bg-surface rounded-full px-2 py-0.5"><Text className="font-mono text-[11px] text-muted">OUT: {item.sourceBreakdown.consignedOut}</Text></View>
               )}
             </View>
           </View>
@@ -206,6 +216,7 @@ function ProductCard({
 }
 
 export default function InventoryScreen() {
+  const insets = useSafeAreaInsets();
   const brand = useBrand();
   const t = useT();
   const [search, setSearch] = useState('');
@@ -295,11 +306,11 @@ export default function InventoryScreen() {
         },
       );
     } else {
-      Alert.alert(t.inventory.addStockTitle, t.inventory.addStockMessage, [
+      showAlert(t.inventory.addStockTitle, t.inventory.addStockMessage, [
         { text: t.inventory.addPersonal, onPress: () => setModal('addPersonal') },
         { text: t.inventory.receiveFromSupplier, onPress: () => setModal('receiveSupplier') },
         { text: t.common.cancel, style: 'cancel' },
-      ]);
+      ], { tone: 'primary', icon: 'plus' });
     }
   };
 
@@ -310,7 +321,7 @@ export default function InventoryScreen() {
         // While a handover waits for approval the goods are physically back with
         // the employer, so drop Sell from the sheet — but keep Edit price, which
         // moves neither stock nor cash.
-        Alert.alert(item.productName, handoverPending ? t.miniEmployee.handoverBlocksSelling : undefined, [
+        showAlert(item.productName, handoverPending ? t.miniEmployee.handoverBlocksSelling : undefined, [
           ...(handoverPending
             ? []
             : [
@@ -331,7 +342,7 @@ export default function InventoryScreen() {
             },
           },
           { text: t.common.cancel, style: 'cancel' },
-        ]);
+        ], { tone: 'primary', icon: 'package' });
         return;
       }
       setSizedTarget(item);
@@ -340,7 +351,7 @@ export default function InventoryScreen() {
     }
     // Minis can sell OR re-price their consigned stock — offer the choice.
     if (isMini) {
-      Alert.alert(item.productName, handoverPending ? t.miniEmployee.handoverBlocksSelling : undefined, [
+      showAlert(item.productName, handoverPending ? t.miniEmployee.handoverBlocksSelling : undefined, [
         ...(handoverPending
           ? []
           : [
@@ -361,7 +372,7 @@ export default function InventoryScreen() {
           },
         },
         { text: t.common.cancel, style: 'cancel' },
-      ]);
+      ], { tone: 'primary', icon: 'package' });
       return;
     }
     setSaleTarget({ productName: item.productName, unitCost: item.latestUnitCost });
@@ -370,17 +381,27 @@ export default function InventoryScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <View className="px-4 pt-4"><PersonaBanner /><HandoverStatusBanner /></View>
+      <View className="px-5" style={{ paddingTop: insets.top + 16 }}>
+        <ScreenHeader kicker={t.inventory.kickerCount(filtered.length)} title={t.tabs.inventory} />
+        <PersonaBanner />
+        <HandoverStatusBanner />
+      </View>
 
       {/* Search bar */}
-      <View className="mx-4 mt-4 mb-1">
+      <View className="mx-5 mb-1 flex-row items-center bg-card border border-border rounded-full px-4">
+        <Icon name="search" size={17} tone="muted" />
         <TextInput
           value={search}
           onChangeText={setSearch}
           placeholder={t.inventory.searchProducts}
           placeholderTextColor={brand.mutedSubtle}
-          className="bg-card border border-border rounded-xl px-4 py-3 text-text text-base"
+          className="flex-1 py-3 px-3 text-text text-base"
         />
+        {search ? (
+          <Pressable onPress={() => setSearch('')} hitSlop={8}>
+            <Icon name="x" size={16} tone="muted" />
+          </Pressable>
+        ) : null}
       </View>
 
       {/* List */}
@@ -394,9 +415,9 @@ export default function InventoryScreen() {
             soldOfflinePending={pendingByProduct[item.productName] ?? 0}
           />
         )}
-        contentContainerClassName="px-4 pt-3 pb-32"
+        contentContainerClassName="px-5 pt-4 pb-32"
         refreshControl={
-          <RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />
+          <PullRefreshControl onRefresh={refetch} tintColor={brand.primary} />
         }
         ListHeaderComponent={
           isFetching && filtered.length === 0 ? (
@@ -418,14 +439,15 @@ export default function InventoryScreen() {
       {canAddProducts && (
         <Pressable
           onPress={openFAB}
-          className="absolute bottom-8 right-6 bg-primary w-14 h-14 rounded-full items-center justify-center shadow-lg"
+          className="absolute bottom-6 right-5 bg-primary w-16 h-16 rounded-full items-center justify-center"
           style={({ pressed }) => ({
-            elevation: pressed ? 3 : 6,
-            transform: [{ scale: pressed ? 0.93 : 1 }],
-            opacity: pressed ? 0.9 : 1,
+            boxShadow: '0px 14px 26px -10px rgba(14, 122, 91, 0.75)',
+            transform: [{ scale: pressed ? 0.93 : 1 }, { rotate: pressed ? '90deg' : '0deg' }],
+            opacity: pressed ? 0.92 : 1,
           })}
+          accessibilityLabel="Add stock"
         >
-          <Text className="text-white text-3xl font-light leading-none">+</Text>
+          <Icon name="plus" size={28} tone="onPrimary" />
         </Pressable>
       )}
 
