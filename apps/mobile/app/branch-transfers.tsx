@@ -6,7 +6,6 @@ import {
   Pressable,
   TextInput,
   Modal,
-  Alert,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
@@ -36,6 +35,7 @@ import { useShopStore } from '../store/shop.store';
 import { useOfflineStore } from '../store/offline.store';
 import { useT } from '../lib/i18n';
 import { useBrand } from '../lib/theme';
+import { showAlert } from '../lib/alert';
 
 type Tab = 'incoming' | 'outgoing' | 'balances';
 
@@ -108,13 +108,13 @@ export default function BranchTransfersScreen() {
     qc.invalidateQueries({ queryKey: ['custody'] });
     qc.invalidateQueries({ queryKey: QK.dashboardAll });
   };
-  const fail = (e: unknown): void => Alert.alert(t.branchTransfers.actionFailed, getErrorMessage(e));
+  const fail = (e: unknown): void => showAlert(t.branchTransfers.actionFailed, getErrorMessage(e));
 
   const receive = useMutation({
     mutationFn: (id: string) => branchTransfersApi.receive(id),
     onSuccess: () => {
       refreshAll();
-      Alert.alert(t.branchTransfers.receivedTitle);
+      showAlert(t.branchTransfers.receivedTitle);
     },
     onError: fail,
   });
@@ -124,7 +124,7 @@ export default function BranchTransfersScreen() {
       refreshAll();
       setRejecting(null);
       setReason('');
-      Alert.alert(t.branchTransfers.rejectedTitle);
+      showAlert(t.branchTransfers.rejectedTitle);
     },
     onError: fail,
   });
@@ -132,7 +132,7 @@ export default function BranchTransfersScreen() {
     mutationFn: (id: string) => branchTransfersApi.cancel(id),
     onSuccess: () => {
       refreshAll();
-      Alert.alert(t.branchTransfers.cancelledTitle);
+      showAlert(t.branchTransfers.cancelledTitle);
     },
     onError: fail,
   });
@@ -164,7 +164,7 @@ export default function BranchTransfersScreen() {
           : t.branchTransfers.statusCancelled;
 
   const onReceive = (tr: BranchTransfer): void =>
-    Alert.alert(
+    showAlert(
       t.branchTransfers.receiveConfirmTitle,
       t.branchTransfers.receiveConfirmBody(fmt(tr.totalValue), tr.fromShop.name),
       [
@@ -173,12 +173,12 @@ export default function BranchTransfersScreen() {
       ],
     );
   const onCancel = (tr: BranchTransfer): void =>
-    Alert.alert(t.branchTransfers.cancelConfirmTitle, t.branchTransfers.cancelConfirmBody, [
+    showAlert(t.branchTransfers.cancelConfirmTitle, t.branchTransfers.cancelConfirmBody, [
       { text: t.common.cancel, style: 'cancel' },
       { text: t.branchTransfers.cancelTransfer, style: 'destructive', onPress: () => cancel.mutate(tr.id) },
     ]);
   const onConfirmPayment = (p: BranchPayment): void =>
-    Alert.alert(t.branchTransfers.confirmPaymentTitle, t.branchTransfers.confirmPaymentBody(fcAmount(p), p.fromShop.name), [
+    showAlert(t.branchTransfers.confirmPaymentTitle, t.branchTransfers.confirmPaymentBody(fcAmount(p), p.fromShop.name), [
       { text: t.branchTransfers.rejectPayment, style: 'destructive', onPress: () => rejectPay.mutate(p.id) },
       { text: t.common.cancel, style: 'cancel' },
       { text: t.branchTransfers.confirmPayment, onPress: () => confirmPay.mutate(p.id) },

@@ -5,7 +5,6 @@ import {
   ScrollView,
   Pressable,
   RefreshControl,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,6 +23,7 @@ import { formatFcValue } from '../lib/currency';
 import { computeOfflineAllowance } from '../lib/mini-allowance';
 import { useOfflineStore } from '../store/offline.store';
 import { useT } from '../lib/i18n';
+import { showAlert } from '../lib/alert';
 
 /**
  * Mini-employee expense history. Lists every expense the mini has recorded — both
@@ -84,13 +84,13 @@ export function MiniExpensesView() {
       qc.invalidateQueries({ queryKey: QK.miniExpenses });
       qc.invalidateQueries({ queryKey: ['mini-settlements', 'handover-preview'] });
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   const confirmDelete = (e: MiniExpenseSummary) => {
     // Handed-over expenses are part of a submitted settlement — not deletable.
     if (e.settlementId) return;
-    Alert.alert(t.expenses.deleteConfirmTitle, t.expenses.deleteConfirmBody, [
+    showAlert(t.expenses.deleteConfirmTitle, t.expenses.deleteConfirmBody, [
       { text: t.common.cancel, style: 'cancel' },
       { text: t.expenses.deleteBtn, style: 'destructive', onPress: () => deleteMutation.mutate(e.id) },
     ]);

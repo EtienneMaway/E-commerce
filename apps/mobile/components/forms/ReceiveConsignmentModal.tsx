@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Modal, ScrollView, View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { consignmentsApi, type ConsignmentSummary } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
@@ -14,6 +14,8 @@ import {
   shareReceivedGoodsPdf,
   toReceivedGoodsSlip,
 } from '../../lib/handover-receipt';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props {
   visible: boolean;
@@ -60,12 +62,12 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
       // Surface the print/share record for the goods just accepted.
       setJustReceived(c);
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
   const rejectM = useMutation({
     mutationFn: (id: string) => consignmentsApi.reject(id),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
   const busy = confirmM.isPending || rejectM.isPending;
 
@@ -90,9 +92,9 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
       await printReceivedGoods(receivedSlip);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+        showAlert(t.printer.printFailed, getErrorMessage(err));
       } else {
-        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
+        showAlert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrinting(false);
@@ -105,7 +107,7 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
+    <FormModal visible={visible} onRequestClose={close}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8">
         <View className="flex-row justify-between items-center mb-2">
           <Text className="font-display text-2xl text-text">{t.miniEmployee.receiveTitle}</Text>
@@ -276,6 +278,6 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
           ))
         )}
       </ScrollView>
-    </Modal>
+    </FormModal>
   );
 }

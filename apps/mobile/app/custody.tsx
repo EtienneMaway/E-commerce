@@ -6,7 +6,6 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
-  Alert,
   RefreshControl,
 } from 'react-native';
 import { Stack } from 'expo-router';
@@ -23,6 +22,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { breakdownQuantity, formatBreakdown, formatDate, getErrorMessage } from '../lib/utils';
 import { useRequireService } from '../hooks/use-require-service';
 import { useT } from '../lib/i18n';
+import { showAlert } from '../lib/alert';
 
 type Tab = 'volume' | 'approve' | 'handover';
 
@@ -66,17 +66,17 @@ export default function CustodyScreen() {
     mutationFn: (id: string) => custodyApi.acceptIssue(id),
     onSuccess: () => {
       refreshAll();
-      Alert.alert(t.custody.takenTitle, t.custody.takenBody);
+      showAlert(t.custody.takenTitle, t.custody.takenBody);
     },
-    onError: (e) => Alert.alert(t.custody.couldNotTake, getErrorMessage(e)),
+    onError: (e) => showAlert(t.custody.couldNotTake, getErrorMessage(e)),
   });
   const refuse = useMutation({
     mutationFn: (id: string) => custodyApi.rejectIssue(id),
     onSuccess: () => {
       refreshAll();
-      Alert.alert(t.custody.refusedTitle, t.custody.refuseBody);
+      showAlert(t.custody.refusedTitle, t.custody.refuseBody);
     },
-    onError: (e) => Alert.alert(t.custody.couldNotRefuse, getErrorMessage(e)),
+    onError: (e) => showAlert(t.custody.couldNotRefuse, getErrorMessage(e)),
   });
 
   if (!allowed) return null;
@@ -182,7 +182,7 @@ export default function CustodyScreen() {
                         className="px-4 rounded-xl py-3 items-center justify-center border border-neutral-300 dark:border-neutral-700"
                         disabled={refuse.isPending}
                         onPress={() =>
-                          Alert.alert(t.custody.refuseTitle, t.custody.refuseBody, [
+                          showAlert(t.custody.refuseTitle, t.custody.refuseBody, [
                             { text: 'Cancel', style: 'cancel' },
                             { text: t.custody.refuse, style: 'destructive', onPress: () => refuse.mutate(i.id) },
                           ])
@@ -257,9 +257,9 @@ function ApproveQueue() {
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['custody'] });
       setReviewed(false);
-      Alert.alert(t.custody.approvedTitle, `${r.approved} ${t.custody.approvedBody}`);
+      showAlert(t.custody.approvedTitle, `${r.approved} ${t.custody.approvedBody}`);
     },
-    onError: (e) => Alert.alert(t.custody.notApproved, getErrorMessage(e)),
+    onError: (e) => showAlert(t.custody.notApproved, getErrorMessage(e)),
   });
 
   if (isLoading) {
@@ -370,9 +370,9 @@ function HandoverTab() {
       qc.invalidateQueries({ queryKey: ['custody'] });
       setCash('');
       setNote('');
-      Alert.alert(t.custody.handedOverTitle, t.custody.handedOverBody);
+      showAlert(t.custody.handedOverTitle, t.custody.handedOverBody);
     },
-    onError: (e) => Alert.alert(t.custody.notHandedOver, getErrorMessage(e)),
+    onError: (e) => showAlert(t.custody.notHandedOver, getErrorMessage(e)),
   });
 
   if (isLoading) {

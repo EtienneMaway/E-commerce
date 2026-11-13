@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Platform, ScrollView, View, Text, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { Platform, ScrollView, View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { usePrinterStore } from '../../store/printer.store';
@@ -11,6 +11,7 @@ import {
 import { testPrintBuiltIn } from '../../lib/builtin-printer';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+import { showAlert } from '../../lib/alert';
 
 export default function PrinterScreen() {
   const t = useT();
@@ -60,9 +61,9 @@ export default function PrinterScreen() {
       } else {
         await testPrint(selected);
       }
-      Alert.alert(t.printer.testPrintOk);
+      showAlert(t.printer.testPrintOk);
     } catch (err) {
-      Alert.alert(t.printer.testPrintFailed, getErrorMessage(err));
+      showAlert(t.printer.testPrintFailed, getErrorMessage(err));
     } finally {
       setTesting(false);
     }

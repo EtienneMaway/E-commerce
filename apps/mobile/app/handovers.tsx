@@ -7,7 +7,6 @@ import {
   Pressable,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   RefreshControl,
 } from 'react-native';
 import { Stack } from 'expo-router';
@@ -38,6 +37,7 @@ import {
   toReceivedGoodsSlip,
 } from '../lib/handover-receipt';
 import { useRequireService } from '../hooks/use-require-service';
+import { showAlert } from '../lib/alert';
 
 type Tab = 'handovers' | 'received';
 
@@ -100,9 +100,9 @@ function HandoversTab() {
       await printApprovedHandover(slip);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+        showAlert(t.printer.printFailed, getErrorMessage(err));
       } else {
-        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
+        showAlert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrintingId(null);
@@ -168,9 +168,9 @@ function ReceivedTab() {
       await printReceivedGoods(slip);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+        showAlert(t.printer.printFailed, getErrorMessage(err));
       } else {
-        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
+        showAlert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     } finally {
       setPrintingId(null);

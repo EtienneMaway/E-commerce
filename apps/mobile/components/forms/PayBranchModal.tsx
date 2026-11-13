@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { branchTransfersApi, type BranchBalance } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
@@ -8,6 +8,8 @@ import { getErrorMessage } from '../../lib/utils';
 import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
 import { useBrand } from '../../lib/theme';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props {
   /** A balance where the current branch is the debtor; null hides the modal. */
@@ -35,11 +37,11 @@ export function PayBranchModal({ balance, isOwner, onClose }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK.branchTransfersAll });
       qc.invalidateQueries({ queryKey: QK.dashboardAll });
-      Alert.alert(t.branchTransfers.paidTitle, isOwner ? undefined : t.branchTransfers.payCustodianHint);
+      showAlert(t.branchTransfers.paidTitle, isOwner ? undefined : t.branchTransfers.payCustodianHint);
       setAmountFc('');
       onClose();
     },
-    onError: (e) => Alert.alert(t.branchTransfers.actionFailed, getErrorMessage(e)),
+    onError: (e) => showAlert(t.branchTransfers.actionFailed, getErrorMessage(e)),
   });
 
   if (!balance) return null;
@@ -48,13 +50,13 @@ export function PayBranchModal({ balance, isOwner, onClose }: Props) {
 
   const submit = (): void => {
     const v = parseFloat(amountFc);
-    if (!Number.isFinite(v) || v <= 0) return Alert.alert(t.common.invalidAmount, t.branchTransfers.payInvalid);
-    if (v > maxFc) return Alert.alert(t.common.invalidAmount, t.branchTransfers.payExceeds);
+    if (!Number.isFinite(v) || v <= 0) return showAlert(t.common.invalidAmount, t.branchTransfers.payInvalid);
+    if (v > maxFc) return showAlert(t.common.invalidAmount, t.branchTransfers.payExceeds);
     pay.mutate();
   };
 
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <FormModal visible onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-6">
           <Text className="font-display text-2xl text-text">{t.branchTransfers.payTitle(balance.creditorShop.name)}</Text>
@@ -88,6 +90,6 @@ export function PayBranchModal({ balance, isOwner, onClose }: Props) {
 
         <Button label={t.branchTransfers.paySubmit} onPress={submit} loading={pay.isPending} />
       </ScrollView>
-    </Modal>
+    </FormModal>
   );
 }

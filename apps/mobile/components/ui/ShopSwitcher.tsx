@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, Modal, Pressable, Text, View } from 'react-native';
+import { Modal, Pressable, Text, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useShopStore, useCurrentShop } from '../../store/shop.store';
 import { useOfflineStore } from '../../store/offline.store';
 import { useT } from '../../lib/i18n';
 import { Icon } from './Icon';
+import { showAlert } from '../../lib/alert';
 
 /**
  * Header chip that picks the branch this phone works in.
@@ -31,7 +32,7 @@ export function ShopSwitcher() {
 
   const openPicker = (): void => {
     if (isOffline) {
-      Alert.alert(t.shops.offlineLockedTitle, t.shops.offlineLockedBody);
+      showAlert(t.shops.offlineLockedTitle, t.shops.offlineLockedBody);
       return;
     }
     setOpen(true);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { Link, router } from 'expo-router';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 import { KmbLogo } from '../../components/ui/KmbLogo';
+import { showAlert } from '../../lib/alert';
 
 /**
  * Mini-employee pairing = their login. They authenticate with the username +
@@ -23,7 +24,7 @@ export default function PairScreen() {
 
   const handlePair = async () => {
     if (!username.trim() || !pairingCode.trim()) {
-      Alert.alert(t.common.missingFields, t.miniEmployee.pairMissingMsg);
+      showAlert(t.common.missingFields, t.miniEmployee.pairMissingMsg);
       return;
     }
     setLoading(true);
@@ -35,7 +36,7 @@ export default function PairScreen() {
       await login(accessToken, user);
       router.replace('/(tabs)');
     } catch (err) {
-      Alert.alert(t.miniEmployee.pairFailed, getErrorMessage(err));
+      showAlert(t.miniEmployee.pairFailed, getErrorMessage(err));
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Pressable, Alert } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -20,6 +20,7 @@ import { HandoverModal } from './forms/HandoverModal';
 import { NavRow } from './ui/NavRow';
 import { HandoverStatusBanner } from './ui/HandoverStatusBanner';
 import { usePendingHandover } from '../hooks/use-pending-handover';
+import { showAlert } from '../lib/alert';
 
 /**
  * Mini-employee home surfaces. Two states:
@@ -88,12 +89,12 @@ export function MiniEmployeeHome() {
   const acceptM = useMutation({
     mutationFn: (id: string) => employmentsApi.accept(id),
     onSuccess: refreshMe,
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
   const rejectM = useMutation({
     mutationFn: (id: string) => employmentsApi.reject(id),
     onSuccess: refreshMe,
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   // ── Pending invite state (or not a mini at all) ──

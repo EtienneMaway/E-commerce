@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScrollView, View, Text, RefreshControl, TouchableOpacity, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { ScrollView, View, Text, RefreshControl, TouchableOpacity, Pressable, ActivityIndicator } from 'react-native';
 import Constants from 'expo-constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
@@ -35,6 +35,7 @@ import { useShopStore } from '../../store/shop.store';
 import { syncPendingSales } from '../../lib/sync';
 import { formatMoney } from '../../lib/currency';
 import type { AlertItem } from '../../lib/notifications';
+import { showAlert } from '../../lib/alert';
 
 interface ProductSummary {
   productName: string;
@@ -209,7 +210,7 @@ export default function DashboardScreen() {
           : null,
       );
     } catch {
-      Alert.alert(t.common.error, t.home.preparingOffline);
+      showAlert(t.common.error, t.home.preparingOffline);
     } finally {
       setPreparingOffline(false);
     }
@@ -232,9 +233,9 @@ export default function DashboardScreen() {
 
     if (result.failed === 0) {
       // Nothing to report when there was nothing to do (e.g. a no-op restart).
-      if (result.synced > 0) Alert.alert('✅', t.home.syncDone(result.synced));
+      if (result.synced > 0) showAlert('✅', t.home.syncDone(result.synced));
     } else {
-      Alert.alert(
+      showAlert(
         t.home.syncFailed(result.failed),
         result.errors.length > 0 ? `${t.home.syncErrors}\n${result.errors.join('\n')}` : undefined,
       );

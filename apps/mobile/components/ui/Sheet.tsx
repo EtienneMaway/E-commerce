@@ -22,6 +22,7 @@ const TONES = {
   primary: { solid: '#0E7A5B', glow: 'rgba(14, 122, 91, ', light: 'rgba(95, 217, 174, ' },
   warning: { solid: '#B06A0C', glow: 'rgba(214, 140, 30, ', light: 'rgba(240, 190, 100, ' },
   accent: { solid: '#C25E27', glow: 'rgba(194, 94, 39, ', light: 'rgba(240, 154, 96, ' },
+  danger: { solid: '#B23A2B', glow: 'rgba(178, 58, 43, ', light: 'rgba(240, 128, 108, ' },
 } as const;
 export type SheetTone = keyof typeof TONES;
 

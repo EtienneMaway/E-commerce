@@ -5,7 +5,6 @@ import {
   ScrollView,
   Pressable,
   RefreshControl,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -34,6 +33,7 @@ import { usePersonaStore } from '../store/persona.store';
 import { useT } from '../lib/i18n';
 import { personHandle } from '../lib/person';
 import { useRequireService } from '../hooks/use-require-service';
+import { showAlert } from '../lib/alert';
 
 type FilterKey = 'all' | 'today' | 'week' | 'month' | 'lastN';
 
@@ -160,11 +160,11 @@ function OwnerExpensesScreen() {
       qc.invalidateQueries({ queryKey: ['expenses'] });
       qc.invalidateQueries({ queryKey: QK.dashboardAll });
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   const confirmDelete = (id: string) => {
-    Alert.alert(t.expenses.deleteConfirmTitle, t.expenses.deleteConfirmBody, [
+    showAlert(t.expenses.deleteConfirmTitle, t.expenses.deleteConfirmBody, [
       { text: t.common.cancel, style: 'cancel' },
       { text: t.expenses.deleteBtn, style: 'destructive', onPress: () => deleteMutation.mutate(id) },
     ]);

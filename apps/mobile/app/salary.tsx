@@ -4,7 +4,6 @@ import {
   View,
   Text,
   RefreshControl,
-  Alert,
   Pressable,
   Modal,
   TextInput,
@@ -25,6 +24,7 @@ import { useFormatCurrency, formatFcValue } from '../lib/currency';
 import { useT } from '../lib/i18n';
 import { personHandle, personName } from '../lib/person';
 import { useBrand } from '../lib/theme';
+import { showAlert } from '../lib/alert';
 
 const STATUS_PILL: Record<SalaryPaymentStatus, string> = {
   PENDING_CONFIRMATION: 'bg-warning-light text-warning',
@@ -91,11 +91,11 @@ export default function SalaryScreen() {
   const confirmM = useMutation({
     mutationFn: (id: string) => salaryPaymentsApi.confirm(id),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert(t.salary.rejectFailed, getErrorMessage(err)),
+    onError: (err) => showAlert(t.salary.rejectFailed, getErrorMessage(err)),
   });
 
   const handleConfirm = (p: SalaryPayment) => {
-    Alert.alert(
+    showAlert(
       t.salary.confirmCash,
       t.salary.confirmCashMsg(
         formatCurrency(p.amount),
@@ -496,7 +496,7 @@ function RejectModal({
       setReason('');
       onClose();
     },
-    onError: (err) => Alert.alert(t.salary.rejectFailed, getErrorMessage(err)),
+    onError: (err) => showAlert(t.salary.rejectFailed, getErrorMessage(err)),
   });
 
   if (!payment) return null;
@@ -562,7 +562,7 @@ function RequestAdvanceModal({
   const handleSubmit = () => {
     const n = parseFloat(amount);
     if (!isFinite(n) || n <= 0) {
-      Alert.alert(t.common.invalidAmount, t.salary.requestAdvanceInvalidAmount);
+      showAlert(t.common.invalidAmount, t.salary.requestAdvanceInvalidAmount);
       return;
     }
     // Placeholder mutation — until a backend endpoint exists, we acknowledge
@@ -571,7 +571,7 @@ function RequestAdvanceModal({
     setSending(true);
     setTimeout(() => {
       setSending(false);
-      Alert.alert(
+      showAlert(
         t.salary.requestAdvanceSuccess,
         t.salary.requestAdvanceSuccessMsg(formatFcValue(n), employerName),
       );

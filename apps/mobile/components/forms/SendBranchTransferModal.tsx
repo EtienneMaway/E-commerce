@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Pressable } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { branchTransfersApi, custodyApi, inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
@@ -7,6 +7,8 @@ import { Button } from '../ui/Button';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 import { useBrand } from '../../lib/theme';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props {
   visible: boolean;
@@ -122,25 +124,25 @@ export function SendBranchTransferModal({ visible, isOwner, onClose }: Props) {
       qc.invalidateQueries({ queryKey: QK.branchTransfersAll });
       qc.invalidateQueries({ queryKey: ['inventory'] });
       qc.invalidateQueries({ queryKey: ['custody'] });
-      Alert.alert(t.branchTransfers.sentTitle, t.branchTransfers.sentBody(toName));
+      showAlert(t.branchTransfers.sentTitle, t.branchTransfers.sentBody(toName));
       reset();
       onClose();
     },
-    onError: (e) => Alert.alert(t.branchTransfers.actionFailed, getErrorMessage(e)),
+    onError: (e) => showAlert(t.branchTransfers.actionFailed, getErrorMessage(e)),
   });
 
   const submit = (): void => {
-    if (!toShopId) return Alert.alert(t.branchTransfers.sendTitle, t.branchTransfers.errDestination);
+    if (!toShopId) return showAlert(t.branchTransfers.sendTitle, t.branchTransfers.errDestination);
     const filled = lines.filter((l) => l.key && parseInt(l.quantity, 10) > 0);
-    if (filled.length === 0) return Alert.alert(t.branchTransfers.sendTitle, t.branchTransfers.errLines);
+    if (filled.length === 0) return showAlert(t.branchTransfers.sendTitle, t.branchTransfers.errLines);
     const seen = new Set<string>();
     for (const l of filled) {
       const o = byKey.get(l.key);
-      if (!o) return Alert.alert(t.branchTransfers.sendTitle, t.branchTransfers.errLines);
-      if (seen.has(l.key)) return Alert.alert(t.branchTransfers.sendTitle, t.branchTransfers.errDuplicate(o.label));
+      if (!o) return showAlert(t.branchTransfers.sendTitle, t.branchTransfers.errLines);
+      if (seen.has(l.key)) return showAlert(t.branchTransfers.sendTitle, t.branchTransfers.errDuplicate(o.label));
       seen.add(l.key);
       if (parseInt(l.quantity, 10) > o.available) {
-        return Alert.alert(t.branchTransfers.sendTitle, t.branchTransfers.errTooMany(o.label, o.available));
+        return showAlert(t.branchTransfers.sendTitle, t.branchTransfers.errTooMany(o.label, o.available));
       }
     }
     send.mutate();
@@ -150,7 +152,7 @@ export function SendBranchTransferModal({ visible, isOwner, onClose }: Props) {
     setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-2">
           <Text className="font-display text-2xl text-text">{t.branchTransfers.sendTitle}</Text>
@@ -240,6 +242,6 @@ export function SendBranchTransferModal({ visible, isOwner, onClose }: Props) {
 
         <Button label={t.branchTransfers.sendSubmit} onPress={submit} loading={send.isPending} />
       </ScrollView>
-    </Modal>
+    </FormModal>
   );
 }

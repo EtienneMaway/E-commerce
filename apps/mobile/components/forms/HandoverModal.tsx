@@ -1,4 +1,4 @@
-import { Modal, ScrollView, View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { miniSettlementsApi, type ActiveTeamMember, type HandoverPreview } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
@@ -9,6 +9,8 @@ import { Button } from '../ui/Button';
 import { useT } from '../../lib/i18n';
 import { useOfflineStore } from '../../store/offline.store';
 import { syncPendingSales } from '../../lib/sync';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props {
   visible: boolean;
@@ -56,7 +58,7 @@ export function HandoverModal({ visible, onClose }: Props) {
     mutationFn: syncPendingSales,
     onSuccess: (result) => {
       if (result.failed > 0) {
-        Alert.alert(t.miniEmployee.handoverSyncFailed, result.errors.join('\n'));
+        showAlert(t.miniEmployee.handoverSyncFailed, result.errors.join('\n'));
         return;
       }
       qc.invalidateQueries({ queryKey: ['mini-settlements', 'handover-preview'] });
@@ -64,7 +66,7 @@ export function HandoverModal({ visible, onClose }: Props) {
       qc.invalidateQueries({ queryKey: QK.miniExpenses });
       qc.invalidateQueries({ queryKey: QK.miniExpenseAllowance });
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   const preview = data as HandoverPreview | undefined;
@@ -112,13 +114,13 @@ export function HandoverModal({ visible, onClose }: Props) {
       // The handover claims the team, so the next cycle starts with none.
       qc.invalidateQueries({ queryKey: QK.miniTeam });
       onClose();
-      Alert.alert('✅', t.miniEmployee.handoverSubmitted);
+      showAlert('✅', t.miniEmployee.handoverSubmitted);
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8">
         <View className="flex-row justify-between items-center mb-2">
           <Text className="font-display text-2xl text-text">{t.miniEmployee.handoverTitle}</Text>
@@ -318,6 +320,6 @@ export function HandoverModal({ visible, onClose }: Props) {
           </>
         )}
       </ScrollView>
-    </Modal>
+    </FormModal>
   );
 }

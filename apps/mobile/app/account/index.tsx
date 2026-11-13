@@ -1,10 +1,11 @@
-import { ScrollView, View, Text, Alert } from 'react-native';
+import { ScrollView, View, Text } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../store/auth.store';
 import { useT } from '../../lib/i18n';
 import { UpdateCheckRow } from '../../components/ui/UpdateNotice';
 import { NavRow } from '../../components/ui/NavRow';
 import { CARD_SHADOW } from '../../components/ui/Card';
+import { showAlert } from '../../lib/alert';
 
 export default function AccountMenuScreen() {
   const t = useT();
@@ -12,7 +13,7 @@ export default function AccountMenuScreen() {
   const logout = useAuthStore((s) => s.logout);
 
   const handleLogout = () => {
-    Alert.alert(t.account.logout, t.account.logoutSubtitle, [
+    showAlert(t.account.logout, t.account.logoutSubtitle, [
       { text: t.common.cancel, style: 'cancel' },
       {
         text: t.account.logout,

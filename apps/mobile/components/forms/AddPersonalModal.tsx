@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Modal, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
@@ -8,6 +8,8 @@ import { Button } from '../ui/Button';
 import { getErrorMessage } from '../../lib/utils';
 import { useExchangeRate } from '../../lib/currency';
 import { useT } from '../../lib/i18n';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props { visible: boolean; onClose: () => void; }
 
@@ -42,19 +44,19 @@ export function AddPersonalModal({ visible, onClose }: Props) {
       setForm({ productName: '', unitCost: '', sellingPrice: '', quantity: '', category: '', piecesPerCarton: '' });
       onClose();
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   const handleSubmit = () => {
     if (!form.productName || !form.unitCost || !form.sellingPrice || !form.quantity) {
-      Alert.alert(t.common.missingFields, t.addPersonalModal.missingFieldsMsg);
+      showAlert(t.common.missingFields, t.addPersonalModal.missingFieldsMsg);
       return;
     }
     mutate();
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-6">
           <Text className="font-display text-2xl text-text">{t.addPersonalModal.title}</Text>
@@ -68,6 +70,6 @@ export function AddPersonalModal({ visible, onClose }: Props) {
         <Input label={t.addPersonalModal.piecesPerCarton} value={form.piecesPerCarton} onChangeText={set('piecesPerCarton')} placeholder="e.g. 20" keyboardType="number-pad" />
         <Button label={t.addPersonalModal.submit} onPress={handleSubmit} loading={isPending} className="mt-2" />
       </ScrollView>
-    </Modal>
+    </FormModal>
   );
 }

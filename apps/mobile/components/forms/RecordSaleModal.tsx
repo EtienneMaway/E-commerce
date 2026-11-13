@@ -4,7 +4,6 @@ import {
   Text,
   Modal,
   ScrollView,
-  Alert,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
@@ -16,6 +15,8 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { salesApi, inventoryApi, quantityDiscountsApi, type ProductSummary, type ProductVariantSummary } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { useBrand } from '../../lib/theme';
+import { usePermissions } from '../../lib/permissions';
+import { RoleDeniedSheet } from '../ui/RoleDeniedSheet';
 import {
   resolveQuantityDiscountPercent,
   quantityTierFor,
@@ -38,6 +39,8 @@ import { useOfflineStore } from '../../store/offline.store';
 import { printReceipt, shareReceiptAsPdf, generateReceiptId, type ReceiptData } from '../../lib/receipt';
 import { usePrinterStore } from '../../store/printer.store';
 import { receiptIdentity } from '../../lib/receipt-identity';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props {
   visible: boolean;
@@ -162,7 +165,7 @@ function deriveCartonPrice(unitPrice: string, ppc: number | null): string {
   return String(Math.round(up * ppc));
 }
 
-export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefilledGroup }: Props) {
+function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefilledGroup }: Props) {
   const brand = useBrand();
   const t = useT();
   const qc = useQueryClient();
@@ -558,12 +561,12 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
           });
           queued.push(item.productName);
         } else {
-          Alert.alert(t.common.error, `${item.productName}: ${getErrorMessage(err)}`);
+          showAlert(t.common.error, `${item.productName}: ${getErrorMessage(err)}`);
         }
       }
     }
     if (queued.length > 0) {
-      Alert.alert(t.sales.queuedTitle, t.sales.queuedBody(queued.join(', ')));
+      showAlert(t.sales.queuedTitle, t.sales.queuedBody(queued.join(', ')));
     }
     return { priceGuard, discount, saleIds, queued };
   };
@@ -608,7 +611,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
           const w = getPriceGuardWarning(err);
           priceGuard.push({ kind: 'sized', line, warning: w?.message ?? '' });
         } else {
-          Alert.alert(t.common.error, `${line.productName} · ${line.variantLabel}: ${getErrorMessage(err)}`);
+          showAlert(t.common.error, `${line.productName} · ${line.variantLabel}: ${getErrorMessage(err)}`);
         }
       }
     }
@@ -736,9 +739,9 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
       await printReceipt(data);
     } catch (err) {
       if (usePrinterStore.getState().printer) {
-        Alert.alert(t.printer.printFailed, getErrorMessage(err));
+        showAlert(t.printer.printFailed, getErrorMessage(err));
       } else {
-        Alert.alert(t.printer.printFailed, t.printer.noPrinterPaired);
+        showAlert(t.printer.printFailed, t.printer.noPrinterPaired);
       }
     }
   };
@@ -767,25 +770,25 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
 
   const handleSubmit = async (): Promise<void> => {
     if (cart.size === 0 && sizedLines.size === 0) {
-      Alert.alert(t.common.noProductsSelected, t.recordSaleModal.noProductsSelectedMsg);
+      showAlert(t.common.noProductsSelected, t.recordSaleModal.noProductsSelectedMsg);
       return;
     }
     for (const item of cartArray) {
       const v = isItemValid(item);
       if (!v.ok && v.reason === 'extra-too-large') {
-        Alert.alert(t.common.error, t.recordSaleModal.extraPiecesTooLarge(item.piecesPerCarton ?? 0));
+        showAlert(t.common.error, t.recordSaleModal.extraPiecesTooLarge(item.piecesPerCarton ?? 0));
         return;
       }
     }
     if (cartArray.length > 0 && !allValid) {
-      Alert.alert(t.common.missingFields, t.recordSaleModal.noProductsSelectedMsg);
+      showAlert(t.common.missingFields, t.recordSaleModal.noProductsSelectedMsg);
       return;
     }
     // Sized lines don't flow through the offline queue yet (same constraint as
     // the dedicated by-size sell screen) — the picker is hidden offline
     // already, but guard here too in case connectivity dropped mid-edit.
     if (isOffline && sizedLines.size > 0) {
-      Alert.alert(t.common.error, t.recordSaleModal.sizedOfflineUnsupported);
+      showAlert(t.common.error, t.recordSaleModal.sizedOfflineUnsupported);
       return;
     }
 
@@ -918,7 +921,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
     // Validate that every pending discount row has a reason filled in.
     const missing = discountPending.some((p) => !p.reason.trim());
     if (missing) {
-      Alert.alert(t.common.error, t.recordSaleModal.discountReasonRequiredMsg);
+      showAlert(t.common.error, t.recordSaleModal.discountReasonRequiredMsg);
       return;
     }
     const inputs = discountPending.map((p) => ({
@@ -1070,7 +1073,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
 
   if (discountPending.length > 0) {
     return (
-      <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+      <FormModal visible onRequestClose={handleClose}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={{ flex: 1 }}
@@ -1134,13 +1137,13 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
             <Button label={t.recordSaleModal.goBack} variant="ghost" onPress={handleClose} />
           </ScrollView>
         </KeyboardAvoidingView>
-      </Modal>
+      </FormModal>
     );
   }
 
   if (priceGuardPending.length > 0) {
     return (
-      <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+      <FormModal visible onRequestClose={handleClose}>
         <ScrollView
           className="flex-1 bg-background"
           contentContainerClassName="px-6 py-8"
@@ -1171,14 +1174,14 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
           />
           <Button label={t.recordSaleModal.goBack} variant="ghost" onPress={handleClose} />
         </ScrollView>
-      </Modal>
+      </FormModal>
     );
   }
 
   // ─── Main screen ─────────────────────────────────────────────────────────────
   return (
     <>
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+    <FormModal visible={visible} onRequestClose={handleClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
@@ -1581,7 +1584,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
           </View>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </FormModal>
 
     {/* Post-sale: capture optional client details, then print/share/skip. */}
     <Modal
@@ -1648,4 +1651,18 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
     </Modal>
     </>
   );
+}
+
+/**
+ * Role gate: an employee whose role lacks `sales.record` gets the denial sheet
+ * the moment they tap Record Sale, instead of filling the whole form and being
+ * refused by the server at submit. The API still enforces it.
+ */
+export function RecordSaleModal(props: Props) {
+  const { can } = usePermissions();
+  const t = useT();
+  if (props.visible && !can('sales.record')) {
+    return <RoleDeniedSheet visible onClose={props.onClose} feature={t.denied.featureRecordSale} />;
+  }
+  return <RecordSaleModalForm {...props} />;
 }

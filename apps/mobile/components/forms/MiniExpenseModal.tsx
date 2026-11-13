@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, ScrollView, View, Text, TouchableOpacity, Alert } from 'react-native';
+import { ScrollView, View, Text, TouchableOpacity } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   miniSettlementsApi,
@@ -14,6 +14,8 @@ import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
+import { showAlert } from '../../lib/alert';
+import { FormModal } from '../ui/FormModal';
 
 interface Props {
   visible: boolean;
@@ -87,18 +89,18 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
       reset();
       onClose();
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   const handleSubmit = () => {
     if (!(parseInt(amount, 10) > 0)) {
-      Alert.alert(t.common.error, t.miniEmployee.expenseInvalidAmount);
+      showAlert(t.common.error, t.miniEmployee.expenseInvalidAmount);
       return;
     }
     // The ceiling is enforced offline too, so an expense that would break it is
     // refused now rather than queueing up to fail when the queue drains.
     if (overBudget) {
-      Alert.alert(t.common.error, t.miniEmployee.expenseOverBudget(formatFcValue(remainingFc ?? 0)));
+      showAlert(t.common.error, t.miniEmployee.expenseOverBudget(formatFcValue(remainingFc ?? 0)));
       return;
     }
     // Offline → queue for sync; online → submit now.
@@ -106,14 +108,14 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
       recordOfflineExpense(String(parseInt(amount, 10)), category, description.trim() || undefined);
       reset();
       onClose();
-      Alert.alert('✅', t.miniEmployee.expenseQueued);
+      showAlert('✅', t.miniEmployee.expenseQueued);
       return;
     }
     mutate();
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-2">
           <Text className="font-display text-2xl text-text">{t.miniEmployee.expenseTitle}</Text>
@@ -186,6 +188,6 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
           className="mt-3"
         />
       </ScrollView>
-    </Modal>
+    </FormModal>
   );
 }

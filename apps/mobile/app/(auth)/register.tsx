@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Alert } from 'react-native';
+import { View, Text } from 'react-native';
 import { Link, router } from 'expo-router';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { getErrorMessage } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 import { AuthShell } from '../../components/AuthShell';
+import { showAlert } from '../../lib/alert';
 
 export default function RegisterScreen() {
   const t = useT();
@@ -20,11 +21,11 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     if (!username.trim() || !password) {
-      Alert.alert(t.common.missingFields, t.auth.missingFieldsMsgRegister);
+      showAlert(t.common.missingFields, t.auth.missingFieldsMsgRegister);
       return;
     }
     if (!email.trim() && !phone.trim()) {
-      Alert.alert(t.auth.contactRequired, t.auth.contactRequiredMsg);
+      showAlert(t.auth.contactRequired, t.auth.contactRequiredMsg);
       return;
     }
     setLoading(true);
@@ -39,7 +40,7 @@ export default function RegisterScreen() {
       await login(accessToken, user);
       router.replace('/(tabs)');
     } catch (err) {
-      Alert.alert(t.auth.registrationFailed, getErrorMessage(err));
+      showAlert(t.auth.registrationFailed, getErrorMessage(err));
     } finally {
       setLoading(false);
     }

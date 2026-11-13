@@ -27,6 +27,7 @@ import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Me
 import { JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono/700Bold';
 import { useInboxSignal } from '../hooks/use-inbox-signal';
 import { useOfflineWarmup } from '../hooks/use-offline-warmup';
+import { AlertHost } from '../components/ui/AlertHost';
 import { scheduleAlertNotifications } from '../lib/notifications';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { UpdateRequiredGate } from '../components/ui/UpdateNotice';
@@ -303,6 +304,8 @@ export default function RootLayout() {
             options={{ headerShown: true, title: t.branchTransfers.title, headerBackTitle: t.screens.back }}
           />
         </Stack>
+        {/* Branded alerts (lib/alert.ts showAlert) — replaces the bare system dialog. */}
+        <AlertHost />
         {/* Sits above every screen: once the API says this build is below the
             minimum supported version, nothing behind it can be trusted to
             behave. Renders null in the normal case. */}

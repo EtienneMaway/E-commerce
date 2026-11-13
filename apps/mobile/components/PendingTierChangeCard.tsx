@@ -1,9 +1,10 @@
-import { View, Text, Pressable, Alert } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { authApi, employmentsApi } from '../lib/api';
 import { useAuthStore } from '../store/auth.store';
 import { getErrorMessage } from '../lib/utils';
 import { useT } from '../lib/i18n';
+import { showAlert } from '../lib/alert';
 
 /**
  * Surfaces an employer's pending tier-change proposal (mini ↔ full) to
@@ -32,17 +33,17 @@ export function PendingTierChangeCard() {
     mutationFn: (id: string) => employmentsApi.acceptTierChange(id),
     onSuccess: () => {
       refreshMe();
-      Alert.alert(t.tierChange.acceptedTitle, t.tierChange.acceptedBody);
+      showAlert(t.tierChange.acceptedTitle, t.tierChange.acceptedBody);
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
   const declineM = useMutation({
     mutationFn: (id: string) => employmentsApi.rejectTierChange(id),
     onSuccess: () => {
       refreshMe();
-      Alert.alert(t.tierChange.declinedTitle, t.tierChange.declinedBody);
+      showAlert(t.tierChange.declinedTitle, t.tierChange.declinedBody);
     },
-    onError: (err) => Alert.alert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
   });
 
   if (!pendingTier || !user?.activeEmployment) return null;

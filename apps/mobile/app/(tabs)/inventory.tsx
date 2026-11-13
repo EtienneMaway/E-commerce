@@ -8,7 +8,6 @@ import {
   RefreshControl,
   ActionSheetIOS,
   Platform,
-  Alert,
   TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -37,6 +36,7 @@ import { usePersonaStore } from '../../store/persona.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
 import type { ProductSummary } from '@trading-app/types';
+import { showAlert } from '../../lib/alert';
 
 type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'recordSale' | 'editPrice' | 'sellSized';
 
@@ -306,11 +306,11 @@ export default function InventoryScreen() {
         },
       );
     } else {
-      Alert.alert(t.inventory.addStockTitle, t.inventory.addStockMessage, [
+      showAlert(t.inventory.addStockTitle, t.inventory.addStockMessage, [
         { text: t.inventory.addPersonal, onPress: () => setModal('addPersonal') },
         { text: t.inventory.receiveFromSupplier, onPress: () => setModal('receiveSupplier') },
         { text: t.common.cancel, style: 'cancel' },
-      ]);
+      ], { tone: 'primary', icon: 'plus' });
     }
   };
 
@@ -321,7 +321,7 @@ export default function InventoryScreen() {
         // While a handover waits for approval the goods are physically back with
         // the employer, so drop Sell from the sheet — but keep Edit price, which
         // moves neither stock nor cash.
-        Alert.alert(item.productName, handoverPending ? t.miniEmployee.handoverBlocksSelling : undefined, [
+        showAlert(item.productName, handoverPending ? t.miniEmployee.handoverBlocksSelling : undefined, [
           ...(handoverPending
             ? []
             : [
@@ -342,7 +342,7 @@ export default function InventoryScreen() {
             },
           },
           { text: t.common.cancel, style: 'cancel' },
-        ]);
+        ], { tone: 'primary', icon: 'package' });
         return;
       }
       setSizedTarget(item);
@@ -351,7 +351,7 @@ export default function InventoryScreen() {
     }
     // Minis can sell OR re-price their consigned stock — offer the choice.
     if (isMini) {
-      Alert.alert(item.productName, handoverPending ? t.miniEmployee.handoverBlocksSelling : undefined, [
+      showAlert(item.productName, handoverPending ? t.miniEmployee.handoverBlocksSelling : undefined, [
         ...(handoverPending
           ? []
           : [
@@ -372,7 +372,7 @@ export default function InventoryScreen() {
           },
         },
         { text: t.common.cancel, style: 'cancel' },
-      ]);
+      ], { tone: 'primary', icon: 'package' });
       return;
     }
     setSaleTarget({ productName: item.productName, unitCost: item.latestUnitCost });

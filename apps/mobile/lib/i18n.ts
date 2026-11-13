@@ -1172,6 +1172,22 @@ const en = {
     checking: 'Checking…',
     upToDate: 'You are on the latest version',
   },
+  denied: {
+    title: 'Not part of your role',
+    subtitle: (employer: string) => `${employer} hasn't switched this on for you yet.`,
+    subtitleNoEmployer: "This account isn't allowed to do this.",
+    featureLabel: 'You tried to',
+    roleLabel: 'Your role',
+    defaultRole: 'No role assigned yet',
+    stamp: 'NOT INCLUDED',
+    pointAsk: (employer: string) => `Ask ${employer} to add it to your role from their dashboard.`,
+    pointAskGeneric: 'Ask your employer to add it to your role from their dashboard.',
+    pointRefresh: 'Once they do, reopen the app and it will be available here.',
+    pointNothing: 'Nothing was recorded — no stock or cash moved.',
+    featureRecordSale: 'Record a sale',
+    ok: 'Understood',
+    okShort: 'OK',
+  },
 };
 
 export type Translations = typeof en;
@@ -2337,6 +2353,22 @@ const fr: Translations = {
     checkBtn: 'Vérifier les mises à jour',
     checking: 'Vérification…',
     upToDate: 'Vous avez la dernière version',
+  },
+  denied: {
+    title: 'Hors de votre rôle',
+    subtitle: (employer: string) => `${employer} n'a pas encore activé cette fonction pour vous.`,
+    subtitleNoEmployer: "Ce compte n'est pas autorisé à faire ceci.",
+    featureLabel: 'Vous vouliez',
+    roleLabel: 'Votre rôle',
+    defaultRole: 'Aucun rôle attribué',
+    stamp: 'NON INCLUS',
+    pointAsk: (employer: string) => `Demandez à ${employer} de l'ajouter à votre rôle depuis son tableau de bord.`,
+    pointAskGeneric: "Demandez à votre employeur de l'ajouter à votre rôle depuis son tableau de bord.",
+    pointRefresh: "Une fois fait, rouvrez l'application et elle sera disponible ici.",
+    pointNothing: "Rien n'a été enregistré — ni stock ni argent n'a bougé.",
+    featureRecordSale: 'Enregistrer une vente',
+    ok: "J'ai compris",
+    okShort: 'OK',
   },
 };
 

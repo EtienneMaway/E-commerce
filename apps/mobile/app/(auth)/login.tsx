@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Alert } from 'react-native';
+import { View, Text } from 'react-native';
 import { Link, router } from 'expo-router';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { getErrorMessage, getPendingDeletion, formatDate } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 import { AuthShell } from '../../components/AuthShell';
+import { showAlert } from '../../lib/alert';
 
 export default function LoginScreen() {
   const t = useT();
@@ -26,7 +27,7 @@ export default function LoginScreen() {
     creds: { emailOrPhone: string; password: string },
     expiresAt: string,
   ) => {
-    Alert.alert(
+    showAlert(
       t.account.pendingDeletionTitle,
       t.account.pendingDeletionBody(formatDate(expiresAt)),
       [
@@ -40,7 +41,7 @@ export default function LoginScreen() {
               await login(accessToken, user);
               router.replace('/(tabs)');
             } catch (err) {
-              Alert.alert(t.account.restoreFailed, getErrorMessage(err));
+              showAlert(t.account.restoreFailed, getErrorMessage(err));
             } finally {
               setLoading(false);
             }
@@ -52,7 +53,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!emailOrPhone.trim() || !password) {
-      Alert.alert(t.common.missingFields, t.auth.missingFieldsMsg);
+      showAlert(t.common.missingFields, t.auth.missingFieldsMsg);
       return;
     }
     const creds = { emailOrPhone: emailOrPhone.trim(), password };
@@ -64,7 +65,7 @@ export default function LoginScreen() {
       if (pending) {
         promptRestore(creds, pending.expiresAt);
       } else {
-        Alert.alert(t.auth.loginFailed, getErrorMessage(err));
+        showAlert(t.auth.loginFailed, getErrorMessage(err));
       }
     } finally {
       setLoading(false);
