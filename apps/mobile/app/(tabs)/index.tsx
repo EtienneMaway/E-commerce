@@ -273,7 +273,10 @@ export default function DashboardScreen() {
     <View className="flex-1 bg-background">
     <ScrollView
       className="flex-1 bg-background"
-      contentContainerClassName="px-5 pt-14 pb-8"
+      contentContainerClassName="px-5 pb-8"
+      // Real status-bar height + a margin: a fixed pt-14 put the date line
+      // under the paper strip on phones whose status bar is ~56dp tall.
+      contentContainerStyle={{ paddingTop: insets.top + 16 }}
       refreshControl={
         <RefreshControl
           refreshing={isRefetching}
