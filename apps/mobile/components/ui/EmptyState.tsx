@@ -35,7 +35,7 @@ export function EmptyState({ emoji, icon, title, subtitle }: Props) {
       <View className="w-20 h-20 rounded-full items-center justify-center mb-5 border border-dashed border-muted-subtle bg-surface">
         <Icon name={name} size={30} tone="muted" />
       </View>
-      <Text className="font-display text-xl text-text text-center">{title}</Text>
+      <Text className="font-bold text-xl text-text text-center">{title}</Text>
       {subtitle ? <Text className="text-muted text-sm text-center mt-2 leading-5">{subtitle}</Text> : null}
     </View>
   );

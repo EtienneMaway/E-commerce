@@ -7,8 +7,7 @@ import {
   TextInput,
   Modal,
   ActivityIndicator,
-  RefreshControl,
-} from 'react-native';
+  } from 'react-native';
 import { Stack } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNetInfo } from '@react-native-community/netinfo';
@@ -36,6 +35,7 @@ import { useOfflineStore } from '../store/offline.store';
 import { useT } from '../lib/i18n';
 import { useBrand } from '../lib/theme';
 import { showAlert } from '../lib/alert';
+import { PullRefreshControl } from '../components/ui/PullRefreshControl';
 
 type Tab = 'incoming' | 'outgoing' | 'balances';
 
@@ -257,11 +257,11 @@ export default function BranchTransfersScreen() {
         <View className="flex-row gap-3 px-4 pt-4">
           <View className="flex-1 bg-card border border-border rounded-3xl px-4 py-3.5" style={{ boxShadow: CARD_SHADOW }}>
             <Text className="font-mono text-[10px] uppercase tracking-widest text-muted">{t.branchTransfers.owedToBranch}</Text>
-            <Text className="font-display text-xl text-success mt-1" numberOfLines={1} adjustsFontSizeToFit>{fmt(owedHere)}</Text>
+            <Text className="font-bold text-xl text-success mt-1" numberOfLines={1} adjustsFontSizeToFit>{fmt(owedHere)}</Text>
           </View>
           <View className="flex-1 bg-card border border-border rounded-3xl px-4 py-3.5" style={{ boxShadow: CARD_SHADOW }}>
             <Text className="font-mono text-[10px] uppercase tracking-widest text-muted">{t.branchTransfers.branchOwes}</Text>
-            <Text className={`font-display text-xl mt-1 ${owesHere > 0 ? 'text-danger' : 'text-text'}`} numberOfLines={1} adjustsFontSizeToFit>{fmt(owesHere)}</Text>
+            <Text className={`font-bold text-xl mt-1 ${owesHere > 0 ? 'text-danger' : 'text-text'}`} numberOfLines={1} adjustsFontSizeToFit>{fmt(owesHere)}</Text>
           </View>
         </View>
 
@@ -287,7 +287,7 @@ export default function BranchTransfersScreen() {
           className="flex-1 px-4 pt-4"
           refreshControl={
             // A user's pull only — background refreshes of cached data stay silent.
-            <RefreshControl refreshing={transfers.isRefreshing} onRefresh={refreshAll} />
+            <PullRefreshControl onRefresh={refreshAll} />
           }
           // Next page when the reader nears the bottom of the transfers list.
           scrollEventThrottle={200}

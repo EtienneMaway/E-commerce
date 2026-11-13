@@ -5,7 +5,6 @@ import {
   FlatList,
   Pressable,
   ActivityIndicator,
-  RefreshControl,
   ActionSheetIOS,
   Platform,
   TextInput,
@@ -37,6 +36,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
 import type { ProductSummary } from '@trading-app/types';
 import { showAlert } from '../../lib/alert';
+import { PullRefreshControl } from '../../components/ui/PullRefreshControl';
 
 type Modal = 'none' | 'addPersonal' | 'receiveSupplier' | 'recordSale' | 'editPrice' | 'sellSized';
 
@@ -91,12 +91,12 @@ function ProductCard({
             isOutOfStock ? 'bg-surface' : isGroup ? 'bg-accent-light' : 'bg-primary-light'
           }`}
         >
-          <Text className={`font-display text-lg ${isOutOfStock ? 'text-muted' : isGroup ? 'text-accent' : 'text-primary'}`}>
+          <Text className={`font-bold text-lg ${isOutOfStock ? 'text-muted' : isGroup ? 'text-accent' : 'text-primary'}`}>
             {item.productName.charAt(0).toUpperCase()}
           </Text>
         </View>
         <View className="flex-1 mr-2">
-          <Text className="font-display-medium text-text text-[17px]" numberOfLines={2}>
+          <Text className="font-semibold text-text text-[17px]" numberOfLines={2}>
             {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
           </Text>
           {item.category ? <Text className="text-muted text-xs mt-0.5">{item.category}</Text> : null}
@@ -417,7 +417,7 @@ export default function InventoryScreen() {
         )}
         contentContainerClassName="px-5 pt-4 pb-32"
         refreshControl={
-          <RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />
+          <PullRefreshControl onRefresh={refetch} tintColor={brand.primary} />
         }
         ListHeaderComponent={
           isFetching && filtered.length === 0 ? (

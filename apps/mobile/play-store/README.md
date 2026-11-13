@@ -2,7 +2,7 @@
 
 Icons redrawn **13 November 2026** (malachite tile, paper K, copper leg — the
 "market ledger" identity; `scripts/gen-native-icons.sh` regenerates every native
-size from `../assets/src`); earlier icons generated 27 August 2026; screenshots retaken **13 November 2026** (new "market ledger" look, dark theme). Sources
+size from `../assets/src`); earlier icons generated 27 August 2026; screenshots retaken **13 November 2026** (new "market ledger" look in Roboto, dark theme). Sources
 for the icon set live in `../assets/src/*.svg` — edit the SVG and re-render rather
 than touching the PNGs by hand.
 

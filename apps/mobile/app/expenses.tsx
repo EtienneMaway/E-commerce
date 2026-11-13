@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   Pressable,
-  RefreshControl,
   ActivityIndicator,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -34,6 +33,7 @@ import { useT } from '../lib/i18n';
 import { personHandle } from '../lib/person';
 import { useRequireService } from '../hooks/use-require-service';
 import { showAlert } from '../lib/alert';
+import { PullRefreshControl } from '../components/ui/PullRefreshControl';
 
 type FilterKey = 'all' | 'today' | 'week' | 'month' | 'lastN';
 
@@ -174,7 +174,7 @@ function OwnerExpensesScreen() {
     <View className="flex-1 bg-background">
       <ScrollView
         contentContainerClassName="px-4 pt-4 pb-24"
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+        refreshControl={<PullRefreshControl onRefresh={refetch} />}
       >
         {/* Total card */}
         <Card>

@@ -4,8 +4,7 @@ import {
   FlatList,
   Pressable,
   ActivityIndicator,
-  RefreshControl,
-} from 'react-native';
+  } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { dashboardApi } from '../../lib/api';
@@ -19,6 +18,7 @@ import { CARD_SHADOW } from '../../components/ui/Card';
 import { Icon } from '../../components/ui/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PersonaBanner } from '../../components/ui/PersonaBanner';
+import { PullRefreshControl } from '../../components/ui/PullRefreshControl';
 
 interface SupplierRow {
   supplierUserId: string;
@@ -39,7 +39,7 @@ function SupplierCard({ item }: { item: SupplierRow }) {
     >
       <View className="flex-row items-center mb-3">
         <View className="w-11 h-11 rounded-full bg-accent-light items-center justify-center mr-3">
-          <Text className="font-display text-lg text-accent">{item.supplierUsername.slice(0, 1).toUpperCase()}</Text>
+          <Text className="font-bold text-lg text-accent">{item.supplierUsername.slice(0, 1).toUpperCase()}</Text>
         </View>
         <Text className="text-text font-semibold text-[15px] flex-1" numberOfLines={1}>@{item.supplierUsername}</Text>
         <Text className="font-mono-bold text-danger text-[15px]">{formatCurrency(item.outstandingBalance)}</Text>
@@ -89,7 +89,7 @@ export default function NetworkScreen() {
             <Icon name="arrow-up-right" size={17} tone="danger" />
           </View>
           <Text className="text-danger text-sm flex-1">{t.network.totalOwedToSuppliers}</Text>
-          <Text className="font-display text-xl text-danger">
+          <Text className="font-bold text-xl text-danger">
             {formatCurrency(supplierList.reduce((s, x) => s + parseFloat(x.outstandingBalance), 0).toFixed(4))}
           </Text>
         </View>
@@ -100,7 +100,7 @@ export default function NetworkScreen() {
         keyExtractor={(item) => item.supplierUserId}
         renderItem={({ item }) => <SupplierCard item={item} />}
         contentContainerClassName="px-5 pb-8"
-        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />}
+        refreshControl={<PullRefreshControl onRefresh={refetch} tintColor={brand.primary} />}
         ListHeaderComponent={isFetching && supplierList.length === 0 ? <ActivityIndicator className="mt-12" color={brand.primary} /> : null}
         ListEmptyComponent={
           !isFetching ? (

@@ -20,9 +20,6 @@ import { isAuthError } from '../lib/utils';
 import { initConnectivity } from '../lib/connectivity';
 import { useHeaderOptions } from '../lib/theme';
 import { useFonts } from 'expo-font';
-import { Fraunces_500Medium } from '@expo-google-fonts/fraunces/500Medium';
-import { Fraunces_500Medium_Italic } from '@expo-google-fonts/fraunces/500Medium_Italic';
-import { Fraunces_600SemiBold } from '@expo-google-fonts/fraunces/600SemiBold';
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium';
 import { JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono/700Bold';
 import { useInboxSignal } from '../hooks/use-inbox-signal';
@@ -247,9 +244,6 @@ export default function RootLayout() {
   // so they load from disk in a few ms — no network. On a load error the app
   // carries on in the system font rather than hanging on a blank screen.
   const [fontsLoaded, fontError] = useFonts({
-    Fraunces_500Medium,
-    Fraunces_500Medium_Italic,
-    Fraunces_600SemiBold,
     JetBrainsMono_500Medium,
     JetBrainsMono_700Bold,
   });

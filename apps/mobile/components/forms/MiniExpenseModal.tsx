@@ -118,7 +118,7 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
     <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="font-display text-2xl text-text">{t.miniEmployee.expenseTitle}</Text>
+          <Text className="font-bold text-2xl text-text">{t.miniEmployee.expenseTitle}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>

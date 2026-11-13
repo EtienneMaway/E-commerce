@@ -36,7 +36,7 @@ export function StatCard({ label, value, sub, color = 'default', className = '' 
           {label}
         </Text>
       </View>
-      <Text className={`font-display text-2xl ${valueColor[color]}`} numberOfLines={1} adjustsFontSizeToFit>
+      <Text className={`font-bold text-2xl ${valueColor[color]}`} numberOfLines={1} adjustsFontSizeToFit>
         {value}
       </Text>
       {sub ? <Text className="text-muted text-xs mt-1">{sub}</Text> : null}

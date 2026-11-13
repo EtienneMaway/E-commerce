@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Linking } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi } from '../../lib/api';
@@ -13,6 +13,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { PaySupplierModal } from '../../components/forms/PaySupplierModal';
 import { useRequireService } from '../../hooks/use-require-service';
 import { Icon } from '../../components/ui/Icon';
+import { PullRefreshControl } from '../../components/ui/PullRefreshControl';
 
 interface InventoryRow {
   id: string;
@@ -97,7 +98,7 @@ export default function SupplierDetailScreen() {
         </TouchableOpacity>
         <View className="flex-row justify-between items-start">
           <View className="flex-1 mr-3">
-            <Text className="font-display text-[28px] text-text">@{detail.supplierUsername}</Text>
+            <Text className="font-bold text-[28px] text-text">@{detail.supplierUsername}</Text>
             <Text className="text-muted text-sm mt-0.5">Supplier</Text>
             {(detail.supplierEmail || detail.supplierPhone) && (
               <View className="mt-2 gap-1">
@@ -129,11 +130,11 @@ export default function SupplierDetailScreen() {
           </View>
           <View className="flex-1 bg-surface border border-border rounded-xl px-3 py-2">
             <Text className="text-muted text-xs">{t.supplierDetail.totalReceived}</Text>
-            <Text className="font-display text-xl text-text">{formatCurrency(detail.debt.totalCreditReceived)}</Text>
+            <Text className="font-bold text-xl text-text">{formatCurrency(detail.debt.totalCreditReceived)}</Text>
           </View>
           <View className="flex-1 bg-surface border border-border rounded-xl px-3 py-2">
             <Text className="text-muted text-xs">{t.supplierDetail.totalPaid}</Text>
-            <Text className="font-display text-xl text-text">{formatCurrency(detail.debt.totalPaid)}</Text>
+            <Text className="font-bold text-xl text-text">{formatCurrency(detail.debt.totalPaid)}</Text>
           </View>
         </View>
 
@@ -171,7 +172,7 @@ export default function SupplierDetailScreen() {
         <FlatList
           data={detail.productsReceived}
           keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />}
+          refreshControl={<PullRefreshControl onRefresh={refetch} tintColor={brand.primary} />}
           contentContainerClassName="px-4 pt-4 pb-8"
           renderItem={({ item }) => {
             const isLowStock = item.quantityRemaining <= 5;
@@ -207,7 +208,7 @@ export default function SupplierDetailScreen() {
         <FlatList
           data={detail.payments}
           keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />}
+          refreshControl={<PullRefreshControl onRefresh={refetch} tintColor={brand.primary} />}
           contentContainerClassName="px-4 pt-4 pb-8"
           renderItem={({ item }) => (
             <View className="bg-card border border-border rounded-2xl p-4 mb-3">

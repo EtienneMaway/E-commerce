@@ -7,8 +7,7 @@ import {
   Pressable,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
-} from 'react-native';
+  } from 'react-native';
 import { Stack } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -38,6 +37,7 @@ import {
 } from '../lib/handover-receipt';
 import { useRequireService } from '../hooks/use-require-service';
 import { showAlert } from '../lib/alert';
+import { PullRefreshControl } from '../components/ui/PullRefreshControl';
 
 type Tab = 'handovers' | 'received';
 
@@ -117,7 +117,7 @@ function HandoversTab() {
     <ScrollView
       className="flex-1"
       contentContainerClassName="px-4 pt-3 pb-8"
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />}
+      refreshControl={<PullRefreshControl onRefresh={() => void refetch()} />}
     >
       {handovers.map((s) => (
         <HandoverCard
@@ -187,7 +187,7 @@ function ReceivedTab() {
       contentContainerClassName="px-4 pt-3 pb-8"
       data={received}
       keyExtractor={(c) => c.id}
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />}
+      refreshControl={<PullRefreshControl onRefresh={() => void refetch()} />}
       onEndReached={list.loadMore}
       onEndReachedThreshold={0.5}
       renderItem={({ item: c }) => (

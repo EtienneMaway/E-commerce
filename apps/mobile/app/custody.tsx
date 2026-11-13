@@ -6,8 +6,7 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
-  RefreshControl,
-} from 'react-native';
+  } from 'react-native';
 import { Stack } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,6 +22,7 @@ import { breakdownQuantity, formatBreakdown, formatDate, getErrorMessage } from 
 import { useRequireService } from '../hooks/use-require-service';
 import { useT } from '../lib/i18n';
 import { showAlert } from '../lib/alert';
+import { PullRefreshControl } from '../components/ui/PullRefreshControl';
 
 type Tab = 'volume' | 'approve' | 'handover';
 
@@ -127,7 +127,7 @@ export default function CustodyScreen() {
           <ScrollView
             className="flex-1 px-4 pt-4"
             refreshControl={
-              <RefreshControl refreshing={mine.isFetching} onRefresh={() => refreshAll()} />
+              <PullRefreshControl onRefresh={() => refreshAll()} />
             }
           >
             <View className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-4 mb-4">
@@ -284,8 +284,7 @@ function ApproveQueue() {
     <ScrollView
       className="flex-1 px-4 pt-4"
       refreshControl={
-        <RefreshControl
-          refreshing={isFetching}
+        <PullRefreshControl
           onRefresh={() => qc.invalidateQueries({ queryKey: QK.custodyPendingSales })}
         />
       }
@@ -390,8 +389,7 @@ function HandoverTab() {
     <ScrollView
       className="flex-1 px-4 pt-4"
       refreshControl={
-        <RefreshControl
-          refreshing={isFetching}
+        <PullRefreshControl
           onRefresh={() => qc.invalidateQueries({ queryKey: QK.custodyPreview })}
         />
       }

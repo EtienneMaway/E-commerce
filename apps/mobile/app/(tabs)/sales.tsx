@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Pressable,
   ActivityIndicator,
-  RefreshControl,
   TextInput,
 } from 'react-native';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
@@ -30,6 +29,7 @@ import { RejectSaleModal, type RejectTarget } from '../../components/forms/Rejec
 import { useOfflineStore } from '../../store/offline.store';
 import { useT } from '@/lib/i18n';
 import { personHandle } from '@/lib/person';
+import { PullRefreshControl } from '../../components/ui/PullRefreshControl';
 
 type View_ = 'history' | 'top' | 'rejected';
 type HistoryPeriod = '7d' | '30d' | '90d' | 'all';   // maps to SalesHistoryPeriod
@@ -90,7 +90,7 @@ function SaleCard({
       <View className="flex-row justify-between items-start mb-3">
         <View className="flex-1 mr-2">
           <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-1">{formatDate(item.date)}</Text>
-          <Text className={`font-display-medium text-[17px] ${isRejected ? 'text-muted line-through' : 'text-text'}`} numberOfLines={1}>
+          <Text className={`font-semibold text-[17px] ${isRejected ? 'text-muted line-through' : 'text-text'}`} numberOfLines={1}>
             {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
             {item.variantLabel ? ` · ${item.variantLabel}` : ''}
           </Text>
@@ -196,10 +196,10 @@ function TopProductCard({ item, rank, rankBy }: { item: TopProductRow; rank: num
   return (
     <View className="bg-card border border-border rounded-3xl p-4 mb-3" style={{ boxShadow: CARD_SHADOW }}>
       <View className="flex-row items-center mb-3">
-        <Text className={`font-display-italic text-3xl mr-3 w-11 ${rank <= 3 ? 'text-accent' : 'text-muted-subtle'}`}>
+        <Text className={`font-bold italic text-3xl mr-3 w-11 ${rank <= 3 ? 'text-accent' : 'text-muted-subtle'}`}>
           {String(rank).padStart(2, '0')}
         </Text>
-        <Text className="font-display-medium text-text text-[17px] flex-1" numberOfLines={1}>
+        <Text className="font-semibold text-text text-[17px] flex-1" numberOfLines={1}>
           {item.productName.charAt(0).toUpperCase() + item.productName.slice(1)}
         </Text>
       </View>
@@ -419,14 +419,14 @@ export default function SalesScreen() {
         <View className="mx-5 mb-3 flex-row bg-card border border-border rounded-3xl px-4 py-3.5" style={{ boxShadow: CARD_SHADOW }}>
           <View className="flex-1">
             <Text className="font-mono text-[10px] uppercase tracking-widest text-muted">{t.sales.profitLabel}</Text>
-            <Text className={`font-display text-2xl mt-1 ${totalProfit < 0 ? 'text-danger' : 'text-success'}`} numberOfLines={1} adjustsFontSizeToFit>
+            <Text className={`font-bold text-2xl mt-1 ${totalProfit < 0 ? 'text-danger' : 'text-success'}`} numberOfLines={1} adjustsFontSizeToFit>
               {formatCurrency(totalProfit.toFixed(4))}
             </Text>
           </View>
           <View className="w-px bg-border mx-4" />
           <View className="flex-1">
             <Text className="font-mono text-[10px] uppercase tracking-widest text-muted">{t.sales.revenueLabel}</Text>
-            <Text className="font-display text-2xl text-text mt-1" numberOfLines={1} adjustsFontSizeToFit>
+            <Text className="font-bold text-2xl text-text mt-1" numberOfLines={1} adjustsFontSizeToFit>
               {formatCurrency(totalRevenue.toFixed(4))}
             </Text>
           </View>
@@ -442,7 +442,7 @@ export default function SalesScreen() {
             <SaleCard item={item} onReprint={setReprintSource} onReject={rejectServerSale} />
           )}
           contentContainerClassName="px-5 pb-8"
-          refreshControl={<RefreshControl refreshing={history.isRefreshing} onRefresh={refetch} tintColor={brand.primary} />}
+          refreshControl={<PullRefreshControl onRefresh={refetch} tintColor={brand.primary} />}
           onEndReached={history.loadMore}
           onEndReachedThreshold={0.5}
           ListFooterComponent={
@@ -495,7 +495,7 @@ export default function SalesScreen() {
           // No onReject: these are already rejected, and the stock is back.
           renderItem={({ item }) => <SaleCard item={item} onReprint={setReprintSource} />}
           contentContainerClassName="px-5 pb-8"
-          refreshControl={<RefreshControl refreshing={rejected.isRefreshing} onRefresh={refetch} tintColor={brand.primary} />}
+          refreshControl={<PullRefreshControl onRefresh={refetch} tintColor={brand.primary} />}
           onEndReached={rejected.loadMore}
           onEndReachedThreshold={0.5}
           ListFooterComponent={
@@ -523,7 +523,7 @@ export default function SalesScreen() {
           keyExtractor={(item) => item.productName}
           renderItem={({ item, index }) => <TopProductCard item={item} rank={index + 1} rankBy={rankBy} />}
           contentContainerClassName="px-5 pb-8"
-          refreshControl={<RefreshControl refreshing={topLoading} onRefresh={refetch} tintColor={brand.primary} />}
+          refreshControl={<PullRefreshControl onRefresh={refetch} tintColor={brand.primary} />}
           ListHeaderComponent={topLoading && topProducts.length === 0 ? <ActivityIndicator className="mt-12" color={brand.primary} /> : null}
           ListEmptyComponent={
             !topLoading ? (

@@ -47,12 +47,12 @@ export function RoleDeniedSheet({ visible, onClose, feature, afterAttempt }: Pro
         {feature ? (
           <View className="mb-3">
             <Text className="font-mono text-[10px] tracking-[1.5px] text-muted uppercase">{t.denied.featureLabel}</Text>
-            <Text className="font-display text-[19px] text-text mt-0.5">{feature}</Text>
+            <Text className="font-bold text-[19px] text-text mt-0.5">{feature}</Text>
           </View>
         ) : null}
         <View>
           <Text className="font-mono text-[10px] tracking-[1.5px] text-muted uppercase">{t.denied.roleLabel}</Text>
-          <Text className="font-display text-[19px] text-text mt-0.5">{roleName ?? t.denied.defaultRole}</Text>
+          <Text className="font-bold text-[19px] text-text mt-0.5">{roleName ?? t.denied.defaultRole}</Text>
         </View>
 
         {/* The stamp: lands a beat after the sheet, slightly askew. */}

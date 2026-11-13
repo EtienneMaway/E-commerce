@@ -50,7 +50,7 @@ export default function PairScreen() {
     >
       <View className="items-center mb-8">
         <KmbLogo size={56} className="mb-4" />
-        <Text className="font-display text-[28px] text-text tracking-tight">{t.miniEmployee.pairTitle}</Text>
+        <Text className="font-bold text-[28px] text-text tracking-tight">{t.miniEmployee.pairTitle}</Text>
         <Text className="text-muted mt-1 text-sm font-medium text-center">{t.miniEmployee.pairSubtitle}</Text>
       </View>
 

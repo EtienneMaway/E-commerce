@@ -32,10 +32,10 @@ export default function AccountMenuScreen() {
       {/* Profile — a big initial, the name in the serif */}
       <View className="mb-6 bg-card border border-border rounded-3xl px-5 py-5 flex-row items-center" style={{ boxShadow: CARD_SHADOW }}>
         <View className="w-16 h-16 rounded-full bg-primary items-center justify-center mr-4">
-          <Text className="font-display text-2xl text-white">{name.slice(0, 1).toUpperCase()}</Text>
+          <Text className="font-bold text-2xl text-white">{name.slice(0, 1).toUpperCase()}</Text>
         </View>
         <View className="flex-1">
-          <Text className="font-display text-xl text-text" numberOfLines={1}>{name}</Text>
+          <Text className="font-bold text-xl text-text" numberOfLines={1}>{name}</Text>
           <Text className="font-mono text-xs text-muted mt-0.5">@{user?.username}</Text>
           {user?.email ? <Text className="text-muted text-xs mt-1">{user.email}</Text> : null}
           {user?.phone ? <Text className="text-muted text-xs">{user.phone}</Text> : null}

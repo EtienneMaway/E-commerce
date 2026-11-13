@@ -69,7 +69,7 @@ function PickerBody({ catalog, loading, selected, onDone, onClose }: Omit<Props,
     <FormModal visible onRequestClose={onClose}>
       <View className="flex-1 px-6 pt-6">
         <View className="flex-row justify-between items-center mb-4">
-          <Text className="font-display text-2xl text-text flex-1 pr-3">{b.pickerTitle}</Text>
+          <Text className="font-bold text-2xl text-text flex-1 pr-3">{b.pickerTitle}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>

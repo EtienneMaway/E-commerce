@@ -33,15 +33,15 @@ export function AuthShell({ title, subtitle, children, footer }: Props) {
       >
         <Animated.View entering={FadeInDown.duration(500)} className="flex-row items-center gap-3">
           <KmbLogo size={40} />
-          <Text className="font-display text-2xl" style={{ color: '#EFE8D8' }}>
+          <Text className="font-bold text-2xl" style={{ color: '#EFE8D8' }}>
             KMB-Talk
           </Text>
         </Animated.View>
         <Animated.View entering={FadeInDown.delay(120).duration(600)} className="mt-8">
-          <Text className="font-display text-[34px] leading-[38px]" style={{ color: '#EFE8D8' }}>
+          <Text className="font-bold text-[34px] leading-[38px]" style={{ color: '#EFE8D8' }}>
             {t.auth.heroLine1}
           </Text>
-          <Text className="font-display-italic text-[34px] leading-[40px]" style={{ color: '#F09A60' }}>
+          <Text className="font-bold italic text-[34px] leading-[40px]" style={{ color: '#F09A60' }}>
             {t.auth.heroLine2}
           </Text>
         </Animated.View>
@@ -51,7 +51,7 @@ export function AuthShell({ title, subtitle, children, footer }: Props) {
         entering={FadeInUp.delay(200).duration(520)}
         className="flex-1 bg-background rounded-t-[32px] px-6 pt-7 pb-10 -mt-8"
       >
-        <Text className="font-display text-[26px] text-text">{title}</Text>
+        <Text className="font-bold text-[26px] text-text">{title}</Text>
         {subtitle ? <Text className="text-muted text-sm mt-1 mb-6">{subtitle}</Text> : <View className="mb-6" />}
         <View className="bg-card border border-border rounded-3xl p-5" style={{ boxShadow: CARD_SHADOW }}>
           {children}

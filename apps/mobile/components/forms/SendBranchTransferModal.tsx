@@ -146,7 +146,7 @@ export function SendBranchTransferModal({ visible, isOwner, onClose }: Props) {
     <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="font-display text-2xl text-text">{t.branchTransfers.sendTitle}</Text>
+          <Text className="font-bold text-2xl text-text">{t.branchTransfers.sendTitle}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
@@ -197,7 +197,7 @@ export function SendBranchTransferModal({ visible, isOwner, onClose }: Props) {
             <View key={key} className={`bg-card border rounded-2xl p-4 mb-3 ${show ? 'border-danger' : 'border-border'}`}>
               <View className="flex-row justify-between items-start">
                 <View className="flex-1 pr-2">
-                  <Text className="font-display text-[17px] text-text capitalize">{p.productName}</Text>
+                  <Text className="font-bold text-[17px] text-text capitalize">{p.productName}</Text>
                   <Hint t={t} p={p} />
                 </View>
                 <TouchableOpacity onPress={() => toggle(key)} hitSlop={10}>

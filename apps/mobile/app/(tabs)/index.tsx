@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScrollView, View, Text, RefreshControl, TouchableOpacity, Pressable, ActivityIndicator } from 'react-native';
+import { ScrollView, View, Text, TouchableOpacity, Pressable, ActivityIndicator } from 'react-native';
 import Constants from 'expo-constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
@@ -36,6 +36,7 @@ import { syncPendingSales } from '../../lib/sync';
 import { formatMoney } from '../../lib/currency';
 import type { AlertItem } from '../../lib/notifications';
 import { showAlert } from '../../lib/alert';
+import { PullRefreshControl } from '../../components/ui/PullRefreshControl';
 
 interface ProductSummary {
   productName: string;
@@ -278,8 +279,7 @@ export default function DashboardScreen() {
       // under the paper strip on phones whose status bar is ~56dp tall.
       contentContainerStyle={{ paddingTop: insets.top + 16 }}
       refreshControl={
-        <RefreshControl
-          refreshing={isRefetching}
+        <PullRefreshControl
           onRefresh={() => {
             // Re-read the profile so a role the employer changed since app start
             // takes effect here — otherwise granted features would stay hidden
@@ -292,8 +292,8 @@ export default function DashboardScreen() {
               });
             // For minis the dashboard query is disabled, so refetch() is a no-op;
             // invalidate their stats explicitly so pull-to-refresh still works.
-            if (isMini) qc.invalidateQueries({ queryKey: ['mini-settlements'] });
-            else void refetch();
+            // Returned so the spinner stays until the figures are back.
+            return isMini ? qc.invalidateQueries({ queryKey: ['mini-settlements'] }) : refetch();
           }}
           enabled={!isOffline}
         />
@@ -305,12 +305,12 @@ export default function DashboardScreen() {
           <Text className="font-mono text-[10px] uppercase tracking-widest text-accent mb-1.5" numberOfLines={1}>
             {new Date().toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
           </Text>
-          <Text className="font-display text-[30px] leading-[34px] text-text">
+          <Text className="font-bold text-[30px] leading-[34px] text-text">
             {greeting}
             {user?.name || user?.username ? ',' : ''}
           </Text>
           {user?.name || user?.username ? (
-            <Text className="font-display-italic text-[30px] leading-[36px] text-primary" numberOfLines={1} adjustsFontSizeToFit>
+            <Text className="font-bold italic text-[30px] leading-[36px] text-primary" numberOfLines={1} adjustsFontSizeToFit>
               {user?.name ? user.name.split(' ')[0] : user?.username}
             </Text>
           ) : null}
@@ -572,7 +572,7 @@ export default function DashboardScreen() {
           <View className="w-14 h-14 rounded-full bg-warning/15 items-center justify-center mb-3">
             <Icon name="wifi-off" size={24} tone="warning" />
           </View>
-          <Text className="font-display text-xl text-warning text-center">{t.home.offlineModeActive}</Text>
+          <Text className="font-bold text-xl text-warning text-center">{t.home.offlineModeActive}</Text>
           <Text className="text-warning text-sm text-center mt-1 opacity-90">
             {useOfflineStore.getState().cachedProducts.length} products available
           </Text>
@@ -636,7 +636,7 @@ export default function DashboardScreen() {
               </View>
             </View>
             <Text
-              className="font-display text-[40px] leading-[46px]"
+              className="font-bold text-[40px] leading-[46px]"
               style={{ color: cashData && parseFloat(cashData.availableBusinessCash) < 0 ? '#F2A27A' : '#EFE8D8' }}
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -745,7 +745,7 @@ export default function DashboardScreen() {
               is their employer, already surfaced as "I owe". */}
           {!isMini && can('suppliers.view') && (suppliers?.length ?? 0) > 0 && (
             <View className="mb-5">
-              <Text className="font-display text-xl text-text mb-3 mt-2">{t.home.topSuppliers}</Text>
+              <Text className="font-bold text-xl text-text mb-3 mt-2">{t.home.topSuppliers}</Text>
               {(suppliers as Array<{ supplierUserId: string; supplierUsername: string; outstandingBalance: string }>)
                 .slice(0, 3)
                 .map((s) => (
@@ -756,7 +756,7 @@ export default function DashboardScreen() {
                     style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] })}
                   >
                     <View className="w-10 h-10 rounded-full bg-accent-light items-center justify-center mr-3">
-                      <Text className="font-display text-base text-accent">{s.supplierUsername.slice(0, 1).toUpperCase()}</Text>
+                      <Text className="font-bold text-base text-accent">{s.supplierUsername.slice(0, 1).toUpperCase()}</Text>
                     </View>
                     <View className="flex-1">
                       <Text className="text-text font-semibold text-[15px]">@{s.supplierUsername}</Text>

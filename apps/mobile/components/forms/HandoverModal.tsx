@@ -123,7 +123,7 @@ export function HandoverModal({ visible, onClose }: Props) {
     <FormModal visible={visible} onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="font-display text-2xl text-text">{t.miniEmployee.handoverTitle}</Text>
+          <Text className="font-bold text-2xl text-text">{t.miniEmployee.handoverTitle}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
@@ -210,7 +210,7 @@ export function HandoverModal({ visible, onClose }: Props) {
               )}
               <View className="flex-row justify-between mt-2 pt-2 border-t border-primary/20">
                 <Text className="text-text font-semibold">{t.miniEmployee.handoverTotalCash}</Text>
-                <Text className="font-display text-xl text-text">{formatFcValue(netFc)}</Text>
+                <Text className="font-bold text-xl text-text">{formatFcValue(netFc)}</Text>
               </View>
               <View className="flex-row justify-between mt-1">
                 <Text className="text-muted text-sm">{t.miniEmployee.handoverProfitMade}</Text>

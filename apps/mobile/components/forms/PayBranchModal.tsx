@@ -59,7 +59,7 @@ export function PayBranchModal({ balance, isOwner, onClose }: Props) {
     <FormModal visible onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="font-display text-2xl text-text">{t.branchTransfers.payTitle(balance.creditorShop.name)}</Text>
+          <Text className="font-bold text-2xl text-text">{t.branchTransfers.payTitle(balance.creditorShop.name)}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>

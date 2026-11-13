@@ -6,8 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
-} from 'react-native';
+  } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { inventoryApi } from '../../lib/api';
@@ -27,6 +26,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { usePendingHandover } from '../../hooks/use-pending-handover';
 import type { InventoryEntry, ProductSummary } from '@trading-app/types';
 import { useRequireService } from '../../hooks/use-require-service';
+import { PullRefreshControl } from '../../components/ui/PullRefreshControl';
 
 const LOW_STOCK = 5;
 
@@ -179,7 +179,7 @@ export default function ProductDetailScreen() {
             <Icon name="arrow-left" size={18} tone="primary" />
           </TouchableOpacity>
           <View className="flex-row justify-between items-start">
-            <Text className="font-display text-[28px] text-text flex-1 mr-3" numberOfLines={2}>
+            <Text className="font-bold text-[28px] text-text flex-1 mr-3" numberOfLines={2}>
               {titleCased}
             </Text>
             <View className="flex-row gap-2">
@@ -207,7 +207,7 @@ export default function ProductDetailScreen() {
             <View className="flex-row justify-between items-center">
               <View>
                 <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-1">{t.productDetail.totalAvailable}</Text>
-                <Text className="font-display text-2xl text-text">
+                <Text className="font-bold text-2xl text-text">
                   {t.sizedSale.cartonCount(group.cartonsAvailable ?? 0)}
                 </Text>
                 <Text className="text-muted text-xs">{group.totalAvailable} pcs</Text>
@@ -227,7 +227,7 @@ export default function ProductDetailScreen() {
         {/* Per-size breakdown */}
         <ScrollView
           contentContainerClassName="px-4 pt-4 pb-8"
-          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />}
+          refreshControl={<PullRefreshControl onRefresh={refetch} tintColor={brand.primary} />}
         >
           <Text className="text-text font-semibold text-sm mb-3 uppercase tracking-wide">
             {t.sizedSale.sizesHeader}
@@ -309,7 +309,7 @@ export default function ProductDetailScreen() {
         </TouchableOpacity>
 
         <View className="flex-row justify-between items-start">
-          <Text className="font-display text-[28px] text-text flex-1 mr-3" numberOfLines={2}>
+          <Text className="font-bold text-[28px] text-text flex-1 mr-3" numberOfLines={2}>
             {titleCased}
           </Text>
           <TouchableOpacity
@@ -324,7 +324,7 @@ export default function ProductDetailScreen() {
 
         <View className="mt-4 bg-surface rounded-3xl px-4 py-3.5">
           <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-1">{t.productDetail.totalAvailable}</Text>
-          <Text className="font-display text-2xl text-text">{formatBreakdown(bd)}</Text>
+          <Text className="font-bold text-2xl text-text">{formatBreakdown(bd)}</Text>
           {piecesPerCarton && (
             <Text className="text-muted text-xs mt-0.5">1 ctn = {piecesPerCarton} pcs</Text>
           )}
@@ -336,7 +336,7 @@ export default function ProductDetailScreen() {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <EntryCard entry={item} />}
         contentContainerClassName="px-4 pt-4 pb-8"
-        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />}
+        refreshControl={<PullRefreshControl onRefresh={refetch} tintColor={brand.primary} />}
         ListHeaderComponent={
           <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-3 ml-1">
             {t.productDetail.stockLedger} ({entries.length})

@@ -103,7 +103,7 @@ export function useHeaderOptions() {
     headerStyle: { backgroundColor: brand.background },
     headerShadowVisible: false,
     headerTintColor: brand.primary,
-    headerTitleStyle: { fontFamily: 'Fraunces_600SemiBold', fontSize: 20, color: brand.text },
+    headerTitleStyle: { fontWeight: '700', fontSize: 20, color: brand.text },
     contentStyle: { backgroundColor: brand.background },
   } as const;
 }

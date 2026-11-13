@@ -1190,7 +1190,7 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
           {/* Header */}
           <View className="flex-row justify-between items-center px-6 pt-8 pb-4">
             <View className="flex-row items-center gap-2">
-              <Text className="font-display text-2xl text-text">{t.recordSaleModal.title}</Text>
+              <Text className="font-bold text-2xl text-text">{t.recordSaleModal.title}</Text>
               {isOffline && (
                 <View className="bg-warning-light rounded-full px-2 py-0.5">
                   <Text className="text-warning text-xs font-bold">📴 OFFLINE</Text>
@@ -1306,7 +1306,7 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
                               }
                               className="w-8 h-8 rounded-full bg-background items-center justify-center"
                             >
-                              <Text className="font-display text-xl text-text leading-none">−</Text>
+                              <Text className="font-bold text-xl text-text leading-none">−</Text>
                             </TouchableOpacity>
                             <TextInput
                               value={cartItem.piecesPerCarton ? cartItem.extraPieces : cartItem.cartons}
@@ -1340,7 +1340,7 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
                               }
                               className="w-8 h-8 rounded-full bg-background items-center justify-center"
                             >
-                              <Text className="font-display text-xl text-text leading-none">+</Text>
+                              <Text className="font-bold text-xl text-text leading-none">+</Text>
                             </TouchableOpacity>
                           </View>
                         </View>
@@ -1563,7 +1563,7 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
                 <Text className="text-muted text-sm">
                   {t.recordSaleModal.productsSelected(cart.size + sizedLinesArray.length)}
                 </Text>
-                <Text className="font-display text-xl text-text">
+                <Text className="font-bold text-xl text-text">
                   {t.recordSaleModal.total(formatFcValue(grandTotal + sizedGrandTotalFc))}
                 </Text>
               </View>
@@ -1598,7 +1598,7 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
         className="flex-1 justify-center bg-black/50 px-6"
       >
         <View className="bg-surface rounded-2xl p-5">
-          <Text className="font-display text-xl text-text">
+          <Text className="font-bold text-xl text-text">
             {t.recordSaleModal.receiptPromptTitle}
           </Text>
           <Text className="text-muted text-sm mt-1 mb-4">

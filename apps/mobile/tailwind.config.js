@@ -49,13 +49,12 @@ module.exports = {
         muted: 'rgb(var(--muted) / <alpha-value>)',
         'muted-subtle': 'rgb(var(--muted-subtle) / <alpha-value>)',
       },
-      // Loaded in app/_layout.tsx (expo-font). React Native picks a font by its
-      // exact family name, so each weight is its own family — never pair these
-      // with `font-bold`/`font-semibold`, which makes Android fall back.
+      // Titles and figures use the phone's own font (Roboto on Android) in
+      // bold — the serif was dropped for readability (Nov 2026). Only the mono
+      // labels are loaded (app/_layout.tsx, expo-font). React Native picks a
+      // font by its exact family name, so each mono weight is its own family —
+      // never pair `font-mono*` with `font-bold`/`font-semibold`.
       fontFamily: {
-        display: ['Fraunces_600SemiBold'],
-        'display-medium': ['Fraunces_500Medium'],
-        'display-italic': ['Fraunces_500Medium_Italic'],
         mono: ['JetBrainsMono_500Medium'],
         'mono-bold': ['JetBrainsMono_700Bold'],
       },

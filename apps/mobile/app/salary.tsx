@@ -3,7 +3,6 @@ import {
   ScrollView,
   View,
   Text,
-  RefreshControl,
   Pressable,
   Modal,
   TextInput,
@@ -25,6 +24,7 @@ import { useT } from '../lib/i18n';
 import { personHandle, personName } from '../lib/person';
 import { useBrand } from '../lib/theme';
 import { showAlert } from '../lib/alert';
+import { PullRefreshControl } from '../components/ui/PullRefreshControl';
 
 const STATUS_PILL: Record<SalaryPaymentStatus, string> = {
   PENDING_CONFIRMATION: 'bg-warning-light text-warning',
@@ -146,7 +146,7 @@ export default function SalaryScreen() {
       <ScrollView
         className="flex-1"
         contentContainerClassName="px-4 pt-3 pb-8"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+        refreshControl={<PullRefreshControl onRefresh={refresh} />}
       >
         {/* Employer banner */}
         {employerName && (
@@ -416,7 +416,7 @@ function PaymentCard({
       <View className="flex-row items-start justify-between">
         <View className="flex-1 mr-3">
           <View className="flex-row items-center gap-2 flex-wrap">
-            <Text className="font-display text-[28px] text-text">
+            <Text className="font-bold text-[28px] text-text">
               {formatCurrency(p.amount)}
             </Text>
             {p.kind === 'COMMISSION' && (
@@ -508,7 +508,7 @@ function RejectModal({
         className="flex-1 justify-end bg-black/50"
       >
         <View className="bg-background rounded-t-3xl p-5">
-          <Text className="font-display text-xl text-text mb-2">
+          <Text className="font-bold text-xl text-text mb-2">
             {t.salary.rejectBtn}
           </Text>
           <TextInput
@@ -589,7 +589,7 @@ function RequestAdvanceModal({
         className="flex-1 justify-end bg-black/50"
       >
         <View className="bg-background rounded-t-3xl p-5">
-          <Text className="font-display text-xl text-text">
+          <Text className="font-bold text-xl text-text">
             {t.salary.requestAdvanceTitle}
           </Text>
           <Text className="text-muted text-xs mt-1 mb-4">

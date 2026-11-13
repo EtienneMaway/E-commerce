@@ -20,7 +20,7 @@ export function NoAccessNotice() {
   return (
     <View className="bg-card border border-border rounded-2xl px-5 py-6 mb-4">
       <View className="items-center mb-3"><Icon name="lock" size={32} tone="muted" /></View>
-      <Text className="font-display text-xl text-text text-center mb-2">
+      <Text className="font-bold text-xl text-text text-center mb-2">
         {t.roles.noAccessTitle}
       </Text>
       <Text className="text-muted text-sm text-center leading-5">

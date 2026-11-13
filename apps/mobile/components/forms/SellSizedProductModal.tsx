@@ -230,7 +230,7 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
         className="flex-1 justify-center bg-black/50 px-6"
       >
         <View className="bg-surface rounded-2xl p-5">
-          <Text className="font-display text-xl text-text">
+          <Text className="font-bold text-xl text-text">
             {t.recordSaleModal.receiptPromptTitle}
           </Text>
           <Text className="text-muted text-sm mt-1 mb-4">
@@ -622,7 +622,7 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
         keyboardShouldPersistTaps="handled"
       >
         <View className="flex-row justify-between items-center mb-4">
-          <Text className="font-display text-2xl text-text capitalize flex-1 mr-2" numberOfLines={2}>
+          <Text className="font-bold text-2xl text-text capitalize flex-1 mr-2" numberOfLines={2}>
             {group.productName}
           </Text>
           <Pressable onPress={onClose}>
@@ -819,14 +819,14 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
                           onPress={() => adjustSizeQty(v.variantId, -1)}
                           className="w-8 h-8 rounded-full bg-background items-center justify-center"
                         >
-                          <Text className="font-display text-xl text-text leading-none">−</Text>
+                          <Text className="font-bold text-xl text-text leading-none">−</Text>
                         </TouchableOpacity>
                         <Text className="text-text font-bold w-6 text-center">{row.qty}</Text>
                         <TouchableOpacity
                           onPress={() => adjustSizeQty(v.variantId, 1)}
                           className="w-8 h-8 rounded-full bg-background items-center justify-center"
                         >
-                          <Text className="font-display text-xl text-text leading-none">+</Text>
+                          <Text className="font-bold text-xl text-text leading-none">+</Text>
                         </TouchableOpacity>
                         <Text className="text-primary font-semibold text-sm ml-1">
                           {formatFcValue(row.unitPriceFc * row.qty)}

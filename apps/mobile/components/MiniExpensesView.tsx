@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   Pressable,
-  RefreshControl,
   ActivityIndicator,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,6 +23,7 @@ import { computeOfflineAllowance } from '../lib/mini-allowance';
 import { useOfflineStore } from '../store/offline.store';
 import { useT } from '../lib/i18n';
 import { showAlert } from '../lib/alert';
+import { PullRefreshControl } from './ui/PullRefreshControl';
 
 /**
  * Mini-employee expense history. Lists every expense the mini has recorded — both
@@ -120,7 +120,7 @@ export function MiniExpensesView() {
     <View className="flex-1 bg-background">
       <ScrollView
         contentContainerClassName="px-4 pt-4 pb-24"
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} enabled={!isOffline} />}
+        refreshControl={<PullRefreshControl onRefresh={refetch} enabled={!isOffline} />}
       >
         {/* Total card */}
         <Card>

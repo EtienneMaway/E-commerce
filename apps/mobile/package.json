@@ -11,7 +11,6 @@
     "version:show": "node -e \"console.log('version name:', require('./app.json').expo.version)\" && eas build:version:get --platform android"
   },
   "dependencies": {
-    "@expo-google-fonts/fraunces": "^0.4.1",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/vector-icons": "15.1.1",
     "@mitsuharu/react-native-sunmi-printer-library": "^2.4.0",

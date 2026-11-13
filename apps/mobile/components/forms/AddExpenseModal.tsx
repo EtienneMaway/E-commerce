@@ -90,7 +90,7 @@ export function AddExpenseModal({ visible, onClose }: Props) {
         keyboardShouldPersistTaps="handled"
       >
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="font-display text-2xl text-text">{t.expenses.addBtn}</Text>
+          <Text className="font-bold text-2xl text-text">{t.expenses.addBtn}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>

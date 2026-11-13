@@ -119,7 +119,7 @@ export function Sheet({ visible, onClose, icon, tone = 'primary', title, subtitl
               </View>
             </View>
 
-            <Text className="font-display text-[26px] leading-[30px] text-text text-center">{title}</Text>
+            <Text className="font-bold text-[26px] leading-[30px] text-text text-center">{title}</Text>
             {subtitle ? <Text className="text-muted text-sm text-center mt-2 leading-5">{subtitle}</Text> : null}
 
             {children ? <View className="mt-5">{children}</View> : null}

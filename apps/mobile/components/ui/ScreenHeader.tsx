@@ -19,7 +19,7 @@ export function ScreenHeader({ kicker, title, subtitle, right }: Props) {
             {kicker}
           </Text>
         ) : null}
-        <Text className="font-display text-[32px] leading-[36px] text-text" numberOfLines={1} adjustsFontSizeToFit>
+        <Text className="font-bold text-[32px] leading-[36px] text-text" numberOfLines={1} adjustsFontSizeToFit>
           {title}
         </Text>
         {subtitle ? <Text className="text-muted text-sm mt-1">{subtitle}</Text> : null}

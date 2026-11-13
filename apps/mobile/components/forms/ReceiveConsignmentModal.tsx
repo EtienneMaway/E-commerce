@@ -110,7 +110,7 @@ export function ReceiveConsignmentModal({ visible, onClose }: Props) {
     <FormModal visible={visible} onRequestClose={close}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="font-display text-2xl text-text">{t.miniEmployee.receiveTitle}</Text>
+          <Text className="font-bold text-2xl text-text">{t.miniEmployee.receiveTitle}</Text>
           <TouchableOpacity onPress={close}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
