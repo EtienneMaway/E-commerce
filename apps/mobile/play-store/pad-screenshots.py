@@ -18,7 +18,10 @@ from pathlib import Path
 from PIL import Image
 
 PAD = 60
-NAMES = ["01-dashboard.png", "02-inventory.png", "03-sales-history.png"]
+NAMES = [
+    "01-dashboard.png", "02-inventory.png", "03-sales-history.png",            # dark theme
+    "04-dashboard-light.png", "05-inventory-light.png", "06-sales-history-light.png",  # light theme
+]
 
 
 def main() -> int:
@@ -27,6 +30,9 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
 
     for name in NAMES:
+        if not (src / name).exists():
+            print(f"{name}: not in {src}, skipped")
+            continue
         im = Image.open(src / name).convert("RGB")
         w, h = im.size
         canvas = Image.new("RGB", (w + 2 * PAD, h))

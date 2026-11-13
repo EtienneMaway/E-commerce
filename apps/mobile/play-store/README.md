@@ -2,7 +2,7 @@
 
 Icons redrawn **13 November 2026** (malachite tile, paper K, copper leg — the
 "market ledger" identity; `scripts/gen-native-icons.sh` regenerates every native
-size from `../assets/src`); earlier icons generated 27 August 2026; screenshots retaken **13 November 2026** (new "market ledger" look in Roboto, dark theme). Sources
+size from `../assets/src`); earlier icons generated 27 August 2026; screenshots retaken **13 November 2026** (new "market ledger" look in Roboto; 01–03 dark theme, 04–06 light theme). Sources
 for the icon set live in `../assets/src/*.svg` — edit the SVG and re-render rather
 than touching the PNGs by hand.
 
@@ -13,6 +13,9 @@ than touching the PNGs by hand.
 | `screenshots/01-dashboard.png` | Phone screenshot | 1200×2400, RGB |
 | `screenshots/02-inventory.png` | Phone screenshot | 1200×2400, RGB |
 | `screenshots/03-sales-history.png` | Phone screenshot | 1200×2400, RGB |
+| `screenshots/04-dashboard-light.png` | Phone screenshot (light theme) | 1200×2400, RGB |
+| `screenshots/05-inventory-light.png` | Phone screenshot (light theme) | 1200×2400, RGB |
+| `screenshots/06-sales-history-light.png` | Phone screenshot (light theme) | 1200×2400, RGB |
 
 ## Why the screenshots are 1200×2400, not 1080×2400
 
