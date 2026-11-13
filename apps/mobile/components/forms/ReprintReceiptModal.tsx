@@ -180,7 +180,7 @@ export function ReprintReceiptModal({ source, onClose }: Props) {
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View className="flex-1 justify-end bg-black/50">
         <View className="bg-background rounded-t-3xl px-5 py-6 max-h-[85%]">
-          <Text className="text-text font-bold text-lg mb-1">
+          <Text className="font-display text-xl text-text mb-1">
             {t.sales.reprintTitle}
           </Text>
           <Text className="text-muted text-xs mb-3">

@@ -1,19 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Legacy round launcher icon: mipmap-*/ic_launcher_round.webp.
-       The badge exactly as drawn in logo-mark.svg. -->
+<!--
+  KMB-Talk mark ("market ledger" identity, November 2026): a paper K on a
+  malachite field whose copper leg crosses over the arm, the two sides of the
+  books ("Know what you are owed. Know what you owe."). The crossing gap is a
+  mask, not a field-coloured stroke, so it stays correct on any background.
+  Every file in assets/src is drawn from the same K geometry (1024 space).
+  Legacy round launcher (ic_launcher_round).
+-->
   <defs>
-    <linearGradient id="bg" x1="108" y1="108" x2="916" y2="916" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#4F46E5"/>
-      <stop offset="100%" stop-color="#7C3AED"/>
+    <radialGradient id="field" gradientUnits="userSpaceOnUse" cx="330" cy="260" r="900">
+      <stop offset="0" stop-color="#1E9E76"/><stop offset="0.5" stop-color="#0E7A5B"/><stop offset="1" stop-color="#094A37"/>
+    </radialGradient>
+    <linearGradient id="copper" gradientUnits="userSpaceOnUse" x1="564" y1="446" x2="746" y2="760">
+      <stop offset="0" stop-color="#F2A86C"/><stop offset="1" stop-color="#C25E27"/>
     </linearGradient>
+    <mask id="cross" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#FFFFFF"/>
+      <path d="M564 446 L 746 760" stroke="#000000" stroke-width="172" stroke-linecap="round"/>
+    </mask>
   </defs>
-  <circle cx="512" cy="512" r="512" fill="#D3CEFB"/>
-  <circle cx="512" cy="512" r="404" fill="url(#bg)"/>
-  <g transform="translate(512,512) scale(0.851) translate(-512,-512)"
-     stroke="#FFFFFF" stroke-width="108" stroke-linecap="round"
-     stroke-linejoin="round" fill="none">
-    <path d="M364 268 V 756"/>
-    <path d="M364 512 L 660 268"/>
-    <path d="M364 512 L 660 756"/>
+  <circle cx="512" cy="512" r="512" fill="url(#field)"/>
+  <g transform="translate(512,512) scale(0.9) translate(-512,-512)" fill="none" stroke-linecap="round" stroke-width="112">
+    <g mask="url(#cross)" stroke="#F3ECDF">
+      <path d="M370 264 V 760"/>
+      <path d="M370 600 L 706 264"/>
+    </g>
+    <path d="M564 446 L 746 760" stroke="url(#copper)"/>
   </g>
 </svg>

@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { usePersonaStore } from '../../store/persona.store';
 import { useShopStore } from '../../store/shop.store';
 import { useT } from '../../lib/i18n';
+import { Icon } from './Icon';
 
 /**
  * Standing reminder shown at the top of every screen while a user is in
@@ -30,19 +31,16 @@ export function PersonaBanner() {
   };
 
   return (
-    <View className="bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-900 rounded-xl px-4 py-3 mb-4 flex-row items-start gap-3">
-      <Text className="text-base mt-0.5">🪪</Text>
+    <View className="bg-accent-light border border-accent/40 rounded-3xl px-4 py-3.5 mb-4 flex-row items-start gap-3">
+      <View className="w-9 h-9 rounded-2xl bg-accent/15 items-center justify-center">
+        <Icon name="briefcase" size={17} tone="violet" />
+      </View>
       <View className="flex-1">
-        <Text className="text-indigo-700 dark:text-indigo-300 font-semibold text-sm">
-          {t.persona.bannerTitle(employerName)}
-        </Text>
-        <Text className="text-indigo-600 dark:text-indigo-400 text-xs mt-0.5">
-          {t.persona.bannerSub}
-        </Text>
-        <Pressable onPress={handleSwitchBack} hitSlop={6}>
-          <Text className="text-indigo-700 dark:text-indigo-300 text-xs font-semibold underline mt-1">
-            {t.persona.bannerSwitch}
-          </Text>
+        <Text className="text-accent font-semibold text-sm">{t.persona.bannerTitle(employerName)}</Text>
+        <Text className="text-accent text-xs mt-0.5 opacity-80">{t.persona.bannerSub}</Text>
+        <Pressable onPress={handleSwitchBack} hitSlop={6} className="flex-row items-center gap-1 mt-2 self-start">
+          <Icon name="corner-up-left" size={13} tone="violet" />
+          <Text className="text-accent text-xs font-semibold">{t.persona.bannerSwitch}</Text>
         </Pressable>
       </View>
     </View>

@@ -97,7 +97,7 @@ export default function CustodyScreen() {
               key={key}
               onPress={() => setTab(key)}
               className={`px-4 py-2 rounded-full ${
-                tab === key ? 'bg-indigo-600' : 'bg-neutral-100 dark:bg-neutral-800'
+ tab === key ? 'bg-primary' : 'bg-neutral-100 dark:bg-neutral-800'
               }`}
             >
               <Text
@@ -172,7 +172,7 @@ export default function CustodyScreen() {
                     </Text>
                     <View className="flex-row gap-2 mt-3">
                       <Pressable
-                        className="flex-1 bg-indigo-600 rounded-xl py-3 items-center"
+                        className="flex-1 bg-primary rounded-xl py-3 items-center"
                         disabled={accept.isPending}
                         onPress={() => accept.mutate(i.id)}
                       >
@@ -310,8 +310,8 @@ function ApproveQueue() {
         </View>
       ))}
 
-      <View className="bg-amber-50 dark:bg-amber-950/40 rounded-2xl p-4 mt-5">
-        <Text className="text-amber-900 dark:text-amber-200 text-sm">
+      <View className="bg-warning-light /40 rounded-2xl p-4 mt-5">
+        <Text className="text-warning text-sm">
           {sales.length} · {total.toFixed(2)} · {t.custody.approveWarning}
         </Text>
         <Pressable
@@ -320,12 +320,12 @@ function ApproveQueue() {
         >
           <View
             className={`w-5 h-5 rounded border items-center justify-center ${
-              reviewed ? 'bg-amber-600 border-amber-600' : 'border-amber-500'
+ reviewed ? 'bg-warning border-warning/60' : 'border-warning/60'
             }`}
           >
             {reviewed && <Text className="text-white text-xs">✓</Text>}
           </View>
-          <Text className="text-amber-900 dark:text-amber-200 text-sm flex-1">
+          <Text className="text-warning text-sm flex-1">
             {t.custody.approveCheckbox}
           </Text>
         </Pressable>
@@ -333,7 +333,7 @@ function ApproveQueue() {
 
       <Pressable
         className={`rounded-xl py-4 items-center mt-4 ${
-          reviewed ? 'bg-indigo-600' : 'bg-neutral-300 dark:bg-neutral-800'
+ reviewed ? 'bg-primary' : 'bg-neutral-300 dark:bg-neutral-800'
         }`}
         disabled={!reviewed || approve.isPending}
         onPress={() => approve.mutate()}
@@ -423,8 +423,8 @@ function HandoverTab() {
       </View>
 
       {p.pendingMiniHandovers.length > 0 && (
-        <View className="bg-blue-50 dark:bg-blue-950/40 rounded-2xl p-4 mb-4">
-          <Text className="text-blue-900 dark:text-blue-200 text-sm">
+        <View className="bg-primary-light /40 rounded-2xl p-4 mb-4">
+          <Text className="text-primary text-sm">
             {t.custody.stillOutTitle}{' '}
             {p.pendingMiniHandovers.map((m) => m.miniName).join(', ')}. {t.custody.stillOutBody}
           </Text>
@@ -432,8 +432,8 @@ function HandoverTab() {
       )}
 
       {blocked && (
-        <View className="bg-amber-50 dark:bg-amber-950/40 rounded-2xl p-4 mb-4">
-          <Text className="text-amber-900 dark:text-amber-200 text-sm">
+        <View className="bg-warning-light /40 rounded-2xl p-4 mb-4">
+          <Text className="text-warning text-sm">
             {p.unattestedSaleCount} {t.custody.blockedByApproval}
           </Text>
         </View>
@@ -527,15 +527,15 @@ function HandoverTab() {
         placeholderTextColor="#9ca3af"
       />
 
-      <View className="bg-amber-50 dark:bg-amber-950/40 rounded-2xl p-4 mb-4">
-        <Text className="text-amber-900 dark:text-amber-200 text-sm">
+      <View className="bg-warning-light /40 rounded-2xl p-4 mb-4">
+        <Text className="text-warning text-sm">
           {t.custody.fullReturnWarning}
         </Text>
       </View>
 
       <Pressable
         className={`rounded-xl py-4 items-center mt-1 ${
-          blocked ? 'bg-neutral-300 dark:bg-neutral-800' : 'bg-indigo-600'
+ blocked ? 'bg-neutral-300 dark:bg-neutral-800' : 'bg-primary'
         }`}
         disabled={blocked || submit.isPending}
         onPress={() => submit.mutate()}

@@ -58,7 +58,7 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-xl font-bold text-text">{t.paySupplierModal.title}</Text>
+          <Text className="font-display text-2xl text-text">{t.paySupplierModal.title}</Text>
           <TouchableOpacity onPress={onClose}><Text className="text-primary font-medium">{t.common.cancel}</Text></TouchableOpacity>
         </View>
 
@@ -91,7 +91,7 @@ export function PaySupplierModal({ visible, onClose, supplierId, supplierUsernam
             placeholder="0"
             keyboardType="decimal-pad"
             placeholderTextColor={brand.mutedSubtle}
-            className="border rounded-xl px-4 py-3 text-text bg-card text-base border-border"
+            className="border rounded-2xl px-4 py-3.5 text-text bg-card text-base border-border"
           />
         </View>
         <Input

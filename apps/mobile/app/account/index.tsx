@@ -1,33 +1,10 @@
-import { ScrollView, View, Text, Pressable, Alert } from 'react-native';
+import { ScrollView, View, Text, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../store/auth.store';
 import { useT } from '../../lib/i18n';
 import { UpdateCheckRow } from '../../components/ui/UpdateNotice';
-
-interface MenuItemProps {
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-  destructive?: boolean;
-}
-
-function MenuItem({ title, subtitle, onPress, destructive }: MenuItemProps) {
-  return (
-    <Pressable
-      onPress={onPress}
-      className="flex-row items-center justify-between bg-card border border-border rounded-2xl px-4 py-4 mb-3"
-      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-    >
-      <View className="flex-1 pr-3">
-        <Text className={`font-semibold text-base ${destructive ? 'text-danger' : 'text-text'}`}>
-          {title}
-        </Text>
-        <Text className="text-muted text-sm mt-0.5">{subtitle}</Text>
-      </View>
-      <Text className="text-muted text-xl">›</Text>
-    </Pressable>
-  );
-}
+import { NavRow } from '../../components/ui/NavRow';
+import { CARD_SHADOW } from '../../components/ui/Card';
 
 export default function AccountMenuScreen() {
   const t = useT();
@@ -48,50 +25,37 @@ export default function AccountMenuScreen() {
     ]);
   };
 
+  const name = user?.name || user?.username || '';
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerClassName="px-4 pt-4 pb-8"
-    >
-      <View className="mb-5 bg-card border border-border rounded-2xl px-4 py-4">
-        <Text className="text-muted text-xs uppercase">{t.account.username}</Text>
-        <Text className="text-text font-semibold text-base mt-1">@{user?.username}</Text>
-        {user?.email ? (
-          <Text className="text-muted text-sm mt-1">{user.email}</Text>
-        ) : null}
-        {user?.phone ? (
-          <Text className="text-muted text-sm">{user.phone}</Text>
-        ) : null}
+    <ScrollView className="flex-1 bg-background" contentContainerClassName="px-5 pt-3 pb-10">
+      {/* Profile — a big initial, the name in the serif */}
+      <View className="mb-6 bg-card border border-border rounded-3xl px-5 py-5 flex-row items-center" style={{ boxShadow: CARD_SHADOW }}>
+        <View className="w-16 h-16 rounded-full bg-primary items-center justify-center mr-4">
+          <Text className="font-display text-2xl text-white">{name.slice(0, 1).toUpperCase()}</Text>
+        </View>
+        <View className="flex-1">
+          <Text className="font-display text-xl text-text" numberOfLines={1}>{name}</Text>
+          <Text className="font-mono text-xs text-muted mt-0.5">@{user?.username}</Text>
+          {user?.email ? <Text className="text-muted text-xs mt-1">{user.email}</Text> : null}
+          {user?.phone ? <Text className="text-muted text-xs">{user.phone}</Text> : null}
+        </View>
       </View>
 
-      <MenuItem
-        title={t.account.editProfile}
-        subtitle={t.account.editProfileSubtitle}
-        onPress={() => router.push('/account/edit')}
-      />
-      <MenuItem
-        title={t.account.changePassword}
-        subtitle={t.account.changePasswordSubtitle}
-        onPress={() => router.push('/account/change-password')}
-      />
-      <MenuItem
-        title={t.printer.title}
-        subtitle={t.printer.subtitle}
-        onPress={() => router.push('/account/printer')}
-      />
-      <MenuItem
-        title={t.account.logout}
-        subtitle={t.account.logoutSubtitle}
-        onPress={handleLogout}
-      />
+      <NavRow icon="edit-3" title={t.account.editProfile} subtitle={t.account.editProfileSubtitle} onPress={() => router.push('/account/edit')} />
+      <NavRow icon="key" title={t.account.changePassword} subtitle={t.account.changePasswordSubtitle} onPress={() => router.push('/account/change-password')} />
+      <NavRow icon="printer" tone="accent" title={t.printer.title} subtitle={t.printer.subtitle} onPress={() => router.push('/account/printer')} />
+      <NavRow icon="log-out" title={t.account.logout} subtitle={t.account.logoutSubtitle} onPress={handleLogout} />
       <UpdateCheckRow />
 
-      <MenuItem
-        title={t.account.deleteAccount}
-        subtitle={t.account.deleteAccountSubtitle}
-        onPress={() => router.push('/account/delete')}
-        destructive
-      />
+      <View className="mt-4">
+        <NavRow
+          icon="trash-2"
+          tone="danger"
+          title={t.account.deleteAccount}
+          subtitle={t.account.deleteAccountSubtitle}
+          onPress={() => router.push('/account/delete')}
+        />
+      </View>
     </ScrollView>
   );
 }

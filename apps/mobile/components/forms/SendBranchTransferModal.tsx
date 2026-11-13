@@ -153,14 +153,14 @@ export function SendBranchTransferModal({ visible, isOwner, onClose }: Props) {
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-xl font-bold text-text">{t.branchTransfers.sendTitle}</Text>
+          <Text className="font-display text-2xl text-text">{t.branchTransfers.sendTitle}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
         </View>
         <Text className="text-muted text-xs mb-5">{t.branchTransfers.sendSub}</Text>
 
-        <Text className="text-sm font-medium text-text mb-1.5">{t.branchTransfers.destination}</Text>
+        <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">{t.branchTransfers.destination}</Text>
         {destinations && destinations.length === 0 ? (
           <Text className="text-muted text-sm mb-5">{t.branchTransfers.noDestinations}</Text>
         ) : (
@@ -229,13 +229,13 @@ export function SendBranchTransferModal({ visible, isOwner, onClose }: Props) {
           <Text className="text-primary font-semibold text-sm">{t.branchTransfers.addLine}</Text>
         </TouchableOpacity>
 
-        <Text className="text-sm font-medium text-text mb-1.5">{t.branchTransfers.note}</Text>
+        <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">{t.branchTransfers.note}</Text>
         <TextInput
           value={note}
           onChangeText={setNote}
           maxLength={500}
           placeholderTextColor={brand.mutedSubtle}
-          className="border rounded-xl px-4 py-3 text-text bg-card border-border mb-6"
+          className="border rounded-2xl px-4 py-3.5 text-text bg-card border-border mb-6"
         />
 
         <Button label={t.branchTransfers.sendSubmit} onPress={submit} loading={send.isPending} />

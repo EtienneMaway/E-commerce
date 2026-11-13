@@ -12,6 +12,7 @@ import { Badge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PaySupplierModal } from '../../components/forms/PaySupplierModal';
 import { useRequireService } from '../../hooks/use-require-service';
+import { Icon } from '../../components/ui/Icon';
 
 interface InventoryRow {
   id: string;
@@ -96,16 +97,16 @@ export default function SupplierDetailScreen() {
         </TouchableOpacity>
         <View className="flex-row justify-between items-start">
           <View className="flex-1 mr-3">
-            <Text className="text-2xl font-bold text-text">@{detail.supplierUsername}</Text>
+            <Text className="font-display text-[28px] text-text">@{detail.supplierUsername}</Text>
             <Text className="text-muted text-sm mt-0.5">Supplier</Text>
             {(detail.supplierEmail || detail.supplierPhone) && (
               <View className="mt-2 gap-1">
                 {detail.supplierEmail && (
-                  <Text className="text-muted text-sm">✉️ {detail.supplierEmail}</Text>
+                  <View className="flex-row items-center gap-1.5"><Icon name="mail" size={13} tone="muted" /><Text className="text-muted text-sm">{detail.supplierEmail}</Text></View>
                 )}
                 {detail.supplierPhone && (
                   <TouchableOpacity onPress={() => void Linking.openURL(`tel:${detail.supplierPhone}`)}>
-                    <Text className="text-primary text-sm font-medium">📞 {detail.supplierPhone}</Text>
+                    <View className="flex-row items-center gap-1.5"><Icon name="phone" size={13} tone="primary" /><Text className="text-primary text-sm font-medium">{detail.supplierPhone}</Text></View>
                   </TouchableOpacity>
                 )}
               </View>
@@ -122,25 +123,25 @@ export default function SupplierDetailScreen() {
 
         {/* Balance summary */}
         <View className="flex-row mt-4 gap-3">
-          <View className="flex-1 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 rounded-xl px-3 py-2">
+          <View className="flex-1 bg-danger-light border border-danger/30 rounded-xl px-3 py-2">
             <Text className="text-danger text-xs">{t.supplierDetail.iOwe}</Text>
             <Text className="text-danger font-bold text-lg">{formatCurrency(detail.debt.outstandingBalance)}</Text>
           </View>
           <View className="flex-1 bg-surface border border-border rounded-xl px-3 py-2">
             <Text className="text-muted text-xs">{t.supplierDetail.totalReceived}</Text>
-            <Text className="text-text font-bold text-lg">{formatCurrency(detail.debt.totalCreditReceived)}</Text>
+            <Text className="font-display text-xl text-text">{formatCurrency(detail.debt.totalCreditReceived)}</Text>
           </View>
           <View className="flex-1 bg-surface border border-border rounded-xl px-3 py-2">
             <Text className="text-muted text-xs">{t.supplierDetail.totalPaid}</Text>
-            <Text className="text-text font-bold text-lg">{formatCurrency(detail.debt.totalPaid)}</Text>
+            <Text className="font-display text-xl text-text">{formatCurrency(detail.debt.totalPaid)}</Text>
           </View>
         </View>
 
         {/* Pending payment warning */}
         {hasPendingPayment && (
-          <View className="mt-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 flex-row items-start gap-2">
-            <Text style={{ fontSize: 14 }}>⏳</Text>
-            <Text className="text-amber-700 dark:text-amber-300 text-sm flex-1">{t.supplierDetail.pendingPaymentWarning}</Text>
+          <View className="mt-3 bg-warning-light border border-warning/30 rounded-xl px-3 py-2.5 flex-row items-start gap-2">
+            <Icon name="clock" size={14} tone="warning" />
+            <Text className="text-warning text-sm flex-1">{t.supplierDetail.pendingPaymentWarning}</Text>
           </View>
         )}
 

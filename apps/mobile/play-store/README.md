@@ -1,6 +1,8 @@
 # Play Store listing assets
 
-Icons generated 27 August 2026; screenshots retaken **1 September 2026**. Sources
+Icons redrawn **13 November 2026** (malachite tile, paper K, copper leg — the
+"market ledger" identity; `scripts/gen-native-icons.sh` regenerates every native
+size from `../assets/src`); earlier icons generated 27 August 2026; screenshots retaken **1 September 2026**. Sources
 for the icon set live in `../assets/src/*.svg` — edit the SVG and re-render rather
 than touching the PNGs by hand.
 
@@ -36,7 +38,10 @@ rsvg-convert -w 432  -h 432  src/adaptive-monochrome.svg -o android-icon-monochr
 rsvg-convert -w 1024 -h 1024 src/splash-icon.svg         -o splash-icon.png
 rsvg-convert -w 48   -h 48   src/splash-icon.svg         -o favicon.png
 rsvg-convert -w 512  -h 512  src/icon.svg                -o ../play-store/icon-512.png
-rsvg-convert -w 1024 -h 500  src/feature-graphic.svg     -o ../play-store/feature-graphic-1024x500.png
+# feature graphic: NOT rsvg-convert — it uses macOS's own fonts and silently falls back
+# to Helvetica for Fraunces / JetBrains Mono. Render it in headless Chrome with the
+# fonts from node_modules/@expo-google-fonts loaded via @font-face (see the
+# November 2026 redesign notes), at exactly 1024x500.
 # then flatten the two listing files to RGB — Play rejects alpha
 ```
 

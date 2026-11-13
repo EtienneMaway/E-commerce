@@ -305,8 +305,8 @@ function OwnerExpensesScreen() {
 
         {/* Queued offline — recorded but not yet synced */}
         {pendingOffline.length > 0 && (
-          <Card className="mt-4 border border-blue-300 dark:border-blue-800">
-            <Text className="text-blue-600 dark:text-blue-400 text-xs font-semibold uppercase tracking-wide mb-2">
+          <Card className="mt-4 border border-primary/30">
+            <Text className="text-primary text-xs font-semibold uppercase tracking-wide mb-2">
               🔄 {t.expenses.pendingSyncLabel(pendingOffline.length)}
             </Text>
             {pendingOffline.map((e) => (

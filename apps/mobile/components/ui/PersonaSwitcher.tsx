@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import { usePersonaStore } from '../../store/persona.store';
 import { useShopStore } from '../../store/shop.store';
 import { useT } from '../../lib/i18n';
 import type { ActingAs } from '../../lib/api';
+import { Icon } from './Icon';
+import { Sheet } from './Sheet';
 
 /**
  * Header chip that opens a Self / Employer modal. Renders nothing for users
@@ -39,96 +41,81 @@ export function PersonaSwitcher() {
     qc.resetQueries();
   };
 
+  const option = (value: ActingAs, icon: 'user' | 'briefcase', title: string, sub: string, extra?: string) => {
+    const active = kind === value;
+    return (
+      <Pressable
+        onPress={() => void choose(value)}
+        className={`flex-row items-center gap-3 px-4 py-4 rounded-3xl border mb-2.5 ${
+          active
+            ? value === 'employer'
+              ? 'bg-accent-light border-accent/50'
+              : 'bg-primary-light border-primary/40'
+            : 'bg-card border-border'
+        }`}
+        style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.985 : 1 }] })}
+      >
+        <View
+          className={`w-11 h-11 rounded-2xl items-center justify-center ${
+            value === 'employer' ? 'bg-accent/15' : 'bg-primary/15'
+          }`}
+        >
+          <Icon name={icon} size={20} tone={value === 'employer' ? 'violet' : 'primary'} />
+        </View>
+        <View className="flex-1">
+          <Text className="text-text font-semibold text-[15px]">{title}</Text>
+          <Text className="text-muted text-xs mt-0.5">{sub}</Text>
+          {extra ? <Text className="text-warning text-[11px] mt-1">{extra}</Text> : null}
+        </View>
+        <View
+          className={`w-6 h-6 rounded-full items-center justify-center border-2 ${
+            active ? (value === 'employer' ? 'bg-accent border-accent' : 'bg-primary border-primary') : 'border-muted-subtle'
+          }`}
+        >
+          {active ? <Icon name="check" size={13} color="#FFFFFF" /> : null}
+        </View>
+      </Pressable>
+    );
+  };
+
   return (
     <>
+      {/* The chip: copper while acting on the employer's books, so it is
+          never mistaken for your own. */}
       <Pressable
         onPress={() => setOpen(true)}
-        className={`flex-row items-center gap-1 px-2.5 py-1 rounded-full ${
-          isEmployerMode
-            ? 'bg-indigo-100 dark:bg-indigo-950 border border-indigo-300 dark:border-indigo-800'
-            : 'bg-card border border-border'
+        className={`flex-row items-center gap-1.5 px-2.5 py-1 rounded-full border ${
+          isEmployerMode ? 'bg-accent-light border-accent/40' : 'bg-card border-border'
         }`}
         accessibilityLabel={t.persona.switchTo}
       >
-        <Text className="text-xs">{isEmployerMode ? '🪪' : '👤'}</Text>
+        <Icon name={isEmployerMode ? 'briefcase' : 'user'} size={12} tone={isEmployerMode ? 'violet' : 'muted'} />
         <Text
           numberOfLines={1}
-          className={`text-xs font-semibold max-w-[100px] ${
-            isEmployerMode ? 'text-indigo-700 dark:text-indigo-300' : 'text-muted'
-          }`}
+          className={`text-xs font-semibold max-w-[120px] ${isEmployerMode ? 'text-accent' : 'text-text-secondary'}`}
         >
-          {isEmployerMode ? t.persona.actingBanner(employerName) : t.persona.self}
+          {isEmployerMode ? employerName : t.persona.self}
         </Text>
-        <Text className={`text-[10px] ${isEmployerMode ? 'text-indigo-700 dark:text-indigo-300' : 'text-muted'}`}>
-          ▾
-        </Text>
+        <Icon name="chevron-down" size={12} tone={isEmployerMode ? 'violet' : 'muted'} />
       </Pressable>
 
-      <Modal
+      <Sheet
         visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
+        onClose={() => setOpen(false)}
+        icon={isEmployerMode ? 'briefcase' : 'user'}
+        tone={isEmployerMode ? 'accent' : 'primary'}
+        title={t.persona.sheetTitle}
+        subtitle={t.persona.sheetHint}
       >
-        <Pressable
-          className="flex-1 bg-black/40 items-center justify-center px-6"
-          onPress={() => setOpen(false)}
-        >
-          <Pressable
-            className="bg-card border border-border rounded-2xl w-full max-w-sm overflow-hidden"
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View className="px-4 py-3 border-b border-border">
-              <Text className="text-xs font-semibold uppercase tracking-wider text-muted">
-                {t.persona.viewAs}
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={() => choose('self')}
-              className={`flex-row items-start gap-3 px-4 py-3.5 ${
-                kind === 'self' ? 'bg-surface' : ''
-              }`}
-            >
-              <Text className="text-lg mt-0.5">👤</Text>
-              <View className="flex-1">
-                <Text className="text-sm font-semibold text-text">
-                  {t.persona.self}
-                </Text>
-                <Text className="text-xs text-muted mt-0.5">
-                  {t.persona.selfSub}
-                </Text>
-              </View>
-              {kind === 'self' && <Text className="text-primary text-base">✓</Text>}
-            </Pressable>
-
-            <Pressable
-              onPress={() => choose('employer')}
-              className={`flex-row items-start gap-3 px-4 py-3.5 border-t border-border ${
-                kind === 'employer' ? 'bg-indigo-50 dark:bg-indigo-950' : ''
-              }`}
-            >
-              <Text className="text-lg mt-0.5">🪪</Text>
-              <View className="flex-1">
-                <Text className="text-sm font-semibold text-text">
-                  {t.persona.employer(employerName)}
-                </Text>
-                <Text className="text-xs text-muted mt-0.5">
-                  {t.persona.employerSub(employerName)}
-                </Text>
-                {employment.status === 'TERMINATION_REQUESTED' && (
-                  <Text className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
-                    · {t.persona.terminationPending}
-                  </Text>
-                )}
-              </View>
-              {kind === 'employer' && (
-                <Text className="text-indigo-600 dark:text-indigo-300 text-base">✓</Text>
-              )}
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        {option('self', 'user', t.persona.self, t.persona.selfSub)}
+        {option(
+          'employer',
+          'briefcase',
+          employerName,
+          t.persona.employerSub(employerName),
+          employment.status === 'TERMINATION_REQUESTED' ? t.persona.terminationPending : undefined,
+        )}
+      </Sheet>
     </>
   );
 }

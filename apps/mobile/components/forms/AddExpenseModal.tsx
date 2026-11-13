@@ -88,14 +88,14 @@ export function AddExpenseModal({ visible, onClose }: Props) {
         keyboardShouldPersistTaps="handled"
       >
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-xl font-bold text-text">{t.expenses.addBtn}</Text>
+          <Text className="font-display text-2xl text-text">{t.expenses.addBtn}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
         </View>
 
         <View className="mb-4">
-          <Text className="text-sm font-medium text-text mb-1.5">
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">
             {t.expenses.amount} (FC)
           </Text>
           <Input
@@ -108,7 +108,7 @@ export function AddExpenseModal({ visible, onClose }: Props) {
         </View>
 
         <View className="mb-4">
-          <Text className="text-sm font-medium text-text mb-1.5">
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">
             {t.expenses.category}
           </Text>
           <View className="flex-row flex-wrap gap-2">
@@ -143,7 +143,7 @@ export function AddExpenseModal({ visible, onClose }: Props) {
         />
 
         <View className="mb-4">
-          <Text className="text-sm font-medium text-text mb-1.5">
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">
             {t.expenses.description}
           </Text>
           <Input

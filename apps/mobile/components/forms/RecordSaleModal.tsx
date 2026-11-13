@@ -1080,12 +1080,12 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
             contentContainerClassName="px-6 py-8"
             keyboardShouldPersistTaps="handled"
           >
-            <View className="bg-amber-50 dark:bg-amber-950 border border-amber-300 dark:border-amber-700 rounded-2xl p-5 mb-5">
+            <View className="bg-warning-light border border-warning/30 rounded-2xl p-5 mb-5">
               <Text className="text-2xl mb-2">⚠️</Text>
-              <Text className="text-amber-700 dark:text-amber-300 font-bold text-lg mb-1">
+              <Text className="text-warning font-bold text-lg mb-1">
                 {t.recordSaleModal.discountTitle}
               </Text>
-              <Text className="text-amber-700 dark:text-amber-400 text-sm">
+              <Text className="text-warning text-sm">
                 {t.recordSaleModal.discountSub(discountPending.length)}
               </Text>
             </View>
@@ -1103,7 +1103,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
                     formatCurrency(d.standardPrice),
                   )}
                 </Text>
-                <Text className="text-amber-700 dark:text-amber-400 text-xs mb-2">
+                <Text className="text-warning text-xs mb-2">
                   → {formatCurrency(d.submittedPrice)}
                 </Text>
                 <Text className="text-muted text-xs mb-1">
@@ -1187,10 +1187,10 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
           {/* Header */}
           <View className="flex-row justify-between items-center px-6 pt-8 pb-4">
             <View className="flex-row items-center gap-2">
-              <Text className="text-xl font-bold text-text">{t.recordSaleModal.title}</Text>
+              <Text className="font-display text-2xl text-text">{t.recordSaleModal.title}</Text>
               {isOffline && (
-                <View className="bg-amber-100 dark:bg-amber-900 rounded-full px-2 py-0.5">
-                  <Text className="text-amber-700 dark:text-amber-300 text-xs font-bold">📴 OFFLINE</Text>
+                <View className="bg-warning-light rounded-full px-2 py-0.5">
+                  <Text className="text-warning text-xs font-bold">📴 OFFLINE</Text>
                 </View>
               )}
             </View>
@@ -1303,7 +1303,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
                               }
                               className="w-8 h-8 rounded-full bg-background items-center justify-center"
                             >
-                              <Text className="text-text font-bold text-lg leading-none">−</Text>
+                              <Text className="font-display text-xl text-text leading-none">−</Text>
                             </TouchableOpacity>
                             <TextInput
                               value={cartItem.piecesPerCarton ? cartItem.extraPieces : cartItem.cartons}
@@ -1337,7 +1337,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
                               }
                               className="w-8 h-8 rounded-full bg-background items-center justify-center"
                             >
-                              <Text className="text-text font-bold text-lg leading-none">+</Text>
+                              <Text className="font-display text-xl text-text leading-none">+</Text>
                             </TouchableOpacity>
                           </View>
                         </View>
@@ -1560,13 +1560,13 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
                 <Text className="text-muted text-sm">
                   {t.recordSaleModal.productsSelected(cart.size + sizedLinesArray.length)}
                 </Text>
-                <Text className="text-text font-bold text-lg">
+                <Text className="font-display text-xl text-text">
                   {t.recordSaleModal.total(formatFcValue(grandTotal + sizedGrandTotalFc))}
                 </Text>
               </View>
             )}
-            <View className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 rounded-xl px-3 py-2 mb-3">
-              <Text className="text-blue-700 dark:text-blue-300 text-xs">{t.recordSaleModal.supplierFirst}</Text>
+            <View className="bg-primary-light border border-primary/30 rounded-xl px-3 py-2 mb-3">
+              <Text className="text-primary text-xs">{t.recordSaleModal.supplierFirst}</Text>
             </View>
             <Button
               label={
@@ -1595,7 +1595,7 @@ export function RecordSaleModal({ visible, onClose, prefilledProduct = '', prefi
         className="flex-1 justify-center bg-black/50 px-6"
       >
         <View className="bg-surface rounded-2xl p-5">
-          <Text className="text-text font-bold text-lg">
+          <Text className="font-display text-xl text-text">
             {t.recordSaleModal.receiptPromptTitle}
           </Text>
           <Text className="text-muted text-sm mt-1 mb-4">

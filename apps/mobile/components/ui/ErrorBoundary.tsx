@@ -66,7 +66,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <Text className="text-xs font-semibold text-neutral-500 mb-1">
               ERROR
             </Text>
-            <Text className="text-xs font-mono text-red-700 dark:text-red-400" selectable>
+            <Text className="text-xs font-mono text-danger" selectable>
               {this.state.error.message || String(this.state.error)}
             </Text>
             {this.state.componentStack && (

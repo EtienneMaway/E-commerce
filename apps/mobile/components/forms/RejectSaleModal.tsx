@@ -126,7 +126,7 @@ export function RejectSaleModal({ target, onClose }: Props) {
         className="flex-1 justify-center bg-black/50 px-6"
       >
         <View className="bg-surface rounded-2xl p-5">
-          <Text className="text-text font-bold text-lg">{t.sales.rejectTitle}</Text>
+          <Text className="font-display text-xl text-text">{t.sales.rejectTitle}</Text>
           <Text className="text-muted text-sm mt-1 mb-4 capitalize">
             {t.sales.rejectBody(label, target.qtySold)}
           </Text>

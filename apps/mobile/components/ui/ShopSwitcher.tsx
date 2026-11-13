@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useShopStore, useCurrentShop } from '../../store/shop.store';
 import { useOfflineStore } from '../../store/offline.store';
 import { useT } from '../../lib/i18n';
+import { Icon } from './Icon';
 
 /**
  * Header chip that picks the branch this phone works in.
@@ -52,7 +53,7 @@ export function ShopSwitcher() {
         className="flex-row items-center gap-1 px-2.5 py-1 rounded-full bg-card border border-border"
         accessibilityLabel={t.shops.switchTitle}
       >
-        <Text className="text-xs">🏪</Text>
+        <Icon name="map-pin" size={12} tone="muted" />
         <Text numberOfLines={1} className="text-xs font-semibold max-w-[110px] text-muted">
           {current?.name ?? t.shops.branch}
         </Text>
@@ -83,7 +84,7 @@ export function ShopSwitcher() {
                     selected ? 'bg-surface' : ''
                   }`}
                 >
-                  <Text className="text-lg mt-0.5">🏪</Text>
+                  <View className="mt-0.5"><Icon name="map-pin" size={18} /></View>
                   <View className="flex-1">
                     <Text className="text-sm font-semibold text-text">
                       {shop.name}
@@ -93,7 +94,7 @@ export function ShopSwitcher() {
                       <Text className="text-xs text-muted mt-0.5">{shop.address}</Text>
                     )}
                   </View>
-                  {selected && <Text className="text-primary text-base">✓</Text>}
+                  {selected && <Icon name="check" size={18} tone="primary" />}
                 </Pressable>
               );
             })}

@@ -38,46 +38,46 @@ export interface BrandPalette {
 }
 
 export const BRAND: BrandPalette = {
-  /** Indigo — main actions. Matches the app icon and the web dashboard. */
-  primary: '#4F46E5',
-  /** Pressed / hovered primary. */
-  primaryDark: '#4338CA',
-  /** The gradient partner in the app icon and the dashboard's KmbLogo. */
-  violet: '#7C3AED',
-  /** Red — losses, debts. */
-  danger: '#EF4444',
+  /** Malachite — main actions. Same identity as the public site. */
+  primary: '#0E7A5B',
+  /** Pressed primary. */
+  primaryDark: '#0B5842',
+  /** Copper accent (historical name: the token used to be violet). */
+  violet: '#C25E27',
+  /** Brick — losses, debts. */
+  danger: '#B23A2B',
   /** Green — profits, credits. */
-  success: '#10B981',
-  /** Amber — warnings. */
-  warning: '#F59E0B',
+  success: '#1A8C52',
+  /** Ochre — warnings. */
+  warning: '#B06A0C',
   /** Muted text / placeholders. */
-  muted: '#8492B4',
-  mutedSubtle: '#B0BBDB',
+  muted: '#767F79',
+  mutedSubtle: '#ACB2AB',
   /** Foreground used on top of `primary` / `danger` fills. */
   onPrimary: '#FFFFFF',
-  background: '#EEF1FA',
-  surface: '#F7F9FE',
-  card: '#FFFFFF',
-  border: '#E2E6F4',
-  text: '#0D1226',
+  background: '#F3ECDF',
+  surface: '#ECE4D4',
+  card: '#FBF8F1',
+  border: '#E0D6C4',
+  text: '#15211C',
 };
 
-/** Dark-mode counterparts. Mirrors the `.dark` block in `global.css`. */
+/** Dark-mode counterparts. Mirrors the `.dark:root` block in `global.css`. */
 export const BRAND_DARK: BrandPalette = {
-  primary: '#6366F1',
-  primaryDark: '#818CF8',
-  violet: '#8B5CF6',
-  danger: '#F87171',
-  success: '#34D399',
-  warning: '#FCD34D',
-  muted: '#4E5A80',
-  mutedSubtle: '#2E3555',
+  primary: '#279B74',
+  primaryDark: '#5FD6AC',
+  violet: '#EA8C4F',
+  danger: '#F27E68',
+  success: '#52D68C',
+  warning: '#ECB252',
+  muted: '#7E8983',
+  mutedSubtle: '#48534D',
   onPrimary: '#FFFFFF',
-  background: '#090C18',
-  surface: '#0F1322',
-  card: '#131726',
-  border: '#1E2438',
-  text: '#E8EBF8',
+  background: '#0D1311',
+  surface: '#141D19',
+  card: '#16201C',
+  border: '#25322C',
+  text: '#EFE8D8',
 };
 
 /**
@@ -90,4 +90,20 @@ export const BRAND_DARK: BrandPalette = {
 export function useBrand(): BrandPalette {
   const { colorScheme } = useColorScheme();
   return colorScheme === 'dark' ? BRAND_DARK : BRAND;
+}
+
+/**
+ * Native stack header styling — paper, no hairline, serif title, malachite back
+ * arrow. Shared by every Stack (root and nested ones like /account), since a
+ * nested navigator does not inherit its parent's screenOptions.
+ */
+export function useHeaderOptions() {
+  const brand = useBrand();
+  return {
+    headerStyle: { backgroundColor: brand.background },
+    headerShadowVisible: false,
+    headerTintColor: brand.primary,
+    headerTitleStyle: { fontFamily: 'Fraunces_600SemiBold', fontSize: 20, color: brand.text },
+    contentStyle: { backgroundColor: brand.background },
+  } as const;
 }

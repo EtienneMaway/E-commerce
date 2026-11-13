@@ -121,7 +121,7 @@ export function HandoverModal({ visible, onClose }: Props) {
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8">
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-xl font-bold text-text">{t.miniEmployee.handoverTitle}</Text>
+          <Text className="font-display text-2xl text-text">{t.miniEmployee.handoverTitle}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
@@ -129,11 +129,11 @@ export function HandoverModal({ visible, onClose }: Props) {
         <Text className="text-muted text-sm mb-5">{t.miniEmployee.handoverAutoSubtitle}</Text>
 
         {blocked ? (
-          <View className="mt-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-2xl px-4 py-4">
-            <Text className="text-amber-700 dark:text-amber-300 font-semibold text-base">
+          <View className="mt-4 bg-warning-light border border-warning/30 rounded-2xl px-4 py-4">
+            <Text className="text-warning font-semibold text-base">
               {isOffline ? t.miniEmployee.handoverOfflineTitle : t.miniEmployee.handoverSyncTitle}
             </Text>
-            <Text className="text-amber-600 dark:text-amber-400 text-sm mt-1">
+            <Text className="text-warning text-sm mt-1">
               {isOffline
                 ? t.miniEmployee.handoverOfflineSub
                 : t.miniEmployee.handoverSyncSub(queued)}
@@ -208,7 +208,7 @@ export function HandoverModal({ visible, onClose }: Props) {
               )}
               <View className="flex-row justify-between mt-2 pt-2 border-t border-primary/20">
                 <Text className="text-text font-semibold">{t.miniEmployee.handoverTotalCash}</Text>
-                <Text className="text-text font-bold text-lg">{formatFcValue(netFc)}</Text>
+                <Text className="font-display text-xl text-text">{formatFcValue(netFc)}</Text>
               </View>
               <View className="flex-row justify-between mt-1">
                 <Text className="text-muted text-sm">{t.miniEmployee.handoverProfitMade}</Text>

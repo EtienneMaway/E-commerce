@@ -54,6 +54,14 @@ app/
 - Use `className` (NativeWind) everywhere — no `StyleSheet.create`
 - Path alias `@/*` maps to repo root (e.g., `@/lib/api`, `@/components/ui/Button`)
 
+## Design system ("market ledger" — same identity as the public site)
+
+- **Palette**: tokens in `global.css` (light + `.dark:root`), literals for native props in `lib/theme.ts` (`useBrand`). Paper/ink neutrals, `primary` = malachite, `accent` = copper (`brand-violet` is a legacy alias of copper). Never use raw Tailwind palettes (`bg-blue-50`, `text-amber-700`…) or `dark:` overrides — tokens flip on their own.
+- **Type**: `font-display` (Fraunces SemiBold) for titles and big figures, `font-display-italic` for accents, `font-mono` / `font-mono-bold` (JetBrains Mono) for small uppercase labels and figures. Loaded in `app/_layout.tsx`. Never combine them with `font-bold`/`font-semibold` (Android falls back to the system font).
+- **Icons**: `components/ui/Icon.tsx` (Feather). No emoji as icons.
+- **Building blocks**: `Card` (+ `CARD_SHADOW`), `StatCard`, `Button` (pill; `primary|ink|danger|outline|ghost`, optional `icon`), `Badge`, `EmptyState`, `Input`, `ScreenHeader` (kicker + serif title, tab screens), `NavRow` (icon chip row), `ListFooter`. Native stack headers come from `useHeaderOptions()` — add it to any new nested Stack.
+- Tab bar is custom (`app/(tabs)/_layout.tsx`), floating, with an animated active pill. Gradients/shadows use RN 0.83 `experimental_backgroundImage` / `boxShadow` (New Architecture) — no native gradient library, so design changes stay OTA-shippable.
+
 ## Price Guard (422 handling)
 
 `RecordSaleModal` is the reference implementation. When a sale is submitted below cost:

@@ -99,16 +99,16 @@ export function MiniExpensesView() {
   const StatusBadge = ({ label, tone }: { label: string; tone: 'pending' | 'done' | 'sync' }) => {
     const cls =
       tone === 'done'
-        ? 'bg-emerald-100 dark:bg-emerald-900'
+        ? 'bg-success-light'
         : tone === 'sync'
-          ? 'bg-blue-100 dark:bg-blue-900'
-          : 'bg-amber-100 dark:bg-amber-900';
+          ? 'bg-primary-light'
+          : 'bg-warning-light';
     const txt =
       tone === 'done'
-        ? 'text-emerald-700 dark:text-emerald-300'
+        ? 'text-success'
         : tone === 'sync'
-          ? 'text-blue-700 dark:text-blue-300'
-          : 'text-amber-700 dark:text-amber-300';
+          ? 'text-primary'
+          : 'text-warning';
     return (
       <View className={`px-2 py-0.5 rounded-full ${cls}`}>
         <Text className={`text-[10px] font-bold uppercase tracking-wide ${txt}`}>{label}</Text>
@@ -161,8 +161,8 @@ export function MiniExpensesView() {
 
         {/* Queued offline — recorded but not yet synced */}
         {queued.length > 0 && (
-          <Card className="mt-4 border border-blue-300 dark:border-blue-800">
-            <Text className="text-blue-600 dark:text-blue-400 text-xs font-semibold uppercase tracking-wide mb-2">
+          <Card className="mt-4 border border-primary/30">
+            <Text className="text-primary text-xs font-semibold uppercase tracking-wide mb-2">
               🔄 {t.expenses.pendingSyncLabel(queued.length)}
             </Text>
             {queued.map((e) => (

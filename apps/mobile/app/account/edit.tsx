@@ -50,10 +50,10 @@ export default function EditProfileScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <View className="mb-4">
-        <Text className="text-sm font-medium text-text mb-1.5">
+        <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">
           {t.account.username}
         </Text>
-        <View className="border rounded-xl px-4 py-3 bg-card border-border">
+        <View className="border rounded-2xl px-4 py-3.5 bg-card border-border">
           <Text className="text-text text-base">@{user?.username}</Text>
         </View>
         <Text className="text-muted text-xs mt-1">

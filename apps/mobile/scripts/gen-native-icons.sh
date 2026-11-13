@@ -59,11 +59,11 @@ done
 IOS_ICON=$(find ios -path "*AppIcon.appiconset/*1024*.png" | head -1)
 if [ -n "$IOS_ICON" ]; then
   rsvg-convert -w 1024 -h 1024 "$SRC/icon.svg" -o "$TMP/ios.png"
-  # iOS rejects alpha in app icons; flatten onto the brand indigo.
+  # iOS rejects alpha in app icons; flatten onto the brand malachite.
   python3 -c "
 from PIL import Image; import sys
 im = Image.open(sys.argv[1]).convert('RGBA')
-flat = Image.new('RGB', im.size, '#4F46E5'); flat.paste(im, (0, 0), im)
+flat = Image.new('RGB', im.size, '#0E7A5B'); flat.paste(im, (0, 0), im)
 flat.save(sys.argv[2])" "$TMP/ios.png" "$IOS_ICON"
 fi
 

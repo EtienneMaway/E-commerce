@@ -23,6 +23,7 @@ import {
 import { QK } from '../lib/query-keys';
 import { usePagedList, fromPaginated, MOBILE_PAGE_SIZE } from '../lib/paged-list';
 import { ListFooter } from '../components/ui/ListFooter';
+import { CARD_SHADOW } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Button } from '../components/ui/Button';
 import { SendBranchTransferModal } from '../components/forms/SendBranchTransferModal';
@@ -254,13 +255,13 @@ export default function BranchTransfersScreen() {
         )}
 
         <View className="flex-row gap-3 px-4 pt-4">
-          <View className="flex-1 bg-card border border-border rounded-xl p-3">
-            <Text className="text-muted text-xs">{t.branchTransfers.owedToBranch}</Text>
-            <Text className="text-success font-bold text-base mt-1">{fmt(owedHere)}</Text>
+          <View className="flex-1 bg-card border border-border rounded-3xl px-4 py-3.5" style={{ boxShadow: CARD_SHADOW }}>
+            <Text className="font-mono text-[10px] uppercase tracking-widest text-muted">{t.branchTransfers.owedToBranch}</Text>
+            <Text className="font-display text-xl text-success mt-1" numberOfLines={1} adjustsFontSizeToFit>{fmt(owedHere)}</Text>
           </View>
-          <View className="flex-1 bg-card border border-border rounded-xl p-3">
-            <Text className="text-muted text-xs">{t.branchTransfers.branchOwes}</Text>
-            <Text className={`font-bold text-base mt-1 ${owesHere > 0 ? 'text-danger' : 'text-text'}`}>{fmt(owesHere)}</Text>
+          <View className="flex-1 bg-card border border-border rounded-3xl px-4 py-3.5" style={{ boxShadow: CARD_SHADOW }}>
+            <Text className="font-mono text-[10px] uppercase tracking-widest text-muted">{t.branchTransfers.branchOwes}</Text>
+            <Text className={`font-display text-xl mt-1 ${owesHere > 0 ? 'text-danger' : 'text-text'}`} numberOfLines={1} adjustsFontSizeToFit>{fmt(owesHere)}</Text>
           </View>
         </View>
 
@@ -395,7 +396,7 @@ export default function BranchTransfersScreen() {
               autoFocus
               placeholder={t.branchTransfers.rejectPlaceholder}
               placeholderTextColor={brand.mutedSubtle}
-              className="border rounded-xl px-4 py-3 text-text bg-background border-border mb-4"
+              className="border rounded-2xl px-4 py-3.5 text-text bg-background border-border mb-4"
             />
             <View className="flex-row gap-2">
               <View className="flex-1">

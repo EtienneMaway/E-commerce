@@ -1,11 +1,11 @@
 import '../global.css';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Stack, router, useNavigationContainerRef, useSegments } from 'expo-router';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Appearance } from 'react-native';
+import { Appearance, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'nativewind';
 import { useAuthStore } from '../store/auth.store';
@@ -18,6 +18,13 @@ import { useT } from '../lib/i18n';
 import { authApi, dashboardApi } from '../lib/api';
 import { isAuthError } from '../lib/utils';
 import { initConnectivity } from '../lib/connectivity';
+import { useHeaderOptions } from '../lib/theme';
+import { useFonts } from 'expo-font';
+import { Fraunces_500Medium } from '@expo-google-fonts/fraunces/500Medium';
+import { Fraunces_500Medium_Italic } from '@expo-google-fonts/fraunces/500Medium_Italic';
+import { Fraunces_600SemiBold } from '@expo-google-fonts/fraunces/600SemiBold';
+import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium';
+import { JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono/700Bold';
 import { useInboxSignal } from '../hooks/use-inbox-signal';
 import { useOfflineWarmup } from '../hooks/use-offline-warmup';
 import { scheduleAlertNotifications } from '../lib/notifications';
@@ -121,6 +128,9 @@ function AuthGuard() {
   const segments = useSegments();
   const navigationRef = useNavigationContainerRef();
   const [isNavReady, setIsNavReady] = useState(false);
+  // The token the profile was last refreshed for — once per session, not on
+  // every navigation that re-runs the effect below.
+  const refreshedFor = useRef<string | null>(null);
 
   useEffect(() => {
     useAuthStore.getState().hydrate();
@@ -190,6 +200,19 @@ function AuthGuard() {
           // returns.
           router.replace('/(tabs)');
         });
+    } else if (token && !inAuthGroup && refreshedFor.current !== token) {
+      refreshedFor.current = token;
+      // A normal cold start opens straight on the tabs, which used to skip the
+      // profile fetch above entirely — the app ran with no name, no persona
+      // switcher and no role limits until something else called /auth/me.
+      // Refresh it here; the saved copy (auth.store hydrate) covers the wait
+      // and offline starts.
+      authApi.me()
+        .then((user) => useAuthStore.getState().login(token, user))
+        .catch((err: unknown) => {
+          if (isAuthError(err)) logout().then(() => router.replace('/(auth)/login'));
+          // Network failure: keep going on the saved profile.
+        });
     }
   }, [token, isLoading, segments, isNavReady]);
 
@@ -218,10 +241,27 @@ function DynamicStatusBar() {
 
 export default function RootLayout() {
   const t = useT();
+  const headerOptions = useHeaderOptions();
+  // The brand faces (see tailwind.config.js fontFamily). Bundled with the app,
+  // so they load from disk in a few ms — no network. On a load error the app
+  // carries on in the system font rather than hanging on a blank screen.
+  const [fontsLoaded, fontError] = useFonts({
+    Fraunces_500Medium,
+    Fraunces_500Medium_Italic,
+    Fraunces_600SemiBold,
+    JetBrainsMono_500Medium,
+    JetBrainsMono_700Bold,
+  });
 
   // Bridge NetInfo + AppState into React Query and auto-drain the offline
   // queue. Without this the app had no idea it had lost or regained signal.
   useEffect(() => initConnectivity(), []);
+
+  // Paper, not null: rendering nothing exposes the white Android window between
+  // the splash and the first frame.
+  if (!fontsLoaded && !fontError) {
+    return <View style={{ flex: 1, backgroundColor: headerOptions.contentStyle.backgroundColor }} />;
+  }
 
   return (
     <ErrorBoundary>
@@ -232,7 +272,13 @@ export default function RootLayout() {
         <InboxSignalSync />
         <OfflineWarmup />
         <DynamicStatusBar />
-        <Stack screenOptions={{ headerShown: false }}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            // Native headers (detail screens): see useHeaderOptions.
+            ...headerOptions,
+          }}
+        >
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen

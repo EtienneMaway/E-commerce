@@ -18,6 +18,7 @@ import { useFormatCurrency, useExchangeRate, formatMoney } from '../../lib/curre
 import { useT } from '../../lib/i18n';
 import { personHandle } from '../../lib/person';
 import { Badge } from '../../components/ui/Badge';
+import { Icon } from '../../components/ui/Icon';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { RecordSaleModal } from '../../components/forms/RecordSaleModal';
 import { SellSizedProductModal } from '../../components/forms/SellSizedProductModal';
@@ -69,11 +70,11 @@ function EntryCard({ entry }: { entry: InventoryEntry }) {
 
       <View className="flex-row justify-between items-end">
         <View>
-          <Text className="text-muted text-xs mb-0.5">
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-1">
             {t.productDetail.remaining} / {t.productDetail.original}
           </Text>
           <Text
-            className={`text-base font-bold ${
+            className={`font-mono-bold text-base ${
               isLowStock ? 'text-danger' : 'text-text'
             }`}
           >
@@ -81,13 +82,13 @@ function EntryCard({ entry }: { entry: InventoryEntry }) {
           </Text>
           <Text className="text-muted text-xs">
             {entry.quantityRemaining} / {entry.quantityOriginal} pcs
-            {isLowStock && <Text className="text-danger"> · ⚠️ {t.inventory.low}</Text>}
+            {isLowStock && <Text className="text-danger"> · {t.inventory.low}</Text>}
           </Text>
         </View>
 
         <View className="items-end">
-          <Text className="text-muted text-xs">{t.inventory.costSell}</Text>
-          <Text className="text-text text-sm font-medium">
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-1">{t.inventory.costSell}</Text>
+          <Text className="font-mono text-text text-[13px]">
             {formatCurrency(entry.unitCost)} · {formatCurrency(entry.sellingPrice)}
           </Text>
           {entry.piecesPerCarton && (
@@ -169,19 +170,23 @@ export default function ProductDetailScreen() {
 
     return (
       <View className="flex-1 bg-background">
-        <View className="bg-card border-b border-border px-6 pt-14 pb-4">
-          <TouchableOpacity onPress={() => router.back()} className="mb-3">
-            <Text className="text-primary font-medium">{t.common.back}</Text>
+        <View className="bg-card border-b border-border px-6 pt-14 pb-5 rounded-b-[28px]">
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="mb-4 w-10 h-10 rounded-full bg-surface items-center justify-center"
+            accessibilityLabel={t.common.back}
+          >
+            <Icon name="arrow-left" size={18} tone="primary" />
           </TouchableOpacity>
           <View className="flex-row justify-between items-start">
-            <Text className="text-2xl font-bold text-text flex-1 mr-3" numberOfLines={2}>
+            <Text className="font-display text-[28px] text-text flex-1 mr-3" numberOfLines={2}>
               {titleCased}
             </Text>
             <View className="flex-row gap-2">
               {isMini && (
                 <TouchableOpacity
                   onPress={() => setEditPriceOpen(true)}
-                  className="px-3 py-2 rounded-xl border border-primary"
+                  className="px-4 py-2.5 rounded-full border border-primary"
                 >
                   <Text className="text-primary font-semibold text-sm">{t.miniEmployee.actionEditPrice}</Text>
                 </TouchableOpacity>
@@ -189,7 +194,7 @@ export default function ProductDetailScreen() {
               <TouchableOpacity
                 onPress={() => setSizedSellOpen(true)}
                 disabled={handoverPending}
-                className="bg-primary px-4 py-2 rounded-xl"
+                className="bg-primary px-5 py-2.5 rounded-full"
                 style={{ opacity: handoverPending ? 0.4 : 1 }}
               >
                 <Text className="text-white font-semibold text-sm">{t.productDetail.sellBtn}</Text>
@@ -198,11 +203,11 @@ export default function ProductDetailScreen() {
           </View>
 
           {/* Carton summary */}
-          <View className="mt-3 bg-surface border border-border rounded-xl px-4 py-3">
+          <View className="mt-4 bg-surface rounded-3xl px-4 py-3.5">
             <View className="flex-row justify-between items-center">
               <View>
-                <Text className="text-muted text-xs mb-0.5">{t.productDetail.totalAvailable}</Text>
-                <Text className="text-text text-lg font-bold">
+                <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-1">{t.productDetail.totalAvailable}</Text>
+                <Text className="font-display text-2xl text-text">
                   {t.sizedSale.cartonCount(group.cartonsAvailable ?? 0)}
                 </Text>
                 <Text className="text-muted text-xs">{group.totalAvailable} pcs</Text>
@@ -294,28 +299,32 @@ export default function ProductDetailScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <View className="bg-card border-b border-border px-6 pt-14 pb-4">
-        <TouchableOpacity onPress={() => router.back()} className="mb-3">
-          <Text className="text-primary font-medium">{t.common.back}</Text>
+      <View className="bg-card border-b border-border px-6 pt-14 pb-5 rounded-b-[28px]">
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="mb-4 w-10 h-10 rounded-full bg-surface items-center justify-center"
+          accessibilityLabel={t.common.back}
+        >
+          <Icon name="arrow-left" size={18} tone="primary" />
         </TouchableOpacity>
 
         <View className="flex-row justify-between items-start">
-          <Text className="text-2xl font-bold text-text flex-1 mr-3" numberOfLines={2}>
+          <Text className="font-display text-[28px] text-text flex-1 mr-3" numberOfLines={2}>
             {titleCased}
           </Text>
           <TouchableOpacity
             onPress={() => setSaleOpen(true)}
             disabled={handoverPending}
-            className="bg-primary px-4 py-2 rounded-xl"
+            className="bg-primary px-5 py-2.5 rounded-full"
             style={{ opacity: handoverPending ? 0.4 : 1 }}
           >
             <Text className="text-white font-semibold text-sm">{t.productDetail.sellBtn}</Text>
           </TouchableOpacity>
         </View>
 
-        <View className="mt-3 bg-surface border border-border rounded-xl px-4 py-3">
-          <Text className="text-muted text-xs mb-0.5">{t.productDetail.totalAvailable}</Text>
-          <Text className="text-text text-lg font-bold">{formatBreakdown(bd)}</Text>
+        <View className="mt-4 bg-surface rounded-3xl px-4 py-3.5">
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-1">{t.productDetail.totalAvailable}</Text>
+          <Text className="font-display text-2xl text-text">{formatBreakdown(bd)}</Text>
           {piecesPerCarton && (
             <Text className="text-muted text-xs mt-0.5">1 ctn = {piecesPerCarton} pcs</Text>
           )}
@@ -329,7 +338,7 @@ export default function ProductDetailScreen() {
         contentContainerClassName="px-4 pt-4 pb-8"
         refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={brand.primary} />}
         ListHeaderComponent={
-          <Text className="text-text font-semibold text-sm mb-3 uppercase tracking-wide">
+          <Text className="font-mono text-[10px] uppercase tracking-widest text-muted mb-3 ml-1">
             {t.productDetail.stockLedger} ({entries.length})
           </Text>
         }

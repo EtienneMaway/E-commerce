@@ -1,33 +1,84 @@
 import { Tabs } from 'expo-router';
-import { View, Text } from 'react-native';
-import { useBrand } from '../../lib/theme';
+import { View, Text, Pressable } from 'react-native';
+import Animated, { LinearTransition, FadeIn } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '../../lib/i18n';
 import { usePermissions } from '../../lib/permissions';
+import { useBrand } from '../../lib/theme';
+import { Icon, type IconName } from '../../components/ui/Icon';
 
-function TabIcon({ label, emoji, focused }: { label: string; emoji: string; focused: boolean }) {
+/** The props expo-router's Tabs hands a custom tab bar. */
+type BottomTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
+
+const ICONS: Record<string, IconName> = {
+  index: 'home',
+  inventory: 'package',
+  network: 'users',
+  sales: 'trending-up',
+};
+
+/**
+ * Floating tab bar: a paper capsule above the gesture area. The active tab
+ * grows into a malachite pill with its label (animated layout, Reanimated);
+ * the others are icons only, so four tabs fit the narrowest phones without the
+ * label clipping the old emoji bar suffered from.
+ *
+ * Tabs hidden by role (`href: null`) are skipped, exactly as the default bar
+ * did.
+ */
+function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
+  const brand = useBrand();
   return (
-    // `minWidth` is doing real work. React Navigation sizes the icon slot to the
-    // icon, so the label inherited a box far narrower than the tab itself and
-    // `numberOfLines={1}` resolved that by clipping — "Inventory" shipped as
-    // "Inve…" and "Network" as "Netw…" in the store screenshots. A tab is a
-    // quarter of the screen (~90dp on the narrowest phones we target), so 76 is
-    // comfortably inside it and gives the longest label room to render whole.
-    <View className="items-center justify-center pt-1" style={{ minWidth: 76 }}>
-      <Text className="text-xl">{emoji}</Text>
-      {/* One line always: at narrow tab widths "Inventory" was wrapping to
-          "Invent / ory", which looked broken in screenshots and on small phones. */}
-      <Text
-        numberOfLines={1}
-        className={`text-[10px] mt-0.5 ${focused ? 'text-primary font-semibold' : 'text-muted'}`}
+    <View className="bg-background px-4" style={{ paddingBottom: Math.max(insets.bottom, 10), paddingTop: 6 }}>
+      <View
+        className="flex-row items-center justify-between bg-card border border-border rounded-full p-1.5"
+        style={{ boxShadow: '0px 14px 30px -14px rgba(40, 30, 10, 0.35)' }}
       >
-        {label}
-      </Text>
+        {state.routes.map((route, index) => {
+          const { options } = descriptors[route.key];
+          // expo-router sets href: null on hidden tabs.
+          if ((options as { href?: unknown }).href === null) return null;
+          const focused = state.index === index;
+          const label = typeof options.title === 'string' ? options.title : route.name;
+          const onPress = (): void => {
+            const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+            if (!focused && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+          };
+          return (
+            <Pressable
+              key={route.key}
+              onPress={onPress}
+              accessibilityRole="button"
+              accessibilityState={focused ? { selected: true } : {}}
+              accessibilityLabel={label}
+              className="flex-1 items-center"
+              hitSlop={4}
+            >
+              <Animated.View
+                layout={LinearTransition.springify().damping(18).stiffness(180)}
+                className={`flex-row items-center justify-center rounded-full h-12 ${
+                  focused ? 'bg-primary px-4' : 'px-3'
+                }`}
+              >
+                <Icon name={ICONS[route.name] ?? 'circle'} size={20} color={focused ? brand.onPrimary : brand.muted} />
+                {focused && (
+                  <Animated.View entering={FadeIn.duration(180)}>
+                    <Text className="text-white font-semibold text-[13px] ml-2" numberOfLines={1}>
+                      {label}
+                    </Text>
+                  </Animated.View>
+                )}
+              </Animated.View>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 export default function TabLayout() {
-  const brand = useBrand();
   const t = useT();
   const { can, canAny } = usePermissions();
 
@@ -37,54 +88,21 @@ export default function TabLayout() {
   const hidden = { href: null } as const;
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarShowLabel: false,
-        tabBarStyle: {
-          backgroundColor: brand.card,
-          borderTopColor: brand.border,
-          height: 64,
-          paddingBottom: 8,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label={t.tabs.home} emoji="🏠" focused={focused} />
-          ),
-        }}
-      />
+    <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <TabBar {...props} />}>
+      <Tabs.Screen name="index" options={{ title: t.tabs.home }} />
       <Tabs.Screen
         name="inventory"
-        options={{
-          ...(can('inventory.view') ? {} : hidden),
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label={t.tabs.inventory} emoji="📦" focused={focused} />
-          ),
-        }}
+        options={{ title: t.tabs.inventory, ...(can('inventory.view') ? {} : hidden) }}
       />
       <Tabs.Screen
+        // Network is suppliers-only on mobile — debtor and contact flows live
+        // on the dashboard.
         name="network"
-        options={{
-          // Network is suppliers-only on mobile — debtor and contact flows
-          // live on the dashboard.
-          ...(can('suppliers.view') ? {} : hidden),
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label={t.tabs.network} emoji="🤝" focused={focused} />
-          ),
-        }}
+        options={{ title: t.tabs.network, ...(can('suppliers.view') ? {} : hidden) }}
       />
       <Tabs.Screen
         name="sales"
-        options={{
-          ...(canAny('sales.history', 'sales.record') ? {} : hidden),
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label={t.tabs.sales} emoji="💰" focused={focused} />
-          ),
-        }}
+        options={{ title: t.tabs.sales, ...(canAny('sales.history', 'sales.record') ? {} : hidden) }}
       />
     </Tabs>
   );

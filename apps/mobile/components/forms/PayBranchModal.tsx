@@ -57,7 +57,7 @@ export function PayBranchModal({ balance, isOwner, onClose }: Props) {
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background" contentContainerClassName="px-6 py-8" keyboardShouldPersistTaps="handled">
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-xl font-bold text-text">{t.branchTransfers.payTitle(balance.creditorShop.name)}</Text>
+          <Text className="font-display text-2xl text-text">{t.branchTransfers.payTitle(balance.creditorShop.name)}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-primary font-medium">{t.common.cancel}</Text>
           </TouchableOpacity>
@@ -80,7 +80,7 @@ export function PayBranchModal({ balance, isOwner, onClose }: Props) {
           keyboardType="decimal-pad"
           placeholder="0"
           placeholderTextColor={brand.mutedSubtle}
-          className="border rounded-xl px-4 py-3 text-text bg-card text-base border-border mb-3"
+          className="border rounded-2xl px-4 py-3.5 text-text bg-card text-base border-border mb-3"
         />
         <Text className="text-muted text-xs mb-6">
           {isOwner ? t.branchTransfers.payOwnerHint : t.branchTransfers.payCustodianHint}

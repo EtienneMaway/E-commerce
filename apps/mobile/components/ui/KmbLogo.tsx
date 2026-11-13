@@ -1,7 +1,18 @@
 import { Image } from 'react-native';
 
 interface Props {
-  /** Edge length in px. The dashboard's login uses 56. */
+  /**
+ * The KMB-Talk mark: a paper K on a malachite tile, its copper leg crossing
+ * over the arm.
+ *
+ * Mobile has no `react-native-svg`, and adding it would mean a native module
+ * and a full rebuild for one logo, so this renders `assets/logo-mark.png`,
+ * generated from `assets/src/logo-mark.svg` by `scripts/gen-native-icons.sh`.
+ * The web's `KmbLogo` draws the same mark in the same 1024 space.
+ *
+ * No `elevation` here: Android draws elevation from the view's square bounds,
+ * not the image's alpha, so it would show a square shadow behind the rounded tile.
+ */
   size?: number;
   className?: string;
 }
