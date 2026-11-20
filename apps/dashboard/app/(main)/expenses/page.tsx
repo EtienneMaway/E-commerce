@@ -30,6 +30,8 @@ import {
   resolveActorFilter,
 } from '../../../components/ui/ActorFilter';
 import { useAuthStore } from '../../../store/auth.store';
+import { usePersonaStore } from '../../../store/persona.store';
+import { SpendRemainingDialog } from '../../../components/ui/SpendRemainingDialog';
 
 interface CashPosition {
   totalExpenses: string;
@@ -118,6 +120,17 @@ export default function ExpensesPage() {
   });
 
   const cash = cashData as CashPosition | undefined;
+
+  // Full employees are also capped per day at a share of what they sold today —
+  // only while acting on the employer's books.
+  const persona = usePersonaStore((s) => s.kind);
+  const isFullOnEmployerBooks =
+    user?.activeEmployment?.tier === 'FULL' && persona === 'employer';
+  const { data: allowance } = useQuery({
+    queryKey: QK.expenseAllowance,
+    queryFn: expensesApi.allowance,
+    enabled: isFullOnEmployerBooks && can('expenses.record'),
+  });
 
   // USD expenses come out of FC reserves at the Current Market Rate (less favourable).
   // Surface the smaller effective cap only when the user has actually started
@@ -249,6 +262,16 @@ export default function ExpensesPage() {
           <h1 className="page-title">{t.expenses.title}</h1>
           <p className="page-sub">{t.expenses.sub}</p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <SpendRemainingDialog
+          input={{
+            profitLedgerUsd: cash?.availableProfitCash ?? null,
+            dailyAllowanceUsd: isFullOnEmployerBooks ? allowance?.remainingUsd ?? null : null,
+            miniAllowanceFc: null,
+            systemRate,
+            marketRate: buyingRate,
+          }}
+        />
         {cash && (
           <div
             className="text-xs font-semibold px-3 py-1.5 rounded-full"
@@ -263,6 +286,7 @@ export default function ExpensesPage() {
             {t.dashboard.availableBusinessCash}: {formatCurrency(cash.availableBusinessCash)}
           </div>
         )}
+        </div>
       </div>
 
       <div className="page-content space-y-6">

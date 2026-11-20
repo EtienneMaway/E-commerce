@@ -18,7 +18,8 @@ import { StatCard } from './ui/StatCard';
 import { EmptyState } from './ui/EmptyState';
 import { MiniExpenseModal } from './forms/MiniExpenseModal';
 import { formatDate, getErrorMessage } from '../lib/utils';
-import { formatFcValue } from '../lib/currency';
+import { formatFcValue, useExchangeRate } from '../lib/currency';
+import { SpendRemainingButton } from './SpendRemainingButton';
 import { computeOfflineAllowance } from '../lib/mini-allowance';
 import { useOfflineStore } from '../store/offline.store';
 import { useT } from '../lib/i18n';
@@ -65,6 +66,8 @@ export function MiniExpensesView() {
         snapshotRate: offlineState.snapshotRate,
       }) ?? undefined
     : (allowanceData as MiniExpenseAllowance | undefined);
+
+  const systemRate = parseFloat(useExchangeRate());
 
   // Expenses recorded offline (queued, not yet synced to the server).
   const queued = useOfflineStore((s) => s.pendingExpenses).filter((e) => e.kind === 'mini');
@@ -132,6 +135,20 @@ export function MiniExpensesView() {
             {expenses.length + queued.length} {t.expenses.countLabel}
           </Text>
         </Card>
+
+        {/* The allowance above already counts queued expenses (offline it is
+            recomputed from the queue), so they are not passed again. */}
+        <SpendRemainingButton
+          className="mt-3"
+          isOffline={isOffline}
+          input={{
+            profitLedgerUsd: null,
+            dailyAllowanceUsd: null,
+            miniAllowanceFc: allowance?.remainingFc ?? null,
+            systemRate,
+            marketRate: null,
+          }}
+        />
 
         {/* The spending ceiling, side by side: what this round's sales have
             earned them, and what is left of it — so the cap is known before

@@ -1096,6 +1096,19 @@ const en = {
     date: 'Date',
     totalLabel: 'Total',
     countLabel: 'entries',
+    spendLeftBtn: 'Left to spend',
+    spendLeftTitle: 'What you can still spend',
+    spendLeftFcLabel: 'In francs (FC)',
+    spendLeftUsdLabel: 'In dollars (USD)',
+    spendLeftBusinessHint:
+      'The profit still in the till. Spending in USD gives less, because the dollars are bought at the Current Market Rate.',
+    spendLeftDailyHint:
+      'Your daily allowance set by your employer, also limited by the profit in the till. Resets tomorrow.',
+    spendLeftMiniHint:
+      'Your share of what you have sold and not yet handed over, set by your employer. You record expenses in FC; USD is for reference.',
+    spendLeftNone: 'Nothing left to spend right now.',
+    spendLeftOffline: 'Offline — last known figure, minus expenses waiting to sync.',
+    spendLeftClose: 'Close',
     allowanceToSpendToday: 'To spend today',
     allowanceLeftToday: 'Left today',
     allowanceHint: (pct: string, sold: string) =>
@@ -2322,6 +2335,19 @@ const fr: Translations = {
     date: 'Date',
     totalLabel: 'Total',
     countLabel: 'entrées',
+    spendLeftBtn: 'Reste à dépenser',
+    spendLeftTitle: 'Ce que vous pouvez encore dépenser',
+    spendLeftFcLabel: 'En francs (FC)',
+    spendLeftUsdLabel: 'En dollars (USD)',
+    spendLeftBusinessHint:
+      'Le bénéfice encore en caisse. Dépenser en USD donne moins, car les dollars s’achètent au Taux du marché actuel.',
+    spendLeftDailyHint:
+      'Votre plafond du jour fixé par votre employeur, limité aussi par le bénéfice en caisse. Remis à zéro demain.',
+    spendLeftMiniHint:
+      'Votre part de ce que vous avez vendu et pas encore remis, fixée par votre employeur. Vous enregistrez vos dépenses en FC ; l’USD est indicatif.',
+    spendLeftNone: 'Plus rien à dépenser pour le moment.',
+    spendLeftOffline: 'Hors ligne — dernier montant connu, moins les dépenses en attente de synchronisation.',
+    spendLeftClose: 'Fermer',
     allowanceToSpendToday: "À dépenser aujourd'hui",
     allowanceLeftToday: "Reste aujourd'hui",
     allowanceHint: (pct: string, sold: string) =>

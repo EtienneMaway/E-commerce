@@ -7,6 +7,8 @@ export const QK = {
   exchangeRate: ['currency', 'rate'] as const,
   dashboard: ['dashboard', 'summary'] as const,
   cashPosition: ['dashboard', 'cash-position'] as const,
+  // Under 'expenses' so the existing ['expenses'] invalidations refresh it.
+  expenseAllowance: ['expenses', 'allowance'] as const,
   inventoryProducts: ['inventory', 'products'] as const,
   inventory: (filters?: object) => ['inventory', filters ?? {}] as const,
   productGroups: ['product-groups'] as const,
