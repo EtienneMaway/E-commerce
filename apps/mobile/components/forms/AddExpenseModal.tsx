@@ -9,7 +9,7 @@ import {
 import { QK } from '../../lib/query-keys';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
-import { getErrorMessage } from '../../lib/utils';
+import { showRequestError } from '../../lib/request-error';
 import { useOfflineStore } from '../../store/offline.store';
 import { useT } from '../../lib/i18n';
 import { showAlert } from '../../lib/alert';
@@ -48,7 +48,7 @@ export function AddExpenseModal({ visible, onClose }: Props) {
       setDescription('');
       onClose();
     },
-    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showRequestError(t, err),
   });
 
   const handleSubmit = () => {

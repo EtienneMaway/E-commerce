@@ -77,6 +77,10 @@ const en = {
     paymentRecordedBody: (who: string) => `Your balance with ${who} has been reduced.`,
   },
   common: {
+    offlineTitle: 'No connection',
+    timeoutTitle: 'The server is slow',
+    overLimitTitle: 'Not enough left to spend',
+    errorTitle: 'Something went wrong',
     loading: 'Loading...',
     cancel: 'Cancel',
     close: 'Close',
@@ -182,8 +186,8 @@ const en = {
     totalExpenses: 'Total Expenses',
     totalExpensesSub: 'Operating costs (all time)',
     availableProfitCash: 'Available Profit Cash',
-    availableProfitCashSub: 'Profit not yet spent or withdrawn',
-    availableProfitCashOver: 'Over-spent — expenses + withdrawals exceed profit',
+    availableProfitCashSub: 'Profit still in the till — what expenses can use',
+    availableProfitCashOver: 'Over-spent — expenses exceed the profit in the till',
     businessCashTitle: 'Business Cash Flow',
     businessCashSub: 'Actual money (cash-basis)',
     totalCashReceived: 'Total Cash Received',
@@ -775,6 +779,19 @@ const en = {
     description: 'Description (optional)',
     descriptionPlaceholder: 'Extra details…',
     date: 'Date',
+    spendLeftBtn: 'Left to spend',
+    spendLeftTitle: 'What you can still spend',
+    spendLeftFcLabel: 'In francs (FC)',
+    spendLeftUsdLabel: 'In dollars (USD)',
+    spendLeftBusinessHint:
+      'The profit still in the till. Spending in USD gives less, because the dollars are bought at the Current Market Rate.',
+    spendLeftDailyHint:
+      'Your daily allowance set by your employer, also limited by the profit in the till. Resets tomorrow.',
+    spendLeftMiniHint:
+      'Your share of what you have sold and not yet handed over, set by your employer. You record expenses in FC; USD is for reference.',
+    spendLeftNone: 'Nothing left to spend right now.',
+    spendLeftOffline: 'Offline — last known figure, minus expenses waiting to sync.',
+    spendLeftClose: 'Close',
     usdBuyingRateWarningTitle: 'USD expenses deduct FC at the Current Market Rate',
     usdBuyingRateWarningBody: (typedUsd: string, fcDeducted: string, buyingRate: string) =>
       `Cash is held as FC. A ${typedUsd} expense will deduct ${fcDeducted} from the till at the Current Market Rate (${buyingRate} FC/$).`,
@@ -1937,6 +1954,10 @@ const fr: Translations = {
     paymentRecordedBody: (who: string) => `Votre solde avec ${who} a été réduit.`,
   },
   common: {
+    offlineTitle: 'Pas de connexion',
+    timeoutTitle: 'Le serveur est lent',
+    overLimitTitle: 'Plus assez à dépenser',
+    errorTitle: "Un problème est survenu",
     loading: 'Chargement...',
     cancel: 'Annuler',
     close: 'Fermer',
@@ -2040,8 +2061,8 @@ const fr: Translations = {
     totalExpenses: 'Dépenses totales',
     totalExpensesSub: 'Charges d\'exploitation (tout temps)',
     availableProfitCash: 'Bénéfice disponible',
-    availableProfitCashSub: 'Bénéfice non encore dépensé ni retiré',
-    availableProfitCashOver: 'Dépassement — dépenses + retraits excèdent le bénéfice',
+    availableProfitCashSub: 'Bénéfice encore en caisse — utilisable pour les dépenses',
+    availableProfitCashOver: 'Dépassement — les dépenses excèdent le bénéfice en caisse',
     businessCashTitle: 'Trésorerie d\'entreprise',
     businessCashSub: 'Argent réel (comptant)',
     totalCashReceived: 'Total encaissé',
@@ -2621,6 +2642,19 @@ const fr: Translations = {
     description: 'Description (facultative)',
     descriptionPlaceholder: 'Détails supplémentaires…',
     date: 'Date',
+    spendLeftBtn: 'Reste à dépenser',
+    spendLeftTitle: 'Ce que vous pouvez encore dépenser',
+    spendLeftFcLabel: 'En francs (FC)',
+    spendLeftUsdLabel: 'En dollars (USD)',
+    spendLeftBusinessHint:
+      'Le bénéfice encore en caisse. Dépenser en USD donne moins, car les dollars s’achètent au Taux du marché actuel.',
+    spendLeftDailyHint:
+      'Votre plafond du jour fixé par votre employeur, limité aussi par le bénéfice en caisse. Remis à zéro demain.',
+    spendLeftMiniHint:
+      'Votre part de ce que vous avez vendu et pas encore remis, fixée par votre employeur. Vous enregistrez vos dépenses en FC ; l’USD est indicatif.',
+    spendLeftNone: 'Plus rien à dépenser pour le moment.',
+    spendLeftOffline: 'Hors ligne — dernier montant connu, moins les dépenses en attente de synchronisation.',
+    spendLeftClose: 'Fermer',
     usdBuyingRateWarningTitle: 'Les dépenses en USD déduisent des FC au Taux du marché actuel',
     usdBuyingRateWarningBody: (typedUsd: string, fcDeducted: string, buyingRate: string) =>
       `La trésorerie est en FC. Une dépense de ${typedUsd} déduira ${fcDeducted} de la caisse au Taux du marché actuel (${buyingRate} FC/$).`,

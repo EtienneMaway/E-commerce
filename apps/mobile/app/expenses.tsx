@@ -24,8 +24,9 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { StatCard } from '../components/ui/StatCard';
 import { AddExpenseModal } from '../components/forms/AddExpenseModal';
 import { MiniExpensesView } from '../components/MiniExpensesView';
+import { SpendRemainingButton } from '../components/SpendRemainingButton';
 import { formatDate, getErrorMessage } from '../lib/utils';
-import { useFormatCurrency } from '../lib/currency';
+import { useExchangeRate, useFormatCurrency } from '../lib/currency';
 import { useOfflineStore } from '../store/offline.store';
 import { useAuthStore } from '../store/auth.store';
 import { usePersonaStore } from '../store/persona.store';
@@ -108,6 +109,8 @@ function OwnerExpensesScreen() {
   });
 
   const buyingRate = rate?.sellingRate ? parseFloat(rate.sellingRate) : null;
+  // Offline-aware System Rate (frozen at go-offline), for the "left to spend" sheet.
+  const systemRate = parseFloat(useExchangeRate());
 
   // FC value of an expense at the Current Market Rate — the realistic amount
   // of FC drained from the till for the booked USD-equivalent. Mirrors the
@@ -190,6 +193,19 @@ function OwnerExpensesScreen() {
             {list.totals.count} {t.expenses.countLabel}
           </Text>
         </Card>
+
+        <SpendRemainingButton
+          className="mt-3"
+          isOffline={isOffline}
+          input={{
+            profitLedgerUsd: cash?.availableProfitCash ?? null,
+            dailyAllowanceUsd: allowance?.remainingUsd ?? null,
+            miniAllowanceFc: null,
+            systemRate,
+            marketRate: buyingRate,
+            queued: pendingOffline.map((e) => ({ amount: e.amount, currency: e.currency })),
+          }}
+        />
 
         {/* Full-employee daily ceiling, side by side: today's budget and what
             is left of it — known before they start typing an amount. */}

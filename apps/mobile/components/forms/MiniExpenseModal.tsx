@@ -12,7 +12,7 @@ import { useOfflineStore } from '../../store/offline.store';
 import { computeOfflineAllowance } from '../../lib/mini-allowance';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
-import { getErrorMessage } from '../../lib/utils';
+import { showRequestError } from '../../lib/request-error';
 import { useT } from '../../lib/i18n';
 import { showAlert } from '../../lib/alert';
 import { FormModal } from '../ui/FormModal';
@@ -89,7 +89,7 @@ export function MiniExpenseModal({ visible, onClose }: Props) {
       reset();
       onClose();
     },
-    onError: (err) => showAlert(t.common.error, getErrorMessage(err)),
+    onError: (err) => showRequestError(t, err),
   });
 
   const handleSubmit = () => {

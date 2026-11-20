@@ -13,6 +13,26 @@ import { DashboardService } from '../dashboard/dashboard.service';
 import { ActorContext } from '../common/types/actor-context';
 import { actorCondToWhereValue, resolveActorFilter } from '../common/actor-filter';
 import { CreateExpenseDto } from './dto/create-expense.dto';
+import { EXPENSE_OVER_LIMIT } from '../common/constants';
+
+/**
+ * "This expense is more than what is left to spend: 198 954 FC or $79.58."
+ * Translated to French in common/i18n/messages.ts — keep the shape in sync.
+ */
+function overLimitMessage(
+  capLedgerUsd: Decimal,
+  systemRate: Decimal | null,
+  marketRate: Decimal | null,
+): string {
+  const left = Decimal.max(capLedgerUsd, 0);
+  if (!systemRate || systemRate.lte(0)) {
+    return `This expense is more than what is left to spend: $${left.toFixed(2, Decimal.ROUND_DOWN)}.`;
+  }
+  const fc = left.mul(systemRate).floor();
+  const usd = marketRate && marketRate.gt(0) ? fc.div(marketRate) : left;
+  const fcText = new Intl.NumberFormat('fr-CD').format(fc.toNumber());
+  return `This expense is more than what is left to spend: ${fcText} FC or $${usd.toFixed(2, Decimal.ROUND_DOWN)}.`;
+}
 import { ExpensePeriod, ListExpensesQueryDto } from './dto/list-expenses-query.dto';
 import { holderCond, readScope, writeScope } from '../common/shop-scope';
 
@@ -127,12 +147,14 @@ export class ExpensesService {
       const allowance = await this.dailyAllowance(ctx, requestedDate);
       if (ledgerUsd.gt(new Decimal(allowance.remainingUsd))) {
         const usd = (v: string) => `$${new Decimal(v).toFixed(2, Decimal.ROUND_DOWN)}`;
-        throw new BadRequestException(
+        throw new BadRequestException({
           // toFixed() with no argument drops trailing zeros: "5", not "5.00".
-          `Daily expenses are capped at ${new Decimal(allowance.pct).toFixed()}% of what you sell that day. ` +
+          message:
+            `Daily expenses are capped at ${new Decimal(allowance.pct).toFixed()}% of what you sell that day. ` +
             `You have sold ${usd(allowance.soldUsd)} that day, giving you ${usd(allowance.allowanceUsd)} ` +
             `to spend — ${usd(allowance.spentUsd)} already spent, so ${usd(allowance.remainingUsd)} left.`,
-        );
+          code: EXPENSE_OVER_LIMIT,
+        });
       }
     }
 
@@ -143,15 +165,15 @@ export class ExpensesService {
     const availableProfit = new Decimal(position.availableProfitCash);
     const availableBusinessCash = new Decimal(position.availableBusinessCash);
 
-    if (amountUsd.gt(availableProfit)) {
-      throw new BadRequestException(
-        `Cannot spend more than current profit — available profit is ${availableProfit.toFixed(4)} USD`,
-      );
-    }
-    if (amountUsd.gt(availableBusinessCash)) {
-      throw new BadRequestException(
-        `Cannot spend more than available business cash (${availableBusinessCash.toFixed(4)} USD)`,
-      );
+    // availableProfitCash is already capped by the cash in the till, so one
+    // check covers both. The figures are what the user could still enter: FC at
+    // the System Rate, USD bought at the Current Market Rate.
+    const cap = Decimal.min(availableProfit, availableBusinessCash);
+    if (amountUsd.gt(cap)) {
+      throw new BadRequestException({
+        message: overLimitMessage(cap, systemRate, buyingRate),
+        code: EXPENSE_OVER_LIMIT,
+      });
     }
 
     const expense = this.expenseRepo.create({
