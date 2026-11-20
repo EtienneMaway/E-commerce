@@ -14,7 +14,7 @@ import {
   expensesApi,
 } from '../../../lib/api';
 import { QK } from '../../../lib/query-keys';
-import { formatDate, getErrorMessage } from '../../../lib/utils';
+import { formatDate } from '../../../lib/utils';
 import { useFormatCurrency } from '../../../lib/currency';
 import { useCurrencyStore } from '../../../store/currency.store';
 import { useT } from '../../../lib/i18n';
@@ -32,6 +32,7 @@ import {
 import { useAuthStore } from '../../../store/auth.store';
 import { usePersonaStore } from '../../../store/persona.store';
 import { SpendRemainingDialog } from '../../../components/ui/SpendRemainingDialog';
+import { RequestErrorDialog } from '../../../components/ui/RequestErrorDialog';
 
 interface CashPosition {
   totalExpenses: string;
@@ -74,6 +75,9 @@ export default function ExpensesPage() {
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [formError, setFormError] = useState('');
+  // A refusal from the API (or no answer at all) opens a dialog; the form's
+  // own checks stay inline under the fields.
+  const [requestError, setRequestError] = useState<unknown>(null);
   const [overBudgetOpen, setOverBudgetOpen] = useState(false);
   const [overBudgetProjection, setOverBudgetProjection] = useState('0');
 
@@ -203,7 +207,10 @@ export default function ExpensesPage() {
       setFormError('');
       setOverBudgetOpen(false);
     },
-    onError: (err) => setFormError(getErrorMessage(err)),
+    onError: (err) => {
+      setOverBudgetOpen(false);
+      setRequestError(err);
+    },
   });
 
   const deleteMutation = useMutation({
@@ -257,6 +264,7 @@ export default function ExpensesPage() {
 
   return (
     <div>
+      <RequestErrorDialog error={requestError} onClose={() => setRequestError(null)} />
       <div className="page-header">
         <div>
           <h1 className="page-title">{t.expenses.title}</h1>

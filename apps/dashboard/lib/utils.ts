@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useLocaleStore } from '../store/locale.store';
 
 const PIECES_PER_DOZEN = 12;
 
@@ -76,14 +77,75 @@ export function initialsOf(name: string): string {
     .join('');
 }
 
-export function getErrorMessage(err: unknown): string {
-  if (err && typeof err === 'object' && 'response' in err) {
-    const e = err as { response?: { data?: { message?: string } } };
-    return e.response?.data?.message ?? 'An error occurred';
-  }
-  if (err instanceof Error) return err.message;
-  return 'An error occurred';
+/**
+ * Plain-language text for failures that never reached the API (so it could
+ * not translate them itself): no connection, a timeout, or a reply without a
+ * message. Read from the locale store at call time — this runs outside React.
+ */
+interface RequestErrorText {
+  readonly offline: string;
+  readonly timeout: string;
+  readonly generic: string;
 }
+
+const REQUEST_ERRORS: Record<'en' | 'fr', RequestErrorText> = {
+  en: {
+    offline: 'No connection to the server. Check your internet connection and try again.',
+    timeout: 'The server is taking too long to answer. Please try again in a moment.',
+    generic: 'Something went wrong. Please try again.',
+  },
+  fr: {
+    offline: 'Pas de connexion au serveur. Vérifiez votre connexion internet et réessayez.',
+    timeout: 'Le serveur met trop de temps à répondre. Réessayez dans un instant.',
+    generic: "Une erreur s'est produite. Veuillez réessayer.",
+  },
+};
+
+function requestErrorText(): RequestErrorText {
+  return REQUEST_ERRORS[useLocaleStore.getState().locale === 'fr' ? 'fr' : 'en'];
+}
+
+/** True for an axios failure that ran out of time rather than one that could not connect. */
+export function isTimeoutError(error: unknown): boolean {
+  return (
+    axios.isAxiosError(error) &&
+    !error.response &&
+    (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || /timeout/i.test(error.message))
+  );
+}
+
+/**
+ * The message to show for a failed request. Server refusals arrive already
+ * translated (Accept-Language); connection problems get plain EN/FR text here
+ * instead of axios's "Network Error" / "timeout of 10000ms exceeded".
+ */
+export function getErrorMessage(error: unknown): string {
+  const text = requestErrorText();
+  if (axios.isAxiosError(error)) {
+    if (!error.response) return isTimeoutError(error) ? text.timeout : text.offline;
+    const msg = (error.response.data as { message?: unknown } | undefined)?.message;
+    if (Array.isArray(msg)) return msg.join(', ');
+    if (typeof msg === 'string' && msg.length > 0) return msg;
+    return text.generic;
+  }
+  if (error && typeof error === 'object' && 'response' in error) {
+    const msg = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+    if (Array.isArray(msg)) return msg.join(', ');
+    if (typeof msg === 'string' && msg.length > 0) return msg;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return text.generic;
+}
+
+/** The `code` the API put on a refusal (e.g. `EXPENSE_OVER_LIMIT`), if any. */
+export function getErrorCode(error: unknown): string | null {
+  if (!axios.isAxiosError(error)) return null;
+  const code = (error.response?.data as { code?: unknown } | undefined)?.code;
+  return typeof code === 'string' ? code : null;
+}
+
+/** Matches `EXPENSE_OVER_LIMIT` in apps/api/src/common/constants.ts. */
+export const EXPENSE_OVER_LIMIT = 'EXPENSE_OVER_LIMIT';
 
 /**
  * True when the API refused a write because the dashboard is on "All branches"

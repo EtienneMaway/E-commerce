@@ -77,6 +77,10 @@ const en = {
     paymentRecordedBody: (who: string) => `Your balance with ${who} has been reduced.`,
   },
   common: {
+    offlineTitle: 'No connection',
+    timeoutTitle: 'The server is slow',
+    overLimitTitle: 'Not enough left to spend',
+    errorTitle: 'Something went wrong',
     loading: 'Loading...',
     cancel: 'Cancel',
     close: 'Close',
@@ -1950,6 +1954,10 @@ const fr: Translations = {
     paymentRecordedBody: (who: string) => `Votre solde avec ${who} a été réduit.`,
   },
   common: {
+    offlineTitle: 'Pas de connexion',
+    timeoutTitle: 'Le serveur est lent',
+    overLimitTitle: 'Plus assez à dépenser',
+    errorTitle: "Un problème est survenu",
     loading: 'Chargement...',
     cancel: 'Annuler',
     close: 'Fermer',

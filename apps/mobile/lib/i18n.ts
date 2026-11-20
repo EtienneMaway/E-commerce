@@ -4,6 +4,10 @@ import { useLocaleStore } from '../store/locale.store';
 
 const en = {
   common: {
+    offlineTitle: 'No connection',
+    timeoutTitle: 'The server is slow',
+    overLimitTitle: 'Not enough left to spend',
+    errorTitle: 'Something went wrong',
     loadingMore: 'Loading more…',
     connectToLoadMore: 'Offline — connect to load older entries',
     endOfList: 'That’s everything',
@@ -1248,6 +1252,10 @@ export type Translations = typeof en;
 
 const fr: Translations = {
   common: {
+    offlineTitle: 'Pas de connexion',
+    timeoutTitle: 'Le serveur est lent',
+    overLimitTitle: 'Plus assez à dépenser',
+    errorTitle: "Un problème est survenu",
     loadingMore: 'Chargement…',
     connectToLoadMore: 'Hors ligne — connectez-vous pour charger la suite',
     endOfList: 'C’est tout',

@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, ILike, In, IsNull, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
+import { EXPENSE_OVER_LIMIT } from '../common/constants';
 import {
   ConsignmentRequest,
   ConsignmentStatus,
@@ -1223,12 +1224,14 @@ export class MiniSettlementsService {
     if (amount.gt(remaining)) {
       const fc = (v: Decimal | string) =>
         new Intl.NumberFormat('fr-CD').format(Math.trunc(Number(v)));
-      throw new BadRequestException(
+      throw new BadRequestException({
         // toFixed() with no argument drops trailing zeros: "5", not "5.00".
-        `Expenses are capped at ${new Decimal(allowance.pct).toFixed()}% of what you have sold. You have sold ` +
+        message:
+          `Expenses are capped at ${new Decimal(allowance.pct).toFixed()}% of what you have sold. You have sold ` +
           `${fc(allowance.soldFc)} FC this round, giving you ${fc(allowance.allowanceFc)} FC ` +
           `to spend — ${fc(allowance.spentFc)} FC already claimed, so ${fc(remaining)} FC left.`,
-      );
+        code: EXPENSE_OVER_LIMIT,
+      });
     }
 
     const expense = this.miniExpenseRepo.create({

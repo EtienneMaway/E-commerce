@@ -11,6 +11,29 @@ interface Translation {
 }
 
 export const FR_TRANSLATIONS: Translation[] = [
+  // ─── Expense spending limits (code EXPENSE_OVER_LIMIT) ───────────────────
+  {
+    pattern: /^This expense is more than what is left to spend: (.+) FC or \$(.+)\.$/,
+    fr: (m) => `Cette dépense dépasse ce qu'il vous reste à dépenser : ${m[1]} FC ou ${m[2]} $.`,
+  },
+  {
+    pattern: /^This expense is more than what is left to spend: \$(.+)\.$/,
+    fr: (m) => `Cette dépense dépasse ce qu'il vous reste à dépenser : ${m[1]} $.`,
+  },
+  {
+    pattern:
+      /^Daily expenses are capped at (\S+)% of what you sell that day\. You have sold (\S+) that day, giving you (\S+) to spend — (\S+) already spent, so (\S+) left\.$/,
+    fr: (m) =>
+      `Vos dépenses du jour sont limitées à ${m[1]} % de ce que vous vendez. Vous avez vendu ${m[2]} ce jour-là, ` +
+      `soit ${m[3]} à dépenser — ${m[4]} déjà dépensés, il reste donc ${m[5]}.`,
+  },
+  {
+    pattern:
+      /^Expenses are capped at (\S+)% of what you have sold\. You have sold (.+) FC this round, giving you (.+) FC to spend — (.+) FC already claimed, so (.+) FC left\.$/,
+    fr: (m) =>
+      `Vos dépenses sont limitées à ${m[1]} % de ce que vous avez vendu. Vous avez vendu ${m[2]} FC sur ce tour, ` +
+      `soit ${m[3]} FC à dépenser — ${m[4]} FC déjà déclarés, il reste donc ${m[5]} FC.`,
+  },
   // ─── Branch transfers ────────────────────────────────────────────────────
   {
     pattern: /^Only the owner or the person in charge of this branch can do this$/,
