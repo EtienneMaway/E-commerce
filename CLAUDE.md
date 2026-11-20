@@ -289,7 +289,14 @@ availableBusinessCash =
   − totalWithdrawn
 ```
 
-The withdrawal and expense caps use this. Withdrawals are capped by `availableBusinessCash` only (you can pull out personal capital regardless of profit). Expenses are capped by **both** `availableProfitCash` and `availableBusinessCash` (you should not spend beyond earned profit).
+The withdrawal and expense caps use this. Withdrawals are capped by `availableBusinessCash` only — the owner may take out everything in the till. Expenses are capped by **both** `availableProfitCash` and `availableBusinessCash`.
+
+**`availableProfitCash` is the profit still inside the till** (`dashboard.service.profitStillInTill`, pure math in `dashboard/profit-in-till.ts`), capped by `availableBusinessCash`. Cash in the till is part stock money, part profit, and expenses may only use the profit part:
+- A direct sale adds its margin. A debtor payment (incl. a mini's handover) or external `PAYMENT_IN` adds `amount × that counterparty's margin rate` (Σ margin ÷ Σ value of our `CONSIGNED_OUT` lots / `PRODUCT_OUT` rows) — paying 50% of a debt brings 50% of its profit. Profit counts when the cash arrives, not at consignment acceptance. A payment from another branch carries no profit.
+- An expense removes its full ledger-USD value.
+- A **take-out** (withdrawal, payment to another branch) removes the same *share* of profit as its share of cash: emptying the till empties the profit, and later sales refill it. A withdrawal is never a debt against future profit — the old `totalProfit − expenses − withdrawals` formula blocked every expense after an owner withdrew handover cash to restock.
+- Order matters, so events are bucketed between take-outs (SQL count of take-outs at or before each row's `created_at`). `totalProfit` is still reported (accrual) but no longer drives the cap.
+- Employee allowances (mini per handover cycle, full employee per day, owner-set %) are separate caps and unchanged.
 
 **Display vs ledger USD diverge on the expenses page only.** The `/expenses` page renders all USD figures (top KPI, totals, per-row, byCategory) at the **Current Market Rate** — what FC outflows are realistically worth in USD — via the dedicated `totalExpensesAtBuyingRate` field on `CashPosition` and a local `fmtExpenseUsdAtBuyingRate` helper. The ledger (`totalExpenses`, all caps, profit math) still uses the System Rate. Don't conflate the two.
 

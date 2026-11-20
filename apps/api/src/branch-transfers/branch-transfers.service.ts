@@ -560,6 +560,33 @@ export class BranchTransfersService {
   }
 
   /**
+   * `cashFlows`, one row per confirmed payment, oldest first, stamped with the
+   * moment the cash actually moved (confirmation, or creation for the owner's
+   * immediately-confirmed payments). The dashboard's profit-in-till treats an
+   * outgoing payment as a take-out, like a withdrawal, and an incoming one as
+   * cash carrying no profit (goods move between branches at cost).
+   */
+  async timedCashFlows(
+    orgId: string,
+    shopId: string,
+  ): Promise<{ at: Date; amountUsd: Decimal; direction: 'in' | 'out' }[]> {
+    const rows = await this.paymentRepo.find({
+      where: [
+        { orgId, fromShopId: shopId, status: BranchPaymentStatus.CONFIRMED },
+        { orgId, toShopId: shopId, status: BranchPaymentStatus.CONFIRMED },
+      ],
+      select: { id: true, amountUsd: true, answeredAt: true, createdAt: true, fromShopId: true },
+    });
+    return rows
+      .map((p) => ({
+        at: p.answeredAt ?? p.createdAt,
+        amountUsd: new Decimal(p.amountUsd),
+        direction: p.fromShopId === shopId ? ('out' as const) : ('in' as const),
+      }))
+      .sort((a, b) => a.at.getTime() - b.at.getTime());
+  }
+
+  /**
    * Whether goods that left this custody are still in escrow. A reject would
    * put them back on the custodian's lots, so the custody must stay open until
    * the transfer is answered. Incoming goods don't block: if the custody ends

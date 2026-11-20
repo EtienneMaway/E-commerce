@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import {
+  BranchPaymentStatus,
   ConsignmentRequest,
   ConsignmentStatus,
   DebtorCredit,
@@ -33,6 +34,7 @@ import type { ActorContext } from '../common/types/actor-context';
 import { holderCond, holderScope, readScope } from '../common/shop-scope';
 import { applyActorCondToQb, resolveActorFilter } from '../common/actor-filter';
 import { BranchTransfersService } from '../branch-transfers/branch-transfers.service';
+import { profitInTill, segmentIndex } from './profit-in-till';
 
 export interface DashboardSummary {
   totalIOwe: string;
@@ -143,7 +145,7 @@ export interface CashPosition {
   totalProfit: string;              // totalIncome − totalCogs (USD)
   totalExpenses: string;            // Sum of all expenses converted to USD at the System Rate (ledger)
   totalExpensesAtBuyingRate: string;// Same sum but converted at the Current Market Rate — for display only
-  availableProfitCash: string;      // totalProfit − totalExpenses − totalWithdrawn; negative = over-spent
+  availableProfitCash: string;      // Profit still inside the till (see profitStillInTill), capped by availableBusinessCash; negative = over-spent
   // Cash-basis view — actual money that has arrived
   totalCashReceived: string;        // direct sales + debtor payments + external PAYMENT_IN
   totalWithdrawn: string;           // Cumulative withdrawals (USD)
@@ -484,7 +486,12 @@ export class DashboardService {
    *   - Direct sales: revenue = salePrice × qtySold, COGS = unitCost × qtySold
    *   - Consignments ACCEPTED: revenue = Σ agreedUnitPrice × qty, COGS = Σ unitCost × qty
    *   - External PRODUCT_OUT: revenue = amount, COGS = unitCostUsed × qty
-   *   - availableProfitCash = totalProfit − totalExpenses − totalWithdrawn
+   *   (totalProfit is reported as is; it no longer drives the spending cap)
+   *
+   * Spending guard:
+   *   - availableProfitCash = min(profit still inside the till, availableBusinessCash)
+   *     — see profitStillInTill. A withdrawal takes its share of the till's
+   *     profit; it is never a debt against future profit.
    *
    * Cash-basis (for withdrawal / business cash):
    *   - totalCashReceived = direct sales + approved debtor payments + external PAYMENT_IN
@@ -597,11 +604,13 @@ export class DashboardService {
 
     let totalExpenses = new Decimal(0);
     let totalExpensesAtBuyingRate = new Decimal(0);
+    const timedExpenses: { at: Date; usd: Decimal }[] = [];
     for (const e of expenses) {
       const amount = new Decimal(e.amount);
       if (e.currency === ExpenseCurrency.USD) {
         totalExpenses = totalExpenses.plus(amount);
         totalExpensesAtBuyingRate = totalExpensesAtBuyingRate.plus(amount);
+        timedExpenses.push({ at: e.createdAt, usd: amount });
         continue;
       }
       const systemRateForRow = e.usdToFcRateSnapshot
@@ -609,6 +618,7 @@ export class DashboardService {
         : fallbackRate;
       if (systemRateForRow && systemRateForRow.gt(0)) {
         totalExpenses = totalExpenses.plus(amount.div(systemRateForRow));
+        timedExpenses.push({ at: e.createdAt, usd: amount.div(systemRateForRow) });
       }
       const buyingRateForRow =
         buyingRate && buyingRate.gt(0) ? buyingRate : systemRateForRow;
@@ -631,18 +641,24 @@ export class DashboardService {
     // One branch's outflow is another's inflow, so the org-wide figure skips it.
     // It is the BUSINESS's money: a mini's cash position is their own books
     // (holder scope) at the employer's branch, and must never pick it up.
-    const branchCash = ctx.shopId && ctx.tier !== 'MINI_EMPLOYEE'
-      ? await this.branchTransfers.cashFlows(ctx.orgId, ctx.shopId)
-      : { in: new Decimal(0), out: new Decimal(0) };
+    const branchFlows = ctx.shopId && ctx.tier !== 'MINI_EMPLOYEE'
+      ? await this.branchTransfers.timedCashFlows(ctx.orgId, ctx.shopId)
+      : [];
+    const branchCash = branchFlows.reduce(
+      (acc, f) =>
+        f.direction === 'in'
+          ? { in: acc.in.plus(f.amountUsd), out: acc.out }
+          : { in: acc.in, out: acc.out.plus(f.amountUsd) },
+      { in: new Decimal(0), out: new Decimal(0) },
+    );
     const availableBusinessCash = totalCashReceived
       .plus(branchCash.in)
       .minus(branchCash.out)
       .minus(totalExpenses)
       .minus(totalWithdrawn);
 
-    const availableProfitCash = totalProfit
-      .minus(totalExpenses)
-      .minus(totalWithdrawn);
+    const profitInTillNow = await this.profitStillInTill(ctx, timedExpenses, branchFlows);
+    const availableProfitCash = Decimal.min(profitInTillNow, availableBusinessCash);
 
     return {
       totalIncome: totalIncome.toFixed(4),
@@ -665,6 +681,172 @@ export class DashboardService {
         branchPaymentsOutCash: branchCash.out.toFixed(4),
       },
     };
+  }
+
+  /**
+   * The profit still sitting inside the till, in ledger USD — what expenses may
+   * be paid from.
+   *
+   * Every inflow brings cash plus the profit it carries: a direct sale its
+   * margin; a debtor or external payment its share of that counterparty's
+   * margin rate (paying 50% of a debt brings 50% of its profit); a payment from
+   * another branch none (goods move between branches at cost). Expenses take
+   * their full value out of profit. Take-outs — owner withdrawals and payments
+   * to other branches — take the same share of profit as of cash, so emptying
+   * the till empties the profit and later sales refill it. See profit-in-till.ts.
+   *
+   * Profit counts when the cash arrives, not when goods leave on consignment.
+   */
+  private async profitStillInTill(
+    ctx: ActorContext,
+    timedExpenses: readonly { at: Date; usd: Decimal }[],
+    branchFlows: readonly { at: Date; amountUsd: Decimal; direction: 'in' | 'out' }[],
+  ): Promise<Decimal> {
+    const withdrawals = await this.withdrawalRepo.find({
+      where: { orgId: ctx.orgId, ...(ctx.shopId ? { shopId: ctx.shopId } : {}) },
+      select: { id: true, withdrawnAt: true, amountUsd: true },
+    });
+    const branchOut = branchFlows.filter((f) => f.direction === 'out');
+    const takeOuts = [
+      ...withdrawals.map((w) => ({ at: w.withdrawnAt, usd: new Decimal(w.amountUsd) })),
+      ...branchOut.map((f) => ({ at: f.at, usd: f.amountUsd })),
+    ].sort((a, b) => a.at.getTime() - b.at.getTime());
+    const takeOutTimes = takeOuts.map((t) => t.at);
+
+    // SQL twin of segmentIndex(): how many take-outs happened at or before `ts`.
+    // Counted in the database so sales never have to be loaded row by row.
+    const tillParams = {
+      tillOrg: ctx.orgId,
+      ...(ctx.shopId ? { tillShop: ctx.shopId } : {}),
+      tillBpStatus: BranchPaymentStatus.CONFIRMED,
+    };
+    const takeOutsBefore = (ts: string): string => {
+      const w =
+        `(SELECT COUNT(*) FROM withdrawals tw WHERE tw.org_id = :tillOrg` +
+        `${ctx.shopId ? ' AND tw.shop_id = :tillShop' : ''} AND tw.withdrawn_at <= ${ts})`;
+      const b =
+        branchOut.length > 0
+          ? ` + (SELECT COUNT(*) FROM branch_payments tb WHERE tb.org_id = :tillOrg` +
+            ` AND tb.from_shop_id = :tillShop AND tb.status = :tillBpStatus` +
+            ` AND COALESCE(tb.answered_at, tb.created_at) <= ${ts})`
+          : '';
+      return `(${w}${b})`;
+    };
+
+    const [sales, debtorPayments, debtorRates, extPayments, extRates] = await Promise.all([
+      this.saleRepo
+        .createQueryBuilder('s')
+        .select(takeOutsBefore('s.created_at'), 'seg')
+        .addSelect('COALESCE(SUM(CAST(s.salePrice AS DECIMAL) * s.qtySold), 0)', 'cash')
+        .addSelect(
+          'COALESCE(SUM((CAST(s.salePrice AS DECIMAL) - CAST(s.unitCost AS DECIMAL)) * s.qtySold), 0)',
+          'profit',
+        )
+        .where(...holderCond('s', ctx))
+        .andWhere('s.rejected_at IS NULL')
+        .setParameters(tillParams)
+        .groupBy('seg')
+        .getRawMany<{ seg: string; cash: string; profit: string }>(),
+      // Same rows as getCashPosition's debtorPaymentsCash.
+      this.paymentRepo
+        .createQueryBuilder('p')
+        .innerJoin('debtor_credits', 'dc', 'dc.id = p.debtor_credit_id')
+        .select(takeOutsBefore('p.created_at'), 'seg')
+        .addSelect('dc.debtor_user_id', 'debtor')
+        .addSelect('dc.shop_id', 'shop')
+        .addSelect('COALESCE(SUM(CAST(p.amount AS DECIMAL)), 0)', 'cash')
+        .where('dc.org_id = :orgId', { orgId: ctx.orgId })
+        .andWhere(ctx.shopId ? 'dc.shop_id = :shopId' : '1=1', { shopId: ctx.shopId })
+        // tenancy-exempt: paidToUserId names the PERSON who received the cash.
+        .andWhere('p.paidToUserId = :payee', { payee: ctx.effectiveOwnerId })
+        .andWhere('p.direction = :dir', { dir: PaymentDirection.DEBTOR_TO_OWNER })
+        .andWhere('p.status = :status', { status: PaymentStatus.APPROVED })
+        .setParameters(tillParams)
+        .groupBy('seg')
+        .addGroupBy('dc.debtor_user_id')
+        .addGroupBy('dc.shop_id')
+        .getRawMany<{ seg: string; debtor: string; shop: string; cash: string }>(),
+      // Margin rate of everything consigned to each debtor, from our CONSIGNED_OUT
+      // lots (written by both consignment confirmation and direct consign).
+      this.entryRepo
+        .createQueryBuilder('e')
+        .select('e.debtor_user_id', 'debtor')
+        .addSelect('e.shop_id', 'shop')
+        .addSelect('COALESCE(SUM(CAST(e.sellingPrice AS DECIMAL) * e.quantityOriginal), 0)', 'value')
+        .addSelect(
+          'COALESCE(SUM((CAST(e.sellingPrice AS DECIMAL) - CAST(e.unitCost AS DECIMAL)) * e.quantityOriginal), 0)',
+          'margin',
+        )
+        .where(...holderCond('e', ctx))
+        .andWhere('e.source = :src', { src: InventorySource.CONSIGNED_OUT })
+        .andWhere('e.debtor_user_id IS NOT NULL')
+        .groupBy('e.debtor_user_id')
+        .addGroupBy('e.shop_id')
+        .getRawMany<{ debtor: string; shop: string; value: string; margin: string }>(),
+      this.externalTxRepo
+        .createQueryBuilder('tx')
+        .select(takeOutsBefore('tx.created_at'), 'seg')
+        .addSelect('tx.contact_id', 'contact')
+        .addSelect('COALESCE(SUM(CAST(tx.amount AS DECIMAL)), 0)', 'cash')
+        .where('tx.orgId = :orgId', { orgId: ctx.orgId })
+        .andWhere(ctx.shopId ? 'tx.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
+        .andWhere('tx.type = :type', { type: ExternalTransactionType.PAYMENT_IN })
+        .setParameters(tillParams)
+        .groupBy('seg')
+        .addGroupBy('tx.contact_id')
+        .getRawMany<{ seg: string; contact: string; cash: string }>(),
+      this.externalTxRepo
+        .createQueryBuilder('tx')
+        .select('tx.contact_id', 'contact')
+        .addSelect('COALESCE(SUM(CAST(tx.amount AS DECIMAL)), 0)', 'value')
+        .addSelect(
+          'COALESCE(SUM(CAST(tx.amount AS DECIMAL)), 0) - ' +
+            'COALESCE(SUM(CAST(tx.unitCostUsed AS DECIMAL) * tx.quantity), 0)',
+          'margin',
+        )
+        .where('tx.orgId = :orgId', { orgId: ctx.orgId })
+        .andWhere(ctx.shopId ? 'tx.shopId = :shopId' : '1=1', { shopId: ctx.shopId })
+        .andWhere('tx.type = :type', { type: ExternalTransactionType.PRODUCT_OUT })
+        .groupBy('tx.contact_id')
+        .getRawMany<{ contact: string; value: string; margin: string }>(),
+    ]);
+
+    // Profit share of each unit of cash a counterparty pays back. Capped at 1
+    // (a payment can never be more than 100% profit); a loss-making relationship
+    // gives a negative rate, so its payments honestly carry no profit.
+    const rateOf = (value: string, margin: string): Decimal => {
+      const v = new Decimal(value);
+      if (v.lte(0)) return new Decimal(0);
+      return Decimal.min(Decimal.max(new Decimal(margin).div(v), 0), 1);
+    };
+    const debtorRate = new Map(debtorRates.map((r) => [`${r.debtor}:${r.shop}`, rateOf(r.value, r.margin)]));
+    const contactRate = new Map(extRates.map((r) => [r.contact, rateOf(r.value, r.margin)]));
+
+    const segments = Array.from({ length: takeOuts.length + 1 }, () => ({
+      cash: new Decimal(0),
+      profit: new Decimal(0),
+    }));
+    const add = (seg: number, cash: Decimal, profit: Decimal): void => {
+      const s = segments[Math.min(seg, takeOuts.length)];
+      s.cash = s.cash.plus(cash);
+      s.profit = s.profit.plus(profit);
+    };
+
+    for (const r of sales) add(Number(r.seg), new Decimal(r.cash), new Decimal(r.profit));
+    for (const r of debtorPayments) {
+      const cash = new Decimal(r.cash);
+      add(Number(r.seg), cash, cash.mul(debtorRate.get(`${r.debtor}:${r.shop}`) ?? 0));
+    }
+    for (const r of extPayments) {
+      const cash = new Decimal(r.cash);
+      add(Number(r.seg), cash, cash.mul(contactRate.get(r.contact) ?? 0));
+    }
+    for (const e of timedExpenses) add(segmentIndex(e.at, takeOutTimes), e.usd.neg(), e.usd.neg());
+    for (const f of branchFlows) {
+      if (f.direction === 'in') add(segmentIndex(f.at, takeOutTimes), f.amountUsd, new Decimal(0));
+    }
+
+    return profitInTill(segments, takeOuts.map((t) => t.usd)).profit;
   }
 
   /**
