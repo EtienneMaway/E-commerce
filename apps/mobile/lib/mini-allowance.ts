@@ -49,25 +49,46 @@ export function computeOfflineAllowance(input: {
 
   // Agreed value of what sold offline. For a mini every cached product is
   // consigned-in stock, whose unitCost IS the price they owe their employer.
-  const agreedFcOf = (productName: string, qty: number): number => {
+  // A sized product owes per size: a size sale at that size's agreed price, a
+  // whole-carton sale at every carton size's price × its pieces per carton.
+  const agreedFcOf = (
+    productName: string,
+    qty: number,
+    sized?: { variantId?: string | null; cartonQty?: number },
+  ): number => {
     const product = byName.get(productName);
     if (!product) return 0;
-    const agreedUsd = parseFloat(product.unitCost) || 0;
-    const rate = parseFloat(product.usdToFcRateSnapshot ?? '') || fallbackRate;
-    return agreedUsd * qty * rate;
+    const productRate = parseFloat(product.usdToFcRateSnapshot ?? '') || fallbackRate;
+    const variants = product.variants ?? [];
+    const sizeFc = (v: (typeof variants)[number], pieces: number): number =>
+      (parseFloat(v.unitCost) || 0) * pieces * (parseFloat(v.usdToFcRateSnapshot ?? '') || productRate);
+    if (sized?.cartonQty && variants.length > 0) {
+      return variants.reduce((sum, v) => sum + sizeFc(v, v.piecesPerCarton * sized.cartonQty!), 0);
+    }
+    const variant = sized?.variantId ? variants.find((v) => v.variantId === sized.variantId) : undefined;
+    if (variant) return sizeFc(variant, qty);
+    return (parseFloat(product.unitCost) || 0) * qty * productRate;
   };
 
   // A sale rejected before it ever synced never earned any budget, so it is
   // simply not counted.
   const offlineSoldFc = pendingSales
     .filter((sale) => !sale.rejectedOffline)
-    .reduce((sum, sale) => sum + agreedFcOf(sale.productName, sale.qtySold), 0);
+    .reduce(
+      (sum, sale) =>
+        sum +
+        agreedFcOf(sale.productName, sale.qtySold, {
+          variantId: sale.variantId,
+          cartonQty: sale.carton?.cartonQty,
+        }),
+      0,
+    );
 
   // Rejections of sales the server already knows about: their value is baked
   // into the frozen `snapshot.soldFc`, so take it back out — otherwise the mini
   // keeps spending room they voided.
   const rejectedSoldFc = pendingRejections.reduce(
-    (sum, r) => sum + agreedFcOf(r.productName, r.qtySold),
+    (sum, r) => sum + agreedFcOf(r.productName, r.qtySold, { variantId: r.variantId }),
     0,
   );
 

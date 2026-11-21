@@ -578,8 +578,8 @@ export const salesApi = {
     api.get('/sales/top-products', { params }).then((r) => r.data),
 
   /** Fetch every sale row sharing a receiptId — used to reconstruct a multi-item original receipt. */
-  byReceipt: (receiptId: string) =>
-    api.get(`/sales/by-receipt/${encodeURIComponent(receiptId)}`).then((r) => r.data),
+  byReceipt: (receiptId: string, config?: RequestOverrides) =>
+    api.get(`/sales/by-receipt/${encodeURIComponent(receiptId)}`, config).then((r) => r.data),
 
   /** Attach (or update) buyer name + phone on a sale. Propagates across the whole receipt when receiptId is set. */
   updateClient: (saleId: string, body: { clientName?: string; clientPhone?: string }) =>

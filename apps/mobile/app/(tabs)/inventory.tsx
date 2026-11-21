@@ -15,6 +15,7 @@ import { inventoryApi } from '../../lib/api';
 import { QK } from '../../lib/query-keys';
 import { useBrand } from '../../lib/theme';
 import { useFormatCurrency, useExchangeRate, formatMoney } from '../../lib/currency';
+import { fromCachedProduct } from '../../lib/offline-products';
 import { useT } from '../../lib/i18n';
 import { usePermissions } from '../../lib/permissions';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -257,16 +258,7 @@ export default function InventoryScreen() {
   // captured at offline-entry) drive the listing. Sales recorded offline
   // immediately reduce the displayed availability — preventing oversell.
   const products: ProductSummary[] = isOffline
-    ? cachedProducts.map((p) => ({
-        productName: p.productName,
-        category: p.category ?? null,
-        piecesPerCarton: p.piecesPerCarton ?? null,
-        latestCartonPrice: p.latestCartonPrice ?? null,
-        totalAvailable: p.availableQty,
-        sourceBreakdown: { personal: 0, supplier: 0, consignedIn: 0, consignedOut: 0 },
-        latestSellingPrice: p.latestSellingPrice ?? p.unitCost,
-        latestUnitCost: p.unitCost,
-      }))
+    ? cachedProducts.map(fromCachedProduct)
     : (data as ProductSummary[] | undefined) ?? [];
 
   // Aggregate offline-sold qty per product so each card can show a "sold,

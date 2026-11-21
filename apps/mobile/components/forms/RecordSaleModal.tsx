@@ -33,6 +33,7 @@ import {
   isNetworkError,
 } from '../../lib/utils';
 import { useFormatCurrency, useExchangeRate, usdToFcStr, formatFcValue, formatMoney } from '../../lib/currency';
+import { fromCachedProduct } from '../../lib/offline-products';
 import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../store/auth.store';
 import { useOfflineStore } from '../../store/offline.store';
@@ -134,6 +135,8 @@ interface DiscountPending {
  */
 interface SizedCartLine {
   key: string; // `${productName}::${variantId}` — unique across all group products in the cart
+  /** Idempotency key, sent online and reused if the line has to be queued. */
+  clientSaleId: string;
   productName: string;
   variantId: string;
   variantLabel: string;
@@ -253,18 +256,7 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
   // default. Older snapshots that predate that change fall back gracefully
   // to piece-only mode with selling price = cost.
   const products: ProductSummary[] = isOffline
-    ? cachedProducts
-        .filter((p) => p.availableQty > 0)
-        .map((p) => ({
-          productName: p.productName,
-          category: p.category ?? null,
-          piecesPerCarton: p.piecesPerCarton ?? null,
-          latestCartonPrice: p.latestCartonPrice ?? null,
-          totalAvailable: p.availableQty,
-          sourceBreakdown: { personal: 0, supplier: 0, consignedIn: 0, consignedOut: 0 },
-          latestSellingPrice: p.latestSellingPrice ?? p.unitCost,
-          latestUnitCost: p.unitCost,
-        }))
+    ? cachedProducts.filter((p) => p.availableQty > 0).map(fromCachedProduct)
     : onlineProducts;
 
   const filteredProducts = useMemo(() => {
@@ -377,6 +369,7 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
       const rate = isMini && v.usdToFcRateSnapshot ? v.usdToFcRateSnapshot : rateForProduct(product);
       next.set(key, {
         key,
+        clientSaleId: newClientSaleId(),
         productName: product.productName,
         variantId: v.variantId,
         variantLabel: v.label,
@@ -574,8 +567,8 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
   /**
    * Records every sized line the same way SellSizedProductModal does for its
    * own by-size cart — one salesApi.record() call per size, all sharing the
-   * batch's receiptId. Sized lines are online-only (no offline queue support
-   * yet) and never trigger the discount-reason flow (their price is always
+   * batch's receiptId. A dropped connection queues the line instead (see
+   * `queueSizedLine`). Sized lines never trigger the discount-reason flow (their price is always
    * the fixed dashboard price), only the price guard.
    */
   const submitSizedLines = async (
@@ -590,6 +583,7 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
     const succeeded: SizedCartLine[] = [];
     const priceGuard: Extract<AnyPriceGuardPending, { kind: 'sized' }>[] = [];
     const saleIds: string[] = [];
+    const queued: string[] = [];
     for (const line of lines) {
       try {
         const salePriceUsd = (line.unitPriceFc / (parseFloat(line.rate) || 1)).toFixed(4);
@@ -600,6 +594,7 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
           salePrice: salePriceUsd,
           ...(isMini ? { salePriceFc: line.unitPriceFc.toFixed(4) } : {}),
           receiptId,
+          clientSaleId: line.clientSaleId,
           ...(confirmedOverride ? { confirmedOverride: true } : {}),
         });
         if (sale && typeof sale === 'object' && 'id' in sale && typeof sale.id === 'string') {
@@ -610,12 +605,37 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
         if (isPriceGuardWarning(err)) {
           const w = getPriceGuardWarning(err);
           priceGuard.push({ kind: 'sized', line, warning: w?.message ?? '' });
+        } else if (isNetworkError(err)) {
+          // Connection dropped mid-sale: queue it under the key just sent (the
+          // replay dedupes if this request did land) and keep it on the receipt.
+          queueSizedLine(line, receiptId);
+          queued.push(`${line.productName} · ${line.variantLabel}`);
+          succeeded.push(line);
         } else {
           showAlert(t.common.error, `${line.productName} · ${line.variantLabel}: ${getErrorMessage(err)}`);
         }
       }
     }
+    if (queued.length > 0) {
+      showAlert(t.sales.queuedTitle, t.sales.queuedBody(queued.join(', ')));
+    }
     return { succeeded, priceGuard, saleIds };
+  };
+
+  /** Put one size line in the offline queue (offline mode, or a dropped connection). */
+  const queueSizedLine = (line: SizedCartLine, receiptId: string): void => {
+    recordOfflineSale(
+      line.productName,
+      line.qty,
+      (line.unitPriceFc / (parseFloat(line.rate) || 1)).toFixed(4),
+      {
+        id: line.clientSaleId,
+        receiptId,
+        variantId: line.variantId,
+        variantLabel: line.variantLabel,
+        ...(isMini ? { salePriceFc: line.unitPriceFc.toFixed(4) } : {}),
+      },
+    );
   };
 
   const invalidate = (): void => {
@@ -702,10 +722,12 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
     const phone = clientPhone.trim();
     if (!name && !phone) return; // nothing to attach
 
-    if (isOffline && lastReceiptId) {
+    // Queued rows (offline mode, or lines queued after a dropped connection)
+    // carry the buyer in their eventual POST. A no-op when none share the id.
+    if (lastReceiptId) {
       attachOfflineClient(lastReceiptId, name || undefined, phone || undefined);
-      return;
     }
+    if (isOffline) return;
     // Online: PATCH the first row — the server propagates to siblings via
     // receiptId. We send one request instead of N for cleaner network use.
     const firstId = lastOnlineSaleIds[0];
@@ -784,14 +806,6 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
       showAlert(t.common.missingFields, t.recordSaleModal.noProductsSelectedMsg);
       return;
     }
-    // Sized lines don't flow through the offline queue yet (same constraint as
-    // the dedicated by-size sell screen) — the picker is hidden offline
-    // already, but guard here too in case connectivity dropped mid-edit.
-    if (isOffline && sizedLines.size > 0) {
-      showAlert(t.common.error, t.recordSaleModal.sizedOfflineUnsupported);
-      return;
-    }
-
     // One receipt id per cart submission — every row in this batch carries
     // it so the server can later regroup them into a single reprintable
     // receipt. Same id is shown to the merchant on the printed slip.
@@ -801,20 +815,25 @@ function RecordSaleModalForm({ visible, onClose, prefilledProduct = '', prefille
     // ── Offline path ─────────────────────────────────────────────────────────
     if (isOffline) {
       const soldItems = buildSubmitItems(cartArray);
-      for (const { item, totalPieces, salePrice, originalUnitPrice, discountReason } of soldItems) {
+      for (const { item, totalPieces, salePrice, salePriceFc, originalUnitPrice, discountReason } of soldItems) {
         recordOfflineSale(item.productName, totalPieces, salePrice, {
+          id: item.clientSaleId,
           receiptId,
           originalUnitPrice,
           discountReason,
+          // Minis send the FC price online too, so each lot books at its own rate.
+          ...(isMini && salePriceFc ? { salePriceFc: salePriceFc.toFixed(4) } : {}),
         });
       }
+      // Sizes picked in this cart go in the same queue, under the same receipt.
+      for (const line of sizedLinesArray) queueSizedLine(line, receiptId);
       setLastOnlineSaleIds([]);
       // Open the receipt prompt FIRST, then close the main modal. If the
       // parent ever unmounts us when `visible` flips, the prompt state would
       // be lost — offline this branch is fully synchronous so React commits
       // everything in one render pass and the race was guaranteed. Setting
       // the prompt before handleClose() ensures it lands first.
-      offerReceipt(soldItems, receiptId);
+      offerReceipt(soldItems, receiptId, sizedLinesArray);
       handleClose();
       return;
     }

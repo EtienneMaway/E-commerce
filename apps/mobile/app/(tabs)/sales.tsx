@@ -40,6 +40,7 @@ interface SaleRow {
   id: string;
   productName: string;
   /** Size sold, for a sized (carton-with-sizes) product. Null for simple ones. */
+  variantId?: string | null;
   variantLabel?: string | null;
   source: string;
   qtySold: number;
@@ -245,6 +246,7 @@ export default function SalesScreen() {
       kind: 'server',
       id: row.id,
       productName: row.productName,
+      variantId: row.variantId,
       variantLabel: row.variantLabel,
       qtySold: row.qtySold,
     });
@@ -463,13 +465,14 @@ export default function SalesScreen() {
                   {pendingSales.map((p) => (
                     <PendingSaleCard
                       key={p.id}
-                      productName={p.productName}
+                      productName={p.variantLabel ? `${p.productName} · ${p.variantLabel}` : p.productName}
                       qtySold={p.qtySold}
                       onReject={() =>
                         setRejectTarget({
                           kind: 'pending',
                           id: p.id,
                           productName: p.productName,
+                          variantLabel: p.variantLabel,
                           qtySold: p.qtySold,
                         })
                       }

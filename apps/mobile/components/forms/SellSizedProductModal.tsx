@@ -22,7 +22,8 @@ import {
 } from '../../lib/quantity-discount';
 import { useExchangeRate, formatMoney, formatFcValue } from '../../lib/currency';
 import { printReceipt, shareReceiptAsPdf, generateReceiptId, type ReceiptData, type ReceiptItem } from '../../lib/receipt';
-import { getErrorMessage, isPriceGuardWarning, getPriceGuardWarning } from '../../lib/utils';
+import { getErrorMessage, isPriceGuardWarning, getPriceGuardWarning, isNetworkError } from '../../lib/utils';
+import { useOfflineStore } from '../../store/offline.store';
 import { useAuthStore } from '../../store/auth.store';
 import { usePrinterStore } from '../../store/printer.store';
 import { receiptIdentity } from '../../lib/receipt-identity';
@@ -49,9 +50,16 @@ interface Props {
 
 type Mode = 'carton' | 'size';
 
+/** Same key shape as RecordSaleModal / the offline queue, so replays dedupe. */
+function newClientSaleId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 /** One selected size in the by-size cart — several can be selected at once so
  *  a single receipt can cover different sizes bought together. */
 interface SizeCartRow {
+  /** Idempotency key, sent online and reused if the row has to be queued. */
+  clientSaleId: string;
   variantId: string;
   label: string;
   available: number;
@@ -71,9 +79,10 @@ interface SizePriceGuardPending {
  * (so a customer buying several different sizes at once still gets one
  * receipt). Prices display in FC (at the mini's locked rate when applicable);
  * the sale posts USD on the wire — carton via `{ carton, groupId, cartonQty }`,
- * each size via `{ variantId, qtySold }`. Online-only for now (sized sales
- * don't yet flow through the offline queue). Both modes end with the same
- * print/share/skip receipt prompt used by the regular sale flow.
+ * each size via `{ variantId, qtySold }`. Offline (or when the connection
+ * drops mid-sale) the same payloads go into the offline queue and replay at
+ * sync. Both modes end with the same print/share/skip receipt prompt used by
+ * the regular sale flow — printing is local, so it works with no network.
  */
 function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }: Props) {
   const brand = useBrand();
@@ -82,6 +91,9 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
   const exchangeRate = useExchangeRate();
   const user = useAuthStore((s) => s.user);
   const isMini = user?.activeEmployment?.tier === 'SALES_ONLY';
+  const isOffline = useOfflineStore((s) => s.isOffline);
+  const recordOfflineSale = useOfflineStore((s) => s.recordOfflineSale);
+  const attachOfflineClient = useOfflineStore((s) => s.attachOfflineClient);
 
   const variants = useMemo(() => group?.variants ?? [], [group]);
   const cartonPriceUsd = group?.cartonSellingPrice ? parseFloat(group.cartonSellingPrice) : null;
@@ -104,6 +116,9 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
 
   const [submitting, setSubmitting] = useState(false);
   const [lastReceiptId, setLastReceiptId] = useState<string | null>(null);
+  // One key per carton sale attempt — kept across a price-guard re-submit so a
+  // queued retry can never record the same cartons twice.
+  const [cartonClientSaleId, setCartonClientSaleId] = useState(newClientSaleId);
   const [receiptPrompt, setReceiptPrompt] = useState<ReceiptData | null>(null);
   const [printingReceipt, setPrintingReceipt] = useState(false);
   // Optional buyer details typed at the prompt, plus the ids of the rows this
@@ -117,7 +132,7 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
     queryKey: QK.quantityDiscounts,
     queryFn: quantityDiscountsApi.get,
     staleTime: 5 * 60_000,
-    enabled: visible,
+    enabled: visible && !isOffline,
   });
 
   // Reset each time a different product opens; default to whichever mode is sellable.
@@ -130,6 +145,8 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
     setSizeRowsAlreadySold([]);
     setSubmitting(false);
     setLastSaleIds([]);
+    setLastReceiptId(null);
+    setCartonClientSaleId(newClientSaleId());
     setReceiptClientName('');
     setReceiptClientPhone('');
     setApplyDiscount(false);
@@ -158,13 +175,15 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
    * of the batch — the API fans it out to every sibling sharing the receiptId,
    * so a later search by name or phone finds the whole transaction. Best
    * effort: a failure here never blocks the print, the slip already carries
-   * the name. Sized sales are online-only, so there's no offline branch (the
-   * normal-sale prompt queues it; here the sale itself could not have happened).
+   * the name. A queued sale (offline, or a dropped connection) gets the buyer
+   * on its queue row instead, and carries it in the POST at sync.
    */
   const persistClient = (clientName: string, clientPhone: string): void => {
     const name = clientName.trim();
     const phone = clientPhone.trim();
     if (!name && !phone) return;
+    if (lastReceiptId) attachOfflineClient(lastReceiptId, name || undefined, phone || undefined);
+    if (isOffline) return;
     const firstId = lastSaleIds[0];
     if (!firstId) return;
     void salesApi
@@ -334,6 +353,7 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
       }
       const rate = rateFor(v);
       next.set(v.variantId, {
+        clientSaleId: newClientSaleId(),
         variantId: v.variantId,
         label: v.label,
         available: v.available,
@@ -433,17 +453,52 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
   };
 
   // ── Carton-mode submit (unchanged behavior, now ends with the receipt prompt) ──
+  /**
+   * Queue the carton sale (offline mode, or no answer from the server). The
+   * queue row counts pieces and a per-piece price so every pending-sales total
+   * in the app stays right; `carton` carries what sync actually sends.
+   */
+  const queueCarton = (receiptId: string, reason: string | undefined): void => {
+    const pieces = clampedQty * piecesPerCartonTotal;
+    recordOfflineSale(
+      group.productName,
+      pieces,
+      (pieces > 0 ? cartonLineTotalUsd / pieces : discountedCartonUsd).toFixed(4),
+      {
+        id: cartonClientSaleId,
+        receiptId,
+        carton: {
+          groupId: group.groupId ?? '',
+          cartonQty: clampedQty,
+          cartonPrice: discountedCartonUsd.toFixed(4),
+        },
+        ...(isMini ? { salePriceFc: discountedCartonFcNum.toFixed(4) } : {}),
+        ...(cartonDiscountPct > 0 ? { originalUnitPrice: effectiveCartonUsd.toFixed(4) } : {}),
+        ...(reason ? { discountReason: reason } : {}),
+      },
+    );
+  };
+
   const submitCarton = async (confirmedOverride = false): Promise<void> => {
     const receiptId = lastReceiptId ?? generateReceiptId();
     setLastReceiptId(receiptId);
+    const reason =
+      cartonDiscountPct > 0
+        ? cartonTier
+          ? `${t.recordSaleModal.qdReasonPrefix}: ${tierName(cartonTier)} (${cartonDiscountPct}%)`
+          : `${t.recordSaleModal.qdReasonPrefix} (${cartonDiscountPct}%)`
+        : undefined;
+
+    if (isOffline) {
+      queueCarton(receiptId, reason);
+      setLastSaleIds([]);
+      offerCartonReceipt(receiptId);
+      onClose();
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const reason =
-        cartonDiscountPct > 0
-          ? cartonTier
-            ? `${t.recordSaleModal.qdReasonPrefix}: ${tierName(cartonTier)} (${cartonDiscountPct}%)`
-            : `${t.recordSaleModal.qdReasonPrefix} (${cartonDiscountPct}%)`
-          : undefined;
       const sale = await salesApi.record({
         productName: group.productName,
         carton: true,
@@ -454,6 +509,7 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
         ...(cartonDiscountPct > 0 ? { originalUnitPrice: effectiveCartonUsd.toFixed(4) } : {}),
         ...(reason ? { discountReason: reason } : {}),
         receiptId,
+        clientSaleId: cartonClientSaleId,
         ...(confirmedOverride ? { confirmedOverride: true } : {}),
       });
       setLastSaleIds(saleIdOf(sale) ? [saleIdOf(sale)!] : []);
@@ -470,6 +526,14 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
           { text: t.common.cancel, style: 'cancel' },
           { text: t.sizedSale.confirmLoss, style: 'destructive', onPress: () => void submitCarton(true) },
         ]);
+      } else if (isNetworkError(err)) {
+        // No verdict from the server — queue under the key just sent and still
+        // hand the customer their receipt.
+        queueCarton(receiptId, reason);
+        setLastSaleIds([]);
+        showAlert(t.sales.queuedTitle, t.sales.queuedBody(group.productName));
+        offerCartonReceipt(receiptId);
+        onClose();
       } else {
         showAlert(t.common.error, getErrorMessage(err));
       }
@@ -495,9 +559,26 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
     const succeeded: SizeCartRow[] = [];
     const priceGuard: SizePriceGuardPending[] = [];
     const saleIds: string[] = [];
+    const queued: string[] = [];
     for (const row of rows) {
+      const salePriceUsd = (row.unitPriceFc / (parseFloat(row.rate) || 1)).toFixed(4);
+      const queueRow = (): void => {
+        recordOfflineSale(group.productName, row.qty, salePriceUsd, {
+          id: row.clientSaleId,
+          receiptId,
+          variantId: row.variantId,
+          variantLabel: row.label,
+          ...(isMini ? { salePriceFc: row.unitPriceFc.toFixed(4) } : {}),
+        });
+        succeeded.push(row);
+      };
+      // Offline the price guard can't be asked; sync confirms it, as for any
+      // offline sale (the seller already chose the price).
+      if (isOffline) {
+        queueRow();
+        continue;
+      }
       try {
-        const salePriceUsd = (row.unitPriceFc / (parseFloat(row.rate) || 1)).toFixed(4);
         const sale = await salesApi.record({
           productName: group.productName,
           variantId: row.variantId,
@@ -505,6 +586,7 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
           salePrice: salePriceUsd,
           ...(isMini ? { salePriceFc: row.unitPriceFc.toFixed(4) } : {}),
           receiptId,
+          clientSaleId: row.clientSaleId,
           ...(confirmedOverride ? { confirmedOverride: true } : {}),
         });
         const id = saleIdOf(sale);
@@ -514,10 +596,16 @@ function SellSizedProductModalForm({ visible, onClose, group, onSellWithOthers }
         if (isPriceGuardWarning(err)) {
           const w = getPriceGuardWarning(err);
           priceGuard.push({ row, warning: w?.message ?? '' });
+        } else if (isNetworkError(err)) {
+          queueRow();
+          queued.push(`${group.productName} · ${row.label}`);
         } else {
           showAlert(t.common.error, `${row.label}: ${getErrorMessage(err)}`);
         }
       }
+    }
+    if (queued.length > 0) {
+      showAlert(t.sales.queuedTitle, t.sales.queuedBody(queued.join(', ')));
     }
     return { succeeded, priceGuard, saleIds };
   };

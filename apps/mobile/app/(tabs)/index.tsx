@@ -8,6 +8,7 @@ import { authApi, dashboardApi, inventoryApi, salaryPaymentsApi, currencyApi, mi
 import { QK } from '../../lib/query-keys';
 import { useBrand } from '../../lib/theme';
 import { useFormatCurrency, useExchangeRate } from '../../lib/currency';
+import { toCachedProduct } from '../../lib/offline-products';
 import { useT } from '../../lib/i18n';
 import { usePermissions } from '../../lib/permissions';
 import { NoAccessNotice } from '../../components/NoAccessNotice';
@@ -37,18 +38,6 @@ import { formatMoney } from '../../lib/currency';
 import type { AlertItem } from '../../lib/notifications';
 import { showAlert } from '../../lib/alert';
 import { PullRefreshControl } from '../../components/ui/PullRefreshControl';
-
-interface ProductSummary {
-  productName: string;
-  category: string | null;
-  piecesPerCarton: number | null;
-  latestCartonPrice: string | null;
-  latestUnitCost: string;
-  latestSellingPrice: string;
-  totalAvailable: number;
-  /** Minis: the consignment rate this product's stock is locked at. */
-  usdToFcRateSnapshot?: string | null;
-}
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
@@ -186,25 +175,14 @@ export default function DashboardScreen() {
       // offline expenses can be checked on the spot instead of piling
       // up to be rejected when the queue drains.
       const [products, rate, allowance] = await Promise.all([
-        inventoryApi.listProducts() as Promise<ProductSummary[]>,
+        inventoryApi.listProducts(),
         currencyApi.getRate(),
         isMini
           ? miniSettlementsApi.expenseAllowance().catch(() => null)
           : Promise.resolve(null),
       ]);
       enableOfflineMode(
-        products
-          .filter((p) => p.totalAvailable > 0)
-          .map((p) => ({
-            productName: p.productName,
-            unitCost: p.latestUnitCost,
-            availableQty: p.totalAvailable,
-            piecesPerCarton: p.piecesPerCarton,
-            latestSellingPrice: p.latestSellingPrice,
-            latestCartonPrice: p.latestCartonPrice,
-            category: p.category,
-            usdToFcRateSnapshot: p.usdToFcRateSnapshot,
-          })),
+        products.filter((p) => p.totalAvailable > 0).map(toCachedProduct),
         rate.usdToFcRate,
         allowance
           ? { pct: allowance.pct, soldFc: allowance.soldFc, spentFc: allowance.spentFc }
@@ -489,7 +467,7 @@ export default function DashboardScreen() {
                 .filter((s) => s.syncError)
                 .map((s) => (
                   <Text key={s.id} className="text-danger text-xs">
-                    ⚠ {s.productName} ×{s.qtySold} — {s.syncError}
+                    ⚠ {s.productName}{s.variantLabel ? ` · ${s.variantLabel}` : ''} ×{s.qtySold} — {s.syncError}
                   </Text>
                 ))}
               {pendingRejections

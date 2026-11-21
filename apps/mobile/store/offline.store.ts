@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useShopStore } from './shop.store';
+import { applyStockDraw } from '../lib/offline-stock';
+
+export type { StockDraw } from '../lib/offline-stock';
 
 /**
  * The branch a row being queued right now belongs to. Captured at enqueue, not
@@ -29,6 +32,29 @@ export interface CachedProduct {
    * way the server will when the queue drains, instead of at the session rate.
    */
   usdToFcRateSnapshot?: string | null;
+  /**
+   * Sized (carton-with-variants) products. Without these the offline cache
+   * flattened a sized product into a "simple" one priced like its first size,
+   * and the queued sale (no size) failed to sync. Absent on simple products and
+   * on snapshots taken by an older build.
+   */
+  kind?: 'simple' | 'group';
+  groupId?: string;
+  cartonSellingPrice?: string | null;
+  /** Derived from the sizes after every offline sale — see `withVariantStock`. */
+  cartonsAvailable?: number;
+  variants?: CachedVariant[];
+}
+
+/** One size of a cached sized product. `available` is counted down offline. */
+export interface CachedVariant {
+  variantId: string;
+  label: string;
+  unitCost: string;
+  sellingPrice: string;
+  piecesPerCarton: number;
+  available: number;
+  usdToFcRateSnapshot?: string | null;
 }
 
 /**
@@ -50,8 +76,21 @@ export interface AllowanceSnapshot {
 export interface PendingSale {
   id: string;
   productName: string;
+  /** Pieces. For a whole-carton sale: every piece across every size. */
   qtySold: number;
-  salePrice: string;    // per unit, USD
+  /**
+   * Per piece, USD. For a whole-carton sale this is the carton price spread
+   * over its pieces, so `salePrice × qtySold` totals hold everywhere; sync
+   * sends `carton.cartonPrice` instead.
+   */
+  salePrice: string;
+  /** FC per piece (per carton for a carton sale) — sent by minis, as online. */
+  salePriceFc?: string;
+  /** Sold one size of a sized product. */
+  variantId?: string;
+  variantLabel?: string;
+  /** Sold whole cartons of a sized product. */
+  carton?: { groupId: string; cartonQty: number; cartonPrice: string };
   recordedAt: string;
   syncError: string | null;
   // Buyer details captured at the post-sale receipt prompt. Sent with the
@@ -92,6 +131,8 @@ export interface PendingRejection {
   saleId: string;
   /** For the local stock restore and for naming the row in the sync list. */
   productName: string;
+  /** Size of the rejected row, so the offline shelf puts it back on that size. */
+  variantId?: string | null;
   qtySold: number;
   reason?: string;
   recordedAt: string;
@@ -161,6 +202,10 @@ interface OfflineState {
       clientPhone?: string;
       originalUnitPrice?: string;
       discountReason?: string;
+      salePriceFc?: string;
+      variantId?: string;
+      variantLabel?: string;
+      carton?: { groupId: string; cartonQty: number; cartonPrice: string };
       /**
        * Reuse an id already sent to the server as `clientSaleId` (an online
        * attempt that failed with no verdict). The replay in lib/sync.ts sends
@@ -183,6 +228,7 @@ interface OfflineState {
     productName: string,
     qtySold: number,
     reason?: string,
+    variantId?: string | null,
   ) => void;
   /** Queue a mini-employee expense (FC) for sync — used online-fail or offline. */
   recordOfflineExpense: (amount: string, category: string, description?: string) => void;
@@ -250,13 +296,22 @@ export const useOfflineStore = create<OfflineState>()(
               clientPhone: extras?.clientPhone,
               originalUnitPrice: extras?.originalUnitPrice,
               discountReason: extras?.discountReason,
+              salePriceFc: extras?.salePriceFc,
+              variantId: extras?.variantId,
+              variantLabel: extras?.variantLabel,
+              carton: extras?.carton,
               shopId: captureShop(),
             },
           ],
-          cachedProducts: s.cachedProducts.map((p) =>
-            p.productName === productName
-              ? { ...p, availableQty: Math.max(0, p.availableQty - qtySold) }
-              : p,
+          cachedProducts: applyStockDraw(
+            s.cachedProducts,
+            {
+              productName,
+              qty: qtySold,
+              variantId: extras?.variantId,
+              cartonQty: extras?.carton?.cartonQty,
+            },
+            -1,
           ),
         }));
       },
@@ -272,15 +327,20 @@ export const useOfflineStore = create<OfflineState>()(
                 : p,
             ),
             // Straight back onto the offline shelf, so the next sale sees it.
-            cachedProducts: s.cachedProducts.map((p) =>
-              p.productName === sale.productName
-                ? { ...p, availableQty: p.availableQty + sale.qtySold }
-                : p,
+            cachedProducts: applyStockDraw(
+              s.cachedProducts,
+              {
+                productName: sale.productName,
+                qty: sale.qtySold,
+                variantId: sale.variantId,
+                cartonQty: sale.carton?.cartonQty,
+              },
+              1,
             ),
           };
         }),
 
-      recordOfflineRejection: (saleId, productName, qtySold, reason) =>
+      recordOfflineRejection: (saleId, productName, qtySold, reason, variantId) =>
         set((s) => {
           // One rejection per sale — tapping twice must not restore twice.
           if (s.pendingRejections.some((r) => r.saleId === saleId)) return {};
@@ -291,6 +351,7 @@ export const useOfflineStore = create<OfflineState>()(
                 id: `rej-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                 saleId,
                 productName,
+                variantId: variantId ?? null,
                 qtySold,
                 reason,
                 recordedAt: new Date().toISOString(),
@@ -298,10 +359,12 @@ export const useOfflineStore = create<OfflineState>()(
                 shopId: captureShop(),
               },
             ],
-            cachedProducts: s.cachedProducts.map((p) =>
-              p.productName === productName
-                ? { ...p, availableQty: p.availableQty + qtySold }
-                : p,
+            // A server row is always one size (a carton sale is one row per
+            // size), so putting it back is a size draw, never a carton draw.
+            cachedProducts: applyStockDraw(
+              s.cachedProducts,
+              { productName, qty: qtySold, variantId: variantId ?? undefined },
+              1,
             ),
           };
         }),

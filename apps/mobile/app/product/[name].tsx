@@ -10,6 +10,8 @@ import {
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { inventoryApi } from '../../lib/api';
+import { fromCachedProduct } from '../../lib/offline-products';
+import { useOfflineStore } from '../../store/offline.store';
 import { QK } from '../../lib/query-keys';
 import { useBrand } from '../../lib/theme';
 import { formatDate, breakdownQuantity, formatBreakdown } from '../../lib/utils';
@@ -121,15 +123,21 @@ export default function ProductDetailScreen() {
   const [editPriceOpen, setEditPriceOpen] = useState(false);
 
   // Product summaries — used to detect a composite (sized) product.
+  // Offline it comes from the snapshot instead, whose per-size stock is counted
+  // down by every offline sale — so the sell sheet never offers sold pieces.
+  const isOffline = useOfflineStore((s) => s.isOffline);
+  const cachedProducts = useOfflineStore((s) => s.cachedProducts);
   const { data: productsData } = useQuery({
     queryKey: QK.inventoryProducts,
     queryFn: () => inventoryApi.listProducts(),
     staleTime: 30_000,
+    enabled: !isOffline,
   });
+  const summaries: ProductSummary[] = isOffline
+    ? cachedProducts.map(fromCachedProduct)
+    : ((productsData as ProductSummary[] | undefined) ?? []);
   const group =
-    ((productsData as ProductSummary[] | undefined) ?? []).find(
-      (p) => p.kind === 'group' && p.productName === productName,
-    ) ?? null;
+    summaries.find((p) => p.kind === 'group' && p.productName === productName) ?? null;
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: QK.inventory({ productName }),

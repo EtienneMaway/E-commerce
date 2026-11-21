@@ -29,6 +29,8 @@ export interface RejectTarget {
   kind: 'server' | 'pending';
   id: string;
   productName: string;
+  /** Size of a server row — puts the pieces back on that size offline. */
+  variantId?: string | null;
   variantLabel?: string | null;
   qtySold: number;
 }
@@ -80,6 +82,7 @@ export function RejectSaleModal({ target, onClose }: Props) {
       target.productName,
       target.qtySold,
       reason.trim() || undefined,
+      target.variantId,
     );
     onClose();
     showAlert(t.sales.rejectQueued, '');

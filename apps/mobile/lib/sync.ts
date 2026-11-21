@@ -102,15 +102,63 @@ async function syncOneRejection(
   return rejectServerSale(rejection.saleId, rejection.reason, rejection.shopId);
 }
 
+/**
+ * A whole-carton sale is one server row per size, all sharing a `cartonSaleId`,
+ * but the API answers with the first row only. Rejecting just that row would
+ * leave the other sizes sold, so look the siblings up through the receipt.
+ * Falls back to the one row we know when the lookup is refused (a role without
+ * sales history) — better a partial void than a row stuck in the queue forever.
+ */
+async function cartonRowIds(
+  created: unknown,
+  firstId: string,
+  sale: PendingSale,
+): Promise<string[]> {
+  const cartonSaleId =
+    created && typeof created === 'object' && 'cartonSaleId' in created && typeof created.cartonSaleId === 'string'
+      ? created.cartonSaleId
+      : null;
+  if (!cartonSaleId || !sale.receiptId) return [firstId];
+  try {
+    const rows: unknown = await salesApi.byReceipt(sale.receiptId, replayConfig(sale.shopId));
+    if (!Array.isArray(rows)) return [firstId];
+    const ids = rows
+      .filter(
+        (r): r is { id: string; cartonSaleId: string } =>
+          !!r && typeof r === 'object' && 'id' in r && 'cartonSaleId' in r && r.cartonSaleId === cartonSaleId,
+      )
+      .map((r) => r.id);
+    return ids.length > 0 ? ids : [firstId];
+  } catch {
+    return [firstId];
+  }
+}
+
 /** Submits one sale, retrying transient failures and auto-confirming a price-guard 422. */
 async function syncOneSale(sale: PendingSale): Promise<{ ok: boolean; error: unknown }> {
   // Carry the buyer info and receipt grouping captured offline so the row
   // lands on the server with the same searchable metadata an online sale
   // would have. `clientSaleId` is the queue id — stable across retries.
+  // A sized sale replays exactly as it was made online: one size by the piece
+  // (`variantId`), or whole cartons at the carton price (`carton` + `groupId` +
+  // `cartonQty`, no `qtySold`). Sending a sized product by name alone is what
+  // used to make these rows fail at sync.
+  const shape = sale.carton
+    ? {
+        carton: true,
+        groupId: sale.carton.groupId,
+        cartonQty: sale.carton.cartonQty,
+        salePrice: sale.carton.cartonPrice,
+      }
+    : {
+        qtySold: sale.qtySold,
+        salePrice: sale.salePrice,
+        ...(sale.variantId ? { variantId: sale.variantId } : {}),
+      };
   const basePayload = {
     productName: sale.productName,
-    qtySold: sale.qtySold,
-    salePrice: sale.salePrice,
+    ...shape,
+    ...(sale.salePriceFc ? { salePriceFc: sale.salePriceFc } : {}),
     clientName: sale.clientName,
     clientPhone: sale.clientPhone,
     receiptId: sale.receiptId,
@@ -139,7 +187,12 @@ async function syncOneSale(sale: PendingSale): Promise<{ ok: boolean; error: unk
         ? created.id
         : null;
     if (!saleId) return { ok: true, error: null }; // nothing to reject against
-    return rejectServerSale(saleId, sale.rejectedOffline.reason, sale.shopId);
+    const ids = sale.carton ? await cartonRowIds(created, saleId, sale) : [saleId];
+    for (const id of ids) {
+      const res = await rejectServerSale(id, sale.rejectedOffline.reason, sale.shopId);
+      if (!res.ok) return res;
+    }
+    return { ok: true, error: null };
   };
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -298,7 +351,8 @@ export async function syncPendingSales(): Promise<SyncResult> {
         completed += 1;
         setSyncProgress({ total, completed });
       } else {
-        const msg = `${sale.productName}: ${getErrorMessage(error)}`;
+        const label = sale.variantLabel ? `${sale.productName} · ${sale.variantLabel}` : sale.productName;
+        const msg = `${label}: ${getErrorMessage(error)}`;
         errors.push(msg);
         updateSaleError(sale.id, msg);
       }
